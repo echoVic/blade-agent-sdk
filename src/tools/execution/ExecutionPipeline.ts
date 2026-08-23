@@ -1,5 +1,6 @@
 import { ConfigError } from '../../errors/ConfigError.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { composeMiddleware } from '../../middleware/composeMiddleware.js';
 import type {
@@ -146,6 +147,7 @@ export class ExecutionPipeline {
   private readonly resultArtifactStore = new ResultArtifactStore();
   private readonly pendingExecutionCleanups = new Set<Promise<void>>();
   private readonly activePermissionCallbacks = new Map<Promise<void>, AbortSignal>();
+  private terminalCleanupFailure: unknown;
 
   constructor(
     private registry: ToolRegistry,
@@ -200,6 +202,10 @@ export class ExecutionPipeline {
     return false;
   }
 
+  getTerminalCleanupFailure(): unknown {
+    return this.terminalCleanupFailure;
+  }
+
   private hasPendingCleanup(): boolean {
     return this.hasPendingExecutionCleanup() || this.hasPendingPermissionCleanup();
   }
@@ -212,6 +218,7 @@ export class ExecutionPipeline {
     params: JsonObject,
     context: ExecutionContext
   ): ToolExecution {
+    this.throwIfTerminalCleanupFailed();
     if (this.hasPendingCleanup()) {
       return this.createPendingCleanupResult();
     }
@@ -349,6 +356,9 @@ export class ExecutionPipeline {
           if (isExecutionLeaseFailure(error)) {
             throw error;
           }
+          if (isHookProcessContainmentError(error)) {
+            throw error;
+          }
           if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
             throw protectedContext.signal.reason;
           }
@@ -399,9 +409,13 @@ export class ExecutionPipeline {
           effectiveRequest,
         );
       }
+      this.throwIfTerminalCleanupFailed();
       await protectedContext.assertExecutionLease?.();
       completed = true;
       return result;
+    } catch (error) {
+      this.rememberTerminalCleanupFailure(error);
+      throw error;
     } finally {
       if (completed && result) {
         this.addToHistory({
@@ -499,6 +513,7 @@ export class ExecutionPipeline {
         toolKind,
         state.context.signal,
       );
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
@@ -510,15 +525,20 @@ export class ExecutionPipeline {
             state.context.signal,
           )
         : undefined;
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
       }
       await state.context.assertExecutionLease?.();
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isHookProcessContainmentError(error)) {
         throw error;
       }
       if (isExecutionLeaseFailure(state.context.signal?.reason)) {
@@ -551,6 +571,7 @@ export class ExecutionPipeline {
   ): ToolExecution {
     try {
       await this.applyPreToolUseHooks(state, executionId);
+      this.throwIfTerminalCleanupFailed();
       if (!state.result && state.context.signal?.aborted) {
         state.interrupted = isSteeringInterruptSignal(state.context.signal);
         state.result = this.createAbortedResult(
@@ -564,9 +585,11 @@ export class ExecutionPipeline {
       }
       if (!state.result) {
         await this.prepareExecution(state);
+        this.throwIfTerminalCleanupFailed();
       }
       if (!state.result) {
         await this.resolveConfirmation(state);
+        this.throwIfTerminalCleanupFailed();
       }
       if (!state.result) {
         yield* this.executeInvocation(state);
@@ -591,6 +614,9 @@ export class ExecutionPipeline {
         if (isExecutionLeaseFailure(error)) {
           throw error;
         }
+        if (isHookProcessContainmentError(error)) {
+          throw error;
+        }
         if (isTimeout) {
           this.logger.warn(
             `Post-execution hooks failed after ${state.toolName} timed out; preserving the timeout`,
@@ -607,6 +633,9 @@ export class ExecutionPipeline {
       );
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isHookProcessContainmentError(error)) {
         throw error;
       }
       const errorMsg = getErrorMessage(error);
@@ -647,6 +676,9 @@ export class ExecutionPipeline {
         );
       } catch (hookError) {
         if (isExecutionLeaseFailure(hookError)) {
+          throw hookError;
+        }
+        if (isHookProcessContainmentError(hookError)) {
           throw hookError;
         }
         // Hook 执行失败不应阻止错误处理
@@ -854,6 +886,12 @@ export class ExecutionPipeline {
         return;
       }
     } catch (error) {
+      if (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      ) {
+        throw error;
+      }
       if (state.context.signal?.aborted) {
         throw getAbortSignalReason(state.context.signal);
       }
@@ -912,6 +950,7 @@ export class ExecutionPipeline {
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
     await state.context.assertExecutionLease?.();
+    this.throwIfTerminalCleanupFailed();
     if (this.hasPendingCleanup()) {
       state.result = this.createPendingCleanupResult();
       return;
@@ -921,6 +960,7 @@ export class ExecutionPipeline {
       return;
     }
     let completed = false;
+    let lateCriticalFailure: unknown;
     let timedOut = false;
     const timeoutController = new AbortController();
     const timeoutError = this.createTimeoutError(state.toolName);
@@ -941,7 +981,19 @@ export class ExecutionPipeline {
 
     try {
       while (true) {
-        const step = await this.nextExecutionStep(execution, executionSignal);
+        const step = await this.nextExecutionStep(
+          execution,
+          executionSignal,
+          (error) => {
+            if (
+              isExecutionLeaseFailure(error)
+              || isHookProcessContainmentError(error)
+            ) {
+              lateCriticalFailure ??= error;
+              this.rememberTerminalCleanupFailure(error);
+            }
+          },
+        );
         timeoutController.signal.throwIfAborted();
         if (step.done) {
           state.result = step.value;
@@ -959,11 +1011,17 @@ export class ExecutionPipeline {
             };
           }
           completed = true;
-          return;
+          break;
         }
         yield step.value;
       }
     } catch (error) {
+      if (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      ) {
+        throw error;
+      }
       timedOut =
         timeoutController.signal.aborted
         || getErrorName(error) === 'TimeoutError';
@@ -986,17 +1044,30 @@ export class ExecutionPipeline {
         }
         const closing = Promise.resolve(execution.return(undefined as never)).then(
           () => undefined,
-          () => undefined,
+          (error) => {
+            if (
+              isExecutionLeaseFailure(error)
+              || isHookProcessContainmentError(error)
+            ) {
+              lateCriticalFailure ??= error;
+              this.rememberTerminalCleanupFailure(error);
+              throw error;
+            }
+          },
         );
         this.trackPendingExecutionCleanup(closing);
         await this.waitForExecutionClose(closing);
       }
+    }
+    if (lateCriticalFailure) {
+      throw lateCriticalFailure;
     }
   }
 
   private async nextExecutionStep(
     execution: ToolExecution,
     signal: AbortSignal,
+    onLateFailure: (error: unknown) => void,
   ): Promise<IteratorResult<ToolYield, ToolResult>> {
     if (signal.aborted) {
       throw signal.reason;
@@ -1029,17 +1100,20 @@ export class ExecutionPipeline {
       };
 
       signal.addEventListener('abort', onAbort, { once: true });
-      execution.next().then(
-        resolveOnce,
-        rejectOnce,
-      );
+      execution.next().then(resolveOnce, (error) => {
+        if (settled) {
+          onLateFailure(error);
+          return;
+        }
+        rejectOnce(error);
+      });
     });
   }
 
   private async waitForExecutionClose(
     closing: PromiseLike<unknown>,
   ): Promise<void> {
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       let settled = false;
       const finish = (): void => {
         if (settled) return;
@@ -1047,16 +1121,28 @@ export class ExecutionPipeline {
         clearTimeout(timeout);
         resolve();
       };
+      const fail = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
       const timeout = setTimeout(finish, MAX_TOOL_CLEANUP_WAIT_MS);
-      closing.then(finish, finish);
+      closing.then(finish, fail);
     });
   }
 
   private trackPendingExecutionCleanup(closing: Promise<void>): void {
     this.pendingExecutionCleanups.add(closing);
-    void closing.finally(() => {
-      this.pendingExecutionCleanups.delete(closing);
-    });
+    void closing.then(
+      () => {
+        this.pendingExecutionCleanups.delete(closing);
+      },
+      (error) => {
+        this.pendingExecutionCleanups.delete(closing);
+        this.rememberTerminalCleanupFailure(error);
+      },
+    );
   }
 
   private async awaitPermissionCallback<T>(
@@ -1071,7 +1157,9 @@ export class ExecutionPipeline {
     const callback = Promise.resolve().then(operation);
     const cleanup = callback.then(
       () => undefined,
-      () => undefined,
+      (error) => {
+        this.rememberTerminalCleanupFailure(error);
+      },
     );
     this.activePermissionCallbacks.set(cleanup, signal);
     void cleanup.finally(() => {
@@ -1083,10 +1171,34 @@ export class ExecutionPipeline {
       signal.throwIfAborted();
       return result;
     } catch (error) {
+      if (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      ) {
+        throw error;
+      }
       if (signal.aborted) {
         throw getAbortSignalReason(signal);
       }
       throw error;
+    }
+  }
+
+  private rememberTerminalCleanupFailure(error: unknown): void {
+    if (
+      this.terminalCleanupFailure === undefined
+      && (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      )
+    ) {
+      this.terminalCleanupFailure = error;
+    }
+  }
+
+  private throwIfTerminalCleanupFailed(): void {
+    if (this.terminalCleanupFailure !== undefined) {
+      throw this.terminalCleanupFailure;
     }
   }
 
@@ -1150,7 +1262,7 @@ export class ExecutionPipeline {
       isInterrupt?: boolean;
     } = {},
   ): Promise<ToolResult> {
-    if (!this.hookRuntime) {
+    if (!this.hookRuntime || context.signal?.aborted) {
       return result;
     }
 
@@ -1411,6 +1523,12 @@ export class ExecutionPipeline {
             'Permission handling and durable resolution both failed',
           );
         }
+      }
+      if (
+        isExecutionLeaseFailure(failure)
+        || isHookProcessContainmentError(failure)
+      ) {
+        throw failure;
       }
       if (state.context.signal?.aborted) {
         throw failure;

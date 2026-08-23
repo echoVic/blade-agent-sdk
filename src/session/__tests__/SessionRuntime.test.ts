@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { MemoryManager } from '../../memory/MemoryManager.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
@@ -426,6 +427,63 @@ describe('SessionRuntime', () => {
     });
 
     await runtime.close();
+  });
+
+  it('remains fail closed after permission cleanup reports a containment failure', async () => {
+    const started = deferred();
+    const release = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const containmentError = new HookProcessContainmentError(
+      'Permission Hook process cleanup failed',
+    );
+    const runtime = new SessionRuntime(
+      SessionId('session-permission-containment-failure'),
+      createOptions({
+        tools: [customTool],
+        allowedTools: ['CustomTool'],
+        permissionHandler: async () => {
+          started.resolve();
+          await release.promise;
+          throw containmentError;
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const resultPromise = collectToolExecution(
+      executionPipeline.execute('CustomTool', {}, {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+      }),
+    );
+
+    await started.promise;
+    controller.abort(new Error('request cancelled'));
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { message: 'request cancelled' },
+    });
+    release.reject(containmentError);
+    await vi.waitFor(() => {
+      expect(executionPipeline.getTerminalCleanupFailure()).toBe(
+        containmentError,
+      );
+    });
+
+    const cancelBackgroundAgents = vi.spyOn(
+      runtime.getBackgroundAgentManager(),
+      'sealCancelAndWait',
+    );
+    await expect(runtime.close()).rejects.toBe(containmentError);
+    expect(cancelBackgroundAgents).toHaveBeenCalledOnce();
   });
 
   it('should install plugin tools and tool middleware through one declarative entry', async () => {

@@ -1,3 +1,4 @@
+import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import {
@@ -200,10 +201,13 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       toolUseUuid,
     });
 
-    let result: ToolResult;
+    let result: ToolResult | undefined;
     const effects: ToolEffect[] = [];
     let execution: ReturnType<ExecutionPipeline['execute']> | undefined;
     let executionCompleted = false;
+    let executionFailed = false;
+    let executionFailure: unknown;
+    let closeFailure: unknown;
     try {
       execution = input.executionPipeline.execute(input.toolCall.function.name, params, {
         sessionId: input.executionContext.sessionId,
@@ -238,33 +242,58 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
           mapToolYieldToExecutionUpdate(input.toolCall, step.value),
         );
       }
-      if (
-        result.status === 'error' &&
-        interruptBehavior === 'cancel' &&
-        isSteeringInterruptSignal(input.steeringSignal)
-      ) {
-        result = {
-          ...result,
-          error: {
-            ...result.error,
-            type: ToolErrorType.INTERRUPTED,
-          },
-        };
-      }
+    } catch (error) {
+      executionFailed = true;
+      executionFailure = error;
     } finally {
       if (execution && !executionCompleted) {
         try {
           await execution.return(undefined as never);
-        } catch {
-          // Preserve the original execution or event-consumer failure.
+        } catch (error) {
+          if (
+            isExecutionLeaseFailure(error)
+            || isHookProcessContainmentError(error)
+          ) {
+            closeFailure = error;
+          }
         }
       }
       interruptSignal.cleanup();
     }
 
+    if (closeFailure !== undefined) {
+      throw executionFailed
+        ? new AggregateError(
+            [executionFailure, closeFailure],
+            'Tool execution and cleanup both failed',
+          )
+        : closeFailure;
+    }
+    if (executionFailed) {
+      throw executionFailure;
+    }
+    if (!result) {
+      throw new Error('Tool execution completed without a result');
+    }
+    if (
+      result.status === 'error' &&
+      interruptBehavior === 'cancel' &&
+      isSteeringInterruptSignal(input.steeringSignal)
+    ) {
+      result = {
+        ...result,
+        error: {
+          ...result.error,
+          type: ToolErrorType.INTERRUPTED,
+        },
+      };
+    }
     outcome = { toolCall: input.toolCall, result, effects, toolUseUuid };
   } catch (error) {
-    if (isExecutionLeaseFailure(error)) {
+    if (
+      isExecutionLeaseFailure(error)
+      || isHookProcessContainmentError(error)
+    ) {
       throw error;
     }
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);

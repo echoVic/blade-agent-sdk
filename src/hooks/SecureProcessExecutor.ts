@@ -4,13 +4,83 @@
  * 安全地执行 Hook 子进程
  */
 
-import { spawn } from 'node:child_process';
+import {
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from 'node:child_process';
+import {
+  shellProcessSpawnOptions,
+  terminateProcessTree,
+} from '../tools/builtin/shell/processTree.js';
 import {
   HookExitCode,
   type HookExecutionContext,
   type HookInput,
   type ProcessResult,
 } from './types/HookTypes.js';
+import {
+  HookProcessContainmentError,
+  WindowsProcessJob,
+} from './WindowsProcessJob.js';
+
+const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
+const WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
+const WINDOWS_HOOK_RUNNER = `
+const { spawn } = require('node:child_process');
+
+let envelope = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  envelope += chunk;
+});
+process.stdin.once('error', (error) => {
+  process.stderr.write(String(error));
+  process.exitCode = 1;
+});
+process.stdin.once('end', () => {
+  let payload;
+  try {
+    payload = JSON.parse(envelope);
+  } catch (error) {
+    process.stderr.write(String(error));
+    process.exitCode = 1;
+    return;
+  }
+
+  const child = spawn(payload.command, [], {
+    shell: true,
+    cwd: process.cwd(),
+    env: process.env,
+    windowsHide: true,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
+  let failed = false;
+  child.once('error', (error) => {
+    failed = true;
+    process.stderr.write(String(error));
+    process.exitCode = 1;
+  });
+  child.once('close', (code) => {
+    if (!failed) {
+      process.exitCode = code ?? 1;
+    }
+  });
+  child.stdin.on('error', (error) => {
+    // The command may close stdin without consuming the payload. Its final
+    // exit status remains authoritative.
+  });
+  child.stdin.end(payload.input);
+});
+`;
+
+function toContainmentError(
+  message: string,
+  error: unknown,
+): HookProcessContainmentError {
+  return error instanceof HookProcessContainmentError
+    ? error
+    : new HookProcessContainmentError(message, { cause: error });
+}
 
 /**
  * 流量限制器
@@ -47,6 +117,14 @@ export class SecureProcessExecutor {
   private readonly MAX_STDERR_SIZE = 1 * 1024 * 1024; // 1MB
   private readonly MAX_INPUT_SIZE = 100 * 1024; // 100KB
 
+  constructor(
+    private readonly terminationGraceMs = DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS,
+  ) {
+    if (!Number.isSafeInteger(terminationGraceMs) || terminationGraceMs <= 0) {
+      throw new TypeError('Hook process termination grace must be a positive safe integer');
+    }
+  }
+
   /**
    * 执行命令
    */
@@ -56,6 +134,10 @@ export class SecureProcessExecutor {
     context: HookExecutionContext,
     timeoutMs: number
   ): Promise<ProcessResult> {
+    if (context.abortSignal?.aborted) {
+      return this.createCancelledResult();
+    }
+
     // 1. 验证输入大小
     const inputJson = JSON.stringify(input);
     if (inputJson.length > this.MAX_INPUT_SIZE) {
@@ -68,12 +150,71 @@ export class SecureProcessExecutor {
     const env = this.createSafeEnv(input);
 
     // 3. 启动子进程
-    const child = spawn(command, [], {
-      shell: true,
-      env,
-      cwd: context.projectDir,
-      timeout: timeoutMs,
+    const windowsJob = process.platform === 'win32'
+      ? await WindowsProcessJob.create()
+      : undefined;
+    if (context.abortSignal?.aborted) {
+      windowsJob?.close();
+      return this.createCancelledResult();
+    }
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = windowsJob
+        ? spawn(process.execPath, ['-e', WINDOWS_HOOK_RUNNER], {
+            env,
+            cwd: context.projectDir,
+            windowsHide: true,
+          })
+        : spawn(command, [], {
+            shell: true,
+            env,
+            cwd: context.projectDir,
+            ...shellProcessSpawnOptions(),
+          });
+    } catch (error) {
+      windowsJob?.close();
+      throw windowsJob
+        ? new HookProcessContainmentError(
+            'Failed to spawn the contained Windows Hook process',
+            { cause: error },
+          )
+        : error;
+    }
+    child.once('error', () => {
+      // Keep spawn failures observed if containment setup rejects before the
+      // main lifecycle listeners are installed.
     });
+
+    if (windowsJob) {
+      try {
+        if (!child.pid) {
+          throw new Error('Hook process did not expose a process identifier');
+        }
+        windowsJob.assign(child.pid);
+      } catch (error) {
+        try {
+          await terminateProcessTree(
+            child.pid,
+            child,
+            this.terminationGraceMs,
+          );
+        } catch (cleanupError) {
+          throw new HookProcessContainmentError(
+            'Failed to contain or terminate the Windows Hook process',
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        } finally {
+          windowsJob.close();
+        }
+        throw new HookProcessContainmentError(
+          'Failed to contain the Windows Hook process',
+          { cause: error },
+        );
+      }
+    }
+    const processInput = windowsJob
+      ? JSON.stringify({ command, input: inputJson })
+      : inputJson;
 
     // 4. 流量控制
     const stdout = new StreamLimiter(this.MAX_STDOUT_SIZE);
@@ -90,76 +231,152 @@ export class SecureProcessExecutor {
       stderr.append(data);
     });
 
-    // 5. 写入输入
-    try {
-      child.stdin.write(inputJson);
-      child.stdin.end();
-    } catch (err) {
-      child.kill('SIGTERM');
-      throw new Error(`Failed to write hook input: ${err}`);
-    }
-
-    // 6. 等待完成或超时
+    // 5. 等待完成、取消或超时
     return new Promise((resolve, reject) => {
-      let timedOut = false;
-      let resolved = false;
-
-      // 保存 abort handler 引用，以便后续移除
+      let settled = false;
+      let termination:
+        | 'abort'
+        | 'timeout'
+        | 'process-error'
+        | undefined;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       let abortHandler: (() => void) | null = null;
 
-      const cleanup = () => {
-        // 移除 abort 监听器，避免内存泄漏
+      const cleanup = (): void => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = undefined;
+        }
         if (abortHandler && context.abortSignal) {
           context.abortSignal.removeEventListener('abort', abortHandler);
           abortHandler = null;
         }
       };
-
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGKILL');
-      }, timeoutMs);
+      const resolveOnce = (result: ProcessResult): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+      const rejectOnce = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const stop = (
+        reason: 'abort' | 'timeout' | 'process-error',
+        cause?: unknown,
+      ): void => {
+        if (settled || termination) {
+          return;
+        }
+        termination = reason;
+        cleanup();
+        const processCleanup = windowsJob
+          ? windowsJob.terminateAndWait(
+              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
+            )
+          : terminateProcessTree(
+              child.pid,
+              child,
+              this.terminationGraceMs,
+            );
+        void processCleanup.then(
+          () => {
+            if (reason === 'process-error') {
+              rejectOnce(
+                windowsJob
+                  ? new HookProcessContainmentError(
+                      'The contained Windows Hook process failed',
+                      { cause },
+                    )
+                  : cause,
+              );
+              return;
+            }
+            resolveOnce(
+              reason === 'timeout'
+                ? {
+                    stdout: stdout.getContent(),
+                    stderr: stderr.getContent(),
+                    exitCode: HookExitCode.TIMEOUT,
+                    timedOut: true,
+                  }
+                : this.createCancelledResult(stdout.getContent()),
+            );
+          },
+          (error) => {
+            rejectOnce(
+              toContainmentError('Failed to terminate the Hook process tree', error),
+            );
+          },
+        );
+      };
 
       child.on('close', (code) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timer);
+        if (termination) return;
         cleanup();
-
-        resolve({
-          stdout: stdout.getContent(),
-          stderr: stderr.getContent(),
-          exitCode: timedOut ? HookExitCode.TIMEOUT : (code ?? 1),
-          timedOut,
+        const processCleanup = windowsJob
+          ? windowsJob.terminateAndWait(
+              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
+            )
+          : terminateProcessTree(
+              child.pid,
+              child,
+              this.terminationGraceMs,
+            );
+        void processCleanup.then(() => {
+          if (termination) return;
+          resolveOnce({
+            stdout: stdout.getContent(),
+            stderr: stderr.getContent(),
+            exitCode: code ?? 1,
+            timedOut: false,
+          });
+        }, (error) => {
+          rejectOnce(
+            toContainmentError('Failed to reap the Hook process tree', error),
+          );
         });
       });
 
-      child.on('error', (err) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timer);
-        cleanup();
-        reject(err);
+      child.on('error', (error) => {
+        stop('process-error', error);
+      });
+      child.stdin.on('error', () => {
+        // Fast hooks may close stdin before the write completes. Their exit
+        // status remains authoritative.
       });
 
-      // 处理中止信号
+      timeout = setTimeout(() => stop('timeout'), timeoutMs);
+
       if (context.abortSignal) {
-        abortHandler = () => {
-          if (resolved) return;
-          resolved = true;
-          clearTimeout(timer);
-          cleanup();
-          child.kill('SIGTERM');
-          resolve({
-            stdout: stdout.getContent(),
-            stderr: 'Hook cancelled by abort signal',
-            exitCode: 1,
-            timedOut: false,
-          });
-        };
-        context.abortSignal.addEventListener('abort', abortHandler);
+        abortHandler = () => stop('abort');
+        context.abortSignal.addEventListener('abort', abortHandler, { once: true });
+        if (context.abortSignal.aborted) {
+          abortHandler();
+        }
+      }
+
+      if (!termination) {
+        try {
+          child.stdin.write(processInput);
+          child.stdin.end();
+        } catch {
+          // Wait for close or timeout; the process exit status is authoritative.
+        }
       }
     });
+  }
+
+  private createCancelledResult(stdout = ''): ProcessResult {
+    return {
+      stdout,
+      stderr: 'Hook cancelled by abort signal',
+      exitCode: HookExitCode.NON_BLOCKING_ERROR,
+      timedOut: false,
+    };
   }
 
   /**

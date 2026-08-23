@@ -11,6 +11,7 @@
  */
 
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -130,6 +131,17 @@ export class LoopRunner {
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
+    const requestSignal = options?.signal ?? context.signal;
+    if (
+      requestSignal?.aborted
+      && (
+        isExecutionLeaseFailure(requestSignal.reason)
+        || isHookProcessContainmentError(requestSignal.reason)
+      )
+    ) {
+      throw requestSignal.reason;
+    }
+
     // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
     const rootPromptMessage: Message | null = systemPrompt
       ? {
@@ -170,12 +182,21 @@ export class LoopRunner {
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
     const contextMgr = this.modelManager.getContextManager();
-    if (contextMgr && context.sessionId && options?.inputApplication) {
+    if (
+      !requestSignal?.aborted
+      && contextMgr
+      && context.sessionId
+      && options?.inputApplication
+    ) {
       const sessionId = context.sessionId;
       const inputApplication = options.inputApplication;
       try {
         lastMessageUuid = await runWithExecutionLeaseBoundary(
-          context,
+          {
+            signal: requestSignal,
+            assertExecutionLease: context.assertExecutionLease,
+            runWithExecutionLease: context.runWithExecutionLease,
+          },
           () => contextMgr.saveAppliedInputMessage(
             sessionId,
             inputApplication.inputId,
@@ -186,18 +207,22 @@ export class LoopRunner {
           ),
         );
       } catch (error) {
-        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
           throw error;
         }
         // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
         this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
       }
-    } else {
+    } else if (!requestSignal?.aborted) {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
           const sessionId = context.sessionId;
           lastMessageUuid = await runWithExecutionLeaseBoundary(
-            context,
+            {
+              signal: requestSignal,
+              assertExecutionLease: context.assertExecutionLease,
+              runWithExecutionLease: context.runWithExecutionLease,
+            },
             () => contextMgr.saveMessage(
               sessionId,
               'user',
@@ -209,7 +234,7 @@ export class LoopRunner {
           );
         }
       } catch (error) {
-        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
           throw error;
         }
         this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
@@ -261,11 +286,14 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
-      if (isExecutionLeaseFailure(error)) {
+      if (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      ) {
         throw error;
       }
-      if (isExecutionLeaseFailure(context.signal?.reason)) {
-        throw context.signal.reason;
+      if (isExecutionLeaseFailure(requestSignal?.reason)) {
+        throw requestSignal.reason;
       }
       if (error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('aborted'))) {

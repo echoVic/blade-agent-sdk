@@ -10,6 +10,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
@@ -100,6 +101,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   let pendingInjectedMessages: Message[] = [];
   let currentAssistantMessageId: string | null = null;
   const inputApplicationLifecycle = options?.inputApplicationLifecycle;
+  const requestSignal = options?.signal ?? context.signal;
 
   const hooks: AgentLoopHooks = {
     input: {
@@ -115,13 +117,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         }
         const hookContent = hookRuntime
           ? await hookRuntime.applyUserPromptSubmit(input.content, {
-              abortSignal: context.signal,
+              abortSignal: requestSignal,
             })
           : input.content;
         const content = options?.prepareInput
           ? await options.prepareInput(hookContent)
           : hookContent;
-        context.signal?.throwIfAborted();
+        requestSignal?.throwIfAborted();
         await context.assertExecutionLease?.();
         const messageId = await persistToJsonl(
           modelManager,
@@ -137,7 +139,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               context.subagentInfo,
             ),
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
         if (messageId) {
@@ -162,9 +164,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const runtimeCtx: CompactionRuntimeContext = {
           sessionId: context.sessionId,
           projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-          signal: context.signal,
+          signal: requestSignal,
           assertExecutionLease: context.assertExecutionLease,
           runWithExecutionLease: context.runWithExecutionLease,
+          hookRuntime,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
@@ -189,11 +192,12 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               baseURL: cs.baseUrl,
               customHeaders: cs.customHeaders,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              signal: context.signal,
+              signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
+              hookRuntime,
             },
           );
-          context.signal?.throwIfAborted();
+          requestSignal?.throwIfAborted();
           await context.assertExecutionLease?.();
           const continueMessage: Message = {
             role: 'user',
@@ -216,7 +220,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               );
             },
             context.assertExecutionLease,
-            context.signal,
+            requestSignal,
             context.runWithExecutionLease,
           );
 
@@ -227,8 +231,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           };
         } catch (compactError) {
           if (
-            context.signal?.aborted
+            requestSignal?.aborted
             || isExecutionLeaseFailure(compactError)
+            || isHookProcessContainmentError(compactError)
           ) {
             throw compactError;
           }
@@ -281,7 +286,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             setLastUuid(uuid);
           },
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
 
@@ -319,7 +324,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               }
             },
             context.assertExecutionLease,
-            context.signal,
+            requestSignal,
             context.runWithExecutionLease,
           );
         }
@@ -398,7 +403,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             }
           },
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
       },
@@ -411,9 +416,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             const runtimeCtx: CompactionRuntimeContext = {
               sessionId: context.sessionId,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              signal: context.signal,
+              signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
+              hookRuntime,
             };
             const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
             if (!compactStream) return false;
@@ -430,14 +436,21 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           }
           const stopResult = await hookRuntime.executeStopCheck({
             reason: ctx.content,
-            abortSignal: options?.signal,
+            abortSignal: requestSignal,
           });
           return {
             shouldStop: stopResult.shouldStop,
             continueReason: stopResult.continueReason,
             warning: stopResult.warning,
           };
-        } catch {
+        } catch (error) {
+          if (
+            isExecutionLeaseFailure(error)
+            || isHookProcessContainmentError(error)
+          ) {
+            throw error;
+          }
+          requestSignal?.throwIfAborted();
           return { shouldStop: true };
         }
       },
@@ -452,7 +465,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     conversationState: loopState.conversationState,
     maxTurns,
     isYoloMode,
-    signal: options?.signal,
+    signal: requestSignal,
     tokenBudget,
     modelExecutionLifecycle: options?.modelExecutionLifecycle,
     initialInputPreparation: options?.initialInputPreparation,

@@ -1,6 +1,8 @@
 import { type ChildProcess, spawnSync } from 'node:child_process';
 
 const PROCESS_TREE_POLL_INTERVAL_MS = 20;
+const PROCESS_TREE_FORCE_KILL_ATTEMPTS = 3;
+const WINDOWS_TASKKILL_TIMEOUT_MS = 5_000;
 
 function isMissingProcess(error: unknown): boolean {
   return (
@@ -25,6 +27,7 @@ export function signalProcessTree(
   pid: number | undefined,
   signal: NodeJS.Signals,
   child?: ChildProcess,
+  taskkillTimeoutMs = WINDOWS_TASKKILL_TIMEOUT_MS,
 ): boolean {
   if (!pid) {
     return child?.kill(signal) ?? false;
@@ -44,12 +47,13 @@ export function signalProcessTree(
       {
         stdio: 'ignore',
         windowsHide: true,
+        timeout: taskkillTimeoutMs,
       },
     );
     if (result.status === 0) {
       return true;
     }
-    return child?.kill(signal) ?? false;
+    return false;
   }
 
   try {
@@ -102,4 +106,59 @@ export async function waitForProcessTreeExit(
     });
   }
   return true;
+}
+
+/** Escalates process-tree termination and rejects if the tree remains alive. */
+export async function terminateProcessTree(
+  pid: number | undefined,
+  child: ChildProcess | undefined,
+  gracePeriodMs: number,
+): Promise<void> {
+  let lastSignalError: unknown;
+  const signalSafely = (signal: NodeJS.Signals): boolean => {
+    try {
+      const accepted = signalProcessTree(pid, signal, child, gracePeriodMs);
+      if (!accepted) {
+        lastSignalError = new Error(
+          `Process tree ${pid ?? 'unknown'} did not accept ${signal}`,
+        );
+      }
+      return accepted;
+    } catch (error) {
+      lastSignalError = error;
+      return false;
+    }
+  };
+
+  if (!pid) {
+    signalSafely('SIGTERM');
+    return;
+  }
+
+  let signalAccepted = signalSafely('SIGTERM');
+  if (
+    await waitForProcessTreeExit(pid, child, gracePeriodMs)
+    && (process.platform !== 'win32' || signalAccepted)
+  ) {
+    return;
+  }
+
+  for (
+    let attempt = 0;
+    attempt < PROCESS_TREE_FORCE_KILL_ATTEMPTS;
+    attempt += 1
+  ) {
+    signalAccepted = signalSafely('SIGKILL');
+    if (
+      await waitForProcessTreeExit(pid, child, gracePeriodMs)
+      && (process.platform !== 'win32' || signalAccepted)
+    ) {
+      return;
+    }
+  }
+
+  throw new Error(
+    `Failed to terminate process tree ${pid} after ${PROCESS_TREE_FORCE_KILL_ATTEMPTS} force-kill attempts`,
+    { cause: lastSignalError },
+  );
 }

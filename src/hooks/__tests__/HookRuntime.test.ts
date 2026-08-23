@@ -7,6 +7,7 @@ import { SessionId, ToolUseId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { HookRuntime } from '../HookRuntime.js';
+import { HookProcessContainmentError } from '../WindowsProcessJob.js';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -205,6 +206,129 @@ describe('HookRuntime', () => {
     await cancellationResult;
     expect(callbackSignal?.aborted).toBe(true);
     expect(runtime.hasPendingCallbackCleanup()).toBe(false);
+  });
+
+  it('does not invoke file hooks for an already-aborted event', async () => {
+    const cancellation = new Error('cancel before file hook');
+    const controller = new AbortController();
+    const executeUserPromptSubmitHooks = vi.fn(async () => ({
+      proceed: true,
+    }));
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-pre-abort'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+    controller.abort(cancellation);
+
+    await expect(
+      runtime.applyUserPromptSubmit('prompt', {
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+    expect(executeUserPromptSubmitHooks).not.toHaveBeenCalled();
+  });
+
+  it('preserves cancellation that arrives while a file hook is running', async () => {
+    const started = deferred();
+    const release = deferred();
+    const cancellation = new Error('cancel running file hook');
+    const controller = new AbortController();
+    const executeUserPromptSubmitHooks = vi.fn(async () => {
+      started.resolve();
+      await release.promise;
+      return { proceed: true };
+    });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-cancel'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+
+    const dispatch = runtime.applyUserPromptSubmit('prompt', {
+      abortSignal: controller.signal,
+    });
+    const cancellationResult = expect(dispatch).rejects.toBe(cancellation);
+    await started.promise;
+    controller.abort(cancellation);
+    release.resolve();
+
+    await cancellationResult;
+    expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
+  });
+
+  it('quarantines file hooks after a containment failure', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const executeUserPromptSubmitHooks = vi.fn()
+      .mockRejectedValueOnce(containmentError)
+      .mockResolvedValue({ proceed: true });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-containment'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+
+    await expect(
+      runtime.applyUserPromptSubmit('first'),
+    ).rejects.toBe(containmentError);
+    expect(runtime.getTerminalContainmentFailure()).toBe(containmentError);
+    await expect(
+      runtime.applyUserPromptSubmit('second'),
+    ).rejects.toBe(containmentError);
+    expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an in-flight file hook that completes after quarantine', async () => {
+    const firstStarted = deferred();
+    const secondStarted = deferred();
+    const releaseFirst = deferred();
+    const releaseSecond = deferred();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    let callCount = 0;
+    const executeUserPromptSubmitHooks = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+        throw containmentError;
+      }
+      secondStarted.resolve();
+      await releaseSecond.promise;
+      return { proceed: true };
+    });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-concurrent-file-hook-containment'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+    const firstDispatch = runtime.applyUserPromptSubmit('first');
+    const firstRejection = expect(firstDispatch).rejects.toBe(containmentError);
+    await firstStarted.promise;
+    const secondDispatch = runtime.applyUserPromptSubmit('second');
+    const secondRejection = expect(secondDispatch).rejects.toBe(containmentError);
+    await secondStarted.promise;
+
+    releaseFirst.resolve();
+    await firstRejection;
+    releaseSecond.resolve();
+
+    await secondRejection;
   });
 
   it('rejects invalid inline hook timeout configuration', () => {

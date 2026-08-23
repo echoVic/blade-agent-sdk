@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  HookProcessContainmentError,
+  isHookProcessContainmentError,
+} from '../../../hooks/WindowsProcessJob.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
@@ -244,6 +248,145 @@ describe('executeToolCalls', () => {
       }),
     ).rejects.toBe(leaseError);
     expect(onToolSettled).not.toHaveBeenCalled();
+  });
+
+  it('propagates Hook process containment failures instead of creating a tool result', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    const onToolSettled = vi.fn(async () => {});
+
+    await expect(
+      executeToolCalls({
+        plan: {
+          mode: 'serial',
+          calls: [
+            {
+              id: 'tool-without-hook-containment',
+              type: 'function',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+        executionPipeline: {
+          // biome-ignore lint/correctness/useYield: generator fails before producing output
+          execute: vi.fn(async function* () {
+            throw containmentError;
+          }),
+          getRegistry: () => ({
+            get: () => undefined,
+          }),
+        } as never,
+        executionContext: {
+          sessionId: SessionId('session-without-hook-containment'),
+          userId: 'user-1',
+          lifecycle: { onToolSettled },
+        },
+      }),
+    ).rejects.toBe(containmentError);
+    expect(onToolSettled).not.toHaveBeenCalled();
+  });
+
+  it('prioritizes a late containment failure across parallel tool calls', async () => {
+    const secondStarted = Promise.withResolvers<void>();
+    const releaseSecond = Promise.withResolvers<void>();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+
+    const execution = executeToolCalls({
+      plan: {
+        mode: 'parallel',
+        calls: [
+          {
+            id: 'ordinary-failure',
+            type: 'function',
+            function: { name: 'OrdinaryFailure', arguments: '{}' },
+          },
+          {
+            id: 'containment-failure',
+            type: 'function',
+            function: { name: 'ContainmentFailure', arguments: '{}' },
+          },
+        ],
+      },
+      executionPipeline: {
+        execute: vi.fn(async function* (toolName: string) {
+          yield* [] as never[];
+          if (toolName === 'OrdinaryFailure') {
+            await secondStarted.promise;
+            throw new Error('ordinary failure');
+          }
+          secondStarted.resolve();
+          await releaseSecond.promise;
+          throw containmentError;
+        }),
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-parallel-containment'),
+        userId: 'user-1',
+      },
+    });
+    const rejection = expect(execution).rejects.toBe(containmentError);
+
+    await secondStarted.promise;
+    await Promise.resolve();
+    releaseSecond.resolve();
+
+    await rejection;
+  });
+
+  it('preserves containment failure raised while closing a tool generator', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const execution = executeToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [
+          {
+            id: 'close-containment-failure',
+            type: 'function',
+            function: { name: 'CloseContainmentFailure', arguments: '{}' },
+          },
+        ],
+      },
+      executionPipeline: {
+        execute: vi.fn(async function* () {
+          try {
+            yield { kind: 'progress', message: 'started' };
+            return { status: 'success', model: 'unexpected' };
+          } finally {
+            // biome-ignore lint/correctness/noUnsafeFinally: simulates a fatal cleanup failure
+            throw containmentError;
+          }
+        }),
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-close-containment'),
+        userId: 'user-1',
+      },
+      hooks: {
+        onUpdate: async (update) => {
+          if (update.type === 'tool_progress') {
+            throw new Error('event consumer failed');
+          }
+        },
+      },
+    }).catch((error: unknown) => error);
+
+    const error = await execution;
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(isHookProcessContainmentError(error)).toBe(true);
   });
 
   it('emits a unified ready-progress-message-effect-result-completed update sequence for each tool call', async () => {

@@ -19,6 +19,7 @@ import type {
   SubagentResult,
 } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { isHookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
@@ -300,7 +301,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             success: result.success,
             resultSummary: result.message.slice(0, 500),
             error: result.error,
+            abortSignal: context.signal,
           });
+          context.signal?.throwIfAborted();
 
           if (!stopResult.shouldStop && stopResult.continueReason) {
             console.log(
@@ -328,14 +331,25 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
           }
         } catch (hookError) {
+          if (
+            isExecutionLeaseFailure(hookError)
+            || isHookProcessContainmentError(hookError)
+          ) {
+            throw hookError;
+          }
+          context.signal?.throwIfAborted();
           console.warn('[Task] SubagentStop hook execution failed:', hookError);
         }
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
-        if (isExecutionLeaseFailure(error)) {
+        if (
+          isExecutionLeaseFailure(error)
+          || isHookProcessContainmentError(error)
+        ) {
           throw error;
         }
+        context.signal?.throwIfAborted();
         const _errorMessage = extractUserFriendlyError(
           error instanceof Error ? error : new Error(getErrorMessage(error))
         );

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
@@ -171,6 +172,74 @@ describe('CompactionHandler', () => {
     await expect(stream.next()).rejects.toBe(leaseLost);
     expect(mockCompact).toHaveBeenCalledOnce();
     expect(convState.getContextMessages()).toEqual(originalMessages);
+  });
+
+  it('propagates process-containment failures from automatic compaction hooks', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    mockCompact.mockRejectedValueOnce(containmentError);
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const convState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      { sessionId: SessionId('containment-compaction-session') },
+      2,
+      700,
+    );
+
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'compacting', isCompacting: true },
+      done: false,
+    });
+    await expect(stream.next()).rejects.toBe(containmentError);
+  });
+
+  it('propagates process-containment failures from reactive compaction hooks', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    mockCompact.mockRejectedValueOnce(containmentError);
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const convState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const stream = handler.reactiveCompact(
+      convState,
+      { sessionId: SessionId('containment-reactive-compaction-session') },
+    );
+
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'compacting', isCompacting: true },
+      done: false,
+    });
+    await expect(stream.next()).rejects.toBe(containmentError);
   });
 
   it('falls back from the original messages when reactive compaction fails after microcompact', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
@@ -1768,6 +1769,83 @@ describe('agentLoop', () => {
       );
       expect(onModelRequestStarting).toHaveBeenCalledTimes(2);
       expect(modelSettlements).toEqual(['aborted:steering', 'completed']);
+    });
+
+    it('does not downgrade an aggregated containment failure during a steering interrupt', async () => {
+      let resolveStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
+      });
+      const containmentError = new HookProcessContainmentError(
+        'Hook process cleanup failed',
+      );
+      const settlementError = new Error('durable settlement failed');
+      const chat = vi.fn(async (
+        _messages: readonly Message[],
+        _tools: unknown,
+        signal?: AbortSignal,
+      ) => {
+        resolveStarted();
+        return await new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(containmentError),
+            { once: true },
+          );
+        });
+      });
+      const chatService = {
+        chat,
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-containment-steering');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const onInputApply = vi.fn(async ({ input }) => ({
+        role: 'user' as const,
+        content: input.content,
+      }));
+      const execution = collectEvents(agentLoop(baseConfig({
+        runControl,
+        turnState: { chatService },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: async () => ({
+            onCompleted: async () => {},
+            onFailed: async () => {},
+            onAborted: async () => {
+              throw settlementError;
+            },
+          }),
+        },
+        onInputApply,
+      })));
+      const failure = execution.catch((error: unknown) => error);
+
+      await started;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Change direction',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      const error = await failure;
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toEqual([
+        containmentError,
+        settlementError,
+      ]);
+      expect(onInputApply).not.toHaveBeenCalled();
     });
 
     it('closes interrupted tool calls before applying now-priority input', async () => {

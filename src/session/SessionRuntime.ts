@@ -275,8 +275,12 @@ export class SessionRuntime {
     });
   }
 
-  assertNoPendingCleanup(): void {
-    const errors: Error[] = [];
+  assertNoPendingCleanup(
+    options: { includeTerminalFailures?: boolean } = {},
+  ): void {
+    const errors = options.includeTerminalFailures === false
+      ? []
+      : this.getTerminalCleanupFailures();
     if (this.executionPipeline.hasPendingExecutionCleanup()) {
       errors.push(
         new Error(
@@ -306,8 +310,23 @@ export class SessionRuntime {
     }
   }
 
+  private getTerminalCleanupFailures(): Error[] {
+    const terminalCleanupFailure =
+      this.executionPipeline.getTerminalCleanupFailure();
+    const hookContainmentFailure =
+      this.hookRuntime.getTerminalContainmentFailure();
+    return Array.from(new Set([
+      terminalCleanupFailure,
+      hookContainmentFailure,
+    ]))
+      .filter((error) => error !== undefined)
+      .map((error) =>
+        error instanceof Error ? error : new Error(String(error)));
+  }
+
   async close(executionFence?: DurableExecutionFence): Promise<void> {
-    this.assertNoPendingCleanup();
+    this.assertNoPendingCleanup({ includeTerminalFailures: false });
+    const errors: unknown[] = this.getTerminalCleanupFailures();
     const shellManager = BackgroundShellManager.getInstance();
     const shutdownResults = await Promise.allSettled([
       this.backgroundAgentManager.sealCancelAndWait(),
@@ -315,16 +334,16 @@ export class SessionRuntime {
         ? shellManager.terminateExecutionFence(this.sessionId, executionFence)
         : shellManager.terminateSession(this.sessionId),
     ]);
-    const errors = shutdownResults.flatMap((result) =>
+    errors.push(...shutdownResults.flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
-    );
+    ));
     try {
       await this.mcpRegistry.disconnectAll();
     } catch (error) {
       errors.push(error);
     }
     try {
-      this.assertNoPendingCleanup();
+      this.assertNoPendingCleanup({ includeTerminalFailures: false });
     } catch (error) {
       errors.push(error);
     }

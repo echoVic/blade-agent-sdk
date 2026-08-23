@@ -8,6 +8,10 @@ import type { JsonObject, JsonValue } from '../types/common.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
 import {
+  getRecoverableHookErrorMessage,
+  isHookProcessContainmentError,
+} from './WindowsProcessJob.js';
+import {
   type CommandHook,
   type CompactionHookResult,
   type ConfigChangeHookResult,
@@ -127,7 +131,7 @@ export class HookExecutor {
         }
       } catch (err) {
         // Hook 执行异常,根据 failureBehavior 处理
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
 
         if (context.config.failureBehavior === 'deny') {
@@ -251,7 +255,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -299,7 +303,7 @@ export class HookExecutor {
           additionalContexts.push(specific.additionalContext);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -352,7 +356,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -408,7 +412,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -458,7 +462,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -520,7 +524,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -573,7 +577,7 @@ export class HookExecutor {
           Object.assign(env, specific.env);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -701,7 +705,7 @@ export class HookExecutor {
           message = result.stdout.trim();
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -747,7 +751,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -794,7 +798,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -841,7 +845,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -888,7 +892,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -921,7 +925,7 @@ export class HookExecutor {
           warnings.push(result.warning);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -967,7 +971,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1011,7 +1015,7 @@ export class HookExecutor {
           action = specific.action as 'reload' | 'ignore';
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1055,7 +1059,7 @@ export class HookExecutor {
           modified_instructions = specific.modified_instructions;
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1189,7 +1193,7 @@ export class HookExecutor {
     } catch (err) {
       return {
         status: 'warning',
-        warning: err instanceof Error ? err.message : String(err),
+        warning: getRecoverableHookErrorMessage(err),
         hook,
       };
     }
@@ -1206,18 +1210,23 @@ export class HookExecutor {
   ): Promise<HookExecutionResult[]> {
     const results: Promise<HookExecutionResult>[] = [];
     const executing = new Set<Promise<void>>();
+    let containmentFailure: unknown;
 
     for (const hook of hooks) {
       // 如果达到并发限制,等待一个完成
       if (executing.size >= maxConcurrent) {
         // 等待任意一个 Promise 完成
         await Promise.race(executing);
+        if (containmentFailure) {
+          await Promise.all(executing);
+          throw containmentFailure;
+        }
       }
 
       // 创建新的 hook 执行 Promise
       const promise = this.executeHook(hook, input, context).catch((err) => ({
         status: 'warning' as const,
-        warning: err instanceof Error ? err.message : String(err),
+        warning: getRecoverableHookErrorMessage(err),
         hook,
       }));
 
@@ -1226,8 +1235,11 @@ export class HookExecutor {
         .then(() => {
           executing.delete(tracker);
         })
-        .catch(() => {
+        .catch((error) => {
           executing.delete(tracker);
+          if (isHookProcessContainmentError(error)) {
+            containmentFailure ??= error;
+          }
         });
 
       executing.add(tracker);
@@ -1235,6 +1247,10 @@ export class HookExecutor {
     }
 
     // 等待所有剩余的 hooks 完成
+    await Promise.all(executing);
+    if (containmentFailure) {
+      throw containmentFailure;
+    }
     return Promise.all(results);
   }
 }

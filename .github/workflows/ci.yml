@@ -97,3 +97,4 @@ jobs:
           src/session/events/__tests__/JsonlDurableEventStoreUnavailableLock.test.ts
           src/agent/subagents/__tests__/AgentSessionStore.test.ts
           src/tools/builtin/shell/__tests__/BackgroundShellManager.test.ts
+          src/hooks/__tests__/SecureProcessExecutor.test.ts
