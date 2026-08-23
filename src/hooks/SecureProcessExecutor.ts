@@ -4,7 +4,10 @@
  * 安全地执行 Hook 子进程
  */
 
-import { spawn } from 'node:child_process';
+import {
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from 'node:child_process';
 import {
   shellProcessSpawnOptions,
   terminateProcessTree,
@@ -15,8 +18,61 @@ import {
   type HookInput,
   type ProcessResult,
 } from './types/HookTypes.js';
+import { WindowsProcessJob } from './WindowsProcessJob.js';
 
 const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
+const WINDOWS_HOOK_RUNNER = `
+const { spawn } = require('node:child_process');
+
+let envelope = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  envelope += chunk;
+});
+process.stdin.once('error', (error) => {
+  process.stderr.write(String(error));
+  process.exitCode = 1;
+});
+process.stdin.once('end', () => {
+  let payload;
+  try {
+    payload = JSON.parse(envelope);
+  } catch (error) {
+    process.stderr.write(String(error));
+    process.exitCode = 1;
+    return;
+  }
+
+  const child = spawn(payload.command, [], {
+    shell: true,
+    cwd: process.cwd(),
+    env: process.env,
+    windowsHide: true,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
+  let failed = false;
+  child.once('error', (error) => {
+    failed = true;
+    process.stderr.write(String(error));
+    process.exitCode = 1;
+  });
+  child.once('close', (code) => {
+    if (!failed) {
+      process.exitCode = code ?? 1;
+    }
+  });
+  child.stdin.on('error', (error) => {
+    if (error?.code === 'EPIPE') {
+      return;
+    }
+    failed = true;
+    process.exitCode = 1;
+    process.stderr.write(String(error));
+    child.kill();
+  });
+  child.stdin.end(payload.input);
+});
+`;
 
 function isBrokenPipeError(error: unknown): boolean {
   return (
@@ -95,12 +151,53 @@ export class SecureProcessExecutor {
     const env = this.createSafeEnv(input);
 
     // 3. 启动子进程
-    const child = spawn(command, [], {
-      shell: true,
-      env,
-      cwd: context.projectDir,
-      ...shellProcessSpawnOptions(),
-    });
+    const windowsJob = process.platform === 'win32'
+      ? await WindowsProcessJob.create()
+      : undefined;
+    if (context.abortSignal?.aborted) {
+      windowsJob?.close();
+      return this.createCancelledResult();
+    }
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = windowsJob
+        ? spawn(process.execPath, ['-e', WINDOWS_HOOK_RUNNER], {
+            env,
+            cwd: context.projectDir,
+            windowsHide: true,
+          })
+        : spawn(command, [], {
+            shell: true,
+            env,
+            cwd: context.projectDir,
+            ...shellProcessSpawnOptions(),
+          });
+    } catch (error) {
+      windowsJob?.close();
+      throw error;
+    }
+
+    if (windowsJob) {
+      try {
+        if (!child.pid) {
+          throw new Error('Hook process did not expose a process identifier');
+        }
+        windowsJob.assign(child.pid);
+      } catch (error) {
+        await terminateProcessTree(
+          child.pid,
+          child,
+          this.terminationGraceMs,
+        );
+        windowsJob.close();
+        throw new Error('Failed to contain the Windows Hook process', {
+          cause: error,
+        });
+      }
+    }
+    const processInput = windowsJob
+      ? JSON.stringify({ command, input: inputJson })
+      : inputJson;
 
     // 4. 流量控制
     const stdout = new StreamLimiter(this.MAX_STDOUT_SIZE);
@@ -120,7 +217,12 @@ export class SecureProcessExecutor {
     // 5. 等待完成、取消或超时
     return new Promise((resolve, reject) => {
       let settled = false;
-      let termination: 'abort' | 'timeout' | 'input-error' | undefined;
+      let termination:
+        | 'abort'
+        | 'timeout'
+        | 'input-error'
+        | 'process-error'
+        | undefined;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let abortHandler: (() => void) | null = null;
 
@@ -147,7 +249,7 @@ export class SecureProcessExecutor {
         reject(error);
       };
       const stop = (
-        reason: 'abort' | 'timeout' | 'input-error',
+        reason: 'abort' | 'timeout' | 'input-error' | 'process-error',
         cause?: unknown,
       ): void => {
         if (settled || termination) {
@@ -155,12 +257,19 @@ export class SecureProcessExecutor {
         }
         termination = reason;
         cleanup();
-        void terminateProcessTree(
-          child.pid,
-          child,
-          this.terminationGraceMs,
-        ).then(
+        const processCleanup = windowsJob
+          ? windowsJob.terminateAndWait()
+          : terminateProcessTree(
+              child.pid,
+              child,
+              this.terminationGraceMs,
+            );
+        void processCleanup.then(
           () => {
+            if (reason === 'process-error') {
+              rejectOnce(cause);
+              return;
+            }
             if (reason === 'input-error') {
               rejectOnce(
                 new Error(`Failed to write hook input: ${String(cause)}`, {
@@ -186,19 +295,23 @@ export class SecureProcessExecutor {
 
       child.on('close', (code) => {
         if (termination) return;
-        resolveOnce({
-          stdout: stdout.getContent(),
-          stderr: stderr.getContent(),
-          exitCode: code ?? 1,
-          timedOut: false,
-        });
+        cleanup();
+        const processCleanup = windowsJob
+          ? windowsJob.terminateAndWait()
+          : Promise.resolve();
+        void processCleanup.then(() => {
+          if (termination) return;
+          resolveOnce({
+            stdout: stdout.getContent(),
+            stderr: stderr.getContent(),
+            exitCode: code ?? 1,
+            timedOut: false,
+          });
+        }, rejectOnce);
       });
 
       child.on('error', (error) => {
-        if (termination && child.pid) {
-          return;
-        }
-        rejectOnce(error);
+        stop('process-error', error);
       });
       child.stdin.on('error', (error) => {
         if (isBrokenPipeError(error)) {
@@ -221,7 +334,7 @@ export class SecureProcessExecutor {
 
       if (!termination) {
         try {
-          child.stdin.write(inputJson);
+          child.stdin.write(processInput);
           child.stdin.end();
         } catch (error) {
           if (isBrokenPipeError(error)) {

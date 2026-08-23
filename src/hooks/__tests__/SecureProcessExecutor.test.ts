@@ -61,7 +61,10 @@ function createContext(
   };
 }
 
-async function createProcessTreeFixture(root: string): Promise<{
+async function createProcessTreeFixture(
+  root: string,
+  parentExits = false,
+): Promise<{
   command: string;
   markerPath: string;
   readyPath: string;
@@ -87,13 +90,17 @@ async function createProcessTreeFixture(root: string): Promise<{
       "import { spawn } from 'node:child_process';",
       "import { execFileSync } from 'node:child_process';",
       "import { writeFileSync } from 'node:fs';",
+      "const parentExits = process.argv[5] === 'exit';",
       'const child = spawn(process.execPath, [process.argv[2], process.argv[3]], {',
-      "  stdio: 'ignore',",
+      "  stdio: parentExits ? ['ignore', 'inherit', 'inherit'] : 'ignore',",
       '});',
       "const groupPid = process.platform === 'win32'",
       '  ? process.pid',
       "  : Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim());",
-      'writeFileSync(process.argv[4], JSON.stringify({ groupPid, childPid: child.pid }));',
+      'writeFileSync(process.argv[4], JSON.stringify({ groupPid, parentPid: process.pid, childPid: child.pid }));',
+      'if (parentExits) {',
+      '  process.exit(0);',
+      '}',
       "process.on('SIGTERM', () => {});",
       'setInterval(() => {}, 1_000);',
     ].join('\n'),
@@ -105,6 +112,7 @@ async function createProcessTreeFixture(root: string): Promise<{
       quoteShellArgument(childPath),
       quoteShellArgument(markerPath),
       quoteShellArgument(readyPath),
+      quoteShellArgument(parentExits ? 'exit' : 'wait'),
     ].join(' '),
     markerPath,
     readyPath,
@@ -254,5 +262,45 @@ describe('SecureProcessExecutor', () => {
       expect(() => process.kill(childPid, 0)).toThrow();
     }, { timeout: 2_000 });
     processGroups.delete(groupPid);
+  });
+
+  it('terminates descendants after the hook parent has exited', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hook-exited-parent-'));
+    roots.push(root);
+    const fixture = await createProcessTreeFixture(root, true);
+    const controller = new AbortController();
+    const executor = new SecureProcessExecutor(50);
+    const execution = executor.execute(
+      fixture.command,
+      createInput(root),
+      createContext(root, controller.signal),
+      5_000,
+    );
+
+    await vi.waitFor(async () => {
+      expect(await pathExists(fixture.readyPath)).toBe(true);
+    }, { timeout: 2_000 });
+    const { groupPid, parentPid, childPid } = JSON.parse(
+      await readFile(fixture.readyPath, 'utf8'),
+    ) as { groupPid: number; parentPid: number; childPid: number };
+    processGroups.add(groupPid);
+    processGroups.add(childPid);
+    await vi.waitFor(() => {
+      expect(() => process.kill(parentPid, 0)).toThrow();
+    }, { timeout: 2_000 });
+
+    controller.abort(new Error('request cancelled'));
+    await expect(execution).resolves.toMatchObject({
+      exitCode: 1,
+      timedOut: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 550));
+
+    expect(await pathExists(fixture.markerPath)).toBe(false);
+    await vi.waitFor(() => {
+      expect(() => process.kill(childPid, 0)).toThrow();
+    }, { timeout: 2_000 });
+    processGroups.delete(groupPid);
+    processGroups.delete(childPid);
   });
 });

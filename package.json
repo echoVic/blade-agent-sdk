@@ -99,6 +99,7 @@
     "@ai-sdk/deepseek": "^2.0.29",
     "@ai-sdk/google": "^3.0.64",
     "@vscode/ripgrep": "^1.17.0",
+    "koffi": "3.1.6",
     "node-pty": "1.0.0"
   },
   "dependencies": {

@@ -200,8 +200,8 @@ Cancellation is cooperative at the JavaScript boundary: custom providers and
 tools must honor their `AbortSignal` and release resources in `finally`;
 otherwise the Promise remains pending until that operation settles.
 Built-in file/command hooks are process-tree managed: they do not spawn after
-cancellation and they wait for `SIGTERM`/`SIGKILL` cleanup before the Request
-finishes.
+cancellation and they wait for POSIX process-group or Windows Job Object
+cleanup before the Request finishes.
 
 An external `AbortSignal` can also cancel a request:
 
