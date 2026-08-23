@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.0.1] - 2026-08-23
+
+### Fixes
+
+- Serialize JSONL durable-event reads and compare-and-append writes across Node.js processes with bounded waits and crash-released OS locks.
+
 ## [5.0.0] - 2026-08-23
 
 ### Breaking Changes
