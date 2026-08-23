@@ -141,7 +141,7 @@ export class ExecutionPipeline {
   private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
   private readonly pendingExecutionCleanups = new Set<Promise<void>>();
-  private readonly pendingPermissionCleanups = new Set<Promise<void>>();
+  private readonly activePermissionCallbacks = new Map<Promise<void>, AbortSignal>();
 
   constructor(
     private registry: ToolRegistry,
@@ -188,7 +188,12 @@ export class ExecutionPipeline {
   }
 
   hasPendingPermissionCleanup(): boolean {
-    return this.pendingPermissionCleanups.size > 0;
+    for (const signal of this.activePermissionCallbacks.values()) {
+      if (signal.aborted) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private hasPendingCleanup(): boolean {
@@ -1031,10 +1036,10 @@ export class ExecutionPipeline {
       () => undefined,
       () => undefined,
     );
-    const trackCleanup = (): void => {
-      this.trackPendingPermissionCleanup(cleanup);
-    };
-    signal.addEventListener('abort', trackCleanup, { once: true });
+    this.activePermissionCallbacks.set(cleanup, signal);
+    void cleanup.finally(() => {
+      this.activePermissionCallbacks.delete(cleanup);
+    });
 
     try {
       const result = await awaitWithAbortSignal(() => callback, signal);
@@ -1045,16 +1050,7 @@ export class ExecutionPipeline {
         throw getAbortSignalReason(signal);
       }
       throw error;
-    } finally {
-      signal.removeEventListener('abort', trackCleanup);
     }
-  }
-
-  private trackPendingPermissionCleanup(cleanup: Promise<void>): void {
-    this.pendingPermissionCleanups.add(cleanup);
-    void cleanup.finally(() => {
-      this.pendingPermissionCleanups.delete(cleanup);
-    });
   }
 
   private createTimeoutError(toolName: string): Error {

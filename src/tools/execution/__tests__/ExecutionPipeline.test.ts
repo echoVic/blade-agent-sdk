@@ -694,6 +694,11 @@ describe('ExecutionPipeline', () => {
         permissionHandler,
         canUseTool,
       });
+      let cleanupWasVisibleToEarlierAbortListener = false;
+      controller.signal.addEventListener('abort', () => {
+        cleanupWasVisibleToEarlierAbortListener =
+          pipeline.hasPendingPermissionCleanup();
+      }, { once: true });
 
       const internalHandler = (async (request) =>
         waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler;
@@ -737,6 +742,7 @@ describe('ExecutionPipeline', () => {
       await started.promise;
       expect(callbackSignal).toBe(controller.signal);
       controller.abort(cancellation);
+      expect(cleanupWasVisibleToEarlierAbortListener).toBe(true);
       expect(pipeline.hasPendingPermissionCleanup()).toBe(true);
 
       await expect(resultPromise).resolves.toMatchObject({
