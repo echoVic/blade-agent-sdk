@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { UserMessageContent } from '../agent/types.js';
+import { ConfigError } from '../errors/ConfigError.js';
 import type { RuntimeHookRegistration } from '../runtime/index.js';
 import type { ContentPart } from '../services/ChatServiceInterface.js';
 import { cloneContentPart } from '../services/messageUtils.js';
@@ -17,8 +18,28 @@ interface HookRuntimeOptions {
   sessionId: SessionId;
   permissionMode: PermissionMode;
   callbacks?: Partial<Record<HookEvent, HookCallback[]>>;
+  hookTimeoutMs?: number;
+  sessionEndHookTimeoutMs?: number;
   resolveProjectDir: () => string | undefined;
   hookManager?: HookManager;
+}
+
+export const DEFAULT_INLINE_HOOK_TIMEOUT_MS = 600_000;
+export const DEFAULT_SESSION_END_HOOK_TIMEOUT_MS = 3_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function resolveHookTimeoutMs(
+  value: number | undefined,
+  fallback: number,
+  name: string,
+): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > MAX_TIMER_DELAY_MS) {
+    throw new ConfigError(
+      `${name} must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`,
+    );
+  }
+  return resolved;
 }
 
 export interface PreToolUseRuntimeResult {
@@ -56,6 +77,9 @@ export class HookRuntime {
   private readonly bus: HookBus;
   private readonly callbacks: Partial<Record<HookEvent, HookCallback[]>>;
   private readonly hookManager: HookManager;
+  private readonly hookTimeoutMs: number;
+  private readonly sessionEndHookTimeoutMs: number;
+  private sessionEndCallbacksAttempted = false;
   private traceCollector?: HookTraceCollector;
   private readonly runtimeHookRegistrations = new Map<string, {
     event: HookEvent;
@@ -71,10 +95,24 @@ export class HookRuntime {
     ) as Partial<Record<HookEvent, HookCallback[]>>;
     this.bus = new HookBus(this.callbacks);
     this.hookManager = options.hookManager ?? HookManager.getInstance();
+    this.hookTimeoutMs = resolveHookTimeoutMs(
+      options.hookTimeoutMs,
+      DEFAULT_INLINE_HOOK_TIMEOUT_MS,
+      'hookTimeoutMs',
+    );
+    this.sessionEndHookTimeoutMs = resolveHookTimeoutMs(
+      options.sessionEndHookTimeoutMs,
+      DEFAULT_SESSION_END_HOOK_TIMEOUT_MS,
+      'sessionEndHookTimeoutMs',
+    );
   }
 
   getCallbacks(): Partial<Record<HookEvent, HookCallback[]>> {
     return this.callbacks;
+  }
+
+  hasPendingCallbackCleanup(): boolean {
+    return this.bus.hasPendingCallbackCleanup();
   }
 
   setTraceCollector(traceCollector: HookTraceCollector | undefined): void {
@@ -138,6 +176,7 @@ export class HookRuntime {
           toolName,
           toolInput: nextInput,
         }),
+        options.abortSignal,
       );
 
       for (const output of outputs) {
@@ -236,6 +275,7 @@ export class HookRuntime {
       input,
       nextResult,
       toolUseId,
+      options.abortSignal,
     );
   }
 
@@ -290,6 +330,7 @@ export class HookRuntime {
       input,
       nextResult,
       toolUseId,
+      options.abortSignal,
     );
   }
 
@@ -316,6 +357,7 @@ export class HookRuntime {
           affectedPaths: options.affectedPaths,
           toolKind: options.toolKind,
         }),
+        options.abortSignal,
       );
 
       for (const output of outputs) {
@@ -387,6 +429,7 @@ export class HookRuntime {
           hasImages: imageMeta.hasImages,
           imageCount: imageMeta.imageCount,
         }),
+        options.abortSignal,
       );
 
       for (const output of outputs) {
@@ -441,7 +484,7 @@ export class HookRuntime {
   async runSessionStart(
     payload: { isResume: boolean; resumeSessionId?: string; abortSignal?: AbortSignal },
   ): Promise<void> {
-    await this.runCallbackGroup(HookEvent.SessionStart, payload);
+    await this.runCallbackGroup(HookEvent.SessionStart, payload, payload.abortSignal);
 
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {
@@ -471,7 +514,7 @@ export class HookRuntime {
       [key: string]: unknown;
     },
   ): Promise<void> {
-    await this.runCallbackGroup(HookEvent.TaskCompleted, payload);
+    await this.runCallbackGroup(HookEvent.TaskCompleted, payload, payload.abortSignal);
 
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {
@@ -507,7 +550,16 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<void> {
-    await this.runCallbackGroup(HookEvent.SessionEnd, payload);
+    if (!this.sessionEndCallbacksAttempted) {
+      this.bus.assertNoPendingCallbackCleanup();
+      this.sessionEndCallbacksAttempted = true;
+      await this.runCallbackGroup(
+        HookEvent.SessionEnd,
+        payload,
+        payload.abortSignal,
+        this.sessionEndHookTimeoutMs,
+      );
+    }
 
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {
@@ -545,6 +597,8 @@ export class HookRuntime {
   private async runCallbackGroup(
     event: HookEvent,
     payload: Record<string, unknown>,
+    abortSignal?: AbortSignal,
+    timeoutMs = this.hookTimeoutMs,
   ): Promise<void> {
     if (!this.bus.has(event)) {
       return;
@@ -553,6 +607,8 @@ export class HookRuntime {
     const outputs = await this.dispatchObserved(
       event,
       buildHookInput(this.options.sessionId, event, payload),
+      abortSignal,
+      timeoutMs,
     );
     for (const output of outputs) {
       if (output.action === 'abort') {
@@ -597,6 +653,7 @@ export class HookRuntime {
     input: JsonObject,
     result: ToolResult,
     toolUseId: ToolUseId,
+    abortSignal?: AbortSignal,
   ): Promise<PostToolUseRuntimeResult> {
     if (!this.bus.has(event)) {
       return { toolUseId, result };
@@ -614,6 +671,7 @@ export class HookRuntime {
           ? undefined
           : new Error(result.error.message),
       }),
+      abortSignal,
     );
 
     for (const output of outputs) {
@@ -642,10 +700,18 @@ export class HookRuntime {
     return { toolUseId, result: nextResult };
   }
 
-  private async dispatchObserved(event: HookEvent, input: HookInput) {
+  private async dispatchObserved(
+    event: HookEvent,
+    input: HookInput,
+    abortSignal?: AbortSignal,
+    timeoutMs = this.hookTimeoutMs,
+  ) {
     const spanId = this.traceCollector?.recordHookStart(event, input);
     try {
-      const outputs = await this.bus.dispatch(event, input);
+      const outputs = await this.bus.dispatch(event, input, {
+        signal: abortSignal,
+        timeoutMs,
+      });
       if (spanId) {
         this.traceCollector?.recordHookEnd(spanId, {
           outputCount: outputs.length,

@@ -330,6 +330,51 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('fails closed while a timed-out inline hook is still cleaning up', async () => {
+    vi.useFakeTimers();
+    const started = deferred();
+    const release = deferred();
+    const runtime = new SessionRuntime(
+      SessionId('session-hook-cleanup'),
+      createOptions({
+        hookTimeoutMs: 50,
+        hooks: {
+          [HookEvent.UserPromptSubmit]: [
+            async () => {
+              started.resolve();
+              await release.promise;
+              return { action: 'continue' };
+            },
+          ],
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const dispatch = runtime.getHookRuntime().applyUserPromptSubmit('prompt');
+    const timeoutResult = expect(dispatch).rejects.toMatchObject({ code: 'HOOK_TIMEOUT' });
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(50);
+    await timeoutResult;
+    await expect(runtime.close()).rejects.toThrow(
+      'still has an inline hook callback cleaning up',
+    );
+
+    release.resolve();
+    await vi.waitFor(() => {
+      expect(runtime.getHookRuntime().hasPendingCallbackCleanup()).toBe(false);
+    });
+
+    vi.useRealTimers();
+    await runtime.close();
+  });
+
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
     const pluginTool = createTool({

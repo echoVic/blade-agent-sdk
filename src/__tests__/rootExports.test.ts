@@ -85,6 +85,8 @@ import {
   ExecutionLeaseId,
   FencingToken,
   FileSystemMemoryStore,
+  HookEvent,
+  HookTimeoutError,
   InputId,
   InputPriority,
   JsonlDurableEventStore,
@@ -122,6 +124,11 @@ describe('root exports', () => {
     expect(definePlugin({ name: 'test' })).toEqual({ name: 'test' });
     expect(new ModelTimeoutError('MODEL_REQUEST_TIMEOUT', 1000)).toMatchObject({
       code: 'MODEL_REQUEST_TIMEOUT',
+      timeoutMs: 1000,
+    });
+    expect(new HookTimeoutError(HookEvent.PreToolUse, 1000)).toMatchObject({
+      code: 'HOOK_TIMEOUT',
+      event: HookEvent.PreToolUse,
       timeoutMs: 1000,
     });
     expect(InputPriority.NEXT).toBe('next');

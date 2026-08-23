@@ -319,6 +319,7 @@ class Session implements ISession {
       await this.runtime.getHookRuntime().runSessionStart({
         isResume: this.isResumeSession,
         resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
+        abortSignal: this.executionLease?.signal,
       });
       await this.executionLease?.assertActive();
       if (this.executionLeaseFailure) {
@@ -886,15 +887,25 @@ class Session implements ISession {
     runtime.getHookRuntime().setTraceCollector(traceRecorder);
     try {
       if (initialInputPreparation !== RECONCILED_INITIAL_INPUT) {
-        message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+        message = await runtime.getHookRuntime().applyUserPromptSubmit(message, {
+          abortSignal: signal,
+        });
       }
     } catch (error) {
       const handingOff = isHandoffRequested();
       const leaseFailure = this.executionLeaseFailure;
+      const requestAborted = signal.aborted;
       let terminalError = error;
       if (!handingOff && !leaseFailure) {
         try {
-          await finishDurableRequest({ status: 'failed', error });
+          await finishDurableRequest(
+            requestAborted
+              ? {
+                  status: 'interrupted',
+                  reason: this.getDurableInterruptReason(requestController),
+                }
+              : { status: 'failed', error },
+          );
         } catch (durableError) {
           terminalError = new AggregateError(
             [error, durableError],
@@ -904,12 +915,14 @@ class Session implements ISession {
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff || leaseFailure ? 'aborted' : 'error', {
+      await finishTrace(handingOff || leaseFailure || requestAborted ? 'aborted' : 'error', {
         ...(handingOff
           ? { reason: 'session_handoff' }
           : leaseFailure
             ? { reason: 'process_restart' }
-            : { error: errorMessage }),
+            : requestAborted
+              ? { reason: this.getDurableInterruptReason(requestController) }
+              : { error: errorMessage }),
       });
       try {
         if (handingOff) {
@@ -920,6 +933,9 @@ class Session implements ISession {
         }
         if (durableRecorder && !durableFinishCommitted) {
           throw terminalError;
+        }
+        if (requestAborted) {
+          return;
         }
         yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
       } finally {
@@ -1272,14 +1288,17 @@ class Session implements ISession {
 
       this._messages = context.messages;
       const imageCount = this.getImageCount(message);
-      await runtime.getHookRuntime().runTaskCompleted({
-        taskId: this.sessionId,
-        taskDescription: this.getTextContent(message),
-        hasImages: imageCount > 0,
-        imageCount,
-        resultSummary: loopResult.finalMessage || '',
-        success: loopResult.success,
-      });
+      if (!signal.aborted) {
+        await runtime.getHookRuntime().runTaskCompleted({
+          taskId: this.sessionId,
+          taskDescription: this.getTextContent(message),
+          hasImages: imageCount > 0,
+          imageCount,
+          resultSummary: loopResult.finalMessage || '',
+          success: loopResult.success,
+          abortSignal: signal,
+        });
+      }
       await finishTrace(isAborted ? 'aborted' : 'success', {
         content: loopResult.finalMessage || '',
         usage: totalUsage,
@@ -1304,10 +1323,18 @@ class Session implements ISession {
     } catch (error) {
       const handingOff = isHandoffRequested();
       const leaseFailure = this.executionLeaseFailure;
+      const requestAborted = signal.aborted;
       let terminalError = error;
       if (!handingOff && !leaseFailure && !durableFinishAttempted) {
         try {
-          await finishDurableRequest({ status: 'failed', error });
+          await finishDurableRequest(
+            requestAborted
+              ? {
+                  status: 'interrupted',
+                  reason: this.getDurableInterruptReason(requestController),
+                }
+              : { status: 'failed', error },
+          );
         } catch (durableError) {
           terminalError = new AggregateError(
             [error, durableError],
@@ -1317,12 +1344,14 @@ class Session implements ISession {
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff || leaseFailure ? 'aborted' : 'error', {
+      await finishTrace(handingOff || leaseFailure || requestAborted ? 'aborted' : 'error', {
         ...(handingOff
           ? { reason: 'session_handoff' }
           : leaseFailure
             ? { reason: 'process_restart' }
-            : { error: errorMessage }),
+            : requestAborted
+              ? { reason: this.getDurableInterruptReason(requestController) }
+              : { error: errorMessage }),
       });
       if (handingOff) {
         return;
@@ -1332,6 +1361,9 @@ class Session implements ISession {
       }
       if (durableRecorder && !durableFinishCommitted) {
         throw terminalError;
+      }
+      if (requestAborted) {
+        return;
       }
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
@@ -1456,6 +1488,7 @@ class Session implements ISession {
     disposition: 'terminal' | 'detached',
     abortReason: RequestAbortReason = { kind: 'session_close' },
   ): Promise<void> {
+    this.runtime?.assertNoPendingCleanup();
     const recordDurableClose = disposition === 'terminal';
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
@@ -1525,6 +1558,7 @@ class Session implements ISession {
       });
     }
 
+    this.runtime?.assertNoPendingCleanup();
     if (this.runtime) {
       closeErrors.push(...(await this.releaseLocalRuntime()));
     }
@@ -1558,6 +1592,7 @@ class Session implements ISession {
       throw new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session is not initialized');
     }
     const runtime = this.getRuntime();
+    runtime.assertNoPendingCleanup();
     const journal = this.durableJournal;
     if (!journal) {
       throw new SessionHandoffError(
@@ -1578,11 +1613,17 @@ class Session implements ISession {
       }
 
       const durableRecorder =
-        this.executionState.phase === 'pending' || this.executionState.phase === 'running'
+        this.executionState.phase === 'pending'
+        || this.executionState.phase === 'running'
+        || this.executionState.phase === 'suspending'
           ? this.executionState.durableRecorder
           : null;
       if (
-        (this.executionState.phase === 'pending' || this.executionState.phase === 'running') &&
+        (
+          this.executionState.phase === 'pending'
+          || this.executionState.phase === 'running'
+          || this.executionState.phase === 'suspending'
+        ) &&
         !durableRecorder
       ) {
         throw new SessionHandoffError(
@@ -1601,6 +1642,12 @@ class Session implements ISession {
         );
       }
 
+      if (this.executionState.phase === 'suspending') {
+        return {
+          durableRecorder,
+          executions: [...this.streamExecutions],
+        };
+      }
       if (this.executionState.phase === 'running') {
         const { requestId, controller, execution } = this.executionState;
         if (!durableRecorder) {
@@ -1654,6 +1701,7 @@ class Session implements ISession {
         handoffErrors.push(result.reason);
       }
     }
+    runtime.assertNoPendingCleanup();
     if (handoffState.durableRecorder) {
       try {
         await handoffState.durableRecorder.finalizeHandoff();

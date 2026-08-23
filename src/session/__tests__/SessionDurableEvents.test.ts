@@ -27,6 +27,7 @@ import {
   WorkerId,
 } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
+import { HookEvent } from '../../types/constants.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
 import {
   DurableEventSubscriptionError,
@@ -1883,6 +1884,65 @@ describe('Session durable events', () => {
 
     await expect(session.close()).resolves.toBeUndefined();
     expect(release).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('keeps handoff retryable while an aborted inline hook is still cleaning up', async () => {
+    const { root, store } = createStore();
+    const started = Promise.withResolvers<void>();
+    const releaseHook = Promise.withResolvers<void>();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-handoff-hook-cleanup'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => {
+            started.resolve();
+            await releaseHook.promise;
+            return { action: 'continue' };
+          },
+        ],
+      },
+    });
+    const runtime = (
+      session as unknown as {
+        runtime: {
+          getHookRuntime(): { hasPendingCallbackCleanup(): boolean };
+        } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const releaseLease = vi.spyOn(store, 'releaseExecutionLease');
+
+    await session.send('handoff during hook');
+    const output = session.stream();
+    const firstEvent = output.next();
+    await started.promise;
+
+    await expect(session.suspendForHandoff()).rejects.toThrow(
+      'inline hook callback cleaning up',
+    );
+    await expect(firstEvent).resolves.toEqual({ value: undefined, done: true });
+    expect(releaseLease).not.toHaveBeenCalled();
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    releaseHook.resolve();
+    await vi.waitFor(() => {
+      expect(runtime.getHookRuntime().hasPendingCallbackCleanup()).toBe(false);
+    });
+
+    await expect(session.suspendForHandoff()).resolves.toMatchObject({
+      recoveryPlan: { action: 'rollover_request' },
+    });
+    expect(releaseLease).toHaveBeenCalledOnce();
     expect(session.getExecutionLease()).toBeNull();
   });
 

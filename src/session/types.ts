@@ -210,6 +210,7 @@ type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], Stream
 
 export interface HookInput {
   event: HookEvent;
+  abortSignal?: AbortSignal;
   toolName?: string;
   toolInput?: JsonObject;
   toolOutput?: ToolModelContent;
@@ -294,6 +295,10 @@ export interface SessionOptions {
   subagent?: SubagentInfo;
 
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
+  /** Total deadline for one inline hook event. Defaults to 600000ms. */
+  hookTimeoutMs?: number;
+  /** Deadline for inline SessionEnd hooks. Defaults to 3000ms. */
+  sessionEndHookTimeoutMs?: number;
   middleware?: AgentMiddlewareConfig;
   plugins?: readonly AgentPlugin[];
 

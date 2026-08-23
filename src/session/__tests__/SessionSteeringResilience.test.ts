@@ -108,6 +108,54 @@ describe('Session steering resilience', () => {
     await session.close();
   });
 
+  it('propagates request cancellation into the initial UserPromptSubmit hook', async () => {
+    const storagePath = createWorkspaceRoot();
+    const started = Promise.withResolvers<void>();
+    const cancellation = new Error('cancel hook wait');
+    let hookSignal: AbortSignal | undefined;
+    const session = await createSession({
+      ...baseOptions(storagePath),
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [
+          async (input) => {
+            hookSignal = input.abortSignal;
+            started.resolve();
+            await new Promise<void>((_resolve, reject) => {
+              input.abortSignal?.addEventListener(
+                'abort',
+                () => reject(input.abortSignal?.reason),
+                { once: true },
+              );
+            });
+            return { action: 'continue' };
+          },
+        ],
+      },
+    });
+    const controller = new AbortController();
+    await session.send('cancel during hook', { signal: controller.signal });
+    const stream = session.stream();
+    const firstEvent = stream.next();
+
+    await started.promise;
+    controller.abort(cancellation);
+
+    await expect(firstEvent).resolves.toEqual({
+      value: undefined,
+      done: true,
+    });
+    expect(hookSignal?.aborted).toBe(true);
+    expect(hookSignal?.reason).toEqual({
+      kind: 'external_abort',
+      cause: cancellation,
+    });
+
+    for await (const _event of stream) {
+      // drain
+    }
+    await session.close();
+  });
+
   it('closes cleanly when the consumer pauses on a setup-hook error', async () => {
     const session = await createSession({
       ...baseOptions(createWorkspaceRoot()),
