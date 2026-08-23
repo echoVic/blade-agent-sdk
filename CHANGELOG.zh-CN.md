@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.0.4] - 2026-08-23
+
+### 修复
+
+- 使运行中 Session 的 abort 与 close 操作在无消费者死锁的情况下，等待 Agent stream 清理、模型与工具收敛及请求所有权释放，并在配置 durableEventStore 时等待 Request 终态持久化。
+
 ## [5.0.3] - 2026-08-23
 
 ### 修复

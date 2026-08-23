@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.0.4] - 2026-08-23
+
+### Fixes
+
+- Make running Session abort and close operations wait for Agent stream cleanup, model and tool settlement, request ownership release, and configured durable Request finalization without consumer deadlocks.
+
 ## [5.0.3] - 2026-08-23
 
 ### Fixes
