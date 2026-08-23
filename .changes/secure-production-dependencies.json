@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Remove unused production packages, upgrade vulnerable dependencies to patched releases, and reject known production vulnerabilities in CI.",
+  "zh-CN": "移除未使用的生产依赖、升级存在漏洞的依赖，并在 CI 中阻止已知生产依赖漏洞。"
+}
