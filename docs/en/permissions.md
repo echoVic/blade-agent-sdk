@@ -97,6 +97,13 @@ interface CanUseToolOptions {
 }
 ```
 
+The signal belongs to the active Request. The SDK races `canUseTool`,
+`permissionHandler`, tool validation, tool-level permission checks, and
+interactive confirmation against it. Interactive handlers receive the same
+signal as `ConfirmationDetails.abortSignal`. These waits have no wall-clock
+timeout. A callback that ignores cancellation remains tracked, blocks new tool
+work, and prevents Session close or handoff until its Promise settles.
+
 ## Low-level handlers
 
 The root package exports composable permission helpers:

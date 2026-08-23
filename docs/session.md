@@ -1237,6 +1237,13 @@ type PermissionResult =
 `canUseTool` 的优先级低于 Hook 系统中的 `PermissionRequest` 事件。如果 Hook 已做出决策（`abort` 或 `skip`），`canUseTool` 不会被调用。
 :::
 
+权限和确认回调不受 `toolTimeoutMs` 限制，因为交互式人工审批可以合理地无限期
+等待。SDK 会改为将它们与当前 Request 的取消信号竞速。回调必须监听
+`CanUseToolOptions.signal`、`PermissionHandlerRequest.signal` 或
+`ConfirmationDetails.abortSignal` 并在中止后尽快退出。若回调忽略取消，Session
+会保留 Runtime 和 durable execution lease、拒绝新的工具执行，并让 `close()`
+或 `suspendForHandoff()` 保持可重试失败，直至该回调结束。
+
 ## 子 Agent
 
 通过 `agents` 字段定义命名子代理，供内置任务工具（如 Task）在运行时调度：

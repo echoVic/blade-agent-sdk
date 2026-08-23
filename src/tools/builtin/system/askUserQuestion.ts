@@ -92,6 +92,7 @@ Usage notes:
       try {
         const response = await context.confirmationHandler.requestConfirmation({
           type: 'askUserQuestion',
+          abortSignal: context.signal,
           kind: ToolKind.ReadOnly, // 显式标记为只读，避免在 Plan 模式下被拒绝
           message: 'Please answer the following questions:',
           questions: params.questions,

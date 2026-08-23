@@ -12,6 +12,11 @@ import { SessionHandoffError } from '../../errors/SessionHandoffError.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { BackgroundShellManager } from '../../tools/builtin/shell/BackgroundShellManager.js';
+import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
+import {
+  collectToolExecution,
+  completeToolExecution,
+} from '../../tools/types/index.js';
 import {
   AgentId,
   CommandId,
@@ -26,7 +31,7 @@ import {
   TurnId,
   WorkerId,
 } from '../../types/branded.js';
-import type { JsonValue } from '../../types/common.js';
+import { type JsonValue, PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
 import {
@@ -1942,6 +1947,92 @@ describe('Session durable events', () => {
     await expect(session.suspendForHandoff()).resolves.toMatchObject({
       recoveryPlan: { action: 'rollover_request' },
     });
+    expect(releaseLease).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('keeps handoff retryable while an aborted permission callback is still cleaning up', async () => {
+    const { root, store } = createStore();
+    const started = Promise.withResolvers<void>();
+    const releasePermission = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-handoff-permission-cleanup'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+      tools: [
+        {
+          name: 'PermissionCleanupTool',
+          description: 'Permission cleanup test tool',
+          sideEffect: 'non_idempotent',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+          execute: () => completeToolExecution({
+            status: 'success',
+            model: 'unexpected',
+          }),
+        },
+      ],
+      allowedTools: ['PermissionCleanupTool'],
+      permissionHandler: async ({ signal }) => {
+        expect(signal).toBe(controller.signal);
+        started.resolve();
+        await releasePermission.promise;
+        return { behavior: 'allow' };
+      },
+    });
+    const runtime = (
+      session as unknown as {
+        runtime: {
+          getAgentRuntimeDeps(): {
+            executionPipeline: ExecutionPipeline;
+          };
+        } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    const execution = collectToolExecution(
+      executionPipeline.execute(
+        'PermissionCleanupTool',
+        {},
+        {
+          permissionMode: PermissionMode.DEFAULT,
+          signal: controller.signal,
+        },
+      ),
+    );
+    const releaseLease = vi.spyOn(store, 'releaseExecutionLease');
+
+    await started.promise;
+    controller.abort(new Error('handoff permission cancelled'));
+    const blockedHandoff = expect(session.suspendForHandoff()).rejects.toThrow(
+      'permission callback cleaning up',
+    );
+    await expect(execution).resolves.toMatchObject({
+      status: 'error',
+      error: { message: 'handoff permission cancelled' },
+    });
+
+    await blockedHandoff;
+    expect(releaseLease).not.toHaveBeenCalled();
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    releasePermission.resolve();
+    await vi.waitFor(() => {
+      expect(executionPipeline.hasPendingPermissionCleanup()).toBe(false);
+    });
+
+    await expect(session.suspendForHandoff()).resolves.toBeDefined();
     expect(releaseLease).toHaveBeenCalledOnce();
     expect(session.getExecutionLease()).toBeNull();
   });

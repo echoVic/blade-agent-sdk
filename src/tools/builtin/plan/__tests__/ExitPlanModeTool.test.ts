@@ -45,6 +45,7 @@ async function executeWithContext(
 describe('ExitPlanMode Tool', () => {
   it('writes the plan file to bladeConfig.plansDirectory before requesting approval', async () => {
     const plansDirectory = await createTempDir('blade-plans-');
+    const controller = new AbortController();
     const requestConfirmation = vi.fn(async () => ({
       approved: true,
       targetMode: PermissionMode.DEFAULT,
@@ -53,6 +54,7 @@ describe('ExitPlanMode Tool', () => {
     const result = await executeWithContext({
       sessionId: SessionId('session-123'),
       bladeConfig: { plansDirectory } as BladeConfig,
+      signal: controller.signal,
       confirmationHandler: { requestConfirmation },
     });
 
@@ -61,6 +63,7 @@ describe('ExitPlanMode Tool', () => {
     expect(requestConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'exitPlanMode',
+        abortSignal: controller.signal,
         planContent: '# Plan\n\n1. Add tests',
       })
     );

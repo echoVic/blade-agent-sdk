@@ -9,6 +9,9 @@ export type {
 export { ToolCatalog } from './catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './core/createTool.js';
 export type {
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
   Tool,

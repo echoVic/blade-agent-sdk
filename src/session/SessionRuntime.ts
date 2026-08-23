@@ -284,6 +284,13 @@ export class SessionRuntime {
         ),
       );
     }
+    if (this.executionPipeline.hasPendingPermissionCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has a permission callback cleaning up`,
+        ),
+      );
+    }
     if (this.hookRuntime.hasPendingCallbackCleanup()) {
       errors.push(
         new Error(

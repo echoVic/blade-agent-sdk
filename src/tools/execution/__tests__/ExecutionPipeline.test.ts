@@ -9,6 +9,7 @@ import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import { PermissionRequestId, SessionId } from '../../../types/branded.js';
 import { type JsonObject, PermissionMode } from '../../../types/common.js';
+import type { PermissionHandler } from '../../../types/permissions.js';
 import {
   collectToolExecution,
   completeToolExecution,
@@ -612,6 +613,169 @@ describe('ExecutionPipeline', () => {
     expect(result.error?.message).toBe('Semantic validation failed');
     expect(executeSpy).not.toHaveBeenCalled();
   });
+
+  for (const boundary of [
+    'validateInput',
+    'checkPermissions',
+    'permissionRuleHandler',
+    'pathSafetyHandler',
+    'permissionHandler',
+    'canUseTool',
+    'confirmationHandler',
+  ] as const) {
+    it(`cancels and tracks an uncooperative ${boundary} callback`, async () => {
+      const registry = new ToolRegistry();
+      const started = deferred();
+      const release = deferred();
+      const controller = new AbortController();
+      const cancellation = new Error(`${boundary} cancelled`);
+      const executeSpy = vi.fn(() => completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }));
+      let callbackSignal: AbortSignal | undefined;
+
+      const waitForRelease = async <T>(signal: AbortSignal | undefined, result: T): Promise<T> => {
+        callbackSignal = signal;
+        started.resolve();
+        await release.promise;
+        return result;
+      };
+
+      registerTool(
+        registry,
+        createTool({
+          name: 'CancellationBoundaryTool',
+          displayName: 'Cancellation Boundary Tool',
+          kind: ToolKind.Execute,
+          sideEffect: 'non_idempotent',
+          description: { short: 'Permission cancellation boundary tool' },
+          schema: z.object({}),
+          ...(boundary === 'validateInput'
+            ? {
+                validateInput: (
+                  _params: JsonObject,
+                  context: ExecutionContext,
+                ) => waitForRelease(context.signal, undefined),
+              }
+            : {}),
+          ...(boundary === 'checkPermissions'
+            ? {
+                checkPermissions: (
+                  _params: JsonObject,
+                  context: ExecutionContext,
+                ) => waitForRelease(context.signal, { behavior: 'allow' as const }),
+              }
+            : boundary === 'confirmationHandler'
+              ? {
+                  checkPermissions: () => ({
+                    behavior: 'ask' as const,
+                    message: 'Confirm cancellation boundary tool',
+                  }),
+                }
+              : {}),
+          execute: executeSpy,
+        }),
+      );
+
+      const permissionHandler = boundary === 'permissionHandler'
+        ? (async (request) =>
+            waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler
+        : undefined;
+      const canUseTool = boundary === 'canUseTool'
+        ? async (
+            _toolName: string,
+            _input: JsonObject,
+            options: { signal: AbortSignal },
+          ) => waitForRelease(options.signal, { behavior: 'allow' as const })
+        : undefined;
+      const pipeline = new ExecutionPipeline(registry, {
+        permissionMode: PermissionMode.YOLO,
+        permissionHandler,
+        canUseTool,
+      });
+      let cleanupWasVisibleToEarlierAbortListener = false;
+      controller.signal.addEventListener('abort', () => {
+        cleanupWasVisibleToEarlierAbortListener =
+          pipeline.hasPendingPermissionCleanup();
+      }, { once: true });
+
+      const internalHandler = (async (request) =>
+        waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler;
+      if (boundary === 'permissionRuleHandler') {
+        (
+          pipeline as unknown as { permissionRuleHandler: PermissionHandler }
+        ).permissionRuleHandler = internalHandler;
+      }
+      if (boundary === 'pathSafetyHandler') {
+        (
+          pipeline as unknown as { pathSafetyHandler: PermissionHandler }
+        ).pathSafetyHandler = internalHandler;
+      }
+
+      const permissionResolutions: string[] = [];
+      const resultPromise = executePipeline(
+        pipeline,
+        'CancellationBoundaryTool',
+        {},
+        {
+          permissionMode: PermissionMode.YOLO,
+          signal: controller.signal,
+          ...(boundary === 'confirmationHandler'
+            ? {
+                confirmationHandler: {
+                  requestConfirmation: (details: { abortSignal?: AbortSignal }) =>
+                    waitForRelease(details.abortSignal, { approved: true }),
+                },
+                toolInvocationLifecycle: {
+                  onPermissionRequested: async () =>
+                    PermissionRequestId('permission-cancelled-by-request'),
+                  onPermissionResolved: async ({ decision }: { decision: string }) => {
+                    permissionResolutions.push(decision);
+                  },
+                },
+              }
+            : {}),
+        },
+      );
+
+      await started.promise;
+      expect(callbackSignal).toBe(controller.signal);
+      controller.abort(cancellation);
+      expect(cleanupWasVisibleToEarlierAbortListener).toBe(true);
+      expect(pipeline.hasPendingPermissionCleanup()).toBe(true);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        status: 'error',
+        error: {
+          message: `${boundary} cancelled`,
+        },
+      });
+      if (boundary === 'confirmationHandler') {
+        expect(permissionResolutions).toEqual(['cancel']);
+      }
+
+      await expect(
+        executePipeline(
+          pipeline,
+          'CancellationBoundaryTool',
+          {},
+          { permissionMode: PermissionMode.YOLO },
+        ),
+      ).resolves.toMatchObject({
+        status: 'error',
+        error: {
+          message: expect.stringContaining('permission callback is still cleaning up'),
+        },
+      });
+      expect(executeSpy).not.toHaveBeenCalled();
+
+      release.resolve();
+      await vi.waitFor(() => {
+        expect(pipeline.hasPendingPermissionCleanup()).toBe(false);
+      });
+    });
+  }
 
   it('lets tool-level checkPermissions deny before the external permission handler runs', async () => {
     const registry = new ToolRegistry();

@@ -85,6 +85,7 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
       try {
         const response = await context.confirmationHandler.requestConfirmation({
           type: 'exitPlanMode',
+          abortSignal: context.signal,
           message:
             'The assistant has finished planning and is ready for your review.\n\n' +
             '⚠️ Before approving, please verify:\n' +

@@ -35,6 +35,9 @@ export type {
 } from '../session/types.js';
 export { InputPriority } from '../session/types.js';
 export type {
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
   ToolBehavior,

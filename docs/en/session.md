@@ -609,6 +609,15 @@ const session = await createSession({
 });
 ```
 
+Permission and confirmation callbacks are not covered by `toolTimeoutMs`;
+interactive approval may wait indefinitely. They are instead raced against the
+active Request signal. Observe `CanUseToolOptions.signal`,
+`PermissionHandlerRequest.signal`, or `ConfirmationDetails.abortSignal` and
+stop promptly when aborted. If a callback ignores cancellation, the Session
+retains its runtime and durable execution lease, rejects new tool work, and
+makes `close()` or `suspendForHandoff()` retryable only after that callback
+settles.
+
 See [Tools](./tools), [Permissions](./permissions), and [Hooks](./hooks).
 
 ## MCP

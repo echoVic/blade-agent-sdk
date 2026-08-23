@@ -375,6 +375,59 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('fails closed while an aborted permission callback is still cleaning up', async () => {
+    const started = deferred();
+    const release = deferred();
+    const controller = new AbortController();
+    const runtime = new SessionRuntime(
+      SessionId('session-permission-cleanup'),
+      createOptions({
+        tools: [customTool],
+        allowedTools: ['CustomTool'],
+        permissionHandler: async ({ signal }) => {
+          expect(signal).toBe(controller.signal);
+          started.resolve();
+          await release.promise;
+          return { behavior: 'allow' };
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const resultPromise = collectToolExecution(
+      executionPipeline.execute('CustomTool', {}, {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+      }),
+    );
+
+    await started.promise;
+    controller.abort(new Error('request cancelled'));
+    const closeResult = expect(runtime.close()).rejects.toThrow(
+      'still has a permission callback cleaning up',
+    );
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { message: 'request cancelled' },
+    });
+    await closeResult;
+
+    release.resolve();
+    await vi.waitFor(() => {
+      expect(executionPipeline.hasPendingPermissionCleanup()).toBe(false);
+    });
+
+    await runtime.close();
+  });
+
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
     const pluginTool = createTool({
