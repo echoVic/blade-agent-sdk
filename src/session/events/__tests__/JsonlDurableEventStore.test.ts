@@ -11,7 +11,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CommandId,
@@ -27,11 +27,9 @@ import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DURABLE_EVENT_LOG_FORMAT } from '../schemas.js';
 import { DURABLE_EVENT_SCHEMA_VERSION, DurableEventType } from '../types.js';
 
-const sourceTypeScriptLoaderPath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  'fixtures',
-  'sourceTypeScriptLoader.mjs',
-);
+const sourceTypeScriptLoaderUrl = pathToFileURL(
+  join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'sourceTypeScriptLoader.mjs'),
+).href;
 const storeWriterPath = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
@@ -175,7 +173,7 @@ async function startStoreWriter(
       '--no-warnings',
       '--experimental-transform-types',
       '--loader',
-      sourceTypeScriptLoaderPath,
+      sourceTypeScriptLoaderUrl,
       storeWriterPath,
       storageRoot,
       sessionId,
