@@ -103,6 +103,7 @@ User: "What files handle routing?"
       try {
         const response = await context.confirmationHandler.requestConfirmation({
           type: 'enterPlanMode',
+          abortSignal: context.signal,
           message:
             'The assistant requests to enter Plan mode for this complex task. In Plan mode, the assistant will:\n\n' +
             '1. Research the codebase thoroughly (read-only)\n' +

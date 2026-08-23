@@ -28,6 +28,8 @@ interface Question {
 
 export interface ConfirmationDetails {
   type?: 'permission' | 'enterPlanMode' | 'exitPlanMode' | 'maxTurnsExceeded' | 'askUserQuestion'; // 确认类型
+  /** Aborted when the owning request no longer accepts this confirmation. */
+  abortSignal?: AbortSignal;
   kind?: ToolKind; // 工具类型（readonly, write, execute），用于权限模式判断
   toolName?: string;
   args?: JsonObject;

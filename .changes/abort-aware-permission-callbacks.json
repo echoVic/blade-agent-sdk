@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Cancel permission and confirmation waits with the active Request signal, and retain Session ownership until uncooperative callbacks finish cleaning up.",
+  "zh-CN": "权限与确认等待现在响应当前 Request 的取消信号；若回调忽略取消，Session 会保留执行所有权直至清理完成。"
+}

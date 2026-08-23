@@ -191,6 +191,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolInvocationLifecycle` | 单次工具权限与副作用开始边界 |
 | `ToolScheduledLifecycle` / `ToolSettledLifecycle` | 工具调度与终态 payload |
 | `ToolPermissionResolution` | 权限请求的 durable 决策 payload |
+| `ConfirmationDetails` | 确认请求详情；`abortSignal` 为当前 Request 的取消信号 |
+| `ConfirmationHandler` | 交互式确认处理器 |
+| `ConfirmationResponse` | 交互式确认结果 |
 | `ToolYield` | 工具产生的结构化进度、展示消息或 effect |
 | `ToolProgress` | 可选包含计数、结构化数据和恢复令牌的进度事件 |
 | `ToolMessage` | 面向用户界面的执行消息 |

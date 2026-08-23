@@ -25,6 +25,10 @@ import {
   type PermissionHandlerRequest,
   type PermissionUpdate,
 } from '../../types/permissions.js';
+import {
+  awaitWithAbortSignal,
+  getAbortSignalReason,
+} from '../../utils/abortPromise.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
@@ -137,6 +141,7 @@ export class ExecutionPipeline {
   private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
   private readonly pendingExecutionCleanups = new Set<Promise<void>>();
+  private readonly pendingPermissionCleanups = new Set<Promise<void>>();
 
   constructor(
     private registry: ToolRegistry,
@@ -182,6 +187,14 @@ export class ExecutionPipeline {
     return this.pendingExecutionCleanups.size > 0;
   }
 
+  hasPendingPermissionCleanup(): boolean {
+    return this.pendingPermissionCleanups.size > 0;
+  }
+
+  private hasPendingCleanup(): boolean {
+    return this.hasPendingExecutionCleanup() || this.hasPendingPermissionCleanup();
+  }
+
   /**
    * 执行工具
    */
@@ -190,7 +203,7 @@ export class ExecutionPipeline {
     params: JsonObject,
     context: ExecutionContext
   ): ToolExecution {
-    if (this.hasPendingExecutionCleanup()) {
+    if (this.hasPendingCleanup()) {
       return this.createPendingCleanupResult();
     }
     const startTime = Date.now();
@@ -473,7 +486,7 @@ export class ExecutionPipeline {
     let fileLease: FileLockLease | undefined;
 
     try {
-      if (this.hasPendingExecutionCleanup()) {
+      if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
       }
       fileLease = filePath
@@ -696,14 +709,22 @@ export class ExecutionPipeline {
         throw new Error(`Failed to build invocation for tool: ${state.tool.name}`);
       }
 
-      const validationError = await invocation.validate?.(state.context);
+      const validationError = invocation.validate
+        ? await this.awaitPermissionCallback(
+            () => invocation.validate?.(state.context),
+            state.context.signal,
+          )
+        : undefined;
       if (validationError) {
         state.result = validationErrorToToolResult(validationError);
         return;
       }
 
       const toolPermissionResult = state.tool.checkPermissions
-        ? await state.tool.checkPermissions(invocation.params, state.context)
+        ? await this.awaitPermissionCallback(
+            () => state.tool.checkPermissions?.(invocation.params, state.context),
+            state.context.signal,
+          )
         : undefined;
       const toolPermissionUpdatedInput =
         toolPermissionResult?.behavior === 'allow'
@@ -735,8 +756,11 @@ export class ExecutionPipeline {
         state.tool,
       );
 
-      let checkResult = await this.permissionRuleHandler(
-        this.buildPermissionRequest(state, state.affectedPaths),
+      let checkResult = await this.awaitPermissionCallback(
+        () => this.permissionRuleHandler(
+          this.buildPermissionRequest(state, state.affectedPaths),
+        ),
+        state.context.signal,
       );
 
       const hasRememberedApproval = Boolean(
@@ -777,14 +801,20 @@ export class ExecutionPipeline {
           break;
       }
 
-      const pathSafetyResult = await this.pathSafetyHandler(
-        this.buildPermissionRequest(state, state.affectedPaths),
+      const pathSafetyResult = await this.awaitPermissionCallback(
+        () => this.pathSafetyHandler(
+          this.buildPermissionRequest(state, state.affectedPaths),
+        ),
+        state.context.signal,
       );
       await this.handlePermissionHandlerResult(pathSafetyResult, state);
       if (state.result) {
         return;
       }
     } catch (error) {
+      if (state.context.signal?.aborted) {
+        throw getAbortSignalReason(state.context.signal);
+      }
       state.result = this.createAbortedResult(`Permission check failed: ${getErrorMessage(error)}`);
     }
   }
@@ -802,7 +832,10 @@ export class ExecutionPipeline {
     if (this.permissionHandlers.length > 0) {
       for (const permissionHandler of this.permissionHandlers) {
         const request = this.buildPermissionRequest(state, affectedPaths);
-        const result = await permissionHandler(request);
+        const result = await this.awaitPermissionCallback(
+          () => permissionHandler(request),
+          state.context.signal,
+        );
         await this.handlePermissionHandlerResult(result, state, request);
         if (state.result) {
           return;
@@ -827,7 +860,7 @@ export class ExecutionPipeline {
       );
       return;
     }
-    if (this.hasPendingExecutionCleanup()) {
+    if (this.hasPendingCleanup()) {
       state.result = this.createPendingCleanupResult();
       return;
     }
@@ -837,7 +870,7 @@ export class ExecutionPipeline {
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
     await state.context.assertExecutionLease?.();
-    if (this.hasPendingExecutionCleanup()) {
+    if (this.hasPendingCleanup()) {
       state.result = this.createPendingCleanupResult();
       return;
     }
@@ -981,6 +1014,41 @@ export class ExecutionPipeline {
     this.pendingExecutionCleanups.add(closing);
     void closing.finally(() => {
       this.pendingExecutionCleanups.delete(closing);
+    });
+  }
+
+  private async awaitPermissionCallback<T>(
+    operation: () => T | PromiseLike<T>,
+    signal: AbortSignal | undefined,
+  ): Promise<T> {
+    if (!signal) {
+      return await operation();
+    }
+
+    signal.throwIfAborted();
+    const callback = Promise.resolve().then(operation);
+    const cleanup = callback.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    try {
+      const result = await awaitWithAbortSignal(() => callback, signal);
+      signal.throwIfAborted();
+      return result;
+    } catch (error) {
+      if (signal.aborted) {
+        this.trackPendingPermissionCleanup(cleanup);
+        throw getAbortSignalReason(signal);
+      }
+      throw error;
+    }
+  }
+
+  private trackPendingPermissionCleanup(cleanup: Promise<void>): void {
+    this.pendingPermissionCleanups.add(cleanup);
+    void cleanup.finally(() => {
+      this.pendingPermissionCleanups.delete(cleanup);
     });
   }
 
@@ -1231,6 +1299,7 @@ export class ExecutionPipeline {
       const confirmationDetails: ConfirmationDetails = {
         title: confirmationTitle,
         message: getConfirmationReason(state) || '此操作需要用户确认',
+        abortSignal: state.context.signal,
         kind: state.resolvedBehavior?.kind ?? state.tool.kind,
         details: this.generatePreviewForTool(state.tool.name, state.params),
         risks: this.extractRisksFromPermissionCheck(
@@ -1251,7 +1320,10 @@ export class ExecutionPipeline {
             structuredClone(state.params),
           );
         this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
-        const response = await confirmationHandler.requestConfirmation(confirmationDetails);
+        const response = await this.awaitPermissionCallback(
+          () => confirmationHandler.requestConfirmation(confirmationDetails),
+          state.context.signal,
+        );
         this.logger.info(`[ExecutionPipeline] Confirmation response: approved=${response.approved}`);
         if (permissionRequestId) {
           resolutionAttempted = true;
@@ -1302,6 +1374,9 @@ export class ExecutionPipeline {
           );
         }
       }
+      if (state.context.signal?.aborted) {
+        throw failure;
+      }
       state.result = this.createAbortedResult(
         `User confirmation failed: ${getErrorMessage(failure)}`,
       );
@@ -1327,8 +1402,11 @@ export class ExecutionPipeline {
   }
 
   private createPendingCleanupResult(): ToolResult {
+    const source = this.hasPendingPermissionCleanup()
+      ? 'A permission callback'
+      : 'A tool execution';
     return this.createExecutionFailureResult(
-      'A tool execution is still cleaning up; refusing to start another tool',
+      `${source} is still cleaning up; refusing to start another tool`,
     );
   }
 

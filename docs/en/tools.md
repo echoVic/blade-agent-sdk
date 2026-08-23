@@ -212,6 +212,17 @@ is still pending, the pipeline refuses new tool work and Session shutdown or
 handoff fails closed until the generator exits; JavaScript cannot preempt
 custom tool code that ignores cancellation.
 
+Permission waits are cancellation-bounded instead of time-bounded because a
+human approval may legitimately remain open. Input validation and tool-level
+permission checks receive `ExecutionContext.signal`; `permissionHandler` and
+`canUseTool` receive `request.signal`; interactive handlers receive
+`ConfirmationDetails.abortSignal`. The pipeline races every callback against
+that request signal. A callback should stop work when it aborts. If it ignores
+the signal, the request still cancels, but new tool calls and Session
+close/handoff fail closed until the callback Promise settles. A durable
+permission request is resolved with `decision: 'cancel'` before cancellation
+completes.
+
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
 `cancel` when a custom Session tool can safely stop for a `now` input.
@@ -276,6 +287,19 @@ interface ExecutionContext {
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];
   toolInvocationLifecycle?: ToolInvocationLifecycle; // injected by the runtime
+}
+```
+
+```ts
+interface ConfirmationDetails {
+  // ...
+  abortSignal?: AbortSignal;
+}
+
+interface ConfirmationHandler {
+  requestConfirmation(
+    details: ConfirmationDetails,
+  ): Promise<ConfirmationResponse>;
 }
 ```
 

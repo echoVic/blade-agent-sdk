@@ -2,6 +2,8 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   AgentMiddlewareConfig,
   AgentPlugin,
+  ConfirmationDetails,
+  ConfirmationHandler,
   DurableAcceptedRequestRecovery,
   DurableCommandCommitOptions,
   DurableCommandEventDraft,
@@ -192,6 +194,10 @@ describe('root exports', () => {
     expectTypeOf<ToolPermissionResolution['decision']>().toEqualTypeOf<
       'allow' | 'deny' | 'cancel'
     >();
+    expectTypeOf<ConfirmationDetails['abortSignal']>().toEqualTypeOf<
+      AbortSignal | undefined
+    >();
+    expectTypeOf<ConfirmationHandler['requestConfirmation']>().toBeFunction();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'

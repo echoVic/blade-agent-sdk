@@ -1,5 +1,8 @@
 export type {
   AgentTrace,
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
   ContextSnapshot,
   ExecutionContext,
   InputSubmission,

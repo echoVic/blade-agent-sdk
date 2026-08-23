@@ -225,7 +225,11 @@ describe('AskUserQuestion Tool', () => {
           })
         ),
       };
-      const context = createMockContext(mockHandler);
+      const controller = new AbortController();
+      const context = {
+        ...createMockContext(mockHandler),
+        signal: controller.signal,
+      };
 
       const questions = [
         {
@@ -244,6 +248,7 @@ describe('AskUserQuestion Tool', () => {
       expect(mockHandler.requestConfirmation).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'askUserQuestion',
+          abortSignal: controller.signal,
           questions,
         })
       );

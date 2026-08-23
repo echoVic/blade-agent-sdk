@@ -334,6 +334,19 @@ interface ExecutionContext {
 }
 ```
 
+```ts
+interface ConfirmationDetails {
+  // ...
+  abortSignal?: AbortSignal;
+}
+
+interface ConfirmationHandler {
+  requestConfirmation(
+    details: ConfirmationDetails,
+  ): Promise<ConfirmationResponse>;
+}
+```
+
 ### Durable lifecycle 边界
 
 Runtime 可以通过 `ToolExecutionLifecycle` 观察并阻塞工具的关键持久化边界：
@@ -429,6 +442,14 @@ progress yield 之间持续计时，并在到期时中止工具的 signal。终�
 `ToolErrorType.TIMEOUT_ERROR`。SDK 最多等待工具清理 5 秒；若清理仍未结束，
 pipeline 会拒绝新的工具执行，Session 关闭或 handoff 也会 fail-closed，直至
 generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义工具代码。
+
+权限等待采用取消边界而不是固定超时，因为人工审批可以合理地长时间保持打开。
+输入校验和工具级权限检查通过 `ExecutionContext.signal` 接收信号，
+`permissionHandler` 与 `canUseTool` 通过 `request.signal` 接收信号，交互式
+处理器通过 `ConfirmationDetails.abortSignal` 接收信号。Pipeline 会将每个回调
+与该 Request 信号竞速；回调应在信号中止时停止工作。若回调忽略信号，Request
+仍会完成取消，但新的工具调用以及 Session close/handoff 会 fail-closed，直至
+该回调 Promise 结束。已持久化的权限请求会先以 `decision: 'cancel'` 完成解析。
 
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
 `defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义

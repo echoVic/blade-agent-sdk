@@ -200,6 +200,7 @@ Authoring and execution:
 
 Types:
 
+`ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
 `FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
@@ -287,6 +288,9 @@ Types:
 
 - `CanUseTool`
 - `CanUseToolOptions`
+- `ConfirmationDetails` (`abortSignal` is the active Request signal)
+- `ConfirmationHandler`
+- `ConfirmationResponse`
 - `PermissionHandler`
 - `PermissionHandlerRequest`
 - `PermissionResult`

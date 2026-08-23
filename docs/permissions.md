@@ -91,6 +91,12 @@ interface CanUseToolOptions {
 }
 ```
 
+该信号归属于当前 Request。SDK 会将 `canUseTool`、`permissionHandler`、工具输入
+校验、工具级权限检查和交互式确认与此信号竞速；交互式处理器通过
+`ConfirmationDetails.abortSignal` 收到同一信号。这些等待没有固定墙钟超时。
+忽略取消的回调会被持续跟踪，并阻止新的工具执行以及 Session close/handoff，
+直至其 Promise 结束。
+
 ## 权限与沙箱的关系
 
 权限控制「是否询问」，沙箱控制「能做什么」。两者独立工作，可以组合使用：
