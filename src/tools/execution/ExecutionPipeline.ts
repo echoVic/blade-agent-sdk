@@ -803,6 +803,7 @@ export class ExecutionPipeline {
     try {
       while (true) {
         const step = await this.nextExecutionStep(execution, executionSignal);
+        timeoutController.signal.throwIfAborted();
         if (step.done) {
           state.result = step.value;
           if (

@@ -218,6 +218,50 @@ describe('ExecutionPipeline', () => {
     expect(finalized).toBe(true);
   });
 
+  it('preserves timeout precedence when a tool returns success after abort', async () => {
+    vi.useFakeTimers();
+    const registry = new ToolRegistry();
+    const started = deferred();
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'AbortRecovery',
+        displayName: 'Abort Recovery',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Return success after abort' },
+        schema: z.object({}),
+        async *execute(_params, context) {
+          started.resolve();
+          await new Promise<void>((resolve) => {
+            context.signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+          return { status: 'success', model: 'recovered' };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      toolTimeoutMs: 50,
+    });
+    const resultPromise = executePipeline(
+      pipeline,
+      'AbortRecovery',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    await started.promise;
+    await vi.advanceTimersToNextTimerAsync();
+
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { type: ToolErrorType.TIMEOUT_ERROR },
+    });
+  });
+
   it('keeps the tool deadline active while the consumer pauses after progress', async () => {
     vi.useFakeTimers();
     const registry = new ToolRegistry();
