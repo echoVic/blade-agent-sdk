@@ -43,6 +43,9 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm run changelog:check -- --base "${{ github.event.pull_request.base.sha }}"
 
+      - name: Audit production dependencies
+        run: pnpm run audit:prod
+
       - name: Lint
         run: pnpm run lint
 
