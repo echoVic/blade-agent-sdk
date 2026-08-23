@@ -321,7 +321,12 @@ describe('ExecutionPipeline', () => {
   it('waits for bounded cleanup when a timed-out tool ignores cancellation', async () => {
     vi.useFakeTimers();
     const registry = new ToolRegistry();
+    const scheduler = new ConcurrencyScheduler({ execute: 1 });
     const started = deferred();
+    const queuedExecute = vi.fn(() => ({
+      status: 'success',
+      model: 'unexpected queued execution',
+    }) as ToolResult);
 
     registerTool(
       registry,
@@ -339,10 +344,23 @@ describe('ExecutionPipeline', () => {
         },
       }),
     );
+    registerTool(
+      registry,
+      createTool({
+        name: 'QueuedTool',
+        displayName: 'Queued Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Wait behind the timed-out tool' },
+        schema: z.object({}),
+        execute: () => completeToolExecution(queuedExecute()),
+      }),
+    );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
       toolTimeoutMs: 50,
+      scheduler,
     });
     const resultPromise = executePipeline(
       pipeline,
@@ -356,6 +374,17 @@ describe('ExecutionPipeline', () => {
     });
 
     await started.promise;
+    const queuedResultPromise = executePipeline(
+      pipeline,
+      'QueuedTool',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve();
+    }
+    expect(scheduler.getStats()[ToolKind.Execute].queued).toBe(1);
+
     await vi.advanceTimersToNextTimerAsync();
     await vi.advanceTimersToNextTimerAsync();
     expect(settled).toBe(false);
@@ -369,6 +398,14 @@ describe('ExecutionPipeline', () => {
       error: { type: ToolErrorType.TIMEOUT_ERROR },
     });
     expect(pipeline.hasPendingExecutionCleanup()).toBe(true);
+    await expect(queuedResultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: expect.stringContaining('still cleaning up'),
+      },
+    });
+    expect(queuedExecute).not.toHaveBeenCalled();
 
     await expect(
       executePipeline(

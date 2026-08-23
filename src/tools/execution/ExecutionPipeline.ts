@@ -191,9 +191,7 @@ export class ExecutionPipeline {
     context: ExecutionContext
   ): ToolExecution {
     if (this.hasPendingExecutionCleanup()) {
-      return this.createExecutionFailureResult(
-        'A tool execution is still cleaning up; refusing to start another tool',
-      );
+      return this.createPendingCleanupResult();
     }
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
@@ -466,6 +464,9 @@ export class ExecutionPipeline {
     let fileLease: FileLockLease | undefined;
 
     try {
+      if (this.hasPendingExecutionCleanup()) {
+        return this.createPendingCleanupResult();
+      }
       fileLease = filePath
         ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
         : undefined;
@@ -805,12 +806,20 @@ export class ExecutionPipeline {
       );
       return;
     }
+    if (this.hasPendingExecutionCleanup()) {
+      state.result = this.createPendingCleanupResult();
+      return;
+    }
 
     await state.context.toolInvocationLifecycle?.onExecutionStarted?.({
       input: structuredClone(state.params),
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
     await state.context.assertExecutionLease?.();
+    if (this.hasPendingExecutionCleanup()) {
+      state.result = this.createPendingCleanupResult();
+      return;
+    }
     if (state.context.signal?.aborted) {
       state.result = this.createAbortedResult('Task was aborted before tool execution');
       return;
@@ -1298,6 +1307,12 @@ export class ExecutionPipeline {
         message,
       },
     };
+  }
+
+  private createPendingCleanupResult(): ToolResult {
+    return this.createExecutionFailureResult(
+      'A tool execution is still cleaning up; refusing to start another tool',
+    );
   }
 
   private preserveTimeoutFailure(
