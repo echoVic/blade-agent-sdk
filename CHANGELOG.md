@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.1.1] - 2026-08-23
+
+### Fixes
+
+- Upgrade CI, release, and documentation workflows to Node.js 24-backed GitHub Actions.
+
 ## [5.1.0] - 2026-08-23
 
 ### Features

@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Upgrade CI, release, and documentation workflows to Node.js 24-backed GitHub Actions.",
-  "zh-CN": "升级 CI、发布与文档工作流使用的 GitHub Actions，统一迁移到 Node.js 24 runtime。"
-}
