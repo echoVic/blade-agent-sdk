@@ -89,7 +89,8 @@ settles. These options do not replace the independent timeout configuration
 used by file hooks.
 
 `SessionEnd` callbacks are one-shot for a runtime shutdown attempt. A failed or
-timed-out callback is not invoked again when `close()` is retried.
+timed-out callback is not invoked again when `close()` is retried; file hooks
+retain their existing retry behavior.
 
 ## Modify a prompt
 

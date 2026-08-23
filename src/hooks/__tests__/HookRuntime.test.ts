@@ -98,6 +98,33 @@ describe('HookRuntime', () => {
     expect(runtime.hasPendingCallbackCleanup()).toBe(false);
   });
 
+  it('does not rerun inline SessionEnd callbacks while preserving file-hook retries', async () => {
+    const inlineCallback = vi.fn(async () => {
+      throw new Error('inline SessionEnd failed');
+    });
+    const executeSessionEndHooks = vi.fn(async () => ({}));
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-end-once'),
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.SessionEnd]: [inlineCallback],
+      },
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeSessionEndHooks,
+      } as never,
+    });
+
+    await expect(runtime.runSessionEnd({ reason: 'other' })).rejects.toThrow(
+      'inline SessionEnd failed',
+    );
+    expect(executeSessionEndHooks).not.toHaveBeenCalled();
+
+    await expect(runtime.runSessionEnd({ reason: 'other' })).resolves.toBeUndefined();
+    expect(inlineCallback).toHaveBeenCalledOnce();
+    expect(executeSessionEndHooks).toHaveBeenCalledOnce();
+  });
+
   it('shares one timeout budget across callbacks in an event', async () => {
     vi.useFakeTimers();
     const secondStarted = deferred();

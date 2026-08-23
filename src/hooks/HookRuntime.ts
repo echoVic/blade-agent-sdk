@@ -79,6 +79,7 @@ export class HookRuntime {
   private readonly hookManager: HookManager;
   private readonly hookTimeoutMs: number;
   private readonly sessionEndHookTimeoutMs: number;
+  private sessionEndCallbacksAttempted = false;
   private traceCollector?: HookTraceCollector;
   private readonly runtimeHookRegistrations = new Map<string, {
     event: HookEvent;
@@ -549,12 +550,16 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<void> {
-    await this.runCallbackGroup(
-      HookEvent.SessionEnd,
-      payload,
-      payload.abortSignal,
-      this.sessionEndHookTimeoutMs,
-    );
+    if (!this.sessionEndCallbacksAttempted) {
+      this.bus.assertNoPendingCallbackCleanup();
+      this.sessionEndCallbacksAttempted = true;
+      await this.runCallbackGroup(
+        HookEvent.SessionEnd,
+        payload,
+        payload.abortSignal,
+        this.sessionEndHookTimeoutMs,
+      );
+    }
 
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {

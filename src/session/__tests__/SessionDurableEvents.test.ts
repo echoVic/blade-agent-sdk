@@ -1809,7 +1809,7 @@ describe('Session durable events', () => {
     expect(session.getExecutionLease()).toBeNull();
   });
 
-  it('does not rerun a failed one-shot SessionEnd hook before releasing ownership', async () => {
+  it('retries a failed SessionEnd hook before releasing ownership', async () => {
     const { root, store } = createStore();
     const session = await createSession({
       ...options(store),
@@ -1845,7 +1845,7 @@ describe('Session durable events', () => {
     expect(session.getExecutionLease()).not.toBeNull();
 
     await expect(session.close()).resolves.toBeUndefined();
-    expect(sessionEnd).toHaveBeenCalledOnce();
+    expect(sessionEnd).toHaveBeenCalledTimes(2);
     expect(release).toHaveBeenCalledOnce();
     expect(session.getExecutionLease()).toBeNull();
   });

@@ -21,6 +21,12 @@ export class HookBus {
     return this.pendingCallbackCleanups.size > 0;
   }
 
+  assertNoPendingCallbackCleanup(): void {
+    if (this.hasPendingCallbackCleanup()) {
+      throw new Error('An inline hook callback is still cleaning up');
+    }
+  }
+
   async dispatch(
     event: HookEvent,
     input: HookInput,
@@ -30,9 +36,7 @@ export class HookBus {
     if (!hooks || hooks.length === 0) {
       return [];
     }
-    if (this.hasPendingCallbackCleanup()) {
-      throw new Error('An inline hook callback is still cleaning up');
-    }
+    this.assertNoPendingCallbackCleanup();
 
     options.signal?.throwIfAborted();
     const timeoutController = new AbortController();

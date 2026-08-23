@@ -1775,9 +1775,9 @@ class Session implements ISession {
     if (runtime) {
       let runtimeClosed = false;
       if (!this.runtimeEndAttempted) {
-        this.runtimeEndAttempted = true;
         try {
           await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+          this.runtimeEndAttempted = true;
         } catch (error) {
           errors.push(error);
         }
