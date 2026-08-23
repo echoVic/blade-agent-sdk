@@ -314,10 +314,9 @@ describe('SessionRuntime', () => {
     await expect(runtime.close()).rejects.toThrow('still has a tool execution cleaning up');
 
     release.resolve();
-    for (let index = 0; index < 10; index += 1) {
-      await Promise.resolve();
-    }
-    expect(executionPipeline.hasPendingExecutionCleanup()).toBe(false);
+    await vi.waitFor(() => {
+      expect(executionPipeline.hasPendingExecutionCleanup()).toBe(false);
+    });
 
     vi.useRealTimers();
     await runtime.close();
