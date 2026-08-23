@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.0.2] - 2026-08-23
+
+### Fixes
+
+- Remove unused production packages, upgrade vulnerable dependencies to patched releases, and reject known production vulnerabilities in CI.
+
 ## [5.0.1] - 2026-08-23
 
 ### Fixes
