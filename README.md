@@ -67,7 +67,7 @@ console.log(result.usage);
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
-- Runtime: optional workspace context, structured output, persistence, context compaction, token budgets, and traces
+- Runtime: optional workspace context, structured output, crash-safe local transcripts, context compaction, token budgets, and traces
 
 ## Steer an Active Request
 

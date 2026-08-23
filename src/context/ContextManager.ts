@@ -204,27 +204,22 @@ export class ContextManager {
    * 加载现有会话
    */
   async loadSession(sessionId: SessionId): Promise<boolean> {
-    try {
-      // 先尝试从内存加载
-      let contextData = this.memory.getContext();
+    // 先尝试从内存加载
+    let contextData = this.memory.getContext();
 
-      if (!contextData || contextData.layers.session.sessionId !== sessionId) {
-        const state = await this.sessionStore.loadState(sessionId);
-        if (!state) {
-          return false;
-        }
-
-        contextData = await this.buildContextDataFromState(state);
-        this.memory.setContext(contextData);
+    if (!contextData || contextData.layers.session.sessionId !== sessionId) {
+      const state = await this.sessionStore.loadState(sessionId);
+      if (!state) {
+        return false;
       }
 
-      this.currentSessionId = sessionId;
-      console.log(`会话已加载: ${sessionId}`);
-      return true;
-    } catch (error) {
-      console.error('加载会话失败:', error);
-      return false;
+      contextData = await this.buildContextDataFromState(state);
+      this.memory.setContext(contextData);
     }
+
+    this.currentSessionId = sessionId;
+    console.log(`会话已加载: ${sessionId}`);
+    return true;
   }
 
   /**

@@ -1,5 +1,8 @@
 import * as fs from 'node:fs/promises';
-import { JSONLStore } from '@/context/storage/JSONLStore.js';
+import {
+  JSONLStore,
+  JSONLStoreError,
+} from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
@@ -582,7 +585,15 @@ export class JsonlSessionStore implements SessionStore {
   private async readEntries(sessionId: SessionId): Promise<SessionEvent[]> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
-    return store.readAll();
+    const entries = await store.readAll();
+    const mismatched = entries.find((entry) => entry.sessionId !== sessionId);
+    if (mismatched) {
+      throw new JSONLStoreError(
+        'SESSION_JSONL_CORRUPT_LOG',
+        `Session JSONL record ${mismatched.id} belongs to ${mismatched.sessionId}, expected ${sessionId}`,
+      );
+    }
+    return entries;
   }
 
   private applyPartToMessage(params: {

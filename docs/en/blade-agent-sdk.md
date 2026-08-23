@@ -150,6 +150,9 @@ const session = await createSession({
 ```
 
 Persistent sessions can be restored with `resumeSession()` or forked with `forkSession()`. Set `persistSession: false` to force in-memory behavior even when a path is present.
+Local transcript writes are process-safe and crash-tail-aware; malformed
+committed records fail closed during restore. See [Session](./session) for the
+filesystem and native-lock constraints.
 
 ## Providers
 

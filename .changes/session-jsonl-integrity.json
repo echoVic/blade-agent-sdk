@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Serialize local Session transcript access across processes, durably sync appends, recover torn crash tails, reject path-unsafe Session IDs, and fail closed on committed record corruption.",
+  "zh-CN": "跨进程串行化本地 Session transcript 访问，持久同步追加写入，恢复崩溃造成的残缺尾部，拒绝路径不安全的 Session ID，并对已提交记录损坏执行 fail-closed。"
+}

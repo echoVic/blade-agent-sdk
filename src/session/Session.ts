@@ -294,7 +294,7 @@ class Session implements ISession {
           { cause: error },
         );
       }
-      this.logger.warn(`[Session] Failed to load history for session ${this.sessionId}:`, error);
+      throw error;
     }
     const durableProjection = this.durableJournal?.getProjection();
     const reconciledHistoryInputIds = new Set<string>(

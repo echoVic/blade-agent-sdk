@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 import {
-  unescapeProjectPath,
   getProjectStoragePath,
   getSessionFilePath,
+  getSessionFilePathFromStorageRoot,
+  unescapeProjectPath,
 } from '../pathUtils.js';
 import { SessionId } from '../../../types/branded.js';
 
@@ -51,6 +53,33 @@ describe('pathUtils', () => {
       const storagePath = getProjectStoragePath(STORAGE_ROOT, projectPath);
       const sessionPath = getSessionFilePath(STORAGE_ROOT, projectPath, SessionId('session-123'));
       expect(sessionPath.startsWith(storagePath)).toBe(true);
+    });
+
+    it.each([
+      '',
+      '../outside',
+      '..\\outside',
+      'nested/session',
+      'nested\\session',
+      'nul\0byte',
+    ])('rejects unsafe Session ID %j', (sessionId) => {
+      expect(() =>
+        getSessionFilePath(
+          STORAGE_ROOT,
+          '/Users/john/project',
+          SessionId(sessionId),
+        ),
+      ).toThrow(/path-segment-safe/);
+      expect(() =>
+        getSessionFilePathFromStorageRoot(STORAGE_ROOT, SessionId(sessionId)),
+      ).toThrow(/path-segment-safe/);
+    });
+
+    it('preserves safe opaque Session IDs', () => {
+      const sessionId = SessionId('session.v2_custom-123');
+
+      expect(getSessionFilePathFromStorageRoot(STORAGE_ROOT, sessionId))
+        .toBe(join(STORAGE_ROOT, 'sessions', `${sessionId}.jsonl`));
     });
   });
 });

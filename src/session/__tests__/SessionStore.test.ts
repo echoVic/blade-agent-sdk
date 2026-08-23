@@ -423,6 +423,31 @@ describe('JsonlSessionStore', () => {
     ]);
   });
 
+  it('rejects a transcript containing events for another Session', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const expectedSessionId = SessionId('expected-session');
+    const actualSessionId = SessionId('other-session');
+    const now = new Date().toISOString();
+    await new JSONLStore(
+      getSessionFilePathFromStorageRoot(workspaceRoot, expectedSessionId),
+    ).append(
+      sessionEvent(actualSessionId, now, 'foreign-session', 'session_created', {
+        sessionId: actualSessionId,
+        rootId: actualSessionId,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    await expect(
+      new JsonlSessionStore(workspaceRoot).loadState(expectedSessionId),
+    ).rejects.toMatchObject({
+      code: 'SESSION_JSONL_CORRUPT_LOG',
+      message: expect.stringContaining(`expected ${expectedSessionId}`),
+    });
+  });
+
   it('should preserve assistant reasoning content with tool calls for resume', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);

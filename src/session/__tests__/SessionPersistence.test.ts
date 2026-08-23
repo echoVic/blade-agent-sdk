@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LogEntry } from '../../types/logging.js';
 import { existsSync, mkdtempSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
@@ -314,5 +315,24 @@ describe('Session persistence', () => {
     expect(session.messages[0]?.content).toEqual(content);
 
     await session.close();
+  });
+
+  it('fails closed instead of resuming from a partially projected corrupt transcript', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionId = SessionId('session-corrupt');
+    await persistentStore.saveMessage(sessionId, 'user', 'preserve me');
+    await appendFile(
+      getSessionFilePathFromStorageRoot(workspaceRoot, sessionId),
+      'not-json\n',
+      'utf8',
+    );
+
+    await expect(resumeSession({
+      sessionId,
+      ...createOptions(workspaceRoot),
+    })).rejects.toMatchObject({
+      code: 'SESSION_JSONL_CORRUPT_LOG',
+    });
   });
 });

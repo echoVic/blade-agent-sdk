@@ -66,6 +66,18 @@ export function normalizeSessionStorageRoot(storageRoot: string): string {
     : getSessionStoragePath(storageRoot);
 }
 
+function sessionFileName(sessionId: SessionId): string {
+  if (
+    sessionId.length === 0
+    || sessionId.includes('\0')
+    || sessionId.includes('/')
+    || sessionId.includes('\\')
+  ) {
+    throw new TypeError('Session ID must be a non-empty path-segment-safe string');
+  }
+  return `${sessionId}.jsonl`;
+}
+
 /**
  * 获取项目的会话文件路径
  *
@@ -75,7 +87,7 @@ export function normalizeSessionStorageRoot(storageRoot: string): string {
  * @returns {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
 export function getSessionFilePath(storageRoot: string, projectPath: string, sessionId: SessionId): string {
-  return path.join(getProjectStoragePath(storageRoot, projectPath), `${sessionId}.jsonl`);
+  return path.join(getProjectStoragePath(storageRoot, projectPath), sessionFileName(sessionId));
 }
 
 /**
@@ -88,7 +100,7 @@ export function getSessionFilePathFromStorageRoot(
   storageRoot: string,
   sessionId: SessionId,
 ): string {
-  return path.join(normalizeSessionStorageRoot(storageRoot), `${sessionId}.jsonl`);
+  return path.join(normalizeSessionStorageRoot(storageRoot), sessionFileName(sessionId));
 }
 
 /**
