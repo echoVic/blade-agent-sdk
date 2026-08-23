@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.6] - 2026-08-23
+
+### Fixes
+
+- Prevent cancelled file hooks from spawning, contain descendants in owned POSIX process groups or Windows Jobs, and fail closed when cleanup cannot be proven.
+
 ## [5.3.5] - 2026-08-23
 
 ### Fixes
