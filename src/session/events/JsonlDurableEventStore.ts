@@ -1,4 +1,4 @@
-import { Mutex } from 'async-mutex';
+import { Mutex, withTimeout } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { mkdir, open, readFile, realpath, truncate } from 'node:fs/promises';
@@ -31,7 +31,8 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
 const EVENT_DIRECTORY = 'durable-events';
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
-const DEFAULT_STALE_LOCK_MS = 30_000;
+const LOCK_STALE_MS = 30_000;
+const LOCK_UPDATE_MS = 15_000;
 const LOCK_RETRY_DELAY_MS = 25;
 
 interface FileMutexEntry {
@@ -41,7 +42,12 @@ interface FileMutexEntry {
 
 const FILE_MUTEXES = new Map<string, FileMutexEntry>();
 
-async function runWithFileMutex<T>(filePath: string, callback: () => Promise<T>): Promise<T> {
+async function runWithFileMutex<T>(
+  filePath: string,
+  timeoutMs: number,
+  timeoutError: Error,
+  callback: () => Promise<T>,
+): Promise<T> {
   let entry = FILE_MUTEXES.get(filePath);
   if (!entry) {
     entry = { mutex: new Mutex(), users: 0 };
@@ -49,7 +55,7 @@ async function runWithFileMutex<T>(filePath: string, callback: () => Promise<T>)
   }
   entry.users += 1;
   try {
-    return await entry.mutex.runExclusive(callback);
+    return await withTimeout(entry.mutex, timeoutMs, timeoutError).runExclusive(callback);
   } finally {
     entry.users -= 1;
     if (entry.users === 0) {
@@ -61,7 +67,7 @@ async function runWithFileMutex<T>(filePath: string, callback: () => Promise<T>)
 export interface JsonlDurableEventStoreOptions {
   clock?: () => Date;
   eventIdFactory?: () => EventId;
-  /** Maximum time to wait for another process to release a Session log. */
+  /** Maximum total time to wait for local or cross-process Session lock ownership. */
   lockTimeoutMs?: number;
 }
 
@@ -125,8 +131,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
       }
     });
 
-    return this.runWithSessionLock(sessionId, 'write', async () => {
+    return this.runWithSessionLock(sessionId, 'write', async (assertLockHealthy) => {
       const loaded = await this.loadLog(sessionId);
+      assertLockHealthy();
       const previousSequence = loaded.events.at(-1)?.sequence ?? null;
       this.assertExpectedSequence(options.expectedLastSequence, previousSequence);
 
@@ -182,7 +189,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
         );
       }
 
-      await this.writeBatch(sessionId, validatedBatch, loaded);
+      await this.writeBatch(sessionId, validatedBatch, loaded, assertLockHealthy);
       return {
         events: structuredClone(validatedBatch.events),
         previousSequence,
@@ -203,8 +210,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
       );
     }
 
-    return this.runWithSessionLock(sessionId, 'read', async () => {
+    return this.runWithSessionLock(sessionId, 'read', async (assertLockHealthy) => {
       const { events } = await this.loadLog(sessionId);
+      assertLockHealthy();
       const headSequence = events.at(-1)?.sequence ?? null;
       const after = options.after;
       if (after !== undefined && (!Number.isSafeInteger(after) || after < 0)) {
@@ -233,8 +241,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
   }
 
   async getHeadSequence(sessionId: SessionId): Promise<EventSequence | null> {
-    return this.runWithSessionLock(sessionId, 'read', async () => {
+    return this.runWithSessionLock(sessionId, 'read', async (assertLockHealthy) => {
       const { events } = await this.loadLog(sessionId);
+      assertLockHealthy();
       return events.at(-1)?.sequence ?? null;
     });
   }
@@ -247,8 +256,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
   private async runWithSessionLock<T>(
     sessionId: SessionId,
     operation: 'read' | 'write',
-    callback: () => Promise<T>,
+    callback: (assertLockHealthy: () => void) => Promise<T>,
   ): Promise<T> {
+    const deadline = Date.now() + this.lockTimeoutMs;
     let lockTarget: string;
     try {
       await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
@@ -262,15 +272,30 @@ export class JsonlDurableEventStore implements DurableEventStore {
       );
     }
 
-    return runWithFileMutex(lockTarget, async () => {
+    const timeoutError = this.createLockTimeoutError(sessionId);
+    const localWaitMs = Math.max(0, deadline - Date.now());
+    return runWithFileMutex(lockTarget, localWaitMs, timeoutError, async () => {
       let compromised: Error | null = null;
-      const release = await this.acquireProcessLock(lockTarget, sessionId, (error) => {
+      const release = await this.acquireProcessLock(lockTarget, sessionId, deadline, (error) => {
         compromised = error;
       });
+      const operationErrorCode =
+        operation === 'write' ? 'DURABLE_EVENT_WRITE_FAILED' : 'DURABLE_EVENT_READ_FAILED';
+      const assertLockHealthy = (): void => {
+        if (compromised) {
+          throw new DurableEventStoreError(
+            operationErrorCode,
+            `Durable event ${operation} lost the Session lock for ${sessionId}`,
+            { cause: compromised },
+          );
+        }
+      };
 
       let result: T;
       try {
-        result = await callback();
+        assertLockHealthy();
+        result = await callback(assertLockHealthy);
+        assertLockHealthy();
       } catch (error) {
         try {
           await release();
@@ -289,9 +314,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
 
       if (lockError) {
         throw new DurableEventStoreError(
-          operation === 'write'
-            ? 'DURABLE_EVENT_WRITE_FAILED'
-            : 'DURABLE_EVENT_READ_FAILED',
+          operationErrorCode,
           `Durable event ${operation} failed while holding the Session lock for ${sessionId}`,
           { cause: lockError },
         );
@@ -303,19 +326,35 @@ export class JsonlDurableEventStore implements DurableEventStore {
   private async acquireProcessLock(
     filePath: string,
     sessionId: SessionId,
+    deadline: number,
     onCompromised: (error: Error) => void,
   ): Promise<() => Promise<void>> {
-    const deadline = Date.now() + this.lockTimeoutMs;
+    let attempted = false;
+    let previousLockError: unknown;
     while (true) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0 && (attempted || this.lockTimeoutMs > 0)) {
+        throw this.createLockTimeoutError(sessionId, previousLockError);
+      }
+      attempted = true;
       try {
-        return await lock(filePath, {
+        const lockPromise = lock(filePath, {
           realpath: false,
-          stale: DEFAULT_STALE_LOCK_MS,
-          update: Math.floor(DEFAULT_STALE_LOCK_MS / 2),
+          stale: LOCK_STALE_MS,
+          update: LOCK_UPDATE_MS,
           retries: 0,
           onCompromised,
         });
+        return await this.waitForLockAttempt(
+          lockPromise,
+          sessionId,
+          this.lockTimeoutMs === 0 ? null : deadline,
+          onCompromised,
+        );
       } catch (error) {
+        if (error instanceof DurableEventStoreError) {
+          throw error;
+        }
         if (!this.isLockHeldError(error)) {
           throw new DurableEventStoreError(
             'DURABLE_EVENT_LOCK_FAILED',
@@ -323,27 +362,81 @@ export class JsonlDurableEventStore implements DurableEventStore {
             { cause: error },
           );
         }
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) {
-          throw new DurableEventStoreError(
-            'DURABLE_EVENT_LOCK_TIMEOUT',
-            `Timed out acquiring durable event lock for session ${sessionId}`,
-            { cause: error },
-          );
+        previousLockError = error;
+        const retryWaitMs = deadline - Date.now();
+        if (retryWaitMs <= 0) {
+          throw this.createLockTimeoutError(sessionId, error);
         }
         await new Promise<void>((resolveDelay) => {
-          setTimeout(resolveDelay, Math.min(LOCK_RETRY_DELAY_MS, remainingMs));
+          setTimeout(resolveDelay, Math.min(LOCK_RETRY_DELAY_MS, retryWaitMs));
         });
       }
     }
   }
 
+  private async waitForLockAttempt(
+    lockPromise: Promise<() => Promise<void>>,
+    sessionId: SessionId,
+    deadline: number | null,
+    onCompromised: (error: Error) => void,
+  ): Promise<() => Promise<void>> {
+    if (deadline === null) {
+      return lockPromise;
+    }
+
+    return new Promise((resolveLock, rejectLock) => {
+      let timedOut = false;
+      const timeout = setTimeout(
+        () => {
+          timedOut = true;
+          rejectLock(this.createLockTimeoutError(sessionId));
+        },
+        Math.max(0, deadline - Date.now()),
+      );
+
+      lockPromise.then(
+        (release) => {
+          if (timedOut || Date.now() >= deadline) {
+            clearTimeout(timeout);
+            if (!timedOut) {
+              timedOut = true;
+              rejectLock(this.createLockTimeoutError(sessionId));
+            }
+            void release().catch((error: unknown) => {
+              onCompromised(error instanceof Error ? error : new Error(String(error)));
+            });
+            return;
+          }
+          clearTimeout(timeout);
+          resolveLock(release);
+        },
+        (error: unknown) => {
+          if (timedOut) {
+            return;
+          }
+          clearTimeout(timeout);
+          if (Date.now() >= deadline) {
+            timedOut = true;
+            rejectLock(this.createLockTimeoutError(sessionId, error));
+          } else {
+            rejectLock(error);
+          }
+        },
+      );
+    });
+  }
+
+  private createLockTimeoutError(sessionId: SessionId, cause?: unknown): DurableEventStoreError {
+    return new DurableEventStoreError(
+      'DURABLE_EVENT_LOCK_TIMEOUT',
+      `Timed out acquiring durable event lock for session ${sessionId}`,
+      { cause },
+    );
+  }
+
   private isLockHeldError(error: unknown): boolean {
     return (
-      typeof error === 'object'
-      && error !== null
-      && 'code' in error
-      && error.code === 'ELOCKED'
+      typeof error === 'object' && error !== null && 'code' in error && error.code === 'ELOCKED'
     );
   }
 
@@ -360,21 +453,30 @@ export class JsonlDurableEventStore implements DurableEventStore {
     sessionId: SessionId,
     batch: PersistedDurableEventBatch,
     loaded: LoadedLog,
+    assertLockHealthy: () => void,
   ): Promise<void> {
     const filePath = this.getFilePath(sessionId);
     try {
       await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
+      assertLockHealthy();
       if (loaded.totalBytes > loaded.committedBytes) {
         await truncate(filePath, loaded.committedBytes);
+        assertLockHealthy();
       }
       const file = await open(filePath, 'a', 0o600);
       try {
+        assertLockHealthy();
         await file.writeFile(`${JSON.stringify(batch)}\n`, 'utf8');
+        assertLockHealthy();
         await file.sync();
+        assertLockHealthy();
       } finally {
         await file.close();
       }
     } catch (error) {
+      if (error instanceof DurableEventStoreError) {
+        throw error;
+      }
       throw new DurableEventStoreError(
         'DURABLE_EVENT_WRITE_FAILED',
         `Failed to append durable events for session ${sessionId}`,

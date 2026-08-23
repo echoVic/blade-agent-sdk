@@ -106,7 +106,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
-// 可选：另一个进程持锁时最多等待 15 秒。
+// 可选：本进程队列或另一个进程占锁时最多等待 15 秒。
 const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
   lockTimeoutMs: 15_000,
 });
@@ -594,8 +594,8 @@ runtime 恢复。
 4. 调用文件 `fsync` 后才返回成功。
 
 `read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
-追加的中间状态。默认最多等待 10 秒；锁目录通过 heartbeat 保持有效，进程崩溃
-遗留且超过 30 秒的 stale lock 会被安全回收。
+追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算；锁目录
+通过 heartbeat 保持有效，进程崩溃遗留且超过 30 秒的 stale lock 会被安全回收。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
@@ -607,9 +607,10 @@ Store 视为敏感数据存储，并自行配置加密、保留期限和访问�
 互斥读写和原子 compare-and-append。它不提供跨主机 execution lease；多副本服务
 仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或 lease 保证单写者。
 
-`DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功但
-`fsync` 失败时，提交结果可能未知。调用方重试前必须重新读取 head，并通过
-`commandId` 等关联字段核对结果。当前 Store 尚不提供 command 自动去重。
+`DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功后
+`fsync` 失败、锁所有权失效或锁释放失败时，提交结果都可能未知。调用方重试前
+必须重新读取 head，并通过 `commandId` 等关联字段核对结果。当前 Store 尚不
+提供 command 自动去重。
 
 Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会影响恢复
 决策的 domain event 应进入 durable journal。
