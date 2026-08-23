@@ -58,6 +58,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `JsonlDurableEventStore` | root / local | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
+| `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
 
 ## 常量 / 枚举
@@ -94,6 +95,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ForkOptions` | fork 选项 |
 | `ForkSessionOptions` | Session fork 选项 |
 | `ForkSessionResult` | Session fork 结果 |
+| `SessionHandoffResult` | worker handoff 完成后的 journal head 与 recovery plan |
+| `SessionHandoffErrorCode` | worker handoff 的稳定错误码 |
 
 ### Durable Events
 

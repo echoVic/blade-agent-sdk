@@ -61,7 +61,7 @@ console.log(result.usage);
 
 - Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 可转向请求：持久化的 `now`、`next`、`later` 输入，支持取消和待处理输入查询
-- Durable 恢复：跨进程安全的本地 Journal、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
+- Durable 恢复：跨进程安全的本地 Journal、受控 worker handoff、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
 - 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用

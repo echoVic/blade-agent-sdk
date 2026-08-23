@@ -219,6 +219,45 @@ for await (const event of session.stream()) {
 
 Request failures are normally represented by stream events rather than thrown from the iteration body.
 
+## Hand off to another worker
+
+Use `suspendForHandoff()` during a controlled worker replacement:
+
+```ts
+const handoff = await session.suspendForHandoff();
+console.log(handoff.headSequence, handoff.recoveryPlan.action);
+
+interface SessionHandoffResult {
+  sessionId: SessionId;
+  headSequence: EventSequence;
+  recoveryPlan: DurableSessionRecoveryPlan;
+}
+```
+
+The method requires both `storagePath` and `durableEventStore`. It immediately
+rejects new Session operations, seals background subagent and shell admission,
+cancels local execution, waits for model/tool cleanup and transcript writes,
+then closes local runtime resources. It deliberately does not commit
+`turn_aborted`, `request_interrupted`, or `session_closed`.
+
+The returned recovery plan describes the exact durable frontier observed after
+the old worker stopped. `resume_request` can be passed directly to
+`resumeSession()`. Other actions must first be handled through
+`DurableSessionRecoveryCoordinator`; for example, `resume_turn` requires
+`prepareTurnRecovery()` before the replacement calls `resumeSession()`.
+
+Handoff fails before cancelling the root Request while a background subagent or
+Session-owned background shell is still running. Wait for or terminate that
+work, then retry. A rejected handoff after cancellation has begun leaves the
+local Session closed and must be recovered from the durable journal.
+`SessionHandoffError` exposes stable `code`, `activeSubagentIds`, and
+`activeShellIds` fields for orchestration.
+
+This API is a cooperative shutdown barrier, not a cross-host lease. Stop routing
+new work to the old worker before calling it, and use a transactional
+`DurableEventStore` with fencing when multiple hosts can execute the same
+Session.
+
 ## One-shot prompts
 
 ```ts
@@ -596,6 +635,7 @@ interface ISession extends AsyncDisposable {
   cancelInput(inputId: InputId): Promise<boolean>;
 
   abort(): Promise<void>;
+  suspendForHandoff(): Promise<SessionHandoffResult>;
   close(): Promise<void>;
   fork(options?: ForkSessionOptions): Promise<ISession>;
 

@@ -575,6 +575,23 @@ v3 batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 
 伪装包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前
 runtime 恢复。
 
+### 受控 worker handoff
+
+`session.suspendForHandoff()` 在恢复前提供显式的源 worker 屏障。它会封闭新的
+后台子 Agent 准入，协作取消活动执行，等待模型/工具收敛与 transcript 持久化，
+关闭本地 Runtime，并返回刷新后的 journal head 和 recovery plan。
+
+与 `abort()` 和 `close()` 不同，handoff 会保留未完成的 durable Request/Turn，
+不会写入 `turn_aborted`、`request_interrupted` 或 `session_closed`；尚未收敛的
+模型或工具边界会在方法返回前按保守语义完成记录。继任 worker 必须先按返回的
+plan 调用 `DurableSessionRecoveryCoordinator`，只在 plan 允许后调用
+`resumeSession()`。
+
+仍有后台子 Agent 或归属该 Session 的后台 shell 运行时，该屏障会在取消主
+Request 前拒绝；同时要求 durable journal 与 transcript storage 都已配置。
+handoff 只协调已知的源 worker 和继任 worker，不替代跨主机 execution lease
+或 fencing token。
+
 ## JSONL 持久化
 
 文件位于：

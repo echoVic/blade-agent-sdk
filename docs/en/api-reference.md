@@ -33,9 +33,14 @@ Types:
 `ForkSessionResult`, `HookCallback`, `HookInput`, `HookOutput`,
 `InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelInfo`,
 `PendingSessionInput`, `PromptResult`, `ProviderConfig`, `ProviderType`,
-`ResumeOptions`, `SendOptions`, `SessionOptions`, `SessionTool`, `StreamMessage`,
+`ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
+`SessionHandoffResult`, `SessionOptions`, `SessionTool`, `StreamMessage`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
 `ToolDefinition`, and `ToolResult`.
+
+Errors:
+
+- `SessionHandoffError`
 
 Constants:
 
