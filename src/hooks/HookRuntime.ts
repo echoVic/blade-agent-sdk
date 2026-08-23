@@ -166,6 +166,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PreToolUseRuntimeResult> {
+    options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextInput = { ...input };
 
@@ -200,16 +201,19 @@ export class HookRuntime {
       return { toolUseId, updatedInput: nextInput };
     }
 
-    const managerResult = await this.hookManager.executePreToolHooks(
-      toolName,
-      toolUseId,
-      nextInput,
-      {
-        projectDir,
-        sessionId: this.options.sessionId,
-        permissionMode: options.permissionMode ?? this.options.permissionMode,
-        abortSignal: options.abortSignal,
-      },
+    const managerResult = await this.runFileHooks(
+      options.abortSignal,
+      () => this.hookManager.executePreToolHooks(
+        toolName,
+        toolUseId,
+        nextInput,
+        {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: options.permissionMode ?? this.options.permissionMode,
+          abortSignal: options.abortSignal,
+        },
+      ),
     );
 
     if (managerResult.modifiedInput) {
@@ -248,22 +252,26 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
+    options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
     if (projectDir) {
-      const managerResult = await this.hookManager.executePostToolHooks(
-        toolName,
-        toolUseId,
-        input,
-        nextResult,
-        {
-          projectDir,
-          sessionId: this.options.sessionId,
-          permissionMode: options.permissionMode ?? this.options.permissionMode,
-          abortSignal: options.abortSignal,
-        },
+      const managerResult = await this.runFileHooks(
+        options.abortSignal,
+        () => this.hookManager.executePostToolHooks(
+          toolName,
+          toolUseId,
+          input,
+          nextResult,
+          {
+            projectDir,
+            sessionId: this.options.sessionId,
+            permissionMode: options.permissionMode ?? this.options.permissionMode,
+            abortSignal: options.abortSignal,
+          },
+        ),
       );
 
       nextResult = this.applyManagerPostToolResult(nextResult, managerResult);
@@ -292,25 +300,29 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
+    options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
     if (projectDir) {
-      const managerResult = await this.hookManager.executePostToolUseFailureHooks(
-        toolName,
-        toolUseId,
-        input,
-        result.error?.message || `Tool "${toolName}" failed`,
-        {
-          projectDir,
-          sessionId: this.options.sessionId,
-          permissionMode: options.permissionMode ?? this.options.permissionMode,
-          errorType: options.errorType,
-          isInterrupt: options.isInterrupt ?? false,
-          isTimeout: options.isTimeout ?? false,
-          abortSignal: options.abortSignal,
-        },
+      const managerResult = await this.runFileHooks(
+        options.abortSignal,
+        () => this.hookManager.executePostToolUseFailureHooks(
+          toolName,
+          toolUseId,
+          input,
+          result.error?.message || `Tool "${toolName}" failed`,
+          {
+            projectDir,
+            sessionId: this.options.sessionId,
+            permissionMode: options.permissionMode ?? this.options.permissionMode,
+            errorType: options.errorType,
+            isInterrupt: options.isInterrupt ?? false,
+            isTimeout: options.isTimeout ?? false,
+            abortSignal: options.abortSignal,
+          },
+        ),
       );
 
       if (managerResult.additionalContext) {
@@ -346,6 +358,7 @@ export class HookRuntime {
     updatedInput: JsonObject;
     decision?: PermissionResult;
   }> {
+    options.abortSignal?.throwIfAborted();
     let nextInput = input;
 
     if (this.bus.has(HookEvent.PermissionRequest)) {
@@ -382,16 +395,19 @@ export class HookRuntime {
       return { updatedInput: nextInput };
     }
 
-    const managerResult = await this.hookManager.executePermissionRequestHooks(
-      toolName,
-      ToolUseId(`permission_${toolName}_${Date.now()}`),
-      nextInput,
-      {
-        projectDir,
-        sessionId: this.options.sessionId,
-        permissionMode: this.options.permissionMode,
-        abortSignal: options.abortSignal,
-      },
+    const managerResult = await this.runFileHooks(
+      options.abortSignal,
+      () => this.hookManager.executePermissionRequestHooks(
+        toolName,
+        ToolUseId(`permission_${toolName}_${Date.now()}`),
+        nextInput,
+        {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: this.options.permissionMode,
+          abortSignal: options.abortSignal,
+        },
+      ),
     );
 
     if (managerResult.decision === 'deny') {
@@ -418,6 +434,7 @@ export class HookRuntime {
     message: UserMessageContent,
     options: { abortSignal?: AbortSignal } = {},
   ): Promise<UserMessageContent> {
+    options.abortSignal?.throwIfAborted();
     let nextMessage = message;
 
     if (this.bus.has(HookEvent.UserPromptSubmit)) {
@@ -454,16 +471,19 @@ export class HookRuntime {
     }
 
     const imageMeta = this.getImageMetadata(nextMessage);
-    const managerResult = await this.hookManager.executeUserPromptSubmitHooks(
-      this.getTextContent(nextMessage),
-      {
-        projectDir,
-        sessionId: this.options.sessionId,
-        permissionMode: this.options.permissionMode,
-        hasImages: imageMeta.hasImages,
-        imageCount: imageMeta.imageCount,
-        abortSignal: options.abortSignal,
-      },
+    const managerResult = await this.runFileHooks(
+      options.abortSignal,
+      () => this.hookManager.executeUserPromptSubmitHooks(
+        this.getTextContent(nextMessage),
+        {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: this.options.permissionMode,
+          hasImages: imageMeta.hasImages,
+          imageCount: imageMeta.imageCount,
+          abortSignal: options.abortSignal,
+        },
+      ),
     );
 
     if (!managerResult.proceed) {
@@ -491,14 +511,17 @@ export class HookRuntime {
       return;
     }
 
-    const result = await this.hookManager.executeSessionStartHooks({
-      projectDir,
-      sessionId: this.options.sessionId,
-      permissionMode: this.options.permissionMode,
-      isResume: payload.isResume,
-      resumeSessionId: payload.resumeSessionId,
-      abortSignal: payload.abortSignal,
-    });
+    const result = await this.runFileHooks(
+      payload.abortSignal,
+      () => this.hookManager.executeSessionStartHooks({
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: this.options.permissionMode,
+        isResume: payload.isResume,
+        resumeSessionId: payload.resumeSessionId,
+        abortSignal: payload.abortSignal,
+      }),
+    );
     if (!result.proceed) {
       throw new Error(result.warning || 'Session start aborted by hook manager');
     }
@@ -521,15 +544,18 @@ export class HookRuntime {
       return;
     }
 
-    const result = await this.hookManager.executeTaskCompletedHooks(payload.taskId, {
-      projectDir,
-      sessionId: this.options.sessionId,
-      permissionMode: this.options.permissionMode,
-      taskDescription: payload.taskDescription,
-      resultSummary: payload.resultSummary,
-      success: payload.success,
-      abortSignal: payload.abortSignal,
-    });
+    const result = await this.runFileHooks(
+      payload.abortSignal,
+      () => this.hookManager.executeTaskCompletedHooks(payload.taskId, {
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: this.options.permissionMode,
+        taskDescription: payload.taskDescription,
+        resultSummary: payload.resultSummary,
+        success: payload.success,
+        abortSignal: payload.abortSignal,
+      }),
+    );
     if (!result.allowCompletion) {
       throw new Error(result.blockReason || 'Task completion blocked by hook manager');
     }
@@ -550,6 +576,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<void> {
+    payload.abortSignal?.throwIfAborted();
     if (!this.sessionEndCallbacksAttempted) {
       this.bus.assertNoPendingCallbackCleanup();
       this.sessionEndCallbacksAttempted = true;
@@ -566,12 +593,15 @@ export class HookRuntime {
       return;
     }
 
-    await this.hookManager.executeSessionEndHooks(payload.reason, {
-      projectDir,
-      sessionId: this.options.sessionId,
-      permissionMode: this.options.permissionMode,
-      abortSignal: payload.abortSignal,
-    });
+    await this.runFileHooks(
+      payload.abortSignal,
+      () => this.hookManager.executeSessionEndHooks(payload.reason, {
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: this.options.permissionMode,
+        abortSignal: payload.abortSignal,
+      }),
+    );
   }
 
   async executeStopCheck(
@@ -580,18 +610,22 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }> {
+    payload.abortSignal?.throwIfAborted();
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {
       return { shouldStop: true };
     }
 
-    return this.hookManager.executeStopHooks({
-      projectDir,
-      sessionId: this.options.sessionId,
-      permissionMode: this.options.permissionMode,
-      reason: payload.reason,
-      abortSignal: payload.abortSignal,
-    });
+    return this.runFileHooks(
+      payload.abortSignal,
+      () => this.hookManager.executeStopHooks({
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: this.options.permissionMode,
+        reason: payload.reason,
+        abortSignal: payload.abortSignal,
+      }),
+    );
   }
 
   private async runCallbackGroup(
@@ -600,6 +634,7 @@ export class HookRuntime {
     abortSignal?: AbortSignal,
     timeoutMs = this.hookTimeoutMs,
   ): Promise<void> {
+    abortSignal?.throwIfAborted();
     if (!this.bus.has(event)) {
       return;
     }
@@ -615,6 +650,17 @@ export class HookRuntime {
         throw new Error(output.reason || `Hook ${event} aborted`);
       }
     }
+    abortSignal?.throwIfAborted();
+  }
+
+  private async runFileHooks<T>(
+    abortSignal: AbortSignal | undefined,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    abortSignal?.throwIfAborted();
+    const result = await operation();
+    abortSignal?.throwIfAborted();
+    return result;
   }
 
   private applyManagerPostToolResult(result: ToolResult, hookResult: {

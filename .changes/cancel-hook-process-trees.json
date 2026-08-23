@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Prevent cancelled file hooks from spawning and wait for their complete process trees to terminate before request cleanup finishes.",
+  "zh-CN": "阻止已取消的文件 Hook 启动进程，并在请求清理完成前等待其完整进程树退出。"
+}

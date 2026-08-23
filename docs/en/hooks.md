@@ -88,6 +88,13 @@ inline hook dispatches and Session close or handoff fail closed until it
 settles. These options do not replace the independent timeout configuration
 used by file hooks.
 
+File/command hooks check the Request signal before spawning. Cancellation or a
+file-hook timeout terminates the complete process tree, waits briefly after
+`SIGTERM`, escalates to `SIGKILL` when needed, and does not settle the Hook
+until the tree has exited. The runtime checks the signal again after each file
+hook, so the default `ignore` failure policy cannot resume an already-cancelled
+Request.
+
 `SessionEnd` callbacks are one-shot for a runtime shutdown attempt. A failed or
 timed-out callback is not invoked again when `close()` is retried; file hooks
 retain their existing retry behavior.

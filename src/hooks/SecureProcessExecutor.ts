@@ -6,11 +6,17 @@
 
 import { spawn } from 'node:child_process';
 import {
+  shellProcessSpawnOptions,
+  terminateProcessTree,
+} from '../tools/builtin/shell/processTree.js';
+import {
   HookExitCode,
   type HookExecutionContext,
   type HookInput,
   type ProcessResult,
 } from './types/HookTypes.js';
+
+const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
 
 /**
  * 流量限制器
@@ -47,6 +53,14 @@ export class SecureProcessExecutor {
   private readonly MAX_STDERR_SIZE = 1 * 1024 * 1024; // 1MB
   private readonly MAX_INPUT_SIZE = 100 * 1024; // 100KB
 
+  constructor(
+    private readonly terminationGraceMs = DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS,
+  ) {
+    if (!Number.isSafeInteger(terminationGraceMs) || terminationGraceMs <= 0) {
+      throw new TypeError('Hook process termination grace must be a positive safe integer');
+    }
+  }
+
   /**
    * 执行命令
    */
@@ -56,6 +70,10 @@ export class SecureProcessExecutor {
     context: HookExecutionContext,
     timeoutMs: number
   ): Promise<ProcessResult> {
+    if (context.abortSignal?.aborted) {
+      return this.createCancelledResult();
+    }
+
     // 1. 验证输入大小
     const inputJson = JSON.stringify(input);
     if (inputJson.length > this.MAX_INPUT_SIZE) {
@@ -72,7 +90,7 @@ export class SecureProcessExecutor {
       shell: true,
       env,
       cwd: context.projectDir,
-      timeout: timeoutMs,
+      ...shellProcessSpawnOptions(),
     });
 
     // 4. 流量控制
@@ -90,76 +108,121 @@ export class SecureProcessExecutor {
       stderr.append(data);
     });
 
-    // 5. 写入输入
-    try {
-      child.stdin.write(inputJson);
-      child.stdin.end();
-    } catch (err) {
-      child.kill('SIGTERM');
-      throw new Error(`Failed to write hook input: ${err}`);
-    }
-
-    // 6. 等待完成或超时
+    // 5. 等待完成、取消或超时
     return new Promise((resolve, reject) => {
-      let timedOut = false;
-      let resolved = false;
-
-      // 保存 abort handler 引用，以便后续移除
+      let settled = false;
+      let termination: 'abort' | 'timeout' | 'input-error' | undefined;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       let abortHandler: (() => void) | null = null;
 
-      const cleanup = () => {
-        // 移除 abort 监听器，避免内存泄漏
+      const cleanup = (): void => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = undefined;
+        }
         if (abortHandler && context.abortSignal) {
           context.abortSignal.removeEventListener('abort', abortHandler);
           abortHandler = null;
         }
       };
-
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGKILL');
-      }, timeoutMs);
+      const resolveOnce = (result: ProcessResult): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+      const rejectOnce = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const stop = (
+        reason: 'abort' | 'timeout' | 'input-error',
+        cause?: unknown,
+      ): void => {
+        if (settled || termination) {
+          return;
+        }
+        termination = reason;
+        cleanup();
+        void terminateProcessTree(
+          child.pid,
+          child,
+          this.terminationGraceMs,
+        ).then(
+          () => {
+            if (reason === 'input-error') {
+              rejectOnce(
+                new Error(`Failed to write hook input: ${String(cause)}`, {
+                  cause,
+                }),
+              );
+              return;
+            }
+            resolveOnce(
+              reason === 'timeout'
+                ? {
+                    stdout: stdout.getContent(),
+                    stderr: stderr.getContent(),
+                    exitCode: HookExitCode.TIMEOUT,
+                    timedOut: true,
+                  }
+                : this.createCancelledResult(stdout.getContent()),
+            );
+          },
+          rejectOnce,
+        );
+      };
 
       child.on('close', (code) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timer);
-        cleanup();
-
-        resolve({
+        if (termination) return;
+        resolveOnce({
           stdout: stdout.getContent(),
           stderr: stderr.getContent(),
-          exitCode: timedOut ? HookExitCode.TIMEOUT : (code ?? 1),
-          timedOut,
+          exitCode: code ?? 1,
+          timedOut: false,
         });
       });
 
-      child.on('error', (err) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timer);
-        cleanup();
-        reject(err);
+      child.on('error', (error) => {
+        if (termination && child.pid) {
+          return;
+        }
+        rejectOnce(error);
+      });
+      child.stdin.on('error', (error) => {
+        stop('input-error', error);
       });
 
-      // 处理中止信号
+      timeout = setTimeout(() => stop('timeout'), timeoutMs);
+
       if (context.abortSignal) {
-        abortHandler = () => {
-          if (resolved) return;
-          resolved = true;
-          clearTimeout(timer);
-          cleanup();
-          child.kill('SIGTERM');
-          resolve({
-            stdout: stdout.getContent(),
-            stderr: 'Hook cancelled by abort signal',
-            exitCode: 1,
-            timedOut: false,
-          });
-        };
-        context.abortSignal.addEventListener('abort', abortHandler);
+        abortHandler = () => stop('abort');
+        context.abortSignal.addEventListener('abort', abortHandler, { once: true });
+        if (context.abortSignal.aborted) {
+          abortHandler();
+        }
+      }
+
+      if (!termination) {
+        try {
+          child.stdin.write(inputJson);
+          child.stdin.end();
+        } catch (error) {
+          stop('input-error', error);
+        }
       }
     });
+  }
+
+  private createCancelledResult(stdout = ''): ProcessResult {
+    return {
+      stdout,
+      stderr: 'Hook cancelled by abort signal',
+      exitCode: HookExitCode.NON_BLOCKING_ERROR,
+      timedOut: false,
+    };
   }
 
   /**

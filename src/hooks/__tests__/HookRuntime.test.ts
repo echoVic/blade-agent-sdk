@@ -207,6 +207,61 @@ describe('HookRuntime', () => {
     expect(runtime.hasPendingCallbackCleanup()).toBe(false);
   });
 
+  it('does not invoke file hooks for an already-aborted event', async () => {
+    const cancellation = new Error('cancel before file hook');
+    const controller = new AbortController();
+    const executeUserPromptSubmitHooks = vi.fn(async () => ({
+      proceed: true,
+    }));
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-pre-abort'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+    controller.abort(cancellation);
+
+    await expect(
+      runtime.applyUserPromptSubmit('prompt', {
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+    expect(executeUserPromptSubmitHooks).not.toHaveBeenCalled();
+  });
+
+  it('preserves cancellation that arrives while a file hook is running', async () => {
+    const started = deferred();
+    const release = deferred();
+    const cancellation = new Error('cancel running file hook');
+    const controller = new AbortController();
+    const executeUserPromptSubmitHooks = vi.fn(async () => {
+      started.resolve();
+      await release.promise;
+      return { proceed: true };
+    });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-cancel'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+
+    const dispatch = runtime.applyUserPromptSubmit('prompt', {
+      abortSignal: controller.signal,
+    });
+    const cancellationResult = expect(dispatch).rejects.toBe(cancellation);
+    await started.promise;
+    controller.abort(cancellation);
+    release.resolve();
+
+    await cancellationResult;
+    expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
+  });
+
   it('rejects invalid inline hook timeout configuration', () => {
     for (const [name, value] of [
       ['hookTimeoutMs', 0],

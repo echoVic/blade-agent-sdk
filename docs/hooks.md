@@ -87,6 +87,11 @@ callback 必须监听 signal 并释放资源；如果取消后仍未结束，后
 dispatch 以及 Session close/handoff 都会 fail-closed，直至该 callback
 settle。上述选项不替代文件 Hook 自己的独立超时配置。
 
+文件/命令 Hook 会在启动子进程前检查 Request 信号。取消或文件 Hook 超时时，
+SDK 会终止完整进程树，先发送 `SIGTERM` 并短暂等待，必要时升级为 `SIGKILL`；
+在进程树退出前 Hook 不会结算。Runtime 还会在每个文件 Hook 返回后再次检查
+信号，因此默认的 `ignore` 失败策略不会让已取消的 Request 继续执行。
+
 `SessionEnd` callback 在一次 runtime 关闭流程中只执行一次；callback 失败或
 超时后，重试 `close()` 不会再次调用它；文件 Hook 保持原有重试行为。
 

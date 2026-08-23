@@ -103,3 +103,35 @@ export async function waitForProcessTreeExit(
   }
   return true;
 }
+
+/** Escalates process-tree termination and remains pending until the tree exits. */
+export async function terminateProcessTree(
+  pid: number | undefined,
+  child: ChildProcess | undefined,
+  gracePeriodMs: number,
+): Promise<void> {
+  const signalSafely = (signal: NodeJS.Signals): void => {
+    try {
+      signalProcessTree(pid, signal, child);
+    } catch {
+      // Keep escalating and polling; returning while the tree is alive is unsafe.
+    }
+  };
+
+  if (!pid) {
+    signalSafely('SIGTERM');
+    return;
+  }
+
+  signalSafely('SIGTERM');
+  if (await waitForProcessTreeExit(pid, child, gracePeriodMs)) {
+    return;
+  }
+
+  while (true) {
+    signalSafely('SIGKILL');
+    if (await waitForProcessTreeExit(pid, child, gracePeriodMs)) {
+      return;
+    }
+  }
+}

@@ -1150,7 +1150,7 @@ export class ExecutionPipeline {
       isInterrupt?: boolean;
     } = {},
   ): Promise<ToolResult> {
-    if (!this.hookRuntime) {
+    if (!this.hookRuntime || context.signal?.aborted) {
       return result;
     }
 
