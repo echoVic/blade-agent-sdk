@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../errors/ConfigError.js';
 import { ModelTimeoutError } from '../../errors/ModelTimeoutError.js';
-import type {
-  ChatConfig,
-  IChatService,
-} from '../ChatServiceInterface.js';
+import type { ChatConfig, IChatService } from '../ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../ChatServiceTimeout.js';
 
 function createService(
@@ -175,6 +172,38 @@ describe('wrapChatServiceWithTimeouts', () => {
     expect(providerSignal?.aborted).toBe(true);
   });
 
+  it('bounds provider cleanup when a closed generator does not settle', async () => {
+    vi.useFakeTimers();
+    let providerSignal: AbortSignal | undefined;
+    const service = createService(
+      {
+        async *streamChat(_messages, _tools, signal) {
+          providerSignal = signal;
+          try {
+            yield { content: 'first' };
+          } finally {
+            await new Promise(() => {});
+          }
+        },
+      },
+      { streamIdleTimeoutMs: 50 },
+    );
+    const stream = wrapChatServiceWithTimeouts(service).streamChat([]);
+    await stream.next();
+    const closing = stream.return(undefined);
+    let closed = false;
+    void closing.then(() => {
+      closed = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(49);
+    expect(closed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(closing).resolves.toMatchObject({ done: true });
+    expect(providerSignal?.aborted).toBe(true);
+  });
+
   it('applies one request deadline across retry-event yields', async () => {
     vi.useFakeTimers();
     let providerSignal: AbortSignal | undefined;
@@ -195,8 +224,7 @@ describe('wrapChatServiceWithTimeouts', () => {
       },
       { requestTimeoutMs: 50 },
     );
-    const stream = wrapChatServiceWithTimeouts(service)
-      .chatWithRetryEvents?.([]);
+    const stream = wrapChatServiceWithTimeouts(service).chatWithRetryEvents?.([]);
     expect(stream).toBeDefined();
     if (!stream) {
       throw new Error('Expected retry-event support');
@@ -206,36 +234,32 @@ describe('wrapChatServiceWithTimeouts', () => {
       done: false,
       value: { type: 'retry_attempt' },
     });
-    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(providerSignal?.aborted).toBe(true);
     await expect(stream.next()).rejects.toMatchObject({
       code: 'MODEL_REQUEST_TIMEOUT',
       timeoutMs: 50,
     });
-    expect(providerSignal?.aborted).toBe(true);
   });
 
   it('does not invent retry-event support', () => {
-    expect(
-      wrapChatServiceWithTimeouts(createService()).chatWithRetryEvents,
-    ).toBeUndefined();
+    expect(wrapChatServiceWithTimeouts(createService()).chatWithRetryEvents).toBeUndefined();
   });
 
   it('rejects every invalid timeout configuration before use or update', () => {
     const invalidValues = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648];
     for (const field of ['requestTimeoutMs', 'streamIdleTimeoutMs'] as const) {
       for (const value of invalidValues) {
-        expect(() =>
-          wrapChatServiceWithTimeouts(
-            createService({}, { [field]: value }),
-          )
-        ).toThrow(ConfigError);
+        expect(() => wrapChatServiceWithTimeouts(createService({}, { [field]: value }))).toThrow(
+          ConfigError,
+        );
       }
     }
 
     const wrapped = wrapChatServiceWithTimeouts(createService());
-    expect(() =>
-      wrapped.updateConfig({ requestTimeoutMs: Number.POSITIVE_INFINITY })
-    ).toThrow(ConfigError);
+    expect(() => wrapped.updateConfig({ requestTimeoutMs: Number.POSITIVE_INFINITY })).toThrow(
+      ConfigError,
+    );
     expect(wrapped.getConfig().requestTimeoutMs).toBeUndefined();
   });
 

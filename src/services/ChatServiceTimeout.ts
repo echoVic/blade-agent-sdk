@@ -1,9 +1,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import { ConfigError } from '../errors/ConfigError.js';
-import {
-  ModelTimeoutError,
-  type ModelTimeoutErrorCode,
-} from '../errors/ModelTimeoutError.js';
+import { ModelTimeoutError, type ModelTimeoutErrorCode } from '../errors/ModelTimeoutError.js';
 import type {
   ChatConfig,
   ChatResponse,
@@ -15,6 +12,7 @@ import type { RetryEvent } from './RetryPolicy.js';
 
 export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
 export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
+const MAX_MODEL_STREAM_CLEANUP_WAIT_MS = 5_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 interface ResolvedModelTimeouts {
@@ -22,17 +20,9 @@ interface ResolvedModelTimeouts {
   streamIdleTimeoutMs: number;
 }
 
-function resolveTimeout(
-  value: number | undefined,
-  fallback: number,
-  name: string,
-): number {
+function resolveTimeout(value: number | undefined, fallback: number, name: string): number {
   const resolved = value ?? fallback;
-  if (
-    !Number.isSafeInteger(resolved)
-    || resolved <= 0
-    || resolved > MAX_TIMER_DELAY_MS
-  ) {
+  if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > MAX_TIMER_DELAY_MS) {
     throw new ConfigError(
       `${name} must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`,
     );
@@ -69,17 +59,17 @@ function awaitWithTimeout<T>(
   timeoutMs: number,
   code: ModelTimeoutErrorCode,
   timeoutController: AbortController,
-  externalSignal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<T> {
-  if (externalSignal?.aborted) {
-    return Promise.reject(abortReason(externalSignal));
+  if (signal.aborted) {
+    return Promise.reject(abortReason(signal));
   }
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     const cleanup = (): void => {
       clearTimeout(timer);
-      externalSignal?.removeEventListener('abort', onAbort);
+      signal.removeEventListener('abort', onAbort);
     };
     const resolveOnce = (value: T): void => {
       if (settled) return;
@@ -94,7 +84,7 @@ function awaitWithTimeout<T>(
       reject(error);
     };
     const onAbort = (): void => {
-      rejectOnce(externalSignal ? abortReason(externalSignal) : undefined);
+      rejectOnce(abortReason(signal));
     };
     const timer = setTimeout(() => {
       const error = new ModelTimeoutError(code, timeoutMs);
@@ -102,10 +92,66 @@ function awaitWithTimeout<T>(
       rejectOnce(error);
     }, timeoutMs);
 
-    externalSignal?.addEventListener('abort', onAbort, { once: true });
-    Promise.resolve()
-      .then(operation)
-      .then(resolveOnce, rejectOnce);
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
+  });
+}
+
+function awaitWithSignal<T>(operation: () => PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(abortReason(signal));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => {
+      signal.removeEventListener('abort', onAbort);
+    };
+    const resolveOnce = (value: T): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const rejectOnce = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = (): void => {
+      rejectOnce(abortReason(signal));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
+  });
+}
+
+async function waitForGeneratorClose(
+  closing: PromiseLike<unknown>,
+  timeoutMs: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => {
+      clearTimeout(timer);
+    };
+    const resolveOnce = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const rejectOnce = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const timer = setTimeout(resolveOnce, Math.min(timeoutMs, MAX_MODEL_STREAM_CLEANUP_WAIT_MS));
+
+    closing.then(resolveOnce, rejectOnce);
   });
 }
 
@@ -124,12 +170,13 @@ async function runWithRequestTimeout<T>(
   externalSignal?: AbortSignal,
 ): Promise<T> {
   const timeoutController = new AbortController();
+  const signal = executionSignal(timeoutController, externalSignal);
   return await awaitWithTimeout(
-    () => operation(executionSignal(timeoutController, externalSignal)),
+    () => operation(signal),
     timeoutMs,
     'MODEL_REQUEST_TIMEOUT',
     timeoutController,
-    externalSignal,
+    signal,
   );
 }
 
@@ -143,38 +190,39 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
   const timeoutController = new AbortController();
   const signal = executionSignal(timeoutController, externalSignal);
   const source = createSource(signal);
-  const startedAt = performance.now();
   let completed = false;
   let timedOut = false;
+  const timeoutCode: ModelTimeoutErrorCode =
+    mode === 'request' ? 'MODEL_REQUEST_TIMEOUT' : 'MODEL_STREAM_IDLE_TIMEOUT';
+  const requestTimeoutError =
+    mode === 'request' ? new ModelTimeoutError(timeoutCode, timeoutMs) : undefined;
+  const requestTimer = requestTimeoutError
+    ? setTimeout(() => {
+        timedOut = true;
+        timeoutController.abort(requestTimeoutError);
+      }, timeoutMs)
+    : undefined;
+  const clearRequestTimer = (): void => {
+    if (requestTimer !== undefined) {
+      clearTimeout(requestTimer);
+    }
+  };
+  signal.addEventListener('abort', clearRequestTimer, { once: true });
 
   try {
     while (true) {
-      const remainingMs =
-        mode === 'request'
-          ? timeoutMs - (performance.now() - startedAt)
-          : timeoutMs;
-      if (remainingMs <= 0) {
-        const code =
-          mode === 'request'
-            ? 'MODEL_REQUEST_TIMEOUT'
-            : 'MODEL_STREAM_IDLE_TIMEOUT';
-        const error = new ModelTimeoutError(code, timeoutMs);
-        timedOut = true;
-        timeoutController.abort(error);
-        throw error;
-      }
-
       let step: IteratorResult<TYield, TReturn>;
       try {
-        step = await awaitWithTimeout(
-          () => source.next(),
-          Math.max(1, Math.ceil(remainingMs)),
+        step =
           mode === 'request'
-            ? 'MODEL_REQUEST_TIMEOUT'
-            : 'MODEL_STREAM_IDLE_TIMEOUT',
-          timeoutController,
-          externalSignal,
-        );
+            ? await awaitWithSignal(() => source.next(), signal)
+            : await awaitWithTimeout(
+                () => source.next(),
+                timeoutMs,
+                timeoutCode,
+                timeoutController,
+                signal,
+              );
       } catch (error) {
         timedOut = error instanceof ModelTimeoutError;
         throw error;
@@ -187,6 +235,8 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
       yield step.value;
     }
   } finally {
+    clearRequestTimer();
+    signal.removeEventListener('abort', clearRequestTimer);
     if (!completed) {
       if (!timeoutController.signal.aborted) {
         timeoutController.abort(new Error('Model stream closed before completion'));
@@ -195,7 +245,7 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
       if (timedOut || externalSignal?.aborted) {
         void closing.catch(() => {});
       } else {
-        await closing;
+        await waitForGeneratorClose(closing, timeoutMs);
       }
     }
   }
@@ -214,11 +264,7 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
     async chat(messages, tools, signal) {
       const { requestTimeoutMs } = resolveModelTimeouts(service.getConfig());
       return await runWithRequestTimeout(
-        (operationSignal) => service.chat(
-          messages,
-          tools,
-          operationSignal,
-        ),
+        (operationSignal) => service.chat(messages, tools, operationSignal),
         requestTimeoutMs,
         signal,
       );
@@ -226,11 +272,7 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
     async sideQuery(messages, signal, options) {
       const { requestTimeoutMs } = resolveModelTimeouts(service.getConfig());
       return await runWithRequestTimeout(
-        (operationSignal) => service.sideQuery(
-          messages,
-          operationSignal,
-          options,
-        ),
+        (operationSignal) => service.sideQuery(messages, operationSignal, options),
         requestTimeoutMs,
         signal,
       );
@@ -246,11 +288,7 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
     ): AsyncGenerator<StreamChunk, void, unknown> {
       const { streamIdleTimeoutMs } = resolveModelTimeouts(service.getConfig());
       yield* runGeneratorWithTimeout(
-        (operationSignal) => service.streamChat(
-          messages,
-          tools,
-          operationSignal,
-        ),
+        (operationSignal) => service.streamChat(messages, tools, operationSignal),
         streamIdleTimeoutMs,
         'idle',
         signal,
@@ -277,11 +315,7 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
     ): AsyncGenerator<RetryEvent, ChatResponse> {
       const { requestTimeoutMs } = resolveModelTimeouts(service.getConfig());
       return yield* runGeneratorWithTimeout(
-        (operationSignal) => chatWithRetryEvents(
-          messages,
-          tools,
-          operationSignal,
-        ),
+        (operationSignal) => chatWithRetryEvents(messages, tools, operationSignal),
         requestTimeoutMs,
         'request',
         signal,
