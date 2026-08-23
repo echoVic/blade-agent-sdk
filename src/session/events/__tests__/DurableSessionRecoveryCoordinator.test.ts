@@ -282,7 +282,7 @@ async function createJournal(
               type: DurableEventType.TURN_STARTED,
               requestId,
               turnId,
-              data: { turn: 1, model: 'test-model' },
+              data: { turn: 1, model: 'accepted-model' },
             },
             ...completedModelToolEvents([
               {
@@ -295,6 +295,7 @@ async function createJournal(
               type: DurableEventType.TOOL_SCHEDULED,
               requestId,
               turnId,
+              modelAttemptId,
               toolAttemptId,
               data: {
                 toolCallId,
@@ -1119,6 +1120,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1431,6 +1433,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1497,6 +1500,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1564,6 +1568,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1725,6 +1730,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1809,6 +1815,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
@@ -1846,6 +1853,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId: failedAttemptId,
           data: {
             toolCallId: failedCallId,
@@ -1887,6 +1895,70 @@ describe('DurableSessionRecoveryCoordinator', () => {
     expect(result.continuation).toContain('"originalJsonCharacters":');
     expect(result.continuation).not.toContain(oversized);
     expect(result.continuation.length).toBeLessThan(20_000);
+  });
+
+  it('bounds model-attempt history and model errors in recovery continuations', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    const oversizedError = 'model-error'.repeat(600);
+    const attempts = Array.from({ length: 20 }, (_, index) => {
+      const attemptId = ModelAttemptId(
+        `bounded-model-attempt-${String(index).padStart(2, '0')}`,
+      );
+      return [
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: attemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_FAILED,
+          requestId,
+          turnId,
+          modelAttemptId: attemptId,
+          data: {
+            error: {
+              message: index === 19 ? oversizedError : `failure-${index}`,
+            },
+          },
+        },
+      ] satisfies DurableEventDraft[];
+    }).flat();
+    await journal.commit({
+      commandId: CommandId('bounded-model-attempts'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        ...attempts,
+      ],
+    });
+
+    const result = await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('rollover-bounded-model-attempts'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(typeof result.continuation).toBe('string');
+    if (typeof result.continuation !== 'string') {
+      throw new Error('Expected a text recovery continuation');
+    }
+    expect(result.continuation).toContain('"modelAttemptsOmitted": 4');
+    expect(result.continuation).not.toContain('bounded-model-attempt-00');
+    expect(result.continuation).toContain('bounded-model-attempt-19');
+    expect(result.continuation).toContain('"kind": "truncated_recovery_value"');
+    expect(result.continuation).not.toContain(oversizedError);
   });
 
   it.each([

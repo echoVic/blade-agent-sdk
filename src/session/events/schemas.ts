@@ -305,13 +305,40 @@ const DurableEventEnvelopeSchema = z
     if (
       value.schemaVersion === DURABLE_EVENT_SCHEMA_VERSION
       && value.type === DurableEventTypeValue.TOOL_SCHEDULED
-      && value.data.modelInput === undefined
     ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['data', 'modelInput'],
-        message: `${value.type} requires modelInput in durable event schema v3`,
-      });
+      if (value.modelAttemptId === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['modelAttemptId'],
+          message: `${value.type} requires modelAttemptId in durable event schema v3`,
+        });
+      }
+      if (value.data.modelInput === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['data', 'modelInput'],
+          message: `${value.type} requires modelInput in durable event schema v3`,
+        });
+      }
+    }
+    if (
+      value.schemaVersion === 2
+      && value.type === DurableEventTypeValue.TOOL_SCHEDULED
+    ) {
+      if (value.modelAttemptId !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['modelAttemptId'],
+          message: `${value.type} does not allow modelAttemptId in durable event schema v2`,
+        });
+      }
+      if (value.data.modelInput !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['data', 'modelInput'],
+          message: `${value.type} does not allow modelInput in durable event schema v2`,
+        });
+      }
     }
   });
 
@@ -422,6 +449,10 @@ function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): 
       forbidField('toolAttemptId');
       return;
     case DurableEventTypeValue.TOOL_SCHEDULED:
+      requireField('requestId');
+      requireField('turnId');
+      requireField('toolAttemptId');
+      return;
     case DurableEventTypeValue.TOOL_STARTED:
     case DurableEventTypeValue.TOOL_COMPLETED:
     case DurableEventTypeValue.TOOL_FAILED:

@@ -61,6 +61,7 @@ interface ActiveTool {
 interface ActiveTurn {
   turnId: TurnId;
   turn: number;
+  modelAttemptId: ModelAttemptId | null;
   tools: Map<ToolUseId, ActiveTool>;
 }
 
@@ -313,8 +314,10 @@ export class SessionDurableRecorder implements
       }
       throw error;
     }
+    turn.modelAttemptId = attempt.modelAttemptId;
 
     return {
+      modelAttemptId: attempt.modelAttemptId,
       onCompleted: (response) => this.completeModelRequest(attempt, response),
       onFailed: (error) => this.failModelRequest(attempt, error),
       onAborted: (reason) => this.abortModelRequest(attempt, reason),
@@ -390,6 +393,11 @@ export class SessionDurableRecorder implements
 
   async onToolScheduled(event: ToolScheduledLifecycle): Promise<ToolInvocationLifecycle> {
     const turn = this.requireActiveTurn();
+    if (!event.modelAttemptId || event.modelAttemptId !== turn.modelAttemptId) {
+      throw new SessionDurableRecorderError(
+        `Tool call ${event.toolCallId} does not belong to the current model attempt`,
+      );
+    }
     if (turn.tools.has(event.toolCallId)) {
       throw new SessionDurableRecorderError(
         `Tool call ${event.toolCallId} was already scheduled in turn ${turn.turnId}`,
@@ -408,6 +416,7 @@ export class SessionDurableRecorder implements
           type: DurableEventType.TOOL_SCHEDULED,
           requestId: this.requestId,
           turnId: turn.turnId,
+          modelAttemptId: event.modelAttemptId,
           toolAttemptId: tool.toolAttemptId,
           data: {
             toolCallId: tool.toolCallId,
@@ -500,6 +509,7 @@ export class SessionDurableRecorder implements
     const activeTurn: ActiveTurn = {
       turnId: TurnId(nanoid()),
       turn,
+      modelAttemptId: null,
       tools: new Map(),
     };
     await this.commitRequestBoundary([
@@ -609,7 +619,7 @@ export class SessionDurableRecorder implements
     response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
   ): Promise<void> {
     this.requireModelAttempt(attempt);
-    await this.commitRequestBoundary([
+    await this.commitRebasableRequestBoundary([
       {
         type: DurableEventType.MODEL_REQUEST_COMPLETED,
         requestId: this.requestId,
@@ -628,7 +638,7 @@ export class SessionDurableRecorder implements
     error: unknown,
   ): Promise<void> {
     this.requireModelAttempt(attempt);
-    await this.commitRequestBoundary([
+    await this.commitRebasableRequestBoundary([
       {
         type: DurableEventType.MODEL_REQUEST_FAILED,
         requestId: this.requestId,
@@ -647,7 +657,7 @@ export class SessionDurableRecorder implements
     reason: ModelRequestAbortReason,
   ): Promise<void> {
     this.requireModelAttempt(attempt);
-    await this.commitRequestBoundary([
+    await this.commitRebasableRequestBoundary([
       {
         type: DurableEventType.MODEL_REQUEST_ABORTED,
         requestId: this.requestId,
@@ -873,6 +883,27 @@ export class SessionDurableRecorder implements
     events: Parameters<DurableSessionJournal['commit']>[0]['events'],
   ): Promise<DurableCommandCommitResult> {
     const commit = await this.commitAtCurrentHead(events);
+    this.updateLastBoundary(commit);
+    return commit;
+  }
+
+  private async commitRebasableRequestBoundary(
+    events: Parameters<DurableSessionJournal['commit']>[0]['events'],
+  ): Promise<DurableCommandCommitResult> {
+    this.assertBoundaryHealthy();
+    let commit: DurableCommandCommitResult;
+    try {
+      commit = await this.commit(events);
+    } catch (error) {
+      this.boundaryFailed = true;
+      this.boundaryFailure = error;
+      throw error;
+    }
+    this.updateLastBoundary(commit);
+    return commit;
+  }
+
+  private updateLastBoundary(commit: DurableCommandCommitResult): void {
     const boundary = commit.events.at(-1);
     if (!boundary) {
       throw new SessionDurableRecorderError(
@@ -880,7 +911,6 @@ export class SessionDurableRecorder implements
       );
     }
     this.lastBoundaryEventId = boundary.eventId;
-    return commit;
   }
 
   private async commitAtCurrentHead(

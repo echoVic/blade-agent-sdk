@@ -458,6 +458,9 @@ describe('Session durable events', () => {
       if (!modelRequest) {
         throw new Error('Missing model execution lifecycle');
       }
+      if (!modelRequest.modelAttemptId) {
+        throw new Error('Missing model attempt ID');
+      }
       await modelRequest.onCompleted({
         content: '',
         toolCalls: [
@@ -475,6 +478,7 @@ describe('Session durable events', () => {
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelAttemptId: modelRequest.modelAttemptId,
         modelInput: { file_path: '/tmp/file' },
         input: { file_path: '/tmp/file' },
         sideEffect: 'non_idempotent',
@@ -572,6 +576,9 @@ describe('Session durable events', () => {
       if (!modelRequest) {
         throw new Error('Missing model execution lifecycle');
       }
+      if (!modelRequest.modelAttemptId) {
+        throw new Error('Missing model attempt ID');
+      }
       await modelRequest.onCompleted({
         content: '',
         toolCalls: [
@@ -589,6 +596,7 @@ describe('Session durable events', () => {
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelAttemptId: modelRequest.modelAttemptId,
         modelInput: {},
         input: {},
         sideEffect: 'non_idempotent',
@@ -996,6 +1004,7 @@ describe('Session durable events', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
           toolAttemptId: ToolAttemptId('turn-rollover-tool-attempt'),
           data: {
             toolCallId: ToolUseId('turn-rollover-tool-call'),

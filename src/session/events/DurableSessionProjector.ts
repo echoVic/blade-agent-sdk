@@ -74,6 +74,7 @@ export interface DurableToolAttemptProjection {
   readonly toolAttemptId: ToolAttemptId;
   readonly toolCallId: ToolUseId;
   readonly toolName: string;
+  readonly modelAttemptId?: ModelAttemptId;
   readonly modelInput?: JsonValue;
   readonly input: JsonValue;
   readonly sideEffect: ToolSideEffect;
@@ -180,6 +181,7 @@ interface MutableToolAttemptProjection {
   toolAttemptId: ToolAttemptId;
   toolCallId: ToolUseId;
   toolName: string;
+  modelAttemptId?: ModelAttemptId;
   modelInput?: JsonValue;
   input: JsonValue;
   sideEffect: ToolSideEffect;
@@ -389,14 +391,22 @@ function assertToolMatchesModelAttempt(
   turn: MutableTurnProjection,
   toolCallId: ToolUseId,
   toolName: string,
+  modelAttemptId: ModelAttemptId | undefined,
   modelInput: JsonValue | undefined,
 ): void {
-  const modelAttempt = Array.from(turn.modelAttempts.values()).at(-1);
-  if (!modelAttempt) {
+  if (!modelAttemptId) {
     if (event.schemaVersion >= 3) {
-      invalid(event, `Tool call ${toolCallId} has no model attempt`);
+      invalid(event, `Tool call ${toolCallId} has no model attempt identity`);
     }
     return;
+  }
+  const modelAttempt = turn.modelAttempts.get(modelAttemptId);
+  const currentModelAttempt = Array.from(turn.modelAttempts.values()).at(-1);
+  if (
+    !modelAttempt
+    || currentModelAttempt?.modelAttemptId !== modelAttemptId
+  ) {
+    invalid(event, `Tool call ${toolCallId} does not belong to the current model attempt`);
   }
   if (modelAttempt.status === 'started') {
     if (modelInput === undefined) {
@@ -459,6 +469,9 @@ function assertCompletedResponseMatchesScheduledTools(
     seenToolCallIds.add(toolCall.id);
   }
   for (const tool of turn.toolAttempts.values()) {
+    if (tool.modelAttemptId !== event.modelAttemptId) {
+      continue;
+    }
     const declared = toolCalls.find((toolCall) => toolCall.id === tool.toolCallId);
     if (!declared || declared.name !== tool.toolName) {
       invalid(
@@ -998,6 +1011,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         turn,
         event.data.toolCallId,
         event.data.toolName,
+        event.modelAttemptId,
         event.data.modelInput,
       );
       state.seenToolAttemptIds.add(event.toolAttemptId);
@@ -1005,6 +1019,9 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         toolAttemptId: event.toolAttemptId,
         toolCallId: event.data.toolCallId,
         toolName: event.data.toolName,
+        ...(event.modelAttemptId
+          ? { modelAttemptId: event.modelAttemptId }
+          : {}),
         ...(event.data.modelInput !== undefined
           ? { modelInput: event.data.modelInput }
           : {}),

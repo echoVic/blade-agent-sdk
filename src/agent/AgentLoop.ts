@@ -12,6 +12,7 @@ import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import { getSteeringInterruptInputId } from '../types/abort.js';
+import type { ModelAttemptId } from '../types/branded.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import type {
@@ -262,6 +263,7 @@ export async function* agentLoop(
       effects: ToolEffect[];
       toolUseUuid: string | null;
     }> | undefined;
+    let modelAttemptId: ModelAttemptId | undefined;
 
     const stepSignal = runControl?.stepSignal ?? signal;
     try {
@@ -287,6 +289,7 @@ export async function* agentLoop(
       });
       turnResult = turnOutcome.chatResponse;
       streamingExecutionResults = turnOutcome.streamingExecutionResults;
+      modelAttemptId = turnOutcome.modelAttemptId;
     } catch (llmError) {
       const interruptInputId = getSteeringInterruptInputId(stepSignal);
       if (!signal?.aborted && interruptInputId && runControl) {
@@ -595,7 +598,9 @@ export async function* agentLoop(
       executionResults = await executeToolCalls({
         plan: executionPlan,
         executionPipeline,
-        executionContext: turnExecutionContext,
+        executionContext: modelAttemptId
+          ? { ...turnExecutionContext, modelAttemptId }
+          : turnExecutionContext,
         logger: config.logger,
         permissionMode: turnPermissionMode,
         signal,

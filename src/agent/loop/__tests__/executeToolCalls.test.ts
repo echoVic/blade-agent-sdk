@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
-import { SessionId } from '../../../types/branded.js';
+import { ModelAttemptId, SessionId } from '../../../types/branded.js';
 import type { JsonObject } from '../../../types/common.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
@@ -465,6 +465,7 @@ describe('executeToolCalls', () => {
       executionContext: {
         sessionId: SessionId('session-repaired-input'),
         userId: 'user-1',
+        modelAttemptId: ModelAttemptId('model-attempt-repaired-input'),
         lifecycle: {
           onToolScheduled,
         },
@@ -474,6 +475,7 @@ describe('executeToolCalls', () => {
     expect(onToolScheduled).toHaveBeenCalledWith({
       toolCallId: 'task-with-repaired-input',
       toolName: 'Task',
+      modelAttemptId: 'model-attempt-repaired-input',
       modelInput: { description: 'inspect' },
       input: {
         description: 'inspect',

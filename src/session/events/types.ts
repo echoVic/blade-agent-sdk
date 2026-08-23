@@ -242,7 +242,6 @@ type ModelEventType =
   | typeof DurableEventType.MODEL_REQUEST_ABORTED;
 
 type ToolEventType =
-  | typeof DurableEventType.TOOL_SCHEDULED
   | typeof DurableEventType.TOOL_STARTED
   | typeof DurableEventType.TOOL_COMPLETED
   | typeof DurableEventType.TOOL_FAILED
@@ -263,37 +262,47 @@ type DurableEventCorrelation<TType extends DurableEventType> =
           readonly modelAttemptId: ModelAttemptId;
           readonly commandId?: CommandId;
         }
-      : TType extends ToolEventType | PermissionEventType
-      ? {
-          readonly requestId: RequestId;
-          readonly turnId: TurnId;
-          readonly toolAttemptId: ToolAttemptId;
-          readonly modelAttemptId?: never;
-          readonly commandId?: CommandId;
-        }
-      : TType extends TurnEventType
+      : TType extends typeof DurableEventType.TOOL_SCHEDULED
         ? {
             readonly requestId: RequestId;
             readonly turnId: TurnId;
-            readonly modelAttemptId?: never;
+            readonly modelAttemptId?: ModelAttemptId;
+            readonly toolAttemptId: ToolAttemptId;
             readonly commandId?: CommandId;
           }
-        : TType extends typeof DurableEventType.INPUT_APPLIED
+        : TType extends ToolEventType | PermissionEventType
           ? {
               readonly requestId: RequestId;
-              readonly turnId?: TurnId;
+              readonly turnId: TurnId;
+              readonly toolAttemptId: ToolAttemptId;
               readonly modelAttemptId?: never;
               readonly commandId?: CommandId;
             }
-          : TType extends Exclude<RequestEventType, typeof DurableEventType.REQUEST_ACCEPTED>
+          : TType extends TurnEventType
             ? {
                 readonly requestId: RequestId;
+                readonly turnId: TurnId;
                 readonly modelAttemptId?: never;
+                readonly toolAttemptId?: never;
                 readonly commandId?: CommandId;
               }
-            : TType extends SessionEventType
-              ? { readonly commandId?: CommandId; readonly modelAttemptId?: never }
-              : never;
+            : TType extends typeof DurableEventType.INPUT_APPLIED
+              ? {
+                  readonly requestId: RequestId;
+                  readonly turnId?: TurnId;
+                  readonly modelAttemptId?: never;
+                  readonly toolAttemptId?: never;
+                  readonly commandId?: CommandId;
+                }
+              : TType extends Exclude<RequestEventType, typeof DurableEventType.REQUEST_ACCEPTED>
+                ? {
+                    readonly requestId: RequestId;
+                    readonly modelAttemptId?: never;
+                    readonly commandId?: CommandId;
+                  }
+                : TType extends SessionEventType
+                  ? { readonly commandId?: CommandId; readonly modelAttemptId?: never }
+                  : never;
 
 type DurableEventDraftVariant<TType extends DurableEventType> = {
   readonly type: TType;

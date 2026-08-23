@@ -7,6 +7,7 @@ import {
   CommandId,
   EventId,
   InputId,
+  ModelAttemptId,
   RequestId,
   SessionId,
   ToolUseId,
@@ -54,7 +55,7 @@ describe('SessionDurableRecorder', () => {
     toolCallId: ToolUseId,
     toolName: string,
     modelInput: JsonObject,
-  ): Promise<void> {
+  ): Promise<ModelAttemptId> {
     const modelRequest = await recorder.onModelRequestStarting({
       turn: 1,
       model: 'test-model',
@@ -73,6 +74,10 @@ describe('SessionDurableRecorder', () => {
         },
       ],
     });
+    if (!modelRequest.modelAttemptId) {
+      throw new Error('Expected durable model attempt ID');
+    }
+    return modelRequest.modelAttemptId;
   }
 
   afterEach(async () => {
@@ -116,10 +121,14 @@ describe('SessionDurableRecorder', () => {
         totalTokens: 12,
       },
     });
+    if (!modelRequest.modelAttemptId) {
+      throw new Error('Expected durable model attempt ID');
+    }
 
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId: modelRequest.modelAttemptId,
       modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect: 'non_idempotent',
@@ -198,14 +207,15 @@ describe('SessionDurableRecorder', () => {
         environment: { REGION: 'test' },
       },
     });
-    expect(
-      events.find(
-        (event) => event.type === DurableEventType.TOOL_SCHEDULED,
-      )?.data,
-    ).toMatchObject({
-      modelInput: { file_path: '/tmp/file' },
-      input: { file_path: '/tmp/file' },
-      sideEffect: 'non_idempotent',
+    expect(events.find(
+      (event) => event.type === DurableEventType.TOOL_SCHEDULED,
+    )).toMatchObject({
+      modelAttemptId: modelRequest.modelAttemptId,
+      data: {
+        modelInput: { file_path: '/tmp/file' },
+        input: { file_path: '/tmp/file' },
+        sideEffect: 'non_idempotent',
+      },
     });
     expect(
       (await store.read(sessionId)).events.find(
@@ -278,6 +288,129 @@ describe('SessionDurableRecorder', () => {
       },
     });
     expect(journal.getRecoveryPlan().action).toBe('resume_turn');
+  });
+
+  it('rejects a tool schedule from a superseded model attempt', async () => {
+    await recorder.recordAccepted(inputId, 'retry');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const first = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: false,
+    });
+    if (!first.modelAttemptId) {
+      throw new Error('Expected durable model attempt ID');
+    }
+    const activeTurnId = journal.getProjection().activeRequest?.activeTurn?.turnId;
+    if (!activeTurnId) {
+      throw new Error('Expected active turn ID');
+    }
+    const competingAttemptId = ModelAttemptId('competing-model-attempt');
+    const competingJournal = await DurableSessionJournal.open(store, sessionId);
+    await competingJournal.commit({
+      commandId: CommandId('competing-model-retry'),
+      events: [
+        {
+          type: DurableEventType.MODEL_REQUEST_FAILED,
+          requestId,
+          turnId: activeTurnId,
+          modelAttemptId: first.modelAttemptId,
+          data: {
+            error: { message: 'retry' },
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId: activeTurnId,
+          modelAttemptId: competingAttemptId,
+          data: {
+            model: 'test-model',
+            streaming: false,
+          },
+        },
+      ],
+    });
+
+    await expect(
+      recorder.onToolScheduled({
+        toolCallId: ToolUseId('stale-tool-call'),
+        toolName: 'Read',
+        modelAttemptId: first.modelAttemptId,
+        modelInput: {},
+        input: {},
+        sideEffect: 'pure',
+        interruptBehavior: 'cancel',
+      }),
+    ).rejects.toThrow(/does not belong to the current model attempt/);
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'reconcile_model_outcome',
+      activeModelAttempt: {
+        modelAttemptId: competingAttemptId,
+      },
+    });
+  });
+
+  it('serializes model completion after a concurrent tool schedule', async () => {
+    await recorder.recordAccepted(inputId, 'stream a tool');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const modelRequest = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: true,
+    });
+    if (!modelRequest.modelAttemptId) {
+      throw new Error('Expected durable model attempt ID');
+    }
+
+    const scheduled = recorder.onToolScheduled({
+      toolCallId: ToolUseId('streaming-tool-call'),
+      toolName: 'Read',
+      modelAttemptId: modelRequest.modelAttemptId,
+      modelInput: { file_path: '/tmp/file' },
+      input: { file_path: '/tmp/file' },
+      sideEffect: 'pure',
+      interruptBehavior: 'cancel',
+    });
+    const completed = modelRequest.onCompleted({
+      content: '',
+      toolCalls: [
+        {
+          id: 'streaming-tool-call',
+          type: 'function',
+          function: {
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+        },
+      ],
+    });
+
+    await expect(Promise.all([scheduled, completed])).resolves.toHaveLength(2);
+    expect((await store.read(sessionId)).events.slice(-2).map((event) => event.type)).toEqual([
+      DurableEventType.TOOL_SCHEDULED,
+      DurableEventType.MODEL_REQUEST_COMPLETED,
+    ]);
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'resume_turn',
+      activeModelAttempt: null,
+      retryableToolAttempts: [
+        expect.objectContaining({
+          toolCallId: 'streaming-tool-call',
+          modelAttemptId: modelRequest.modelAttemptId,
+        }),
+      ],
+    });
   });
 
   it('persists steering input application before preparation and confirms it once', async () => {
@@ -453,10 +586,15 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
-    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('tool-call-1'),
+      'Write',
+      {},
+    );
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
@@ -498,10 +636,15 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
-    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('tool-call-1'),
+      'Write',
+      {},
+    );
     await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
@@ -533,10 +676,15 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
-    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('tool-call-1'),
+      'Write',
+      {},
+    );
     await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
@@ -581,10 +729,15 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
-    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('tool-call-1'),
+      'Write',
+      {},
+    );
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
@@ -622,10 +775,15 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
-    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('tool-call-1'),
+      'Write',
+      {},
+    );
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
@@ -656,10 +814,11 @@ describe('SessionDurableRecorder', () => {
       maxTurns: 10,
     });
     const toolCallId = ToolUseId('tool-call-1');
-    await recordCompletedModelTool(toolCallId, 'Read', {});
+    const modelAttemptId = await recordCompletedModelTool(toolCallId, 'Read', {});
     const lifecycle = await recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'pure',
@@ -693,11 +852,12 @@ describe('SessionDurableRecorder', () => {
       maxTurns: 10,
     });
     const toolCallId = ToolUseId('tool-call-1');
-    await recordCompletedModelTool(toolCallId, 'Read', {});
+    const modelAttemptId = await recordCompletedModelTool(toolCallId, 'Read', {});
 
     const first = recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'pure',
@@ -706,6 +866,7 @@ describe('SessionDurableRecorder', () => {
     const duplicate = recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelAttemptId,
       modelInput: {},
       input: {},
       sideEffect: 'pure',

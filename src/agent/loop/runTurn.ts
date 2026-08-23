@@ -20,6 +20,7 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
+import type { ModelAttemptId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ExecutionEpoch } from '../ExecutionEpoch.js';
@@ -75,6 +76,7 @@ export type StreamingExecutionResult = ToolExecutionOutcome;
 
 export interface TurnOutcome {
   chatResponse: ChatResponse;
+  modelAttemptId?: ModelAttemptId;
   /** 若走了 streaming+tools 分支，工具已顺带执行完；非流式路径为 undefined */
   streamingExecutionResults?: StreamingExecutionResult[];
 }
@@ -99,12 +101,24 @@ export async function* runTurn(
   });
 
   let settlementAttempted = false;
+  const settleCompleted = async (response: ChatResponse): Promise<void> => {
+    if (!requestLifecycle || settlementAttempted) {
+      return;
+    }
+    settlementAttempted = true;
+    await requestLifecycle.onCompleted(response);
+  };
   try {
     let outcome: TurnOutcome;
     try {
       // 分支 1：streaming + 有工具 — 流式边解析边执行
       if (streaming && tools.length > 0) {
-        outcome = yield* runStreamingWithTools(input, tools);
+        outcome = yield* runStreamingWithTools(
+          input,
+          tools,
+          requestLifecycle?.modelAttemptId,
+          settleCompleted,
+        );
       } else if (streaming) {
         // 分支 2：streaming only — 纯流式，无工具执行
         const stream = streamChatResponse(
@@ -115,24 +129,24 @@ export async function* runTurn(
           logger,
         );
         let chatResponse: ChatResponse | undefined;
-      let streamCompleted = false;
-      try {
-        while (true) {
-          const { value, done } = await stream.next();
-          if (done) {
-            chatResponse = value;
-            streamCompleted = true;
-            break;
+        let streamCompleted = false;
+        try {
+          while (true) {
+            const { value, done } = await stream.next();
+            if (done) {
+              chatResponse = value;
+              streamCompleted = true;
+              break;
+            }
+            if (value.type === 'content_delta') {
+              yield { type: 'content_delta', delta: value.delta };
+            } else {
+              yield { type: 'thinking_delta', delta: value.delta };
+            }
           }
-          if (value.type === 'content_delta') {
-            yield { type: 'content_delta', delta: value.delta };
-          } else {
-            yield { type: 'thinking_delta', delta: value.delta };
-          }
-        }
-      } finally {
-        if (!streamCompleted) {
-          await stream.return(undefined as never);
+        } finally {
+          if (!streamCompleted) {
+            await stream.return(undefined as never);
           }
         }
         if (!chatResponse) {
@@ -143,26 +157,26 @@ export async function* runTurn(
         // 分支 3：非流式 + 带重试事件
         const retryGen = turnChatService.chatWithRetryEvents(messages, tools, signal);
         let chatResponse: ChatResponse | undefined;
-      let retryStreamCompleted = false;
-      try {
-        while (true) {
-          const { value, done } = await retryGen.next();
-          if (done) {
-            chatResponse = value;
-            retryStreamCompleted = true;
-            break;
+        let retryStreamCompleted = false;
+        try {
+          while (true) {
+            const { value, done } = await retryGen.next();
+            if (done) {
+              chatResponse = value;
+              retryStreamCompleted = true;
+              break;
+            }
+            yield {
+              type: 'api_retry',
+              attempt: value.attempt,
+              maxRetries: value.maxRetries,
+              delayMs: value.delayMs,
+              error: value.error,
+            };
           }
-          yield {
-            type: 'api_retry',
-            attempt: value.attempt,
-            maxRetries: value.maxRetries,
-            delayMs: value.delayMs,
-            error: value.error,
-          };
-        }
-      } finally {
-        if (!retryStreamCompleted) {
-          await retryGen.return(undefined as never);
+        } finally {
+          if (!retryStreamCompleted) {
+            await retryGen.return(undefined as never);
           }
         }
         if (!chatResponse) {
@@ -176,7 +190,7 @@ export async function* runTurn(
         };
       }
     } catch (error) {
-      if (requestLifecycle) {
+      if (requestLifecycle && !settlementAttempted) {
         settlementAttempted = true;
         try {
           if (signal?.aborted) {
@@ -196,17 +210,22 @@ export async function* runTurn(
       throw error;
     }
 
-    if (requestLifecycle) {
-      settlementAttempted = true;
+    if (requestLifecycle && !settlementAttempted) {
       if (signal?.aborted) {
+        settlementAttempted = true;
         await requestLifecycle.onAborted(
           isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
         );
       } else {
-        await requestLifecycle.onCompleted(outcome.chatResponse);
+        await settleCompleted(outcome.chatResponse);
       }
     }
-    return outcome;
+    return {
+      ...outcome,
+      ...(requestLifecycle?.modelAttemptId
+        ? { modelAttemptId: requestLifecycle.modelAttemptId }
+        : {}),
+    };
   } finally {
     if (requestLifecycle && !settlementAttempted) {
       await requestLifecycle.onAborted(
@@ -219,6 +238,8 @@ export async function* runTurn(
 async function* runStreamingWithTools(
   input: RunTurnInput,
   tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
+  modelAttemptId: ModelAttemptId | undefined,
+  onModelResponse: (response: ChatResponse) => Promise<void>,
 ): AsyncGenerator<AgentEvent, TurnOutcome> {
   const {
     turnState, messages, executionPipeline,
@@ -250,7 +271,9 @@ async function* runStreamingWithTools(
   const executionPromise = streamingExecutor
     .collectAndExecute(messages, tools, modelSignal, {
       executionPipeline,
-      executionContext,
+      executionContext: modelAttemptId
+        ? { ...executionContext, modelAttemptId }
+        : executionContext,
       logger,
       permissionMode,
       requestSignal: toolRequestSignal,
@@ -261,6 +284,7 @@ async function* runStreamingWithTools(
       onAfterToolExecEpochDiscard: toolHooks.onAfterExecEpochDiscard,
       onContentDelta: (delta) => queue.enqueue({ type: 'content_delta', delta }),
       onThinkingDelta: (delta) => queue.enqueue({ type: 'thinking_delta', delta }),
+      onModelResponse,
       onStreamEnd: () => {
         if (!signal?.aborted) queue.enqueue({ type: 'stream_end' });
       },
@@ -298,7 +322,11 @@ async function* runStreamingWithTools(
       throw new Error('Streaming executor completed without chat response');
     }
 
-    return { chatResponse, streamingExecutionResults };
+    return {
+      chatResponse,
+      ...(modelAttemptId ? { modelAttemptId } : {}),
+      streamingExecutionResults,
+    };
   } finally {
     if (!executionCompleted) {
       closeController.abort(new Error('Streaming model turn closed by consumer'));

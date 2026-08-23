@@ -349,6 +349,8 @@ interface ToolExecutionLifecycle {
 interface ToolScheduledLifecycle {
   toolCallId: ToolUseId;
   toolName: string;
+  modelAttemptId?: ModelAttemptId;
+  modelInput: JsonObject; // provider 原始参数
   input: JsonObject;
   sideEffect: ToolSideEffect;
   interruptBehavior: 'block' | 'cancel';

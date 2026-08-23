@@ -10,6 +10,7 @@ import {
 } from '../../tools/types/index.js';
 import {
     InputId,
+    ModelAttemptId,
     RequestId,
     SessionId,
 } from '../../types/branded.js';
@@ -363,6 +364,178 @@ describe('agentLoop', () => {
 
       expect(providerStreamClosed).toBe(true);
       expect(onAborted).toHaveBeenCalledWith('request_interrupted');
+    });
+
+    it('closes a retry-event provider stream when the consumer stops', async () => {
+      let retryStreamClosed = false;
+      const onAborted = vi.fn(async () => {});
+      const chatService = {
+        chatWithRetryEvents: vi.fn(async function* () {
+          try {
+            yield {
+              attempt: 1,
+              maxRetries: 3,
+              delayMs: 10,
+              error: new Error('retryable'),
+            };
+            await new Promise<never>(() => {});
+          } finally {
+            retryStreamClosed = true;
+          }
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const loop = agentLoop(baseConfig({
+        turnState: { chatService },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: vi.fn(async () => ({
+            onCompleted: vi.fn(async () => {}),
+            onFailed: vi.fn(async () => {}),
+            onAborted,
+          })),
+        },
+      }));
+
+      await loop.next();
+      await loop.next();
+      await expect(loop.next()).resolves.toMatchObject({
+        value: { type: 'api_retry', attempt: 1 },
+        done: false,
+      });
+      await loop.return(undefined as never);
+
+      expect(retryStreamClosed).toBe(true);
+      expect(onAborted).toHaveBeenCalledWith('request_interrupted');
+    });
+
+    it('closes the fallback provider stream when a tool turn consumer stops', async () => {
+      let streamCalls = 0;
+      let fallbackStreamClosed = false;
+      const onAborted = vi.fn(async () => {});
+      const chatService = {
+        streamChat: vi.fn(async function* (
+          _messages: readonly Message[],
+          _tools: unknown,
+          signal?: AbortSignal,
+        ) {
+          streamCalls += 1;
+          if (streamCalls === 1) {
+            return;
+          }
+          try {
+            yield { content: 'fallback partial' };
+            await new Promise<void>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            });
+          } finally {
+            fallbackStreamClosed = true;
+          }
+        }),
+        chat: vi.fn(async () => ({
+          content: 'unexpected',
+          toolCalls: [],
+        })),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const loop = agentLoop(baseConfig({
+        streaming: true,
+        turnState: {
+          chatService,
+          tools: [{ name: 'Read', description: 'read', parameters: {} }],
+        },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: vi.fn(async () => ({
+            onCompleted: vi.fn(async () => {}),
+            onFailed: vi.fn(async () => {}),
+            onAborted,
+          })),
+        },
+      }));
+
+      await loop.next();
+      await loop.next();
+      await expect(loop.next()).resolves.toMatchObject({
+        value: { type: 'content_delta', delta: 'fallback partial' },
+        done: false,
+      });
+      await loop.return(undefined as never);
+
+      expect(streamCalls).toBe(2);
+      expect(fallbackStreamClosed).toBe(true);
+      expect(onAborted).toHaveBeenCalledWith('request_interrupted');
+    });
+
+    it('keeps a completed model outcome when later streaming tool settlement fails', async () => {
+      const toolError = new Error('tool settlement failed');
+      const onCompleted = vi.fn(async () => {});
+      const onFailed = vi.fn(async () => {});
+      const modelAttemptId = ModelAttemptId('streaming-tool-model-attempt');
+      const chatService = {
+        streamChat: vi.fn(async function* () {
+          yield {
+            toolCalls: [
+              {
+                index: 0,
+                id: 'streaming-tool',
+                function: {
+                  name: 'Write',
+                  arguments: '{}',
+                },
+              },
+            ],
+          };
+          yield { finishReason: 'tool_calls' };
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const config = baseConfig({
+        streaming: true,
+        turnState: {
+          chatService,
+          tools: [{ name: 'Write', description: 'write', parameters: {} }],
+          executionContext: {
+            sessionId: SessionId('streaming-tool-settlement'),
+            userId: 'test-user',
+            lifecycle: {
+              onToolScheduled: async () => undefined,
+              onToolSettled: async () => {
+                throw toolError;
+              },
+            },
+          },
+        },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: vi.fn(async () => ({
+            modelAttemptId,
+            onCompleted,
+            onFailed,
+            onAborted: vi.fn(async () => {}),
+          })),
+        },
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toBe(toolError);
+      expect(onCompleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolCalls: [
+            expect.objectContaining({
+              id: 'streaming-tool',
+            }),
+          ],
+        }),
+      );
+      expect(onFailed).not.toHaveBeenCalled();
     });
 
     it('records a known model failure before propagating it', async () => {

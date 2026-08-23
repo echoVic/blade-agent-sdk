@@ -111,6 +111,7 @@ function toolScheduled(
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
     turnId,
+    modelAttemptId,
     toolAttemptId,
     data: {
       toolCallId,
@@ -885,6 +886,7 @@ describe('DurableSessionProjector', () => {
       ]).activeRequest?.activeTurn?.toolAttempts,
     ).toEqual([
       expect.objectContaining({
+        modelAttemptId,
         modelInput: { file_path: '/tmp/file' },
         input: { file_path: '/tmp/repaired-file' },
       }),
@@ -945,7 +947,74 @@ describe('DurableSessionProjector', () => {
         ...turnPrefix(),
         toolScheduled(),
       ]),
-    ).toThrow(/has no model attempt/);
+    ).toThrow(/does not belong to the current model attempt/);
+  });
+
+  it('rejects stale tool-attempt bindings and duplicate model tool-call IDs', () => {
+    const retryAttemptId = ModelAttemptId('model-attempt-2');
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_FAILED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { error: { message: 'retry' } },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        toolScheduled(),
+      ]),
+    ).toThrow(/does not belong to the current model attempt/);
+
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: toolCallId,
+                  name: 'Write',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+                {
+                  id: toolCallId,
+                  name: 'Write',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    ).toThrow(/reused tool call ID/);
   });
 
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
@@ -2022,6 +2091,7 @@ describe('DurableSessionProjector', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId: ToolAttemptId('attempt-2'),
           data: {
             toolCallId: ToolUseId('call-2'),

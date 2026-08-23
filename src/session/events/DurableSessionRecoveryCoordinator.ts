@@ -44,6 +44,7 @@ import {
 } from './types.js';
 
 const MAX_RECOVERY_VALUE_CHARS = 4_000;
+const MAX_RECOVERY_MODEL_ATTEMPTS = 16;
 
 export type DurableAcceptedRequestRecovery = DurableRequestProjection & {
   readonly maxTurns: number;
@@ -482,6 +483,8 @@ function buildTurnRecoveryContinuation(
   turn: NonNullable<DurableRequestProjection['activeTurn']>,
 ): UserMessageContent {
   const originalInput = parseRecoveryInput(request);
+  const retainedModelAttempts = turn.modelAttempts.slice(-MAX_RECOVERY_MODEL_ATTEMPTS);
+  const omittedModelAttempts = turn.modelAttempts.length - retainedModelAttempts.length;
   const toolOutcomes = turn.toolAttempts.map((tool) => {
     const permissionDecision =
       tool.permission?.status === 'resolved' ? tool.permission.decision : undefined;
@@ -494,6 +497,7 @@ function buildTurnRecoveryContinuation(
     return {
       toolCallId: tool.toolCallId,
       toolName: tool.toolName,
+      ...(tool.modelAttemptId ? { modelAttemptId: tool.modelAttemptId } : {}),
       input: boundedRecoveryValue(effectiveInput),
       sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
       executionStarted: tool.executionStarted,
@@ -516,9 +520,9 @@ function buildTurnRecoveryContinuation(
       sourceRequestId: request.requestId,
       sourceTurnId: turn.turnId,
       sourceTurn: turn.turn,
-      ...(turn.modelAttempts.length > 0
+      ...(retainedModelAttempts.length > 0
         ? {
-            modelAttempts: turn.modelAttempts.map((attempt) => ({
+            modelAttempts: retainedModelAttempts.map((attempt) => ({
               modelAttemptId: attempt.modelAttemptId,
               model: attempt.model,
               streaming: attempt.streaming,
@@ -526,9 +530,14 @@ function buildTurnRecoveryContinuation(
               ...(attempt.response
                 ? { response: boundedRecoveryValue(attempt.response) }
                 : {}),
-              ...(attempt.error ? { error: attempt.error } : {}),
+              ...(attempt.error
+                ? { error: boundedRecoveryValue(attempt.error) }
+                : {}),
               ...(attempt.abortReason ? { abortReason: attempt.abortReason } : {}),
             })),
+            ...(omittedModelAttempts > 0
+              ? { modelAttemptsOmitted: omittedModelAttempts }
+              : {}),
           }
         : {}),
       toolOutcomes,

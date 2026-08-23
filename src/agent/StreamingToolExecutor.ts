@@ -40,6 +40,7 @@ export interface StreamingToolExecutorConfig {
   hooks?: ToolExecutionHooks;
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
+  onModelResponse?: (response: ChatResponse) => void | Promise<void>;
   onStreamEnd?: () => void | Promise<void>;
   onToolExecutionUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
   onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
@@ -167,7 +168,14 @@ export class StreamingToolExecutor {
         return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
       }
 
+      const chatResponse: ChatResponse = {
+        content: fullContent,
+        reasoningContent: fullReasoningContent || undefined,
+        toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
+        usage: streamUsage,
+      };
       if (!signal?.aborted && this.isEpochActive(epoch)) {
+        await executionConfig.onModelResponse?.(chatResponse);
         await executionConfig.onStreamEnd?.();
       }
 
@@ -221,12 +229,7 @@ export class StreamingToolExecutor {
       }
 
       return {
-        chatResponse: {
-          content: fullContent,
-          reasoningContent: fullReasoningContent || undefined,
-          toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
-          usage: streamUsage,
-        },
+        chatResponse,
         executionResults: executionResults.filter(
           (result): result is ToolExecutionOutcome => result !== undefined,
         ),
@@ -320,7 +323,8 @@ export class StreamingToolExecutor {
       }
     }
 
-    if (!signal?.aborted && this.isEpochActive(epoch)) {
+    if (chatResponse && !signal?.aborted && this.isEpochActive(epoch)) {
+      await executionConfig.onModelResponse?.(chatResponse);
       await executionConfig.onStreamEnd?.();
     }
 

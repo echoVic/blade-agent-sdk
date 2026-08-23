@@ -163,6 +163,7 @@ const validDrafts: readonly DurableEventDraft[] = [
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
     turnId,
+    modelAttemptId,
     toolAttemptId,
     data: {
       toolCallId,
@@ -481,7 +482,7 @@ describe('durable event schemas', () => {
     ).toThrow(/requires durable event schema v3/);
   });
 
-  it('requires original model input for schema-v3 tool schedules only', () => {
+  it('requires model-attempt identity and original input for schema-v3 tool schedules only', () => {
     const toolScheduled = validDrafts.find(
       (draft) => draft.type === DurableEventType.TOOL_SCHEDULED,
     );
@@ -489,8 +490,9 @@ describe('durable event schemas', () => {
       throw new Error('Expected tool_scheduled fixture');
     }
     const { modelInput: _modelInput, ...legacyData } = toolScheduled.data;
+    const { modelAttemptId: _modelAttemptId, ...legacyToolScheduled } = toolScheduled;
     const envelope = {
-      ...toolScheduled,
+      ...legacyToolScheduled,
       data: legacyData,
       eventId: EventId('tool-without-model-input'),
       sequence: 1,
@@ -502,15 +504,37 @@ describe('durable event schemas', () => {
     expect(() =>
       parseDurableEventEnvelope({
         ...envelope,
+        modelAttemptId,
         schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
       }),
     ).toThrow(/requires modelInput/);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        data: toolScheduled.data,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      }),
+    ).toThrow(/requires modelAttemptId/);
     expect(
       parseDurableEventEnvelope({
         ...envelope,
         schemaVersion: 2,
       }).schemaVersion,
     ).toBe(2);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        modelAttemptId,
+        schemaVersion: 2,
+      }),
+    ).toThrow(/does not allow modelAttemptId/);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        data: toolScheduled.data,
+        schemaVersion: 2,
+      }),
+    ).toThrow(/does not allow modelInput/);
   });
 
   it('rejects a persisted batch whose event version does not match', () => {
