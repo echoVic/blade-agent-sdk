@@ -1,4 +1,5 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
@@ -1768,6 +1769,68 @@ describe('agentLoop', () => {
       );
       expect(onModelRequestStarting).toHaveBeenCalledTimes(2);
       expect(modelSettlements).toEqual(['aborted:steering', 'completed']);
+    });
+
+    it('does not downgrade a containment failure during a steering interrupt', async () => {
+      let resolveStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
+      });
+      const containmentError = new HookProcessContainmentError(
+        'Hook process cleanup failed',
+      );
+      const chat = vi.fn(async (
+        _messages: readonly Message[],
+        _tools: unknown,
+        signal?: AbortSignal,
+      ) => {
+        resolveStarted();
+        return await new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(containmentError),
+            { once: true },
+          );
+        });
+      });
+      const chatService = {
+        chat,
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-containment-steering');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const onInputApply = vi.fn(async ({ input }) => ({
+        role: 'user' as const,
+        content: input.content,
+      }));
+      const execution = collectEvents(agentLoop(baseConfig({
+        runControl,
+        turnState: { chatService },
+        onInputApply,
+      })));
+      const rejection = expect(execution).rejects.toBe(containmentError);
+
+      await started;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Change direction',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      await rejection;
+      expect(onInputApply).not.toHaveBeenCalled();
     });
 
     it('closes interrupted tool calls before applying now-priority input', async () => {

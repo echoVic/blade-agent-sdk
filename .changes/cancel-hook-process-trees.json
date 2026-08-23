@@ -1,5 +1,5 @@
 {
   "type": "fix",
-  "en": "Prevent cancelled file hooks from spawning and wait for their owned POSIX process groups or Windows Jobs to terminate before request cleanup finishes.",
-  "zh-CN": "阻止已取消的文件 Hook 启动进程，并在请求清理完成前等待其受管的 POSIX 进程组或 Windows Job 退出。"
+  "en": "Prevent cancelled file hooks from spawning, contain descendants in owned POSIX process groups or Windows Jobs, and fail closed when cleanup cannot be proven.",
+  "zh-CN": "阻止已取消的文件 Hook 启动进程，将后代进程纳入 SDK 持有的 POSIX 进程组或 Windows Job，并在无法确认清理完成时保持 fail-closed。"
 }

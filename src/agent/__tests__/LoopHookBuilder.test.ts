@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CompactionService } from '../../context/CompactionService.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
-import { SessionId } from '../../types/branded.js';
+import { InputId, RequestId, SessionId } from '../../types/branded.js';
 import { buildLoopConfig } from '../LoopHookBuilder.js';
 
 function createStopCheck(
@@ -85,5 +86,159 @@ describe('LoopHookBuilder stop hook', () => {
     await expect(
       stopCheck({ content: 'done', turn: 1 }),
     ).resolves.toEqual({ shouldStop: true });
+  });
+});
+
+describe('LoopHookBuilder request signal', () => {
+  it('uses the explicit request signal for steering input hooks and persistence', async () => {
+    const contextController = new AbortController();
+    const requestController = new AbortController();
+    contextController.abort(new Error('stale context signal'));
+    const applyUserPromptSubmit = vi.fn<HookRuntime['applyUserPromptSubmit']>(async (
+      content,
+      options = {},
+    ) => {
+      options.abortSignal?.throwIfAborted();
+      return content;
+    });
+    const getContextManager = vi.fn(() => undefined);
+    const config = buildLoopConfig({
+      context: {
+        messages: [],
+        userId: 'test-user',
+        sessionId: SessionId('loop-hook-builder-input-signal'),
+        signal: contextController.signal,
+      },
+      options: { signal: requestController.signal },
+      loopState: { conversationState: {} } as never,
+      maxTurns: 1,
+      isYoloMode: false,
+      getLastUuid: () => null,
+      setLastUuid: () => {},
+      executionPipeline: {} as never,
+      logger: { warn: vi.fn() } as never,
+      hookRuntime: { applyUserPromptSubmit } as unknown as HookRuntime,
+      modelManager: { getContextManager } as never,
+      runtimePatchManager: {} as never,
+      runControl: {
+        requestId: RequestId('request-input-signal'),
+      } as never,
+    });
+    const applyInput = config.hooks?.input?.apply;
+    if (!applyInput) {
+      throw new Error('Input hook was not configured');
+    }
+
+    await expect(applyInput({
+      input: {
+        inputId: InputId('steering-input'),
+        content: 'Apply this input',
+        priority: 'next',
+        acceptedAt: 1,
+      },
+      turn: 1,
+    })).resolves.toMatchObject({
+      role: 'user',
+      content: 'Apply this input',
+    });
+
+    expect(applyUserPromptSubmit).toHaveBeenCalledWith(
+      'Apply this input',
+      { abortSignal: requestController.signal },
+    );
+    expect(getContextManager).toHaveBeenCalledOnce();
+  });
+
+  it('uses the explicit request signal for every compaction path', async () => {
+    const contextController = new AbortController();
+    const requestController = new AbortController();
+    contextController.abort(new Error('stale context signal'));
+    const observedSignals: Array<AbortSignal | undefined> = [];
+    const checkAndCompactInLoop = vi.fn(async function* (
+      _conversationState,
+      runtimeContext: { signal?: AbortSignal },
+    ) {
+      observedSignals.push(runtimeContext.signal);
+      yield* [] as never[];
+      return false;
+    });
+    const reactiveCompact = vi.fn(async function* (
+      _conversationState,
+      runtimeContext: { signal?: AbortSignal },
+    ) {
+      observedSignals.push(runtimeContext.signal);
+      yield* [] as never[];
+      return false;
+    });
+    const compact = vi.spyOn(CompactionService, 'compact').mockImplementation(
+      async (_messages, options) => {
+        observedSignals.push(options.signal);
+        return {
+          success: true,
+          summary: 'summary',
+          preTokens: 10,
+          postTokens: 5,
+          filesIncluded: [],
+          compactedMessages: [],
+          boundaryMessage: { role: 'system', content: '' },
+          summaryMessage: { role: 'user', content: 'summary' },
+        };
+      },
+    );
+    const config = buildLoopConfig({
+      context: {
+        messages: [],
+        userId: 'test-user',
+        sessionId: SessionId('loop-hook-builder-compaction-signal'),
+        signal: contextController.signal,
+      },
+      options: { signal: requestController.signal },
+      loopState: {
+        conversationState: {
+          getContextMessages: () => [],
+        },
+        getChatService: () => ({
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+          }),
+        }),
+      } as never,
+      maxTurns: 1,
+      isYoloMode: false,
+      getLastUuid: () => null,
+      setLastUuid: () => {},
+      executionPipeline: {} as never,
+      logger: { error: vi.fn(), warn: vi.fn() } as never,
+      compactionHandler: {
+        checkAndCompactInLoop,
+        reactiveCompact,
+      } as never,
+      modelManager: {
+        getContextManager: () => undefined,
+      } as never,
+      runtimePatchManager: {} as never,
+    });
+    const beforeTurn = config.hooks?.turn?.beforeTurn;
+    const turnLimitCompact = config.hooks?.turn?.onTurnLimitCompact;
+    const recover = config.hooks?.recovery?.reactiveCompact;
+    if (!beforeTurn || !turnLimitCompact || !recover) {
+      throw new Error('Compaction hooks were not configured');
+    }
+
+    await beforeTurn({
+      turn: 1,
+      messages: [],
+      lastPromptTokens: 100,
+    }).next();
+    await turnLimitCompact({ contextMessages: [] });
+    await recover({ messages: [] }).next();
+
+    expect(observedSignals).toEqual([
+      requestController.signal,
+      requestController.signal,
+      requestController.signal,
+    ]);
+    compact.mockRestore();
   });
 });

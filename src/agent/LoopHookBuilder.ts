@@ -117,13 +117,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         }
         const hookContent = hookRuntime
           ? await hookRuntime.applyUserPromptSubmit(input.content, {
-              abortSignal: context.signal,
+              abortSignal: requestSignal,
             })
           : input.content;
         const content = options?.prepareInput
           ? await options.prepareInput(hookContent)
           : hookContent;
-        context.signal?.throwIfAborted();
+        requestSignal?.throwIfAborted();
         await context.assertExecutionLease?.();
         const messageId = await persistToJsonl(
           modelManager,
@@ -139,7 +139,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               context.subagentInfo,
             ),
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
         if (messageId) {
@@ -164,7 +164,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const runtimeCtx: CompactionRuntimeContext = {
           sessionId: context.sessionId,
           projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-          signal: context.signal,
+          signal: requestSignal,
           assertExecutionLease: context.assertExecutionLease,
           runWithExecutionLease: context.runWithExecutionLease,
         };
@@ -191,11 +191,11 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               baseURL: cs.baseUrl,
               customHeaders: cs.customHeaders,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              signal: context.signal,
+              signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
             },
           );
-          context.signal?.throwIfAborted();
+          requestSignal?.throwIfAborted();
           await context.assertExecutionLease?.();
           const continueMessage: Message = {
             role: 'user',
@@ -218,7 +218,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               );
             },
             context.assertExecutionLease,
-            context.signal,
+            requestSignal,
             context.runWithExecutionLease,
           );
 
@@ -229,7 +229,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           };
         } catch (compactError) {
           if (
-            context.signal?.aborted
+            requestSignal?.aborted
             || isExecutionLeaseFailure(compactError)
             || isHookProcessContainmentError(compactError)
           ) {
@@ -284,7 +284,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             setLastUuid(uuid);
           },
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
 
@@ -322,7 +322,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               }
             },
             context.assertExecutionLease,
-            context.signal,
+            requestSignal,
             context.runWithExecutionLease,
           );
         }
@@ -401,7 +401,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             }
           },
           context.assertExecutionLease,
-          context.signal,
+          requestSignal,
           context.runWithExecutionLease,
         );
       },
@@ -414,7 +414,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             const runtimeCtx: CompactionRuntimeContext = {
               sessionId: context.sessionId,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              signal: context.signal,
+              signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
             };
