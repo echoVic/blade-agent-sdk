@@ -22,6 +22,7 @@ import type {
   ToolResult,
 } from '../tools/types/index.js';
 import type {
+  EventSequence,
   InputId,
   RequestId,
   SessionId,
@@ -346,6 +347,12 @@ export interface ForkSessionResult {
   forkedAt?: string;
 }
 
+export interface SessionHandoffResult {
+  readonly sessionId: SessionId;
+  readonly headSequence: EventSequence;
+  readonly recoveryPlan: DurableSessionRecoveryPlan;
+}
+
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
   readonly messages: Message[];
@@ -361,6 +368,8 @@ export interface ISession extends AsyncDisposable {
   close(): Promise<void>;
   /** Abort after active cleanup and durable finalization when durableEventStore is configured. */
   abort(): Promise<void>;
+  /** Stop local execution without terminalizing the durable Session so another worker can recover it. */
+  suspendForHandoff(): Promise<SessionHandoffResult>;
 
   getDefaultContext(): RuntimeContext;
   setDefaultContext(context: RuntimeContext): void;

@@ -10,13 +10,18 @@ export type {
   SubagentSource,
 } from './agent/subagents/types.js';
 export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
-export type { SdkErrorOptions, SessionInputErrorCode } from './errors/index.js';
+export type {
+  SdkErrorOptions,
+  SessionHandoffErrorCode,
+  SessionInputErrorCode,
+} from './errors/index.js';
 // --- Error hierarchy ---
 export {
   AbortError,
   ConfigError,
   PermissionDeniedError,
   SdkError,
+  SessionHandoffError,
   SessionInputError,
   ToolExecutionError,
 } from './errors/index.js';
@@ -143,6 +148,7 @@ export type {
   ProviderType,
   ResumeOptions,
   SendOptions,
+  SessionHandoffResult,
   SessionOptions,
   SessionTool,
   StreamMessage,

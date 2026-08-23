@@ -2,99 +2,102 @@ import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import {
-    type InitialInputPreparation,
-    RECONCILED_INITIAL_INPUT,
+  type InitialInputPreparation,
+  RECONCILED_INITIAL_INPUT,
 } from '../agent/InitialInputPreparation.js';
 import type {
-    ChatContext,
-    LoopResult,
-    UserMessageContent,
+  ChatContext,
+  LoopResult,
+  UserMessageContent,
 } from '../agent/types.js';
+import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
-    type ContextSnapshot,
-    createContextSnapshot,
-    type RuntimeContext,
+  type ContextSnapshot,
+  createContextSnapshot,
+  type RuntimeContext,
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import {
-    CommandId,
-    InputId,
-    RequestId,
-    SessionId,
+  CommandId,
+  type EventSequence,
+  InputId,
+  RequestId,
+  SessionId,
 } from '../types/branded.js';
 import {
-    type BladeConfig,
-    type JsonObject,
-    type JsonValue,
-    type ModelConfig,
-    PermissionMode,
-    type ProviderType,
+  type BladeConfig,
+  type JsonObject,
+  type JsonValue,
+  type ModelConfig,
+  PermissionMode,
+  type ProviderType,
 } from '../types/common.js';
 import {
-    ActiveRequestController,
-    type RequestAbortReason,
+  ActiveRequestController,
+  type RequestAbortReason,
 } from './ActiveRequestController.js';
 import {
-    parseDurableRuntimeContext,
-    parseDurableUserMessageContent,
-    serializeDurableRuntimeContext,
+  parseDurableRuntimeContext,
+  parseDurableUserMessageContent,
+  serializeDurableRuntimeContext,
 } from './DurableRequestRecovery.js';
 import {
-    DurableEventSubscription,
-    DurableEventSubscriptionError,
-    type DurableEventSubscriptionOptions,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
-    DurableRequestProjection,
-    DurableSessionProjection,
-    DurableSessionRecoveryPlan,
+  DurableRequestProjection,
+  DurableSessionProjection,
+  DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
 import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
 import {
-    type DurableRequestFinish,
-    durableRequestFinishFromLoopResult,
-    DurableSessionRecoveryRequiredError,
-    SessionDurableRecorder,
-    SessionDurableRecorderError
+  type DurableRequestFinish,
+  durableRequestFinishFromLoopResult,
+  DurableSessionRecoveryRequiredError,
+  SessionDurableRecorder,
+  SessionDurableRecorderError
 } from './events/SessionDurableRecorder.js';
 import {
-    DurableEventType,
-    type DurableRequestInterruptReason,
+  DurableEventType,
+  type DurableRequestInterruptReason,
 } from './events/types.js';
 import {
-    SessionInputInbox,
+  SessionInputInbox,
 } from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
-    JsonlSessionStore,
-    NoopSessionStore,
-    type SessionSnapshot,
-    type SessionState,
-    type SessionStore,
+  JsonlSessionStore,
+  NoopSessionStore,
+  type SessionSnapshot,
+  type SessionState,
+  type SessionStore,
 } from './SessionStore.js';
 import { SessionStreamChannel } from './SessionStreamChannel.js';
 import type {
-    ForkSessionOptions,
-    InputSubmission,
-    ISession,
-    McpServerStatus,
-    McpToolInfo,
-    ModelInfo,
-    PendingSessionInput,
-    PromptResult,
-    ProviderConfig,
-    SendOptions,
-    SessionOptions,
-    StreamMessage,
-    StreamOptions,
-    TokenUsage,
-    ToolCallRecord,
+  ForkSessionOptions,
+  InputSubmission,
+  ISession,
+  McpServerStatus,
+  McpToolInfo,
+  ModelInfo,
+  PendingSessionInput,
+  PromptResult,
+  ProviderConfig,
+  SendOptions,
+  SessionHandoffResult,
+  SessionOptions,
+  StreamMessage,
+  StreamOptions,
+  TokenUsage,
+  ToolCallRecord,
 } from './types.js';
 import { InputPriority } from './types.js';
 
@@ -104,6 +107,7 @@ export interface ResumeOptions extends SessionOptions {
 
 interface SessionStreamExecution {
   readonly completion: Promise<void>;
+  readonly startedBeforeHandoff: boolean;
   releaseBackpressure(): void;
   isSettled(): boolean;
 }
@@ -136,7 +140,15 @@ type SessionExecutionState =
       execution: SessionStreamExecution;
     }
   | {
+      phase: 'suspending';
+      requestId: RequestId;
+      controller: ActiveRequestController;
+      durableRecorder: SessionDurableRecorder;
+      execution: SessionStreamExecution;
+    }
+  | {
       phase: 'closed';
+      disposition: 'terminal' | 'detached';
       execution?: SessionStreamExecution;
     };
 
@@ -159,10 +171,13 @@ class Session implements ISession {
   private readonly traces: AgentTrace[] = [];
   private readonly inputInbox = new SessionInputInbox();
   private readonly inputMutex = new Mutex();
+  private readonly streamExecutions = new Set<SessionStreamExecution>();
   private durableJournal: DurableSessionJournal | null = null;
   private durableAcceptedRequest: DurableRequestProjection | null = null;
   private durableClosePromise: Promise<void> | null = null;
   private closePromise: Promise<void> | null = null;
+  private handoffPromise: Promise<SessionHandoffResult> | null = null;
+  private handoffRequested = false;
 
   /**
    * 请求阶段状态机：
@@ -170,7 +185,8 @@ class Session implements ISession {
    * - pending: send() 已调用，等待 stream() 消费
    * - running: stream() 正在执行
    * - stopping: 已请求中止，等待 stream() 完成清理
-   * - closed: 会话已关闭
+   * - suspending: 正在停止本地执行并保留 durable 恢复边界
+   * - closed: 本地会话已关闭
    *
    * 防止在 streaming 期间再次调用 send() 产生并发 generator 竞态。
    */
@@ -205,7 +221,11 @@ class Session implements ISession {
   }
 
   get isClosed(): boolean {
-    return this.executionState.phase === 'closed';
+    return (
+      this.handoffRequested
+      || this.executionState.phase === 'suspending'
+      || this.executionState.phase === 'closed'
+    );
   }
 
   getDefaultContext(): RuntimeContext {
@@ -248,7 +268,10 @@ class Session implements ISession {
   }
 
   async initialize(): Promise<void> {
-    if (this.executionState.phase === 'closed') {
+    if (
+      this.executionState.phase === 'suspending'
+      || this.executionState.phase === 'closed'
+    ) {
       throw new Error('Session is closed');
     }
     if (this.initialized) return;
@@ -437,7 +460,10 @@ class Session implements ISession {
     await this.ensureInitialized();
 
     return this.inputMutex.runExclusive(async () => {
-      if (this.executionState.phase === 'closed') {
+      if (
+        this.executionState.phase === 'suspending'
+        || this.executionState.phase === 'closed'
+      ) {
         throw new Error('Session is closed');
       }
 
@@ -582,6 +608,12 @@ class Session implements ISession {
     await this.ensureInitialized();
     return this.inputMutex.runExclusive(async () => {
       if (
+        this.executionState.phase === 'suspending'
+        || this.executionState.phase === 'closed'
+      ) {
+        throw new Error('Session is closed');
+      }
+      if (
         (this.executionState.phase === 'running'
           || this.executionState.phase === 'stopping')
         && this.executionState.controller.isInitialInput(inputId)
@@ -658,9 +690,15 @@ class Session implements ISession {
     void completion.catch(() => undefined);
     const execution: SessionStreamExecution = {
       completion,
+      startedBeforeHandoff: !this.handoffRequested,
       releaseBackpressure: () => channel.releaseBackpressure(),
       isSettled: () => settled,
     };
+    this.streamExecutions.add(execution);
+    void completion.then(
+      () => this.streamExecutions.delete(execution),
+      () => this.streamExecutions.delete(execution),
+    );
     const source = this.executeStream(options, execution);
 
     void (async () => {
@@ -696,7 +734,14 @@ class Session implements ISession {
     options: StreamOptions | undefined,
     execution: SessionStreamExecution,
   ): AsyncGenerator<StreamMessage> {
-    await this.ensureInitialized();
+    try {
+      await this.ensureInitialized();
+    } catch (error) {
+      if (execution.startedBeforeHandoff && this.handoffRequested) {
+        return;
+      }
+      throw error;
+    }
     const runtime = this.getRuntime();
 
     // 声明请求所有权必须原子：相位检查、pending→running 转换与初始输入移除
@@ -765,6 +810,9 @@ class Session implements ISession {
     });
 
     if (!claimed) {
+      if (execution.startedBeforeHandoff && this.handoffRequested) {
+        return;
+      }
       throw new Error('No pending message. Call send() before stream().');
     }
 
@@ -807,6 +855,8 @@ class Session implements ISession {
       await this.notifyTraceSink(trace);
     };
     const signal = requestController.requestSignal;
+    const isHandoffRequested = () =>
+      durableRecorder?.isHandoffRequested() === true;
     const releaseBackpressureOnAbort = () => execution.releaseBackpressure();
     if (signal.aborted) {
       releaseBackpressureOnAbort();
@@ -820,19 +870,27 @@ class Session implements ISession {
         message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
       }
     } catch (error) {
+      const handingOff = isHandoffRequested();
       let terminalError = error;
-      try {
-        await finishDurableRequest({ status: 'failed', error });
-      } catch (durableError) {
-        terminalError = new AggregateError(
-          [error, durableError],
-          'Request setup and durable finalization both failed',
-        );
+      if (!handingOff) {
+        try {
+          await finishDurableRequest({ status: 'failed', error });
+        } catch (durableError) {
+          terminalError = new AggregateError(
+            [error, durableError],
+            'Request setup and durable finalization both failed',
+          );
+        }
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace('error', { error: errorMessage });
+      await finishTrace(handingOff ? 'aborted' : 'error', {
+        ...(handingOff ? { reason: 'session_handoff' } : { error: errorMessage }),
+      });
       try {
+        if (handingOff) {
+          return;
+        }
         if (durableRecorder && !durableFinishCommitted) {
           throw terminalError;
         }
@@ -896,11 +954,16 @@ class Session implements ISession {
 
       while (true) {
         const next = await stream.next();
-        if (
-          signal.aborted
-          && (!next.done || next.value.error?.type !== 'aborted')
-        ) {
-          return;
+        if (signal.aborted) {
+          const canObserveHandoffCompletion =
+            isHandoffRequested()
+            && (next.done || next.value.type === 'agent_end');
+          if (
+            !canObserveHandoffCompletion
+            && (!next.done || next.value.error?.type !== 'aborted')
+          ) {
+            return;
+          }
         }
         const { value, done } = next;
         if (done) {
@@ -1158,6 +1221,11 @@ class Session implements ISession {
       const isAborted = loopResult.error?.type === 'aborted';
       const shouldExit = loopResult.metadata?.shouldExitLoop;
 
+      if (isHandoffRequested() && !loopResult.success && !shouldExit) {
+        await finishTrace('aborted', { reason: 'session_handoff' });
+        return;
+      }
+
       if (!loopResult.success && !isAborted && !shouldExit) {
         const messageText = loopResult.error?.message || 'Unknown error';
         await finishDurableRequest({
@@ -1201,8 +1269,9 @@ class Session implements ISession {
         sessionId: this.sessionId,
       };
     } catch (error) {
+      const handingOff = isHandoffRequested();
       let terminalError = error;
-      if (!durableFinishAttempted) {
+      if (!handingOff && !durableFinishAttempted) {
         try {
           await finishDurableRequest({ status: 'failed', error });
         } catch (durableError) {
@@ -1214,7 +1283,12 @@ class Session implements ISession {
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace('error', { error: errorMessage });
+      await finishTrace(handingOff ? 'aborted' : 'error', {
+        ...(handingOff ? { reason: 'session_handoff' } : { error: errorMessage }),
+      });
+      if (handingOff) {
+        return;
+      }
       if (durableRecorder && !durableFinishCommitted) {
         throw terminalError;
       }
@@ -1240,27 +1314,32 @@ class Session implements ISession {
               )
             : error;
         }
-        try {
-          if (!durableFinishAttempted) {
-            await finishDurableRequest({
-              status: 'interrupted',
-              reason: this.getDurableInterruptReason(requestController),
-            });
+        if (!isHandoffRequested()) {
+          try {
+            if (!durableFinishAttempted) {
+              await finishDurableRequest({
+                status: 'interrupted',
+                reason: this.getDurableInterruptReason(requestController),
+              });
+            }
+          } catch (error) {
+            cleanupError = cleanupError
+              ? new AggregateError(
+                  [cleanupError, error],
+                  'Agent stream cleanup and durable finalization both failed',
+                )
+              : error;
           }
-        } catch (error) {
-          cleanupError = cleanupError
-            ? new AggregateError(
-                [cleanupError, error],
-                'Agent stream cleanup and durable finalization both failed',
-              )
-            : error;
         }
       }
       runtime.getHookRuntime().setTraceCollector(undefined);
       signal.removeEventListener('abort', releaseBackpressureOnAbort);
       requestController.dispose();
       await this.finishRequest(requestId);
-      if (this.executionState.phase === 'closed') {
+      if (
+        this.executionState.phase === 'closed'
+        && this.executionState.disposition === 'terminal'
+      ) {
         await this.closeDurableSession();
       }
       if (cleanupError) {
@@ -1273,7 +1352,9 @@ class Session implements ISession {
     if (this.closePromise) {
       return this.closePromise;
     }
-    const closePromise = this.closeInternal(true);
+    const closePromise = this.handoffPromise
+      ? this.handoffPromise.then(() => undefined)
+      : this.closeInternal('terminal');
     this.closePromise = closePromise;
     void closePromise.catch(() => {
       if (this.closePromise === closePromise) {
@@ -1283,11 +1364,58 @@ class Session implements ISession {
     return closePromise;
   }
 
-  async disposeAfterFork(): Promise<void> {
-    await this.closeInternal(false);
+  suspendForHandoff(): Promise<SessionHandoffResult> {
+    if (!this.options.durableEventStore) {
+      return Promise.reject(
+        new SessionHandoffError(
+          'SESSION_HANDOFF_NOT_CONFIGURED',
+          'Session handoff requires durableEventStore',
+        ),
+      );
+    }
+    if (!this.persistenceEnabled || !this.options.storagePath) {
+      return Promise.reject(
+        new SessionHandoffError(
+          'SESSION_HANDOFF_NOT_CONFIGURED',
+          'Session handoff requires persistent transcript storage',
+        ),
+      );
+    }
+    if (this.handoffPromise) {
+      return this.handoffPromise;
+    }
+    if (this.closePromise) {
+      return Promise.reject(
+        new SessionHandoffError(
+          'SESSION_HANDOFF_UNAVAILABLE',
+          'Session close has already started',
+        ),
+      );
+    }
+
+    const handoffPromise = this.suspendForHandoffInternal();
+    this.handoffRequested = true;
+    this.handoffPromise = handoffPromise;
+    void handoffPromise.catch(() => {
+      if (this.handoffPromise === handoffPromise) {
+        this.handoffPromise = null;
+        if (
+          this.executionState.phase !== 'suspending'
+          && this.executionState.phase !== 'closed'
+        ) {
+          this.handoffRequested = false;
+        }
+      }
+    });
+    return handoffPromise;
   }
 
-  private async closeInternal(recordDurableClose: boolean): Promise<void> {
+  async disposeAfterFork(): Promise<void> {
+    await this.closeInternal('detached');
+  }
+
+  private async closeInternal(disposition: 'terminal' | 'detached'): Promise<void> {
+    const recordDurableClose = disposition === 'terminal';
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
     const closeState = await this.inputMutex.runExclusive(async () => {
@@ -1295,6 +1423,7 @@ class Session implements ISession {
         this.executionState.execution?.releaseBackpressure();
         return {
           alreadyClosed: true,
+          disposition: this.executionState.disposition,
           execution: this.executionState.execution,
         };
       }
@@ -1315,17 +1444,22 @@ class Session implements ISession {
       } else if (
         this.executionState.phase === 'running'
         || this.executionState.phase === 'stopping'
+        || this.executionState.phase === 'suspending'
       ) {
-        this.executionState.controller.abortRequest({ kind: 'session_close' });
+        if (this.executionState.phase !== 'suspending') {
+          this.executionState.controller.abortRequest({ kind: 'session_close' });
+        }
         execution = this.executionState.execution;
         execution.releaseBackpressure();
       }
       this.executionState = {
         phase: 'closed',
+        disposition,
         ...(execution ? { execution } : {}),
       };
       return {
         alreadyClosed: false,
+        disposition,
         execution,
       };
     });
@@ -1342,32 +1476,18 @@ class Session implements ISession {
           this.executionState.phase === 'closed'
           && this.executionState.execution === closeState.execution
         ) {
-          this.executionState = { phase: 'closed' };
+          this.executionState = {
+            phase: 'closed',
+            disposition: closeState.disposition,
+          };
         }
       });
     }
 
     if (!closeState.alreadyClosed) {
-      this.cleanupHandle?.unregister();
-      this.cleanupHandle = null;
-      this.agent = null;
-      this.initialized = false;
-      const runtime = this.runtime;
-      this.runtime = null;
-      if (runtime) {
-        try {
-          await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
-        } catch (error) {
-          closeErrors.push(error);
-        }
-        try {
-          await runtime.close();
-        } catch (error) {
-          closeErrors.push(error);
-        }
-      }
+      closeErrors.push(...await this.releaseLocalRuntime());
     }
-    if (recordDurableClose) {
+    if (recordDurableClose && closeState.disposition === 'terminal') {
       try {
         await this.closeDurableSession();
       } catch (error) {
@@ -1385,7 +1505,204 @@ class Session implements ISession {
     }
   }
 
+  private async suspendForHandoffInternal(): Promise<SessionHandoffResult> {
+    if (!this.initialized) {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_UNAVAILABLE',
+        'Session is not initialized',
+      );
+    }
+    const runtime = this.getRuntime();
+    const journal = this.durableJournal;
+    if (!journal) {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_NOT_CONFIGURED',
+        'Session handoff requires durableEventStore',
+      );
+    }
+
+    const handoffState = await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase === 'closed') {
+        throw new SessionHandoffError(
+          'SESSION_HANDOFF_UNAVAILABLE',
+          'Session is already closed',
+        );
+      }
+      if (this.executionState.phase === 'stopping') {
+        throw new SessionHandoffError(
+          'SESSION_HANDOFF_UNAVAILABLE',
+          'Session request cancellation has already started',
+        );
+      }
+
+      const durableRecorder =
+        this.executionState.phase === 'pending'
+        || this.executionState.phase === 'running'
+          ? this.executionState.durableRecorder
+          : null;
+      if (
+        (this.executionState.phase === 'pending'
+          || this.executionState.phase === 'running')
+        && !durableRecorder
+      ) {
+        throw new SessionHandoffError(
+          'SESSION_HANDOFF_NOT_CONFIGURED',
+          'Active Session handoff requires a durable Request recorder',
+        );
+      }
+      durableRecorder?.assertHandoffReady();
+
+      const blockers = runtime.sealBackgroundWorkForHandoff();
+      if (
+        blockers.activeSubagentIds.length > 0
+        || blockers.activeShellIds.length > 0
+      ) {
+        throw new SessionHandoffError(
+          'SESSION_HANDOFF_ACTIVE_WORK',
+          'Session handoff requires all background work to settle first',
+          blockers,
+        );
+      }
+
+      if (this.executionState.phase === 'running') {
+        const { requestId, controller, execution } = this.executionState;
+        if (!durableRecorder) {
+          throw new SessionHandoffError(
+            'SESSION_HANDOFF_NOT_CONFIGURED',
+            'Running Session handoff requires a durable Request recorder',
+          );
+        }
+        durableRecorder.beginHandoff();
+        controller.abortRequest({ kind: 'session_handoff' });
+        execution.releaseBackpressure();
+        this.executionState = {
+          phase: 'suspending',
+          requestId,
+          controller,
+          durableRecorder,
+          execution,
+        };
+        const executions = [...this.streamExecutions];
+        for (const activeExecution of executions) {
+          activeExecution.releaseBackpressure();
+        }
+        return { durableRecorder, executions };
+      }
+
+      if (this.executionState.phase === 'pending') {
+        durableRecorder?.beginHandoff();
+        this.executionState.controller.abortRequest({ kind: 'session_handoff' });
+        this.executionState.controller.dispose();
+      }
+      this.executionState = {
+        phase: 'closed',
+        disposition: 'detached',
+      };
+      const executions = [...this.streamExecutions];
+      for (const activeExecution of executions) {
+        activeExecution.releaseBackpressure();
+      }
+      return {
+        durableRecorder,
+        executions,
+      };
+    });
+
+    const handoffErrors: unknown[] = [];
+    const executionResults = await Promise.allSettled(
+      handoffState.executions.map((execution) => execution.completion),
+    );
+    for (const result of executionResults) {
+      if (result.status === 'rejected') {
+        handoffErrors.push(result.reason);
+      }
+    }
+    if (handoffState.durableRecorder) {
+      try {
+        await handoffState.durableRecorder.finalizeHandoff();
+      } catch (error) {
+        handoffErrors.push(error);
+      }
+    }
+
+    await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase === 'suspending') {
+        this.executionState = {
+          phase: 'closed',
+          disposition: 'detached',
+        };
+      }
+    });
+    handoffErrors.push(...await this.releaseLocalRuntime());
+
+    let recoveryPlan: DurableSessionRecoveryPlan | null = null;
+    let headSequence: EventSequence | null = null;
+    try {
+      const projection = await journal.refresh();
+      if (projection.status !== 'open' || projection.headSequence === null) {
+        throw new SessionHandoffError(
+          'SESSION_HANDOFF_UNAVAILABLE',
+          `Durable Session ${this.sessionId} is not open after handoff`,
+        );
+      }
+      headSequence = projection.headSequence;
+      recoveryPlan = journal.getRecoveryPlan();
+    } catch (error) {
+      handoffErrors.push(error);
+    }
+
+    if (handoffErrors.length === 1) {
+      throw handoffErrors[0];
+    }
+    if (handoffErrors.length > 1) {
+      throw new AggregateError(
+        handoffErrors,
+        'Session handoff failed in multiple phases',
+      );
+    }
+    if (!recoveryPlan || headSequence === null) {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_UNAVAILABLE',
+        'Session handoff did not produce a durable recovery frontier',
+      );
+    }
+
+    this.logger.debug(`[Session] Suspended session ${this.sessionId} for handoff`);
+    return {
+      sessionId: this.sessionId,
+      headSequence,
+      recoveryPlan,
+    };
+  }
+
+  private async releaseLocalRuntime(): Promise<unknown[]> {
+    const errors: unknown[] = [];
+    this.cleanupHandle?.unregister();
+    this.cleanupHandle = null;
+    this.agent = null;
+    this.initialized = false;
+    const runtime = this.runtime;
+    this.runtime = null;
+    if (runtime) {
+      try {
+        await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await runtime.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    return errors;
+  }
+
   async abort(): Promise<void> {
+    if (this.handoffPromise) {
+      await this.handoffPromise;
+      return;
+    }
     const result = await this.inputMutex.runExclusive(async () => {
       if (this.executionState.phase === 'running') {
         const {
@@ -1405,6 +1722,9 @@ class Session implements ISession {
         };
         return { completion: execution.completion };
       } else if (this.executionState.phase === 'stopping') {
+        this.executionState.execution.releaseBackpressure();
+        return { completion: this.executionState.execution.completion };
+      } else if (this.executionState.phase === 'suspending') {
         this.executionState.execution.releaseBackpressure();
         return { completion: this.executionState.execution.completion };
       } else if (this.executionState.phase === 'pending') {
@@ -1487,7 +1807,10 @@ class Session implements ISession {
   }
 
   private async ensureInitialized(): Promise<void> {
-    if (this.executionState.phase === 'closed') {
+    if (
+      this.executionState.phase === 'suspending'
+      || this.executionState.phase === 'closed'
+    ) {
       throw new Error('Session is closed');
     }
     if (!this.initialized) {
@@ -1622,7 +1945,13 @@ class Session implements ISession {
     controller: ActiveRequestController,
   ): DurableRequestInterruptReason {
     const reason = controller.requestSignal.reason as RequestAbortReason | undefined;
-    return reason?.kind === 'session_close' ? 'session_close' : 'user_abort';
+    if (reason?.kind === 'session_close') {
+      return 'session_close';
+    }
+    if (reason?.kind === 'session_handoff') {
+      return 'process_restart';
+    }
+    return 'user_abort';
   }
 
   private async finishRequest(requestId: RequestId): Promise<void> {

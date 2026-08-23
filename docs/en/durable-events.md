@@ -617,6 +617,27 @@ versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
 cannot masquerade as containing v3 model events. Version 1 logs are not
 inferred silently and must be migrated before this runtime can resume them.
 
+### Controlled worker handoff
+
+`session.suspendForHandoff()` provides an explicit source-worker barrier before
+recovery. It seals new background-subagent admission, cooperatively cancels the
+active execution, waits for model/tool settlement and transcript persistence,
+closes local runtime resources, and returns the refreshed journal head and
+recovery plan.
+
+Unlike `abort()` and `close()`, handoff preserves an unfinished durable
+Request/Turn. It does not write `turn_aborted`, `request_interrupted`, or
+`session_closed`; any unfinished model or tool boundary is finalized
+conservatively before the result is returned. The replacement worker must use
+the returned plan with `DurableSessionRecoveryCoordinator` and only call
+`resumeSession()` once the plan permits it.
+
+The barrier rejects before cancelling the root Request if any background
+subagent or Session-owned background shell remains active. It also requires
+both the durable journal and transcript storage. Handoff coordinates a known
+source and successor; it does not replace a cross-host execution lease or
+fencing token.
+
 ## JSONL persistence
 
 Files are stored under:

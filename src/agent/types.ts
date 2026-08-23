@@ -50,6 +50,7 @@ export interface AgentProgress {
 
 export interface IBackgroundAgentReader {
   getAgent(agentId: AgentId): AgentSession | undefined;
+  getOwnerSessionId?(): SessionId | undefined;
   isRunning(agentId: AgentId): boolean;
   waitForCompletion(agentId: AgentId, timeout?: number): Promise<AgentSession | undefined>;
 }

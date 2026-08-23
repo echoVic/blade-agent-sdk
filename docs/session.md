@@ -1424,6 +1424,41 @@ JavaScript 边界上的取消是协作式的：自定义 provider 与工具必�
 `AbortSignal`，并在 `finally` 中释放资源；否则 Promise 会保持 pending，
 直到该操作自行结束。
 
+### suspendForHandoff()
+
+滚动部署或 worker 替换时，使用 `suspendForHandoff()` 停止当前本地执行：
+
+```ts
+const handoff = await session.suspendForHandoff();
+console.log(handoff.headSequence, handoff.recoveryPlan.action);
+
+interface SessionHandoffResult {
+  sessionId: SessionId;
+  headSequence: EventSequence;
+  recoveryPlan: DurableSessionRecoveryPlan;
+}
+```
+
+该方法要求同时配置 `storagePath` 和 `durableEventStore`。调用后会立即拒绝新的
+Session 操作，封闭后台子 Agent 与 shell 准入，取消本地执行，等待模型/工具
+清理和 transcript 写入完成，再关闭本地 Runtime。它刻意不提交 `turn_aborted`、
+`request_interrupted` 或 `session_closed`。
+
+返回的 recovery plan 对应旧 worker 停止后的精确 durable frontier。
+`resume_request` 可直接交给 `resumeSession()`；其他 action 必须先通过
+`DurableSessionRecoveryCoordinator` 处理。例如，`resume_turn` 需要先调用
+`prepareTurnRecovery()`，继任 worker 再调用 `resumeSession()`。
+
+仍有后台子 Agent 或归属该 Session 的后台 shell 运行时，handoff 会在取消主
+Request 前失败；应先等待或终止这些后台工作后重试。如果取消已经开始后 handoff
+失败，本地 Session 会保持关闭，调用方必须从 durable journal 恢复。
+`SessionHandoffError` 提供稳定的 `code`、`activeSubagentIds` 和
+`activeShellIds` 字段供调度层处理。
+
+该 API 是协作式 shutdown barrier，不是跨主机 lease。调用前必须停止向旧 worker
+路由新工作；多主机可能同时执行同一 Session 时，`DurableEventStore` 仍须提供
+transactional CAS 与 fencing。
+
 ### 管理待处理输入
 
 ```ts
@@ -1751,6 +1786,9 @@ interface ISession extends AsyncDisposable {
   /** 中止当前正在进行的请求 */
   abort(): Promise<void>;
 
+  /** 停止本地执行并保留 durable frontier，供继任 worker 恢复 */
+  suspendForHandoff(): Promise<SessionHandoffResult>;
+
   /** 获取当前默认运行时上下文 */
   getDefaultContext(): RuntimeContext;
 
@@ -1846,6 +1884,8 @@ export type {
   ForkSessionResult,
   ForkOptions,
   ResumeOptions,
+  SessionHandoffResult,
+  SessionHandoffErrorCode,
   ModelInfo,
   McpServerStatus,
   McpToolInfo,
@@ -1869,6 +1909,9 @@ export type {
   PermissionUpdate,
   AgentLogger,
 };
+
+// 错误
+export { SessionHandoffError };
 
 // 常量枚举
 export {

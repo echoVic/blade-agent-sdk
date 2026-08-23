@@ -10,6 +10,7 @@ import type { SessionInputInbox } from './SessionInputInbox.js';
 export type RequestAbortReason =
   | { kind: 'user_abort' }
   | { kind: 'session_close' }
+  | { kind: 'session_handoff' }
   | { kind: 'external_abort'; cause?: unknown };
 
 export class ActiveRequestController implements AgentRunControl {

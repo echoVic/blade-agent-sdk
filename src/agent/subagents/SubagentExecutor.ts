@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { BladeConfig } from '../../types/common.js';
+import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';
 import { runSubagent } from './runSubagent.js';
@@ -18,6 +19,7 @@ export class SubagentExecutor {
     private config: SubagentConfig,
     private bladeConfig: BladeConfig,
     private readonly subagentRegistry?: SubagentRegistry,
+    private readonly backgroundAgentManager?: BackgroundAgentManager,
   ) {}
 
   /**
@@ -34,6 +36,7 @@ export class SubagentExecutor {
         config: this.config,
         bladeConfig: this.bladeConfig,
         subagentRegistry: this.subagentRegistry,
+        backgroundAgentManager: this.backgroundAgentManager,
         prompt: context.prompt,
         agentId,
         parentSessionId: context.parentSessionId,

@@ -767,6 +767,217 @@ describe('SessionDurableRecorder', () => {
     expect((await store.read(sessionId)).events.at(-1)?.type).toBe(DurableEventType.TOOL_STARTED);
   });
 
+  it('preserves the active Turn when a Request is suspended for handoff', async () => {
+    await recorder.recordAccepted(inputId, 'handoff');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: true,
+    });
+
+    expect(recorder.beginHandoff()).toBe(true);
+    await recorder.recordAgentEvent({
+      type: 'turn_end',
+      turn: 1,
+      hasToolCalls: false,
+    });
+    await expect(
+      recorder.finish({
+        status: 'interrupted',
+        reason: 'process_restart',
+      }),
+    ).resolves.toBe(true);
+    await recorder.finalizeHandoff();
+
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'resume_turn',
+      requestId,
+    });
+    expect((await store.read(sessionId)).events.map((event) => event.type).slice(-2)).toEqual([
+      DurableEventType.MODEL_REQUEST_STARTED,
+      DurableEventType.MODEL_REQUEST_ABORTED,
+    ]);
+    await expect(
+      recorder.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: true,
+      }),
+    ).rejects.toThrow(/suspended for worker handoff/);
+  });
+
+  it('marks an unsettled started tool outcome unknown during handoff', async () => {
+    await recorder.recordAccepted(inputId, 'handoff tool');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const modelAttemptId = await recordCompletedModelTool(
+      ToolUseId('handoff-tool-call'),
+      'Write',
+      {},
+    );
+    const lifecycle = await recorder.onToolScheduled({
+      toolCallId: ToolUseId('handoff-tool-call'),
+      toolName: 'Write',
+      modelAttemptId,
+      modelInput: {},
+      input: {},
+      sideEffect: 'non_idempotent',
+      interruptBehavior: 'block',
+    });
+    await lifecycle.onExecutionStarted?.({
+      input: {},
+      sideEffect: 'non_idempotent',
+    });
+
+    recorder.beginHandoff();
+    await recorder.onToolSettled({
+      toolCallId: ToolUseId('handoff-tool-call'),
+      toolName: 'Write',
+      result: {
+        status: 'error',
+        model: 'interrupted',
+        error: {
+          type: ToolErrorType.INTERRUPTED,
+          message: 'worker handoff',
+        },
+      },
+    });
+    await recorder.finalizeHandoff();
+
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'reconcile_tool_outcomes',
+      requestId,
+      unknownToolAttempts: [
+        expect.objectContaining({
+          toolCallId: 'handoff-tool-call',
+          status: 'outcome_unknown',
+        }),
+      ],
+    });
+    expect((await store.read(sessionId)).events.at(-1)?.type).toBe(
+      DurableEventType.TOOL_OUTCOME_UNKNOWN,
+    );
+  });
+
+  it('cancels scheduled tools and pending permissions without ending the handoff Turn', async () => {
+    await recorder.recordAccepted(inputId, 'handoff permission');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const toolCallId = ToolUseId('handoff-permission-tool');
+    const modelAttemptId = await recordCompletedModelTool(
+      toolCallId,
+      'Write',
+      {},
+    );
+    const lifecycle = await recorder.onToolScheduled({
+      toolCallId,
+      toolName: 'Write',
+      modelAttemptId,
+      modelInput: {},
+      input: {},
+      sideEffect: 'non_idempotent',
+      interruptBehavior: 'block',
+    });
+    await lifecycle.onPermissionRequested?.(
+      { message: 'Allow write?' },
+      {},
+    );
+
+    recorder.beginHandoff();
+    await recorder.onToolSettled({
+      toolCallId,
+      toolName: 'Write',
+      result: {
+        status: 'error',
+        model: 'cancelled',
+        error: {
+          type: ToolErrorType.INTERRUPTED,
+          message: 'cancelled',
+        },
+      },
+    });
+    await recorder.finalizeHandoff();
+
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'resume_turn',
+      pendingPermissions: [],
+      cancelableToolAttempts: [],
+    });
+    expect((await store.read(sessionId)).events.map((event) => event.type).slice(-2)).toEqual([
+      DurableEventType.PERMISSION_RESOLVED,
+      DurableEventType.TOOL_CANCELLED,
+    ]);
+  });
+
+  it('opens a recovery Turn when handoff lands between tool-backed Turns', async () => {
+    await recorder.recordAccepted(inputId, 'continue after tool');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const toolCallId = ToolUseId('completed-handoff-tool');
+    const modelAttemptId = await recordCompletedModelTool(
+      toolCallId,
+      'Read',
+      {},
+    );
+    const lifecycle = await recorder.onToolScheduled({
+      toolCallId,
+      toolName: 'Read',
+      modelAttemptId,
+      modelInput: {},
+      input: {},
+      sideEffect: 'pure',
+      interruptBehavior: 'cancel',
+    });
+    await lifecycle.onExecutionStarted?.({
+      input: {},
+      sideEffect: 'pure',
+    });
+    await recorder.onToolSettled({
+      toolCallId,
+      toolName: 'Read',
+      result: {
+        status: 'success',
+        model: 'done',
+      },
+    });
+    await recorder.recordAgentEvent({
+      type: 'turn_end',
+      turn: 1,
+      hasToolCalls: true,
+    });
+
+    recorder.beginHandoff();
+    await recorder.finalizeHandoff();
+
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'resume_turn',
+      requestId,
+      turnId: expect.any(String),
+    });
+    expect((await store.read(sessionId)).events.at(-1)).toMatchObject({
+      type: DurableEventType.TURN_STARTED,
+      data: { turn: 2 },
+    });
+  });
+
   it('blocks steering past a started tool with an unknown outcome', async () => {
     await recorder.recordAccepted(inputId, 'run tool');
     await recorder.recordStarted(inputId);

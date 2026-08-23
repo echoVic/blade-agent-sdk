@@ -28,6 +28,8 @@ import type {
   ISession,
   PendingSessionInput,
   RuntimePatch,
+  SessionHandoffErrorCode,
+  SessionHandoffResult,
   SessionOptions,
   SessionTool,
   ToolCatalogEntry,
@@ -73,6 +75,7 @@ import {
   JsonlDurableEventStore,
   MemoryManager,
   ModelAttemptId,
+  SessionHandoffError,
   PermissionRequestId,
   projectDurableSession,
   RequestId,
@@ -220,6 +223,16 @@ describe('root exports', () => {
       DurableEventStore | undefined
     >();
     expectTypeOf<ReturnType<ISession['abort']>>().toEqualTypeOf<Promise<void>>();
+    expectTypeOf<ReturnType<ISession['suspendForHandoff']>>().toEqualTypeOf<
+      Promise<SessionHandoffResult>
+    >();
+    expectTypeOf<SessionHandoffResult['headSequence']>().toEqualTypeOf<EventSequence>();
+    expectTypeOf<SessionHandoffErrorCode>().toEqualTypeOf<
+      | 'SESSION_HANDOFF_NOT_CONFIGURED'
+      | 'SESSION_HANDOFF_ACTIVE_WORK'
+      | 'SESSION_HANDOFF_UNAVAILABLE'
+    >();
+    expect(SessionHandoffError).toBeDefined();
     expectTypeOf<ReturnType<ISession['subscribeDurableEvents']>>().toEqualTypeOf<
       Promise<DurableEventSubscription>
     >();

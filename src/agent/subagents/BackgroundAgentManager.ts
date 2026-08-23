@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
-import { AgentId } from '../../types/branded.js';
+import { AgentId, type SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type {
   AgentSession,
@@ -90,11 +90,16 @@ export class BackgroundAgentManager {
 
   // 运行中的 agent
   private runningAgents = new Map<AgentId, BackgroundAgentRuntime>();
+  private acceptingNewAgents = true;
 
   // 会话存储（支持注入，不再硬依赖全局 singleton）
   private sessionStore: AgentSessionStore;
 
-  constructor(sessionStore: AgentSessionStore, logger?: InternalLogger) {
+  constructor(
+    sessionStore: AgentSessionStore,
+    logger?: InternalLogger,
+    private readonly ownerSessionId?: SessionId,
+  ) {
     this.sessionStore = sessionStore;
     if (logger) {
       this.logger = logger.child(LogCategory.AGENT);
@@ -109,8 +114,12 @@ export class BackgroundAgentManager {
    * 每个 SessionRuntime 应该创建自己的 BackgroundAgentManager 实例，
    * 各自持有独立的 sessionStore，避免同进程多 runtime 共享状态。
    */
-  static create(logger: InternalLogger, sessionStore: AgentSessionStore): BackgroundAgentManager {
-    return new BackgroundAgentManager(sessionStore, logger);
+  static create(
+    logger: InternalLogger,
+    sessionStore: AgentSessionStore,
+    ownerSessionId?: SessionId,
+  ): BackgroundAgentManager {
+    return new BackgroundAgentManager(sessionStore, logger, ownerSessionId);
   }
 
   setLogger(logger: InternalLogger): void {
@@ -148,6 +157,10 @@ export class BackgroundAgentManager {
    * @returns agent ID
    */
   startBackgroundAgent(options: StartBackgroundAgentOptions): string {
+    if (!this.acceptingNewAgents) {
+      throw new Error('Background agent admission is closed for Session handoff');
+    }
+
     const {
       config,
       bladeConfig,
@@ -266,6 +279,7 @@ export class BackgroundAgentManager {
         snapshot,
         messages,
         signal: workSignal,
+        backgroundAgentManager: this,
         onProgress: (progress) => {
           this.sessionStore.updateRunningSession(agentId, { progress });
         },
@@ -563,6 +577,19 @@ export class BackgroundAgentManager {
    */
   getRunningCount(): number {
     return this.runningAgents.size;
+  }
+
+  getOwnerSessionId(): SessionId | undefined {
+    return this.ownerSessionId;
+  }
+
+  getActiveAgentIds(): readonly AgentId[] {
+    return [...this.runningAgents.keys()];
+  }
+
+  /** Prevents new background-agent work from starting in this runtime. */
+  sealForHandoff(): void {
+    this.acceptingNewAgents = false;
   }
 
   /**

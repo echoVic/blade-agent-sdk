@@ -1,6 +1,8 @@
 export { AbortError } from './AbortError.js';
 export { ConfigError } from './ConfigError.js';
 export { PermissionDeniedError } from './PermissionDeniedError.js';
+export type { SessionHandoffErrorCode } from './SessionHandoffError.js';
+export { SessionHandoffError } from './SessionHandoffError.js';
 export type { SessionInputErrorCode } from './SessionInputError.js';
 export { SessionInputError } from './SessionInputError.js';
 export type { SdkErrorOptions } from './SdkError.js';

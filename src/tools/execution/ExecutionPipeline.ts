@@ -554,6 +554,10 @@ export class ExecutionPipeline {
       input: structuredClone(state.params),
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
+    if (state.context.signal?.aborted) {
+      state.result = this.createAbortedResult('Task was aborted before tool execution');
+      return;
+    }
     const timeoutController = this.toolTimeoutMs ? new AbortController() : undefined;
     const executionSignal = timeoutController
       ? state.context.signal
