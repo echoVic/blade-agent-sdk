@@ -1,5 +1,4 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { once } from 'node:events';
 import {
   appendFile,
   mkdir,
@@ -41,9 +40,40 @@ const storeWriterPath = join(
 
 interface ReadyChildProcess {
   child: ChildProcessWithoutNullStreams;
-  closed: Promise<void>;
+  closed: Promise<ChildCloseResult>;
+  description: string;
   output: () => string;
   waitForOutput: (marker: string) => Promise<void>;
+}
+
+interface ChildCloseResult {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  spawnError?: Error;
+}
+
+const CHILD_PROCESS_WAIT_TIMEOUT_MS = 15_000;
+const CHILD_PROCESS_TERMINATE_TIMEOUT_MS = 2_000;
+const childProcesses = new Set<ReadyChildProcess>();
+
+async function waitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 async function spawnReadyChild(
@@ -62,51 +92,54 @@ async function spawnReadyChild(
   child.stderr.on('data', (chunk: string) => {
     stderr += chunk;
   });
-  const closed = new Promise<void>((resolveClose, rejectClose) => {
-    child.once('error', rejectClose);
-    child.once('close', (code, signal) => {
-      if (code === 0) {
-        resolveClose();
-        return;
-      }
-      rejectClose(new Error(`${description} exited with ${code ?? signal}: ${stderr}`));
-    });
+  let spawnError: Error | undefined;
+  child.once('error', (error) => {
+    spawnError = error;
   });
-  void closed.catch(() => {
-    // Callers await the original promise; this prevents a transient unhandled rejection.
+  const closed = new Promise<ChildCloseResult>((resolveClose) => {
+    child.once('close', (code, signal) => {
+      resolveClose({ code, signal, spawnError });
+    });
   });
   const waitForOutput = async (marker: string): Promise<void> => {
     if (stdout.includes(marker)) {
       return;
     }
-    await new Promise<void>((resolveReady, rejectReady) => {
-      const onData = (): void => {
-        if (stdout.includes(marker)) {
+    await waitWithTimeout(
+      new Promise<void>((resolveReady, rejectReady) => {
+        const onData = (): void => {
+          if (stdout.includes(marker)) {
+            child.stdout.off('data', onData);
+            child.off('close', onClose);
+            resolveReady();
+          }
+        };
+        const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
           child.stdout.off('data', onData);
-          child.off('close', onClose);
-          resolveReady();
-        }
-      };
-      const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
-        child.stdout.off('data', onData);
-        rejectReady(
-          new Error(
-            `${description} exited before emitting ${JSON.stringify(marker)} ` +
-              `(${code ?? signal}): ${stderr}`,
-          ),
-        );
-      };
-      child.stdout.on('data', onData);
-      child.once('close', onClose);
-    });
+          rejectReady(
+            new Error(
+              `${description} exited before emitting ${JSON.stringify(marker)} ` +
+                `(${code ?? signal}): ${stderr}`,
+            ),
+          );
+        };
+        child.stdout.on('data', onData);
+        child.once('close', onClose);
+      }),
+      CHILD_PROCESS_WAIT_TIMEOUT_MS,
+      `${description} timed out waiting for ${JSON.stringify(marker)}`,
+    );
   };
-  await waitForOutput(readyMarker);
-  return {
+  const readyChild = {
     child,
     closed,
+    description,
     output: () => stdout,
     waitForOutput,
   };
+  childProcesses.add(readyChild);
+  await waitForOutput(readyMarker);
+  return readyChild;
 }
 
 interface StoreWriterOptions {
@@ -168,26 +201,47 @@ async function startStoreLockHolder(
 }
 
 async function waitForChild(process: ReadyChildProcess): Promise<void> {
-  await process.closed;
+  const { code, signal, spawnError } = await waitWithTimeout(
+    process.closed,
+    CHILD_PROCESS_WAIT_TIMEOUT_MS,
+    `${process.description} timed out while exiting; output: ${process.output()}`,
+  );
+  if (spawnError) {
+    throw spawnError;
+  }
+  if (code !== 0) {
+    throw new Error(`${process.description} exited with ${code ?? signal}`);
+  }
 }
 
-async function terminateChild(
-  child: ChildProcessWithoutNullStreams,
-  signal: NodeJS.Signals,
-): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return;
+async function terminateChild(process: ReadyChildProcess, signal: NodeJS.Signals): Promise<void> {
+  const { child } = process;
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill(signal);
   }
-  const close = once(child, 'close');
-  child.kill(signal);
-  await close;
+  try {
+    await waitWithTimeout(
+      process.closed,
+      CHILD_PROCESS_TERMINATE_TIMEOUT_MS,
+      `${process.description} ignored ${signal}`,
+    );
+  } catch (error) {
+    if (signal === 'SIGKILL' || child.exitCode !== null || child.signalCode !== null) {
+      throw error;
+    }
+    child.kill('SIGKILL');
+    await waitWithTimeout(
+      process.closed,
+      CHILD_PROCESS_TERMINATE_TIMEOUT_MS,
+      `${process.description} did not close after SIGKILL`,
+    );
+  }
 }
 
 describe('JsonlDurableEventStore', () => {
   let storageRoot: string;
   let nextEventId: number;
   let store: JsonlDurableEventStore;
-  const childProcesses: ChildProcessWithoutNullStreams[] = [];
   const filesystemAliases: string[] = [];
 
   beforeEach(async () => {
@@ -200,13 +254,8 @@ describe('JsonlDurableEventStore', () => {
   });
 
   afterEach(async () => {
-    await Promise.all(
-      childProcesses.splice(0).map(async (child) => {
-        if (child.exitCode === null && child.signalCode === null) {
-          await terminateChild(child, 'SIGTERM');
-        }
-      }),
-    );
+    await Promise.all([...childProcesses].map((process) => terminateChild(process, 'SIGTERM')));
+    childProcesses.clear();
     await Promise.all(
       filesystemAliases.splice(0).map((alias) => rm(alias, { recursive: true, force: true })),
     );
@@ -448,7 +497,6 @@ describe('JsonlDurableEventStore', () => {
     const sessionId = SessionId('session-cross-process-lock');
     const filePath = store.getFilePath(sessionId);
     const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 200);
-    childProcesses.push(holder.child);
     let settled = false;
 
     const append = store
@@ -472,9 +520,7 @@ describe('JsonlDurableEventStore', () => {
   it('allows exactly one expected-head writer across independent Store processes', async () => {
     const sessionId = SessionId('session-cross-process-cas');
     const first = await startStoreWriter(storageRoot, sessionId, 'first');
-    childProcesses.push(first.child);
     const second = await startStoreWriter(storageRoot, sessionId, 'second');
-    childProcesses.push(second.child);
     first.child.stdin.end('go\n');
     second.child.stdin.end('go\n');
     await Promise.all([waitForChild(first), waitForChild(second)]);
@@ -498,8 +544,7 @@ describe('JsonlDurableEventStore', () => {
 
   it('bounds process-local lock queues by the same timeout', async () => {
     const sessionId = SessionId('session-local-lock-timeout');
-    const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 300);
-    childProcesses.push(holder.child);
+    await startStoreLockHolder(storageRoot, sessionId, 'holder', 300);
     const patientAppend = store.append(
       sessionId,
       [{ type: DurableEventType.SESSION_CREATED, data: {} }],
@@ -526,9 +571,7 @@ describe('JsonlDurableEventStore', () => {
       filesystemAliases.push(aliasRoot);
       const sessionId = SessionId('session-symlink-alias');
       const direct = await startStoreWriter(storageRoot, sessionId, 'direct');
-      childProcesses.push(direct.child);
       const aliased = await startStoreWriter(aliasRoot, sessionId, 'aliased');
-      childProcesses.push(aliased.child);
       direct.child.stdin.end('go\n');
       aliased.child.stdin.end('go\n');
       await Promise.all([waitForChild(direct), waitForChild(aliased)]);
@@ -546,7 +589,6 @@ describe('JsonlDurableEventStore', () => {
   it('fails closed on lock timeout and succeeds after the owner releases it', async () => {
     const sessionId = SessionId('session-lock-timeout');
     const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 500);
-    childProcesses.push(holder.child);
     const impatientStore = new JsonlDurableEventStore(storageRoot, {
       lockTimeoutMs: 50,
     });
@@ -583,8 +625,7 @@ describe('JsonlDurableEventStore', () => {
     const sessionId = SessionId('session-crashed-process-lock');
     const filePath = store.getFilePath(sessionId);
     const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 10_000);
-    childProcesses.push(holder.child);
-    await terminateChild(holder.child, 'SIGKILL');
+    await terminateChild(holder, 'SIGKILL');
     const recoveringStore = new JsonlDurableEventStore(storageRoot, {
       lockTimeoutMs: 500,
     });
@@ -604,7 +645,6 @@ describe('JsonlDurableEventStore', () => {
     async () => {
       const sessionId = SessionId('session-paused-process-lock');
       const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 10_000);
-      childProcesses.push(holder.child);
       holder.child.kill('SIGSTOP');
       await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25));
       const contender = new JsonlDurableEventStore(storageRoot, {
@@ -614,7 +654,7 @@ describe('JsonlDurableEventStore', () => {
       await expect(contender.read(sessionId)).rejects.toMatchObject({
         code: 'DURABLE_EVENT_LOCK_TIMEOUT',
       });
-      await terminateChild(holder.child, 'SIGKILL');
+      await terminateChild(holder, 'SIGKILL');
     },
   );
 
@@ -634,7 +674,6 @@ describe('JsonlDurableEventStore', () => {
       'immediate',
       { lockTimeoutMs: 0 },
     );
-    childProcesses.push(writer.child);
     writer.child.stdin.end('go\n');
     await waitForChild(writer);
 
@@ -647,11 +686,9 @@ describe('JsonlDurableEventStore', () => {
   it('fails an immediate lock attempt when another Store process owns the lock', async () => {
     const sessionId = SessionId('session-immediate-lock-held');
     const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 10_000);
-    childProcesses.push(holder.child);
     const contender = await startStoreWriter(storageRoot, sessionId, 'contender', {
       lockTimeoutMs: 0,
     });
-    childProcesses.push(contender.child);
     contender.child.stdin.end('go\n');
     await waitForChild(contender);
 
@@ -659,7 +696,7 @@ describe('JsonlDurableEventStore', () => {
       status: 'rejected',
       code: 'DURABLE_EVENT_LOCK_TIMEOUT',
     });
-    await terminateChild(holder.child, 'SIGKILL');
+    await terminateChild(holder, 'SIGKILL');
   });
 
   it('rejects duplicate event IDs across append batches', async () => {
@@ -857,12 +894,15 @@ describe('JsonlDurableEventStore', () => {
     });
   });
 
-  it('persists files with owner-only permissions', async () => {
-    const sessionId = SessionId('session-permissions');
-    await store.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }]);
+  it.skipIf(process.platform === 'win32')(
+    'persists files with owner-only permissions',
+    async () => {
+      const sessionId = SessionId('session-permissions');
+      await store.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }]);
 
-    const filePath = store.getFilePath(sessionId);
-    expect((await stat(filePath)).mode & 0o777).toBe(0o600);
-    expect((await stat(`${filePath}.lock`)).mode & 0o777).toBe(0o600);
-  });
+      const filePath = store.getFilePath(sessionId);
+      expect((await stat(filePath)).mode & 0o777).toBe(0o600);
+      expect((await stat(`${filePath}.lock`)).mode & 0o777).toBe(0o600);
+    },
+  );
 });

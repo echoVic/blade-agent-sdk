@@ -57,3 +57,37 @@ jobs:
 
       - name: Test
         run: pnpm run test
+
+  native-lock:
+    name: Native lock (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test native durable locks
+        run: >-
+          pnpm exec vitest run
+          src/session/events/__tests__/JsonlDurableEventStore.test.ts
+          src/session/events/__tests__/JsonlDurableEventStoreCompromise.test.ts
+          src/session/events/__tests__/JsonlDurableEventStoreUnavailableLock.test.ts

@@ -44,8 +44,10 @@ async function main(): Promise<void> {
     },
     lockTimeoutMs,
   });
-  process.stdout.write('ready\n');
-  await once(process.stdin, 'data');
+  const startSignal = once(process.stdin, 'data');
+  writeSync(process.stdout.fd, 'ready\n');
+  await startSignal;
+  process.stdin.destroy();
 
   try {
     const result = await store.append(
@@ -58,14 +60,16 @@ async function main(): Promise<void> {
       ],
       { expectedLastSequence: null },
     );
-    process.stdout.write(
+    writeSync(
+      process.stdout.fd,
       `${JSON.stringify({
         status: 'fulfilled',
         lastSequence: result.lastSequence,
       })}\n`,
     );
   } catch (error) {
-    process.stdout.write(
+    writeSync(
+      process.stdout.fd,
       `${JSON.stringify({
         status: 'rejected',
         code: errorField(error, 'code'),
@@ -76,7 +80,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
-});
+main().then(
+  () => process.exit(0),
+  (error) => {
+    writeSync(process.stderr.fd, `${error instanceof Error ? error.stack : String(error)}\n`);
+    process.exit(1);
+  },
+);
