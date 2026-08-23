@@ -90,6 +90,14 @@ function createFilesystemContext(workspaceRoot: string): RuntimeContext {
   };
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('SessionRuntime', () => {
   let workspaceRoot: string;
 
@@ -106,6 +114,7 @@ describe('SessionRuntime', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     const runtime = new SessionRuntime(
       SessionId('cleanup'),
       createOptions(),
@@ -216,6 +225,14 @@ describe('SessionRuntime', () => {
         allowedTools: ['SlowTool'],
         tools: [slowTool],
         toolTimeoutMs: 10,
+        hooks: {
+          [HookEvent.PostToolUseFailure]: [
+            async () => ({
+              action: 'abort',
+              reason: 'hook attempted to replace timeout',
+            }),
+          ],
+        },
       }),
       {
         models: [],
@@ -239,6 +256,70 @@ describe('SessionRuntime', () => {
     });
     expect(observedAbort).toBe(true);
 
+    await runtime.close();
+  });
+
+  it('fails closed while a timed-out tool is still cleaning up', async () => {
+    vi.useFakeTimers();
+    const started = deferred();
+    const release = deferred();
+    const slowTool = createTool({
+      name: 'UncooperativeTool',
+      displayName: 'Uncooperative Tool',
+      kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
+      description: { short: 'Ignore cancellation until released' },
+      schema: z.object({}),
+      // biome-ignore lint/correctness/useYield: exercises an uncooperative terminal execution
+      async *execute() {
+        started.resolve();
+        await release.promise;
+        return {
+          status: 'success',
+          model: 'late success',
+        };
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-tool-cleanup'),
+      createOptions({
+        allowedTools: ['UncooperativeTool'],
+        tools: [slowTool],
+        toolTimeoutMs: 50,
+      }),
+      {
+        models: [],
+        toolTimeoutMs: 50,
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const resultPromise = collectToolExecution(
+      executionPipeline.execute('UncooperativeTool', {}, {}),
+    );
+
+    await started.promise;
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { type: 'timeout_error' },
+    });
+    await expect(runtime.close()).rejects.toThrow('still has a tool execution cleaning up');
+
+    release.resolve();
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve();
+    }
+    expect(executionPipeline.hasPendingExecutionCleanup()).toBe(false);
+
+    vi.useRealTimers();
     await runtime.close();
   });
 

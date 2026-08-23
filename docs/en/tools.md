@@ -207,9 +207,10 @@ request `AbortSignal` even when they block `now`-priority steering.
 `600000` (10 minutes). The deadline starts after permission checks and the
 durable `tool_started` boundary, remains active across progress yields, and
 aborts the tool's signal on expiry. The terminal result has
-`ToolErrorType.TIMEOUT_ERROR`. Cleanup is awaited for at most 5 seconds so a
-tool that ignores cancellation cannot indefinitely block Session shutdown or
-handoff.
+`ToolErrorType.TIMEOUT_ERROR`. Cleanup is awaited for at most 5 seconds. If it
+is still pending, the pipeline refuses new tool work and Session shutdown or
+handoff fails closed until the generator exits; JavaScript cannot preempt
+custom tool code that ignores cancellation.
 
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with

@@ -136,6 +136,7 @@ export class ExecutionPipeline {
   private readonly middleware: readonly ToolMiddleware[];
   private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
+  private readonly pendingExecutionCleanups = new Set<Promise<void>>();
 
   constructor(
     private registry: ToolRegistry,
@@ -177,6 +178,10 @@ export class ExecutionPipeline {
     return this.toolCatalog;
   }
 
+  hasPendingExecutionCleanup(): boolean {
+    return this.pendingExecutionCleanups.size > 0;
+  }
+
   /**
    * 执行工具
    */
@@ -185,6 +190,11 @@ export class ExecutionPipeline {
     params: JsonObject,
     context: ExecutionContext
   ): ToolExecution {
+    if (this.hasPendingExecutionCleanup()) {
+      return this.createExecutionFailureResult(
+        'A tool execution is still cleaning up; refusing to start another tool',
+      );
+    }
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
     const protectedContext = Object.freeze({
@@ -294,7 +304,16 @@ export class ExecutionPipeline {
             );
             result = yield* delegatedExecution;
           }
-          if (coreResult?.status === 'error' && result.status === 'success') {
+          if (
+            coreResult?.status === 'error'
+            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+          ) {
+            result = this.preserveTimeoutFailure(
+              coreResult,
+              result,
+              `Tool middleware for ${toolName}`,
+            );
+          } else if (coreResult?.status === 'error' && result.status === 'success') {
             this.logger.warn(
               `Tool middleware attempted to replace failed ${toolName} core execution with success; preserving the core failure`,
             );
@@ -489,17 +508,26 @@ export class ExecutionPipeline {
       }
       await state.context.assertExecutionLease?.();
 
-      let result = await this.normalizeExecutionResult(state);
-      result = await this.applyPostExecutionHooks(
+      const normalizedResult = await this.normalizeExecutionResult(state);
+      const result = await this.applyPostExecutionHooks(
         state.toolName,
         state.params,
         state.context,
-        result,
+        normalizedResult,
         executionId,
-        { isInterrupt: state.interrupted },
+        {
+          isTimeout:
+            normalizedResult.status === 'error'
+            && normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR,
+          isInterrupt: state.interrupted,
+        },
       );
 
-      return result;
+      return this.preserveTimeoutFailure(
+        normalizedResult,
+        result,
+        `Post-execution hooks for ${state.toolName}`,
+      );
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
         throw error;
@@ -512,7 +540,7 @@ export class ExecutionPipeline {
         state.interrupted
         || isSteeringInterruptSignal(state.context.signal);
 
-      let errorResult: ToolResult = {
+      const originalErrorResult: ToolResult = {
         status: 'error',
         model: `Tool execution failed: ${errorMsg}`,
         error: {
@@ -524,15 +552,21 @@ export class ExecutionPipeline {
           message: errorMsg,
         },
       };
+      let errorResult: ToolResult = originalErrorResult;
 
       try {
-        errorResult = await this.applyPostExecutionHooks(
+        const hookResult = await this.applyPostExecutionHooks(
           state.toolName,
           state.params,
           state.context,
           errorResult,
           executionId,
           { isTimeout, isInterrupt },
+        );
+        errorResult = this.preserveTimeoutFailure(
+          originalErrorResult,
+          hookResult,
+          `Post-execution hooks for ${state.toolName}`,
         );
       } catch (hookError) {
         if (isExecutionLeaseFailure(hookError)) {
@@ -845,11 +879,12 @@ export class ExecutionPipeline {
         if (!executionSignal.aborted) {
           timeoutController.abort(new Error('Tool execution closed before completion'));
         }
-        const closing = execution.return(undefined as never);
-        try {
-          await this.waitForExecutionClose(closing);
-        } catch {
-          // Preserve the original execution or consumer failure.
+        const closing = Promise.resolve(execution.return(undefined as never)).then(
+          () => undefined,
+          () => undefined,
+        );
+        if (!await this.waitForExecutionClose(closing)) {
+          this.trackPendingExecutionCleanup(closing);
         }
       }
     }
@@ -899,17 +934,27 @@ export class ExecutionPipeline {
 
   private async waitForExecutionClose(
     closing: PromiseLike<unknown>,
-  ): Promise<void> {
-    await new Promise<void>((resolve) => {
+  ): Promise<boolean> {
+    return await new Promise<boolean>((resolve) => {
       let settled = false;
-      const finish = (): void => {
+      const finish = (closed: boolean): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        resolve();
+        resolve(closed);
       };
-      const timeout = setTimeout(finish, MAX_TOOL_CLEANUP_WAIT_MS);
-      closing.then(finish, finish);
+      const timeout = setTimeout(() => finish(false), MAX_TOOL_CLEANUP_WAIT_MS);
+      closing.then(
+        () => finish(true),
+        () => finish(true),
+      );
+    });
+  }
+
+  private trackPendingExecutionCleanup(closing: Promise<void>): void {
+    this.pendingExecutionCleanups.add(closing);
+    void closing.finally(() => {
+      this.pendingExecutionCleanups.delete(closing);
     });
   }
 
@@ -1251,6 +1296,35 @@ export class ExecutionPipeline {
       error: {
         type,
         message,
+      },
+    };
+  }
+
+  private preserveTimeoutFailure(
+    original: ToolResult,
+    transformed: ToolResult,
+    source: string,
+  ): ToolResult {
+    if (
+      original.status !== 'error'
+      || original.error.type !== ToolErrorType.TIMEOUT_ERROR
+      || (
+        transformed.status === 'error'
+        && transformed.error.type === ToolErrorType.TIMEOUT_ERROR
+      )
+    ) {
+      return transformed;
+    }
+
+    this.logger.warn(`${source} attempted to replace a tool timeout; preserving timeout semantics`);
+    if (transformed.status === 'success') {
+      return original;
+    }
+    return {
+      ...transformed,
+      error: {
+        ...transformed.error,
+        type: ToolErrorType.TIMEOUT_ERROR,
       },
     };
   }

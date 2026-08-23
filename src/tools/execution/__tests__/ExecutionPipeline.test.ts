@@ -368,6 +368,22 @@ describe('ExecutionPipeline', () => {
       status: 'error',
       error: { type: ToolErrorType.TIMEOUT_ERROR },
     });
+    expect(pipeline.hasPendingExecutionCleanup()).toBe(true);
+
+    await expect(
+      executePipeline(
+        pipeline,
+        'UncooperativeTool',
+        {},
+        { permissionMode: PermissionMode.YOLO },
+      ),
+    ).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: expect.stringContaining('still cleaning up'),
+      },
+    });
   });
 
   it('uses a bounded default and rejects invalid tool timeout values', () => {

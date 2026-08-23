@@ -426,8 +426,9 @@ const tool = createTool({
 `SessionOptions.toolTimeoutMs` 限制每次工具调用的总时长，默认值为 `600000`
 （10 分钟）。时限从权限检查及 durable `tool_started` 边界完成后开始，在
 progress yield 之间持续计时，并在到期时中止工具的 signal。终态结果的错误类型为
-`ToolErrorType.TIMEOUT_ERROR`。SDK 最多等待工具清理 5 秒，避免忽略取消信号的
-工具无限阻塞 Session 关闭或 handoff。
+`ToolErrorType.TIMEOUT_ERROR`。SDK 最多等待工具清理 5 秒；若清理仍未结束，
+pipeline 会拒绝新的工具执行，Session 关闭或 handoff 也会 fail-closed，直至
+generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义工具代码。
 
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
 `defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义

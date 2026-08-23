@@ -289,6 +289,13 @@ export class SessionRuntime {
     } catch (error) {
       errors.push(error);
     }
+    if (this.executionPipeline.hasPendingExecutionCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
+        ),
+      );
+    }
     if (errors.length === 1) {
       throw errors[0];
     }
