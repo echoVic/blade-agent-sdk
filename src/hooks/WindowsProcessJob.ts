@@ -8,7 +8,10 @@ const WINDOWS_JOB_POLL_INTERVAL_MS = 20;
 type NativeHandle = unknown;
 
 interface WindowsJobBindings {
-  createJobObject: () => NativeHandle;
+  createJobObject: (
+    attributes: null,
+    name: null,
+  ) => NativeHandle;
   setInformationJobObject: (
     job: NativeHandle,
     informationClass: number,
@@ -110,7 +113,7 @@ export class WindowsProcessJob {
 
   static async create(): Promise<WindowsProcessJob> {
     const bindings = await loadWindowsJobBindings();
-    const handle = bindings.createJobObject();
+    const handle = bindings.createJobObject(null, null);
     if (!handle) {
       throw win32Error(bindings, 'CreateJobObjectW');
     }
