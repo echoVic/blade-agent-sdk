@@ -575,6 +575,39 @@ v3 batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 
 伪装包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前
 runtime 恢复。
 
+### 执行租约与 fencing
+
+`DurableExecutionLease` 在 Journal CAS 之上提供 opt-in worker 所有权：
+
+```ts
+const lease = await DurableExecutionLease.acquire(store, sessionId, {
+  ownerId: WorkerId('worker-a'),
+  ttlMs: 30_000,
+  heartbeatIntervalMs: 10_000,
+});
+const journal = await DurableSessionJournal.open(store, sessionId, {
+  executionLease: lease,
+});
+```
+
+支持租约的 Store 实现 `DurableExecutionLeaseStore`。获取、续租、释放和
+`append(..., { executionFence })` 必须通过同一个事务边界串行化。接管会递增
+`FencingToken`；stale writer 收到 `DURABLE_EXECUTION_LEASE_LOST`，活动租约
+期间未携带 fence 的 append 收到 `DURABLE_EXECUTION_LEASE_REQUIRED`。fencing
+要求是粘性的：Store 一旦为 Session 创建过 lease 状态，即使当前 lease 已过期或
+释放，后续 append 和 Journal/Recovery Coordinator open 仍必须携带新的活动
+lease。`requiresExecutionLease()` 用于入口处提前检测；append 内的事务校验才是
+最终权威边界。
+
+进程内 lease handle 会自动 heartbeat。任何续租或校验失败都会中止
+`lease.signal` 并保持 fail-closed。配置 `SessionOptions.executionLease` 后，
+Session 会集成该 handle：模型调用与工具副作用在 I/O 前立即校验所有权，Journal
+commit 携带 fence；失租时本地执行关闭，但不会写入伪造的 durable 终态。
+
+fence 保护 SDK 生命周期提交。工具修改其他共享资源时，还必须让下游比较
+`ExecutionContext.executionFence.fencingToken`；通用 SDK 无法强制 fence
+已经启动且下游不校验 token 的操作。
+
 ### 受控 worker handoff
 
 `session.suspendForHandoff()` 在恢复前提供显式的源 worker 屏障。它会封闭新的
@@ -589,8 +622,9 @@ plan 调用 `DurableSessionRecoveryCoordinator`，只在 plan 允许后调用
 
 仍有后台子 Agent 或归属该 Session 的后台 shell 运行时，该屏障会在取消主
 Request 前拒绝；同时要求 durable journal 与 transcript storage 都已配置。
-handoff 只协调已知的源 worker 和继任 worker，不替代跨主机 execution lease
-或 fencing token。
+未配置 `executionLease` 时，handoff 只协调已知的源 worker 和继任 worker。
+配置后，源 worker 会持有租约直到清理完成，并在返回前释放，继任 worker 随后可
+获取下一个 token。
 
 ## JSONL 持久化
 
@@ -598,6 +632,7 @@ handoff 只协调已知的源 worker 和继任 worker，不替代跨主机 execu
 
 ```text
 {storageRoot}/durable-events/{base64url(sessionId)}.jsonl
+{storageRoot}/durable-events/{base64url(sessionId)}.lease.json
 ```
 
 每行是一个完整 append batch，而不是单个事件。该布局保证进程在写入中途崩溃
@@ -626,17 +661,19 @@ addon 无法加载或平台不支持 advisory lock 时，Store 以
 Windows 的 x64/arm64；Alpine/musl 及其他目标不受 `JsonlDurableEventStore`
 支持。
 
-事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
+事件文件与 lease sidecar 使用 `0600` 权限，Session ID 经过 base64url 编码，
+不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
 Store 视为敏感数据存储，并自行配置加密、保留期限和访问控制。
 
 ## 一致性边界
 
 `JsonlDurableEventStore` 保证同一主机上多个 Node.js 进程针对同一 Session 的
-互斥读写和原子 compare-and-append。该保证要求本地文件系统正确实现 advisory
-lock；它不适用于 NFS 等共享网络文件系统，也不提供跨主机 execution lease。
-多副本服务仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或带
-fencing token 的 lease 保证单写者；不能依赖未提供 fencing 的超时 lease。
+互斥读写、原子 compare-and-append，以及带单调 fencing token 的执行租约。租约
+状态和 event append 共用同一把 Session 锁。该保证要求本地文件系统正确实现
+advisory lock，不适用于 NFS 等共享网络文件系统。多副本服务必须实现
+`DurableExecutionLeaseStore`，并通过数据库事务让每次 append 与 fence 校验
+保持原子；不能依赖未提供 fencing 的超时 lease。
 
 `DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功后
 `fsync`、解锁或关闭锁文件失败时，提交结果都可能未知。调用方重试前必须重新
@@ -655,6 +692,10 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DurableSessionJournalError` | command 输入、Store page 或 commit 返回值违反契约 |
 | `DurableEventSubscriptionError` | 订阅配置、cursor 锚点或 Store page 不满足续读契约 |
 | `DurableSessionRecoveryRequiredError` | Session 存在未完成工作，必须先执行恢复或对账 |
+| `DurableExecutionLeaseError` | lease 获取、heartbeat、所有权或持久化状态失败 |
+| `DURABLE_EXECUTION_LEASE_CONFLICT` | 另一个未过期的 worker lease 正持有 Session |
+| `DURABLE_EXECUTION_LEASE_REQUIRED` | 活动 lease 存在，但 append 未携带对应 fence |
+| `DURABLE_EXECUTION_LEASE_LOST` | lease 已过期、释放或被更高 token 替换 |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |

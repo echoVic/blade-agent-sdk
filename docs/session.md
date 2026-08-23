@@ -1455,9 +1455,82 @@ Request 前失败；应先等待或终止这些后台工作后重试。如果取
 `SessionHandoffError` 提供稳定的 `code`、`activeSubagentIds` 和
 `activeShellIds` 字段供调度层处理。
 
-该 API 是协作式 shutdown barrier，不是跨主机 lease。调用前必须停止向旧 worker
-路由新工作；多主机可能同时执行同一 Session 时，`DurableEventStore` 仍须提供
-transactional CAS 与 fencing。
+未配置 `executionLease` 时，该 API 仍只是协作式 shutdown barrier；调用前必须
+停止向旧 worker 路由新工作。配置支持租约的 `DurableEventStore` 后，handoff
+会在执行、transcript 写入及 journal 收敛期间继续持有当前租约，并在返回前释放；
+继任 worker 调用 `resumeSession()` 时会取得更高的 fencing token。
+
+## 跨 worker 执行 fencing
+
+当多个 worker 可能打开同一个 durable Session 时，配置 `executionLease`：
+
+```ts
+import {
+  JsonlDurableEventStore,
+  WorkerId,
+  createSession,
+} from '@blade-ai/agent-sdk';
+
+const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
+const session = await createSession({
+  provider,
+  model,
+  storagePath: '/var/lib/my-agent',
+  durableEventStore: eventStore,
+  executionLease: {
+    ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
+    ttlMs: 30_000,
+    heartbeatIntervalMs: 10_000,
+  },
+});
+```
+
+Session 获取租约时保持 fail-closed。第二个存活 worker 会收到
+`DURABLE_EXECUTION_LEASE_CONFLICT`。每次成功接管都会递增单调
+`FencingToken`；Journal 的每次 commit 都在 Store 的同一事务中校验活动租约和
+event append。heartbeat 无法续租时，Session 会停止接收新工作，并取消根执行、
+前台/后台子 Agent 及归属该 Session 的后台 shell。
+
+Session 一旦启用过 execution lease，fencing 要求会永久保留。旧租约过期或释放
+后，未配置 `executionLease` 的 `resumeSession()` 仍会收到
+`DURABLE_EXECUTION_LEASE_REQUIRED`；继任 worker 必须先获取更高 token 的 lease。
+正常 `close()` 会先取消并等待后台 Agent、终止 Session shell，再提交 durable
+关闭并释放 lease。
+
+`session.getExecutionLease()` 返回当前租约快照。工具会通过
+`ExecutionContext.executionFence` 收到不可变的 `{ leaseId, fencingToken }`。
+工具若写入其他共享系统，必须把该 fence 传给下游，并由下游拒绝更旧的 token。
+SDK 可以阻止 stale journal commit 和新的模型/工具起点，但通用外部服务只有主动
+校验 token 才能获得 hard fencing。
+
+`JsonlDurableEventStore` 只为共享同一受支持本地文件系统的 Node.js 进程实现该
+协议，并不是跨主机 Store。跨主机部署必须实现
+`DurableExecutionLeaseStore`，并在同一个数据库事务中完成租约变更和
+`append(..., { executionFence })` 校验。
+
+恢复操作也可以持有相同的 lease guard：
+
+```ts
+import {
+  DurableExecutionLease,
+  DurableSessionRecoveryCoordinator,
+  WorkerId,
+} from '@blade-ai/agent-sdk';
+
+const lease = await DurableExecutionLease.acquire(eventStore, sessionId, {
+  ownerId: WorkerId('recovery-worker'),
+});
+try {
+  const coordinator = await DurableSessionRecoveryCoordinator.open(
+    eventStore,
+    sessionId,
+    { executionLease: lease },
+  );
+  // 在 fence 有效期间执行对账或准备恢复。
+} finally {
+  await lease.release();
+}
+```
 
 ### 管理待处理输入
 
@@ -1666,6 +1739,7 @@ async function analyzeCodeManual() {
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
 | `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用消息历史持久化                         |
 | `durableEventStore` | `DurableEventStore`                                  | —  | —           | opt-in durable 执行事件 Store                                 |
+| `executionLease` | `DurableExecutionLeaseOptions`                         | —  | —           | opt-in worker 所有权、heartbeat 与 fencing                     |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |
 | `observability`   | `ObservabilityOptions`                                  | —  | —           | Trace 收集、payload 捕获与 sink 配置                         |
@@ -1830,6 +1904,7 @@ interface ISession extends AsyncDisposable {
   getTraces(): AgentTrace[];
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
+  getExecutionLease(): DurableExecutionLeaseSnapshot | null;
   subscribeDurableEvents(
     options?: DurableEventSubscriptionOptions,
   ): Promise<DurableEventSubscription>;

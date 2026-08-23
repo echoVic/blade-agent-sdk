@@ -56,7 +56,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryManager` | memory | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
+| `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
 | `JsonlDurableEventStore` | root / local | 支持同机多进程锁的 Node.js durable event JSONL adapter |
+| `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
@@ -88,6 +90,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
 | `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
 | `CommandId` / `TurnId` / `ModelAttemptId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、模型尝试、工具尝试与权限请求标识 |
+| `WorkerId` / `ExecutionLeaseId` / `FencingToken` | worker、租约和单调 fence 的 branded identifiers |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -103,6 +106,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
+| `DurableExecutionLeaseStore` | 粘性 `requiresExecutionLease`、原子 acquire/renew/release/assert 与 fenced append 接口 |
+| `DurableExecutionLeaseOptions` | Session lease 的 owner、TTL、heartbeat 和可选 lease ID |
+| `DurableExecutionLeaseSnapshot` / `DurableExecutionFence` | 当前租约快照及传递给 Store/工具的 fence |
+| `DurableExecutionLeaseErrorCode` | lease 配置、冲突、缺少 fence、失租、损坏与写入错误码 |
 | `DurableEventSubscription` | 支持 replay/caught-up/live 阶段的可重连事件流 |
 | `durableEventCursor` / `parseDurableEventCursor` | 创建和严格解析版本化恢复 cursor |
 | `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |

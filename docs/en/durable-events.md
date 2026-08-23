@@ -617,6 +617,42 @@ versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
 cannot masquerade as containing v3 model events. Version 1 logs are not
 inferred silently and must be migrated before this runtime can resume them.
 
+### Execution leases and fencing
+
+`DurableExecutionLease` adds opt-in worker ownership on top of Journal CAS:
+
+```ts
+const lease = await DurableExecutionLease.acquire(store, sessionId, {
+  ownerId: WorkerId('worker-a'),
+  ttlMs: 30_000,
+  heartbeatIntervalMs: 10_000,
+});
+const journal = await DurableSessionJournal.open(store, sessionId, {
+  executionLease: lease,
+});
+```
+
+A lease-capable Store implements `DurableExecutionLeaseStore`. Acquisition,
+renewal, release, and `append(..., { executionFence })` must serialize through
+the same transactional boundary. A takeover increments `FencingToken`; a stale
+writer receives `DURABLE_EXECUTION_LEASE_LOST`, while an unfenced append during
+an active lease receives `DURABLE_EXECUTION_LEASE_REQUIRED`. Fencing is sticky:
+once a Store creates lease state for a Session, every later append and
+Journal/Recovery Coordinator open requires a new active lease even after the
+previous lease expires or is released. `requiresExecutionLease()` provides an
+early entry-point check; the transactional append check remains authoritative.
+
+The process-local lease handle heartbeats automatically. Any renewal or
+validation failure aborts `lease.signal` and remains fail-closed. Session
+integrates this handle when `SessionOptions.executionLease` is configured:
+model calls and tool side effects validate ownership immediately before I/O,
+Journal commits carry the fence, and lease loss closes local execution without
+writing a false durable terminal event.
+
+The fence protects SDK lifecycle commits. External resources modified by a tool
+must also compare `ExecutionContext.executionFence.fencingToken`; otherwise an
+already-started operation cannot be forcibly fenced by a generic SDK.
+
 ### Controlled worker handoff
 
 `session.suspendForHandoff()` provides an explicit source-worker barrier before
@@ -634,9 +670,10 @@ the returned plan with `DurableSessionRecoveryCoordinator` and only call
 
 The barrier rejects before cancelling the root Request if any background
 subagent or Session-owned background shell remains active. It also requires
-both the durable journal and transcript storage. Handoff coordinates a known
-source and successor; it does not replace a cross-host execution lease or
-fencing token.
+both the durable journal and transcript storage. Without `executionLease`,
+handoff only coordinates a known source and successor. With it, the source
+retains ownership through cleanup and releases the lease before returning, so
+the successor can acquire the next token.
 
 ## JSONL persistence
 
@@ -644,6 +681,7 @@ Files are stored under:
 
 ```text
 {storageRoot}/durable-events/{base64url(sessionId)}.jsonl
+{storageRoot}/durable-events/{base64url(sessionId)}.lease.json
 ```
 
 Each line is a complete append batch rather than one event. If the process
@@ -679,21 +717,22 @@ does not support advisory locking, the Store fails closed with
 Linux, and Windows on x64/arm64. `JsonlDurableEventStore` does not support
 Alpine/musl or other targets.
 
-Event files use mode `0600`. Session IDs are base64url encoded and cannot
-become filesystem paths.
+Event files and lease sidecars use mode `0600`. Session IDs are base64url
+encoded and cannot become filesystem paths.
 Events contain raw request inputs, complete model responses, tool inputs, and
 model-facing tool results. Treat the Store as sensitive data and configure
 encryption, retention, and access control at the deployment boundary.
 
 ## Consistency boundary
 
-`JsonlDurableEventStore` provides mutually exclusive reads and atomic
-compare-and-append across Node.js processes on the same host. This guarantee
-requires a local filesystem with working advisory locks; it does not apply to
-shared network filesystems such as NFS and does not provide a cross-host
-execution lease. Replicated services must still implement `DurableEventStore`
-with database transactions, CAS, or a lease carrying a fencing token. An
-unfenced timeout-based lease is not sufficient.
+`JsonlDurableEventStore` provides mutually exclusive reads, atomic
+compare-and-append, and execution leases with monotonic fencing tokens across
+Node.js processes on the same host. Lease state and event appends share the
+same Session lock. This guarantee requires a local filesystem with working
+advisory locks and does not apply to shared network filesystems such as NFS.
+Replicated services must implement `DurableExecutionLeaseStore` using database
+transactions that atomically validate the fence with each append. An unfenced
+timeout-based lease is not sufficient.
 
 `DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. The
 outcome can be unknown when `fsync`, unlocking, or closing the lock file fails
@@ -714,6 +753,10 @@ journal.
 | `DurableSessionJournalError` | Command input, Store page, or commit result violates its contract. |
 | `DurableEventSubscriptionError` | Subscription options, cursor anchors, or Store pages violate the replay contract. |
 | `DurableSessionRecoveryRequiredError` | The Session has unfinished work that requires recovery or reconciliation. |
+| `DurableExecutionLeaseError` | Lease acquisition, heartbeat, ownership, or persisted lease state failed. |
+| `DURABLE_EXECUTION_LEASE_CONFLICT` | Another unexpired worker lease owns the Session. |
+| `DURABLE_EXECUTION_LEASE_REQUIRED` | An active lease exists but the append did not carry its fence. |
+| `DURABLE_EXECUTION_LEASE_LOST` | The lease expired, was released, or was replaced by a higher token. |
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
