@@ -11,21 +11,21 @@ import {
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
 import type {
-    ContextData,
-    ConversationContext,
-    MessageInfo,
-    PendingInputInfo,
-    PartInfo,
-    SessionContext,
-    SessionEvent,
-    SessionInfo,
+  ContextData,
+  ConversationContext,
+  MessageInfo,
+  PendingInputInfo,
+  PartInfo,
+  SessionContext,
+  SessionEvent,
+  SessionInfo,
 } from '../types.js';
 import { JSONLStore } from './JSONLStore.js';
 import {
-    detectGitBranch,
-    getSessionFilePathFromStorageRoot,
-    listProjectDirectories,
-    normalizeSessionStorageRoot
+  detectGitBranch,
+  getSessionFilePathFromStorageRoot,
+  listProjectDirectories,
+  normalizeSessionStorageRoot,
 } from './pathUtils.js';
 
 function extractMimeType(url: string): string | undefined {
@@ -122,15 +122,6 @@ export class PersistentStore {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
 
-    // 冷路径：用单次 access 检查文件是否已存在，而非读取整个文件
-    try {
-      await fs.access(filePath);
-      this.knownSessions.add(sessionId);
-      return;
-    } catch {
-      // 文件不存在，需要写入 session_created 事件
-    }
-
     const now = new Date().toISOString();
     const sessionInfo: SessionInfo = {
       sessionId,
@@ -146,7 +137,7 @@ export class PersistentStore {
       updatedAt: now,
     };
     const entry = this.createEvent('session_created', sessionId, sessionInfo);
-    await store.append(entry);
+    await store.appendIfEmpty(entry);
     this.knownSessions.add(sessionId);
   }
 
@@ -172,7 +163,7 @@ export class PersistentStore {
   async initialize(): Promise<void> {
     try {
       const storagePath = this.storageRoot;
-      await fs.mkdir(storagePath, { recursive: true, mode: 0o755 });
+      await fs.mkdir(storagePath, { recursive: true, mode: 0o700 });
       console.log(`[PersistentStore] 初始化存储目录: ${storagePath}`);
     } catch (error) {
       console.warn('[PersistentStore] 无法创建持久化存储目录:', error);
@@ -692,7 +683,7 @@ export class PersistentStore {
       const storagePath = this.storageRoot;
 
       // 尝试创建目录
-      await fs.mkdir(storagePath, { recursive: true, mode: 0o755 });
+      await fs.mkdir(storagePath, { recursive: true, mode: 0o700 });
 
       // 尝试写入测试文件
       const testFile = path.join(storagePath, '.health-check');

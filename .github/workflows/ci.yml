@@ -88,9 +88,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test native durable locks
+      - name: Test native file locks
         run: >-
           pnpm exec vitest run
+          src/context/storage/__tests__/JSONLStore.test.ts
           src/session/events/__tests__/JsonlDurableEventStore.test.ts
           src/session/events/__tests__/JsonlDurableEventStoreCompromise.test.ts
           src/session/events/__tests__/JsonlDurableEventStoreUnavailableLock.test.ts

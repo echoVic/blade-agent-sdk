@@ -237,6 +237,31 @@ const session = await createSession({
 ```
 
 Session files are written under `{storagePath}/sessions/`. `persistSession: false` forces in-memory behavior.
+Caller-supplied Session IDs must be non-empty single path segments; `/`, `\`,
+and NUL are rejected before resolving a transcript path.
+
+Each local transcript append is serialized across Node.js processes with an OS
+advisory lock and synced before the write resolves. A final record without a
+newline is treated as an uncommitted crash tail: reads ignore it and the next
+append truncates it before writing. A malformed complete record fails Session
+loading instead of silently dropping history.
+
+The persistent `{sessionId}.jsonl.lock` sidecar is part of the storage protocol.
+Do not delete, replace, or move a transcript or its sidecar while a Session may
+be active. This coordination is for same-host local filesystems, not NFS or
+distributed storage, and requires the native lock targets supported by
+`fs-native-extensions` (macOS, glibc Linux, and Windows on x64/arm64). In-memory
+Sessions remain available when the native addon is unavailable, but
+`storagePath` persistence fails closed.
+
+Transcript locking protects file integrity; it does not grant exclusive
+execution ownership for a Session. Use `durableEventStore` for recoverable
+Request, Turn, model, permission, and tool lifecycle coordination.
+
+Persistence failures use stable `SdkError.code` values:
+`SESSION_JSONL_CORRUPT_LOG`, `SESSION_JSONL_LOCK_FAILED`,
+`SESSION_JSONL_LOCK_TIMEOUT`, `SESSION_JSONL_READ_FAILED`, and
+`SESSION_JSONL_WRITE_FAILED`.
 
 ### Durable execution events
 
@@ -317,9 +342,8 @@ terminal event reports `reconcile_request_outcome`; settle it with
 `reconcileRequestOutcome()` rather than replaying it. A `non_idempotent` tool
 that completed, failed, or was cancelled after execution started always
 remains fail-closed.
-The JSONL adapter supports only one process;
-multi-process deployments need a `DurableEventStore` with transactional CAS or
-fencing.
+The bundled JSONL adapters coordinate processes on one host. Distributed
+deployments still need a `DurableEventStore` with transactional CAS or fencing.
 
 ### Resume
 

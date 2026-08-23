@@ -637,6 +637,29 @@ const session = await createSession({
 - `session.fork()` 仍然可用，因为它直接复制内存中的消息
   :::
 
+调用方提供的 Session ID 必须是非空的单一路径段；SDK 会在解析 transcript
+路径前拒绝 `/`、`\` 和 NUL。
+
+每次本地 transcript 追加都会通过操作系统 advisory lock 在多个 Node.js
+进程间串行化，并在写入返回前完成同步。末尾没有换行符的记录视为未提交的崩溃
+尾部：读取时忽略，下一次追加前截断。任何已经完整写入但格式损坏的记录都会使
+Session 加载失败，不会静默丢弃历史。
+
+持久的 `{sessionId}.jsonl.lock` sidecar 属于存储协议的一部分。当 Session
+可能仍在运行时，不要删除、替换或移动 transcript 及其 sidecar。该协调只适用于
+同机本地文件系统，不支持 NFS 或分布式存储，并依赖
+`fs-native-extensions` 支持的原生目标（macOS、glibc Linux 及 Windows 的
+x64/arm64）。原生 addon 不可用时，内存 Session 仍可使用，但
+`storagePath` 持久化会 fail-closed。
+
+Transcript 锁只保护文件完整性，不授予 Session 独占执行所有权。需要对 Request、
+Turn、模型、权限及工具生命周期做可恢复协调时，应配置 `durableEventStore`。
+
+持久化失败通过稳定的 `SdkError.code` 暴露：
+`SESSION_JSONL_CORRUPT_LOG`、`SESSION_JSONL_LOCK_FAILED`、
+`SESSION_JSONL_LOCK_TIMEOUT`、`SESSION_JSONL_READ_FAILED` 和
+`SESSION_JSONL_WRITE_FAILED`。
+
 ### Durable 执行事件
 
 通过 `durableEventStore` 显式启用可恢复执行日志。该 Store 与消息历史存储相互
@@ -707,8 +730,8 @@ Request 已完成至少一个 Turn 但缺少 Request 终态，则返回
 `reconcile_request_outcome`；使用 `reconcileRequestOutcome()` 确认终态，禁止
 自动重放。已完成、失败，或在开始执行后被取消的 `non_idempotent` 工具始终保持
 fail-closed。
-JSONL adapter 只支持单进程 writer，多进程部署需要实现带事务 CAS 或 fencing
-的 `DurableEventStore`。
+内置 JSONL adapter 支持同机多进程协调；分布式部署仍需实现带事务 CAS 或
+fencing 的 `DurableEventStore`。
 
 ### 自定义存储路径
 

@@ -157,6 +157,9 @@ Session 默认只保存在内存中。配置 `storagePath` 后才会写入磁盘
 | 仅内存（默认） | 不设置 `storagePath`，或 `persistSession: false` | Web / Serverless / 无状态 |
 | 持久化 | `storagePath: '/path/to/sessions'` | CLI / IDE / 本地服务 |
 
+本地 transcript 写入支持同机多进程协调和崩溃尾部恢复；恢复时遇到已完整写入但
+格式损坏的记录会 fail-closed。文件系统与原生锁约束详见[会话](./session)。
+
 ## 多模型支持
 
 原生支持 6 种 Provider：
