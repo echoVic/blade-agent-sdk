@@ -14,6 +14,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  type AdvisoryFileLockErrors,
+  withAdvisoryFileLock,
+} from '../../../utils/advisoryFileLock.js';
+import {
   CommandId,
   EventId,
   EventSequence,
@@ -62,6 +66,16 @@ interface ChildCloseResult {
 const CHILD_PROCESS_WAIT_TIMEOUT_MS = 15_000;
 const CHILD_PROCESS_TERMINATE_TIMEOUT_MS = 2_000;
 const childProcesses = new Set<ReadyChildProcess>();
+
+function testLockErrors(): AdvisoryFileLockErrors {
+  return {
+    prepare: (cause) => new Error('prepare failed', { cause }),
+    initialize: (cause) => new Error('initialize failed', { cause }),
+    acquire: (cause) => new Error('acquire failed', { cause }),
+    timeout: () => new Error('lock timed out'),
+    release: (cause) => new Error('release failed', { cause }),
+  };
+}
 
 async function waitWithTimeout<T>(
   promise: Promise<T>,
@@ -769,6 +783,57 @@ describe('JsonlDurableEventStore', () => {
     });
   });
 
+  it('bounds a fenced callback and keeps the Store lock fail-closed until cleanup', async () => {
+    const sessionId = SessionId('session-fenced-operation-timeout');
+    const setupStore = new JsonlDurableEventStore(storageRoot, {
+      lockTimeoutMs: 500,
+      operationTimeoutMs: 1_000,
+    });
+    const lease = await setupStore.acquireExecutionLease(sessionId, {
+      leaseId: ExecutionLeaseId('lease-fenced-operation-timeout'),
+      ownerId: WorkerId('worker-fenced-operation-timeout'),
+      ttlMs: 10_000,
+    });
+    const timedStore = new JsonlDurableEventStore(storageRoot, {
+      lockTimeoutMs: 10,
+      operationTimeoutMs: 50,
+    });
+    const entered = Promise.withResolvers<void>();
+    const releaseOperation = Promise.withResolvers<void>();
+    const operationSettled = Promise.withResolvers<void>();
+    const fenced = timedStore.withExecutionLease(lease, async () => {
+      entered.resolve();
+      try {
+        await releaseOperation.promise;
+      } finally {
+        operationSettled.resolve();
+      }
+    });
+    const outcome = fenced.then(
+      (value) => ({ status: 'fulfilled' as const, value }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+
+    await entered.promise;
+    await expect(outcome).resolves.toMatchObject({
+      status: 'rejected',
+      error: {
+        code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+        operation: 'with',
+        timeoutMs: 50,
+        sessionId,
+      },
+    });
+    releaseOperation.resolve();
+    await operationSettled.promise;
+
+    const cleanupStore = new JsonlDurableEventStore(storageRoot, {
+      lockTimeoutMs: 500,
+      operationTimeoutMs: 1_000,
+    });
+    await expect(cleanupStore.releaseExecutionLease(lease)).resolves.toBeUndefined();
+  });
+
   it('fails closed on corrupt execution lease state', async () => {
     const sessionId = SessionId('session-corrupt-lease');
     const filePath = store.getExecutionLeaseFilePath(sessionId);
@@ -886,6 +951,117 @@ describe('JsonlDurableEventStore', () => {
     });
   });
 
+  it('removes an aborted process-local lock waiter before it can run', async () => {
+    const filePath = store.getFilePath(SessionId('session-local-lock-abort'));
+    const entered = Promise.withResolvers<void>();
+    const releaseOwner = Promise.withResolvers<void>();
+    const owner = withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: 5_000,
+        errors: testLockErrors(),
+      },
+      async () => {
+        entered.resolve();
+        await releaseOwner.promise;
+      },
+    );
+    await entered.promise;
+
+    const controller = new AbortController();
+    const abortReason = new Error('cancel local waiter');
+    let cancelledCallbackRan = false;
+    const cancelled = withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: 5_000,
+        signal: controller.signal,
+        errors: testLockErrors(),
+      },
+      async () => {
+        cancelledCallbackRan = true;
+      },
+    );
+
+    controller.abort(abortReason);
+
+    await expect(cancelled).rejects.toBe(abortReason);
+    releaseOwner.resolve();
+    await owner;
+    expect(cancelledCallbackRan).toBe(false);
+  });
+
+  it('does not grant an expired local waiter before its delayed timer runs', async () => {
+    const filePath = store.getFilePath(SessionId('session-expired-local-lock-waiter'));
+    const entered = Promise.withResolvers<void>();
+    const releaseOwner = Promise.withResolvers<void>();
+    const owner = withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: 5_000,
+        errors: testLockErrors(),
+      },
+      async () => {
+        entered.resolve();
+        await releaseOwner.promise;
+      },
+    );
+    await entered.promise;
+
+    let expiredCallbackRan = false;
+    const expired = withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: 10,
+        errors: testLockErrors(),
+      },
+      async () => {
+        expiredCallbackRan = true;
+      },
+    );
+    const rejection = expect(expired).rejects.toThrow('lock timed out');
+    const blockedUntil = Date.now() + 25;
+    let spins = 0;
+    while (Date.now() < blockedUntil) {
+      spins += 1;
+    }
+
+    releaseOwner.resolve();
+    await owner;
+
+    await rejection;
+    expect(expiredCallbackRan).toBe(false);
+    expect(spins).toBeGreaterThan(0);
+  });
+
+  it('stops cross-process lock polling when the caller aborts', async () => {
+    const sessionId = SessionId('session-process-lock-abort');
+    const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 500);
+    const controller = new AbortController();
+    const abortReason = new Error('cancel process lock waiter');
+    let cancelledCallbackRan = false;
+    const cancelled = withAdvisoryFileLock(
+      store.getFilePath(sessionId),
+      {
+        timeoutMs: 5_000,
+        signal: controller.signal,
+        errors: testLockErrors(),
+      },
+      async () => {
+        cancelledCallbackRan = true;
+      },
+    );
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25));
+
+    controller.abort(abortReason);
+
+    await expect(
+      waitWithTimeout(cancelled, 250, 'aborted process lock waiter did not settle'),
+    ).rejects.toBe(abortReason);
+    await waitForChild(holder);
+    expect(cancelledCallbackRan).toBe(false);
+  });
+
   it.skipIf(process.platform === 'win32')(
     'canonicalizes symlink aliases before locking',
     async () => {
@@ -988,6 +1164,22 @@ describe('JsonlDurableEventStore', () => {
     expect(() => new JsonlDurableEventStore(storageRoot, { lockTimeoutMs: 1.5 })).toThrow(
       /lockTimeoutMs/,
     );
+  });
+
+  it('rejects invalid operation timeout options', () => {
+    expect(
+      () =>
+        new JsonlDurableEventStore(storageRoot, {
+          lockTimeoutMs: 10,
+          operationTimeoutMs: 9,
+        }),
+    ).toThrow(/operationTimeoutMs/);
+    expect(
+      () =>
+        new JsonlDurableEventStore(storageRoot, {
+          operationTimeoutMs: 0,
+        }),
+    ).toThrow(/operationTimeoutMs/);
   });
 
   it('allows an immediate lock attempt when lockTimeoutMs is zero', async () => {
