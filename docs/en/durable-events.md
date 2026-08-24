@@ -111,9 +111,10 @@ persistent recovery object.
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
-// Optional: wait at most 15 seconds in the local queue or on another process.
+// Optional: bound lock acquisition and the complete Store call separately.
 const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
   lockTimeoutMs: 15_000,
+  operationTimeoutMs: 30_000,
 });
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
@@ -617,6 +618,38 @@ versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
 cannot masquerade as containing v3 model events. Version 1 logs are not
 inferred silently and must be migrated before this runtime can resume them.
 
+### Store deadlines and cooperative cancellation
+
+`SessionOptions.durableStoreTimeoutMs` applies one 15-second deadline by
+default to each Journal, subscription, and execution-lease Store call. The SDK
+also passes an `AbortSignal` through `append`, `read`, `getHeadSequence`, and
+the optional lease methods. Custom Stores should stop waiting and avoid
+starting a mutation once that signal aborts.
+
+The SDK host watchdog remains authoritative when a Store ignores cancellation.
+An append timeout is treated as an unknown command outcome: the Journal blocks
+different commands until the original `commandId` is retried and reconciled.
+A lease acquire, heartbeat, assertion, fenced operation, or release timeout
+throws `DurableExecutionLeaseTimeoutError`; heartbeat and active fenced
+operation timeouts abort `lease.signal` and stop new side effects. Active lease
+calls cap the configured timeout to the remaining heartbeat-to-expiry safety
+window, and a monotonic local expiry watchdog fails closed even if heartbeat
+scheduling is delayed. When Session and lease-specific Store deadlines are both
+configured, the stricter value wins.
+
+After an uncertain acquisition timeout, an in-process retry against the same
+Store, Session, and owner automatically reuses the generated `leaseId`. The
+timeout error also exposes that ID so a retry in another process can pass it
+explicitly and reconcile the same acquisition. Retry the same identity with
+the same TTL, heartbeat interval, and Store deadline until that uncertainty
+window is resolved or expires.
+
+Standalone Journal, subscription, and lease APIs expose `storeTimeoutMs`.
+`JsonlDurableEventStore` exposes `operationTimeoutMs`; its default leaves the
+configured `lockTimeoutMs` plus 15 seconds for lock-held I/O. Cancellation
+removes queued process-local lock waiters and stops cross-process lock polling;
+an already-running callback keeps ownership until its cleanup finishes.
+
 ### Execution leases and fencing
 
 `DurableExecutionLease` adds opt-in worker ownership on top of Journal CAS:
@@ -626,9 +659,11 @@ const lease = await DurableExecutionLease.acquire(store, sessionId, {
   ownerId: WorkerId('worker-a'),
   ttlMs: 30_000,
   heartbeatIntervalMs: 10_000,
+  storeTimeoutMs: 15_000,
 });
 const journal = await DurableSessionJournal.open(store, sessionId, {
   executionLease: lease,
+  storeTimeoutMs: 15_000,
 });
 ```
 
@@ -706,6 +741,9 @@ Each append:
 `read()` and `getHeadSequence()` acquire the same lock, so they cannot observe
 another process between tail truncation and append. Local mutex queuing and
 cross-process acquisition share a total 10-second budget by default. The
+complete direct Store call is also bounded by `operationTimeoutMs`; by default
+that budget is `lockTimeoutMs + 15000`. An explicit operation timeout must be
+at least the lock timeout. The
 cross-process lock is an operating-system advisory lock: the kernel releases it
 when a process exits or crashes, while a paused live process retains ownership
 instead of being displaced after a wall-clock timeout. `lockTimeoutMs: 0`
@@ -764,11 +802,13 @@ journal.
 | `DURABLE_EXECUTION_LEASE_CONFLICT` | Another unexpired worker lease owns the Session. |
 | `DURABLE_EXECUTION_LEASE_REQUIRED` | An active lease exists but the append did not carry its fence. |
 | `DURABLE_EXECUTION_LEASE_LOST` | The lease expired, was released, or was replaced by a higher token. |
+| `DURABLE_EXECUTION_LEASE_TIMEOUT` | A lease Store call exceeded its deadline. |
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
 | `DURABLE_EVENT_LOCK_FAILED` | Session file-lock setup or acquisition failed. |
 | `DURABLE_EVENT_LOCK_TIMEOUT` | The Session file lock was not acquired within `lockTimeoutMs`. |
+| `DURABLE_EVENT_IO_TIMEOUT` | A durable Store append, read, or head lookup exceeded its deadline. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |
 
 A complete newline-terminated record with an invalid schema, duplicate ID, or
