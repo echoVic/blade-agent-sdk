@@ -1,7 +1,15 @@
 import { AbortError } from '../../errors/AbortError.js';
 import { SdkError } from '../../errors/SdkError.js';
 import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
-import type { DurableEventStore } from './DurableEventStore.js';
+import {
+  type DurableEventStore,
+  type DurableEventStoreOperation,
+  DurableEventStoreTimeoutError,
+} from './DurableEventStore.js';
+import {
+  awaitDurableStoreOperation,
+  resolveDurableStoreTimeoutMs,
+} from './DurableStoreOperation.js';
 import { parseDurableEventEnvelope } from './schemas.js';
 import { type DurableEventEnvelope, type DurableEventPage, DurableEventType } from './types.js';
 
@@ -9,6 +17,7 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
 const MAX_POLL_INTERVAL_MS = 60_000;
+const SUBSCRIPTION_CLOSED = Symbol('durable-event-subscription-closed');
 
 export const DURABLE_EVENT_CURSOR_VERSION = 1 as const;
 
@@ -28,6 +37,8 @@ export interface DurableEventSubscriptionOptions {
   readonly pollIntervalMs?: number;
   /** Stop after replay reaches the head captured when the subscription opens. */
   readonly follow?: boolean;
+  /** Maximum wall-clock duration of one Store call. Defaults to 15000ms. */
+  readonly storeTimeoutMs?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -127,7 +138,10 @@ export class DurableEventSubscription
   private readonly pageSize: number;
   private readonly pollIntervalMs: number;
   private readonly follow: boolean;
+  private readonly storeTimeoutMs: number;
   private readonly signal: AbortSignal | undefined;
+  private readonly closeController = new AbortController();
+  private readonly storeSignal: AbortSignal;
   private readonly replayHead: EventSequence | null;
   private cursor: DurableEventCursor | null;
   private headSequence: EventSequence | null;
@@ -142,7 +156,10 @@ export class DurableEventSubscription
     private readonly store: DurableEventStore,
     readonly sessionId: SessionId,
     options: Required<
-      Pick<DurableEventSubscriptionOptions, 'pageSize' | 'pollIntervalMs' | 'follow'>
+      Pick<
+        DurableEventSubscriptionOptions,
+        'pageSize' | 'pollIntervalMs' | 'follow' | 'storeTimeoutMs'
+      >
     > &
       Pick<DurableEventSubscriptionOptions, 'signal'>,
     cursor: DurableEventCursor | null,
@@ -152,7 +169,11 @@ export class DurableEventSubscription
     this.pageSize = options.pageSize;
     this.pollIntervalMs = options.pollIntervalMs;
     this.follow = options.follow;
+    this.storeTimeoutMs = options.storeTimeoutMs;
     this.signal = options.signal;
+    this.storeSignal = options.signal
+      ? AbortSignal.any([options.signal, this.closeController.signal])
+      : this.closeController.signal;
     this.cursor = cursor;
     this.replayHead = replayHead;
     this.headSequence = replayHead;
@@ -167,6 +188,20 @@ export class DurableEventSubscription
   ): Promise<DurableEventSubscription> {
     const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    let storeTimeoutMs: number;
+    try {
+      storeTimeoutMs = resolveDurableStoreTimeoutMs(
+        options.storeTimeoutMs,
+        undefined,
+        'DurableEventSubscription storeTimeoutMs',
+      );
+    } catch (cause) {
+      throw new DurableEventSubscriptionError(
+        'DURABLE_EVENT_SUBSCRIPTION_INVALID_OPTIONS',
+        'Durable event subscription storeTimeoutMs is invalid',
+        { cause },
+      );
+    }
     if (!Number.isSafeInteger(pageSize) || pageSize <= 0 || pageSize > MAX_PAGE_SIZE) {
       throw new DurableEventSubscriptionError(
         'DURABLE_EVENT_SUBSCRIPTION_INVALID_OPTIONS',
@@ -195,7 +230,30 @@ export class DurableEventSubscription
       );
     }
 
-    const replayHead = await store.getHeadSequence(sessionId);
+    const runStoreOperation = async <T>(
+      operation: DurableEventStoreOperation,
+      execute: (signal: AbortSignal) => PromiseLike<T>,
+    ): Promise<T> => {
+      try {
+        return await awaitDurableStoreOperation(
+          {
+            timeoutMs: storeTimeoutMs,
+            signal: options.signal,
+            createTimeoutError: () =>
+              new DurableEventStoreTimeoutError(operation, sessionId, storeTimeoutMs),
+          },
+          execute,
+        );
+      } catch (error) {
+        if (!(error instanceof DurableEventStoreTimeoutError) && options.signal?.aborted) {
+          throw abortError(options.signal);
+        }
+        throw error;
+      }
+    };
+    const replayHead = await runStoreOperation('get_head_sequence', (signal) =>
+      store.getHeadSequence(sessionId, { signal }),
+    );
     if (replayHead !== null && (!Number.isSafeInteger(replayHead) || replayHead <= 0)) {
       throw new DurableEventSubscriptionError(
         'DURABLE_EVENT_SUBSCRIPTION_INVALID_PAGE',
@@ -211,12 +269,13 @@ export class DurableEventSubscription
         );
       }
       const previousSequence = Number(cursor.sequence) - 1;
-      const anchor = await store.read(sessionId, {
-        ...(previousSequence > 0
-          ? { after: EventSequence(previousSequence) }
-          : {}),
-        limit: 1,
-      });
+      const anchor = await runStoreOperation('read', (signal) =>
+        store.read(sessionId, {
+          ...(previousSequence > 0 ? { after: EventSequence(previousSequence) } : {}),
+          limit: 1,
+          signal,
+        }),
+      );
       if (anchor.events.length !== 1) {
         throw new DurableEventSubscriptionError(
           'DURABLE_EVENT_SUBSCRIPTION_STALE_CURSOR',
@@ -263,6 +322,7 @@ export class DurableEventSubscription
         pageSize,
         pollIntervalMs,
         follow: options.follow ?? true,
+        storeTimeoutMs,
         signal: options.signal,
       },
       cursor,
@@ -328,6 +388,7 @@ export class DurableEventSubscription
       return;
     }
     this.closed = true;
+    this.closeController.abort(SUBSCRIPTION_CLOSED);
     this.buffer.length = 0;
     this.wakeWaiter?.();
     this.wakeWaiter = null;
@@ -377,10 +438,13 @@ export class DurableEventSubscription
           return { done: true, value: undefined };
         }
 
-        const page = await this.store.read(this.sessionId, {
-          ...(this.cursor ? { after: this.cursor.sequence } : {}),
-          limit: this.pageSize,
-        });
+        const page = await this.runStoreOperation('read', (signal) =>
+          this.store.read(this.sessionId, {
+            ...(this.cursor ? { after: this.cursor.sequence } : {}),
+            limit: this.pageSize,
+            signal,
+          }),
+        );
         this.throwIfAborted();
         if (this.closed) {
           return { done: true, value: undefined };
@@ -407,6 +471,9 @@ export class DurableEventSubscription
       }
     } catch (error) {
       this.close();
+      if (error === SUBSCRIPTION_CLOSED) {
+        return { done: true, value: undefined };
+      }
       throw error;
     }
   }
@@ -416,6 +483,28 @@ export class DurableEventSubscription
       return true;
     }
     return Number(this.cursor?.sequence ?? 0) >= Number(this.replayHead);
+  }
+
+  private async runStoreOperation<T>(
+    operation: DurableEventStoreOperation,
+    execute: (signal: AbortSignal) => PromiseLike<T>,
+  ): Promise<T> {
+    try {
+      return await awaitDurableStoreOperation(
+        {
+          timeoutMs: this.storeTimeoutMs,
+          signal: this.storeSignal,
+          createTimeoutError: () =>
+            new DurableEventStoreTimeoutError(operation, this.sessionId, this.storeTimeoutMs),
+        },
+        execute,
+      );
+    } catch (error) {
+      if (!(error instanceof DurableEventStoreTimeoutError) && this.signal?.aborted) {
+        throw abortError(this.signal);
+      }
+      throw error;
+    }
   }
 
   private validatePage(page: DurableEventPage): DurableEventEnvelope[] {

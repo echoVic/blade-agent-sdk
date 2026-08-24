@@ -1,12 +1,22 @@
 import { SdkError } from '../../errors/SdkError.js';
 import { type CommandId, EventSequence, type SessionId } from '../../types/branded.js';
 import { canonicalJson } from './canonicalJson.js';
-import { DurableEventSequenceConflictError, type DurableEventStore } from './DurableEventStore.js';
+import {
+  DurableEventSequenceConflictError,
+  type DurableEventStore,
+  type DurableEventStoreOperation,
+  DurableEventStoreTimeoutError,
+} from './DurableEventStore.js';
 import type { DurableExecutionLease } from './DurableExecutionLease.js';
 import {
   DurableExecutionLeaseError,
+  DurableExecutionLeaseTimeoutError,
   isDurableExecutionLeaseStore,
 } from './DurableExecutionLeaseStore.js';
+import {
+  awaitDurableStoreOperation,
+  resolveDurableStoreTimeoutMs,
+} from './DurableStoreOperation.js';
 import {
   type DurableSessionProjection,
   DurableSessionProjector,
@@ -53,6 +63,8 @@ export interface DurableSessionJournalOptions {
   readonly pageSize?: number;
   readonly maxConflictRetries?: number;
   readonly executionLease?: DurableExecutionLease;
+  /** Maximum wall-clock duration of one Store call. Defaults to 15000ms. */
+  readonly storeTimeoutMs?: number;
 }
 
 export type DurableSessionJournalErrorCode =
@@ -179,6 +191,7 @@ export class DurableSessionJournal {
     readonly sessionId: SessionId,
     private readonly pageSize: number,
     private readonly maxConflictRetries: number,
+    private readonly storeTimeoutMs: number,
     private readonly executionLease?: DurableExecutionLease,
   ) {}
 
@@ -189,6 +202,20 @@ export class DurableSessionJournal {
   ): Promise<DurableSessionJournal> {
     const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
     const maxConflictRetries = options.maxConflictRetries ?? DEFAULT_MAX_CONFLICT_RETRIES;
+    let storeTimeoutMs: number;
+    try {
+      storeTimeoutMs = resolveDurableStoreTimeoutMs(
+        options.storeTimeoutMs,
+        undefined,
+        'DurableSessionJournal storeTimeoutMs',
+      );
+    } catch (cause) {
+      throw new DurableSessionJournalError(
+        'DURABLE_COMMAND_INVALID',
+        'Durable Session journal storeTimeoutMs is invalid',
+        { cause },
+      );
+    }
     if (!Number.isSafeInteger(pageSize) || pageSize <= 0 || pageSize > 1000) {
       throw new DurableSessionJournalError(
         'DURABLE_COMMAND_INVALID',
@@ -208,11 +235,20 @@ export class DurableSessionJournal {
         `Execution lease does not belong to durable Session ${sessionId}`,
       );
     }
-    if (
-      !options.executionLease &&
-      isDurableExecutionLeaseStore(store) &&
-      (await store.requiresExecutionLease(sessionId))
-    ) {
+    const requiresExecutionLease =
+      !options.executionLease && isDurableExecutionLeaseStore(store)
+        ? await awaitDurableStoreOperation(
+            {
+              timeoutMs: storeTimeoutMs,
+              createTimeoutError: () =>
+                new DurableExecutionLeaseTimeoutError('requires', storeTimeoutMs, {
+                  sessionId,
+                }),
+            },
+            (signal) => store.requiresExecutionLease(sessionId, { signal }),
+          )
+        : false;
+    if (requiresExecutionLease) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_REQUIRED',
         `Durable Session ${sessionId} requires an execution lease`,
@@ -225,6 +261,7 @@ export class DurableSessionJournal {
       sessionId,
       pageSize,
       maxConflictRetries,
+      storeTimeoutMs,
       options.executionLease,
     );
     await journal.reload();
@@ -326,10 +363,13 @@ export class DurableSessionJournal {
       this.projector.preview(this.sessionId, drafts);
       try {
         const expectedLastSequence = this.projector.snapshot().headSequence;
-        const result = await this.store.append(this.sessionId, drafts, {
-          expectedLastSequence,
-          ...(this.executionLease ? { executionFence: this.executionLease.fence } : {}),
-        });
+        const result = await this.runStoreOperation('append', (signal) =>
+          this.store.append(this.sessionId, drafts, {
+            expectedLastSequence,
+            ...(this.executionLease ? { executionFence: this.executionLease.fence } : {}),
+            signal,
+          }),
+        );
         try {
           this.validateCommitResult(result, drafts, expectedLastSequence);
           const committedEvents = structuredClone(result.events);
@@ -361,7 +401,10 @@ export class DurableSessionJournal {
           continue;
         }
 
-        if (isErrorCode(error, 'DURABLE_EVENT_WRITE_FAILED')) {
+        if (
+          isErrorCode(error, 'DURABLE_EVENT_WRITE_FAILED') ||
+          isErrorCode(error, 'DURABLE_EVENT_IO_TIMEOUT')
+        ) {
           return this.reconcileUnknownOutcome(command.commandId, drafts, error);
         }
         throw error;
@@ -461,10 +504,13 @@ export class DurableSessionJournal {
     let after: EventSequence | undefined;
 
     while (true) {
-      const page = await this.store.read(this.sessionId, {
-        ...(after ? { after } : {}),
-        limit: this.pageSize,
-      });
+      const page = await this.runStoreOperation('read', (signal) =>
+        this.store.read(this.sessionId, {
+          ...(after ? { after } : {}),
+          limit: this.pageSize,
+          signal,
+        }),
+      );
       this.validateReadPage(page, after);
       projector.apply(page.events);
 
@@ -556,5 +602,19 @@ export class DurableSessionJournal {
       () => undefined,
     );
     return result;
+  }
+
+  private runStoreOperation<T>(
+    operation: DurableEventStoreOperation,
+    execute: (signal: AbortSignal) => PromiseLike<T>,
+  ): Promise<T> {
+    return awaitDurableStoreOperation(
+      {
+        timeoutMs: this.storeTimeoutMs,
+        createTimeoutError: () =>
+          new DurableEventStoreTimeoutError(operation, this.sessionId, this.storeTimeoutMs),
+      },
+      execute,
+    );
   }
 }

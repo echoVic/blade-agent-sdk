@@ -332,6 +332,8 @@ export type DurableEventOfType<TType extends DurableEventType> = Extract<
 >;
 
 export interface DurableEventReadOptions {
+  /** Cooperative cancellation signal supplied by the SDK deadline boundary. */
+  signal?: AbortSignal;
   /** Exclusive cursor. Omit to read from the first event. */
   after?: EventSequence;
   /** Maximum number of events to return. */
@@ -346,6 +348,8 @@ export interface DurableEventPage {
 }
 
 export interface DurableEventAppendOptions {
+  /** Cooperative cancellation signal supplied by the SDK deadline boundary. */
+  signal?: AbortSignal;
   /**
    * Compare-and-append precondition.
    * - undefined: append to the current head

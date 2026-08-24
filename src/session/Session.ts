@@ -51,6 +51,7 @@ import type {
   DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
 import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
+import { resolveDurableStoreTimeoutMs } from './events/DurableStoreOperation.js';
 import {
   type DurableRequestFinish,
   durableRequestFinishFromLoopResult,
@@ -151,6 +152,7 @@ class Session implements ISession {
   private readonly isResumeSession: boolean;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
+  private readonly durableStoreTimeoutMs: number;
   private maxTurns: number;
   private permissionMode: PermissionMode;
   private defaultContext: RuntimeContext;
@@ -198,6 +200,7 @@ class Session implements ISession {
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
     this.defaultContext = options.defaultContext ?? {};
+    this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
     this.persistenceEnabled = options.persistSession ?? true;
     this.store =
       this.persistenceEnabled && options.storagePath
@@ -261,7 +264,13 @@ class Session implements ISession {
         'Session durable event subscription requires durableEventStore',
       );
     }
-    return DurableEventSubscription.open(store, this.sessionId, options);
+    return DurableEventSubscription.open(store, this.sessionId, {
+      ...options,
+      storeTimeoutMs: Math.min(
+        options.storeTimeoutMs ?? this.durableStoreTimeoutMs,
+        this.durableStoreTimeoutMs,
+      ),
+    });
   }
 
   async initialize(): Promise<void> {
@@ -1864,7 +1873,13 @@ class Session implements ISession {
         { sessionId: this.sessionId },
       );
     }
-    this.executionLease = await DurableExecutionLease.acquire(store, this.sessionId, options);
+    this.executionLease = await DurableExecutionLease.acquire(store, this.sessionId, {
+      ...options,
+      storeTimeoutMs: Math.min(
+        options.storeTimeoutMs ?? this.durableStoreTimeoutMs,
+        this.durableStoreTimeoutMs,
+      ),
+    });
   }
 
   private runWithExecutionLease<T>(operation: () => Promise<T>): Promise<T> {
@@ -2073,6 +2088,7 @@ class Session implements ISession {
 
     const journal = await DurableSessionJournal.open(eventStore, this.sessionId, {
       ...(this.executionLease ? { executionLease: this.executionLease } : {}),
+      storeTimeoutMs: this.durableStoreTimeoutMs,
     });
     const projection = journal.getProjection();
     if (projection.status === 'empty') {

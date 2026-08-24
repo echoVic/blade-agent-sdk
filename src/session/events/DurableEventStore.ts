@@ -17,7 +17,10 @@ export interface DurableEventStore {
 
   read(sessionId: SessionId, options?: DurableEventReadOptions): Promise<DurableEventPage>;
 
-  getHeadSequence(sessionId: SessionId): Promise<EventSequence | null>;
+  getHeadSequence(
+    sessionId: SessionId,
+    options?: DurableEventOperationOptions,
+  ): Promise<EventSequence | null>;
 }
 
 export class DurableEventSequenceConflictError extends SdkError {
@@ -39,6 +42,7 @@ export type DurableEventStoreErrorCode =
   | 'DURABLE_EVENT_CORRUPT_LOG'
   | 'DURABLE_EVENT_INVALID_APPEND'
   | 'DURABLE_EVENT_INVALID_CURSOR'
+  | 'DURABLE_EVENT_IO_TIMEOUT'
   | 'DURABLE_EVENT_LOCK_FAILED'
   | 'DURABLE_EVENT_LOCK_TIMEOUT'
   | 'DURABLE_EVENT_READ_FAILED'
@@ -48,5 +52,33 @@ export class DurableEventStoreError extends SdkError {
   // biome-ignore lint/complexity/noUselessConstructor: narrows the public error-code contract
   constructor(code: DurableEventStoreErrorCode, message: string, options?: { cause?: unknown }) {
     super(code, message, options);
+  }
+}
+
+export type DurableEventStoreOperation = 'append' | 'read' | 'get_head_sequence';
+
+export interface DurableEventOperationOptions {
+  readonly signal?: AbortSignal;
+}
+
+export class DurableEventStoreTimeoutError extends DurableEventStoreError {
+  constructor(
+    readonly operation: DurableEventStoreOperation,
+    readonly sessionId: SessionId,
+    readonly timeoutMs: number,
+  ) {
+    super(
+      'DURABLE_EVENT_IO_TIMEOUT',
+      `Durable Store ${operation} timed out after ${timeoutMs}ms for Session ${sessionId}`,
+    );
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      operation: this.operation,
+      sessionId: this.sessionId,
+      timeoutMs: this.timeoutMs,
+    };
   }
 }

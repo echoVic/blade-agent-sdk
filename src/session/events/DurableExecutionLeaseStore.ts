@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { SdkError } from '../../errors/SdkError.js';
 import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/branded.js';
-import type { DurableEventStore } from './DurableEventStore.js';
+import type { DurableEventOperationOptions, DurableEventStore } from './DurableEventStore.js';
 
 export const DURABLE_EXECUTION_LEASE_FORMAT = 'blade.durable-execution-lease' as const;
 export const DURABLE_EXECUTION_LEASE_FORMAT_VERSION = 1 as const;
@@ -19,7 +19,7 @@ export interface DurableExecutionLease extends DurableExecutionFence {
   readonly expiresAt: string;
 }
 
-export interface DurableExecutionLeaseAcquireOptions {
+export interface DurableExecutionLeaseAcquireOptions extends DurableEventOperationOptions {
   readonly leaseId: ExecutionLeaseId;
   readonly ownerId: WorkerId;
   readonly ttlMs: number;
@@ -44,6 +44,7 @@ export type DurableExecutionLeaseErrorCode =
   | 'DURABLE_EXECUTION_LEASE_CONFLICT'
   | 'DURABLE_EXECUTION_LEASE_REQUIRED'
   | 'DURABLE_EXECUTION_LEASE_LOST'
+  | 'DURABLE_EXECUTION_LEASE_TIMEOUT'
   | 'DURABLE_EXECUTION_LEASE_CORRUPT'
   | 'DURABLE_EXECUTION_LEASE_WRITE_FAILED';
 
@@ -70,6 +71,51 @@ export class DurableExecutionLeaseError extends SdkError {
     this.fencingToken = options.fencingToken;
     this.activeLease = options.activeLease ? structuredClone(options.activeLease) : undefined;
   }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      ...(this.sessionId !== undefined ? { sessionId: this.sessionId } : {}),
+      ...(this.leaseId !== undefined ? { leaseId: this.leaseId } : {}),
+      ...(this.fencingToken !== undefined ? { fencingToken: this.fencingToken } : {}),
+      ...(this.activeLease !== undefined ? { activeLease: this.activeLease } : {}),
+    };
+  }
+}
+
+export type DurableExecutionLeaseOperation =
+  | 'requires'
+  | 'acquire'
+  | 'renew'
+  | 'assert'
+  | 'with'
+  | 'release';
+
+export class DurableExecutionLeaseTimeoutError extends DurableExecutionLeaseError {
+  constructor(
+    readonly operation: DurableExecutionLeaseOperation,
+    readonly timeoutMs: number,
+    options: {
+      sessionId: SessionId;
+      leaseId?: ExecutionLeaseId;
+      fencingToken?: FencingToken;
+      cause?: unknown;
+    },
+  ) {
+    super(
+      'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      `Execution lease ${operation} timed out after ${timeoutMs}ms for Session ${options.sessionId}`,
+      options,
+    );
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      operation: this.operation,
+      timeoutMs: this.timeoutMs,
+    };
+  }
 }
 
 const DURABLE_EXECUTION_LEASE_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -78,13 +124,12 @@ const DURABLE_EXECUTION_LEASE_ERROR_CODES: ReadonlySet<string> = new Set([
   'DURABLE_EXECUTION_LEASE_CONFLICT',
   'DURABLE_EXECUTION_LEASE_REQUIRED',
   'DURABLE_EXECUTION_LEASE_LOST',
+  'DURABLE_EXECUTION_LEASE_TIMEOUT',
   'DURABLE_EXECUTION_LEASE_CORRUPT',
   'DURABLE_EXECUTION_LEASE_WRITE_FAILED',
 ] satisfies readonly DurableExecutionLeaseErrorCode[]);
 
-export function isExecutionLeaseFailure(
-  error: unknown,
-): error is DurableExecutionLeaseError {
+export function isExecutionLeaseFailure(error: unknown): error is DurableExecutionLeaseError {
   if (error instanceof DurableExecutionLeaseError) {
     return true;
   }
@@ -129,16 +174,26 @@ export interface DurableExecutionLeaseStore extends DurableEventStore {
    * Returns true once the Session has entered fenced execution mode.
    * This requirement remains sticky after expiry or release.
    */
-  requiresExecutionLease(sessionId: SessionId): Promise<boolean>;
+  requiresExecutionLease(
+    sessionId: SessionId,
+    options?: DurableEventOperationOptions,
+  ): Promise<boolean>;
 
   acquireExecutionLease(
     sessionId: SessionId,
     options: DurableExecutionLeaseAcquireOptions,
   ): Promise<DurableExecutionLease>;
 
-  renewExecutionLease(lease: DurableExecutionLease, ttlMs: number): Promise<DurableExecutionLease>;
+  renewExecutionLease(
+    lease: DurableExecutionLease,
+    ttlMs: number,
+    options?: DurableEventOperationOptions,
+  ): Promise<DurableExecutionLease>;
 
-  assertExecutionLease(lease: DurableExecutionLease): Promise<void>;
+  assertExecutionLease(
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void>;
 
   /**
    * Runs a short internal persistence operation while lease takeover is blocked.
@@ -148,9 +203,13 @@ export interface DurableExecutionLeaseStore extends DurableEventStore {
   withExecutionLease<T>(
     lease: DurableExecutionLease,
     operation: () => Promise<T>,
+    options?: DurableEventOperationOptions,
   ): Promise<T>;
 
-  releaseExecutionLease(lease: DurableExecutionLease): Promise<void>;
+  releaseExecutionLease(
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void>;
 }
 
 export function isDurableExecutionLeaseStore(
