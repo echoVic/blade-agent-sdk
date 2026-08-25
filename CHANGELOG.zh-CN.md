@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.4.2] - 2026-08-25
+
+### 重构
+
+- 以领域归属明确的模型类型、branded identifiers、显式持久化端口和新的 browser-safe /model 入口，替换重叠的 chat、stream、transcript 与 tool 契约。
+
 ## [5.4.1] - 2026-08-25
 
 ### 修复

@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.4.2] - 2026-08-25
+
+### Refactoring
+
+- Replace overlapping chat, stream, transcript, and tool contracts with domain-owned model types, branded identifiers, explicit persistence ports, and the new browser-safe /model entry point.
+
 ## [5.4.1] - 2026-08-25
 
 ### Fixes
