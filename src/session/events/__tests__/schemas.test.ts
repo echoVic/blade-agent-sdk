@@ -114,8 +114,8 @@ const validDrafts: readonly DurableEventDraft[] = [
     data: {
       model: 'claude-sonnet',
       modelIdentity: {
-        provider: 'anthropic-primary',
-        api: 'anthropic',
+        provider: 'custom-provider',
+        api: 'custom-wire-api',
         model: 'claude-sonnet',
       },
       streaming: true,
@@ -513,6 +513,19 @@ describe('durable event schemas', () => {
         data: modelStarted.data,
       }),
     ).toThrow(/provider identity requires durable event schema v4/);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+        data: {
+          ...modelStarted.data,
+          modelIdentity: {
+            ...modelStarted.data.modelIdentity,
+            model: 'different-model',
+          },
+        },
+      }),
+    ).toThrow(/Model identity must match/);
   });
 
   it('requires model-attempt identity and original input for schema-v3 and later tools', () => {

@@ -2,6 +2,7 @@ import { access, readFile, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import {
   AgentId,
@@ -114,6 +115,7 @@ describe('BackgroundAgentManager', () => {
   it('propagates Session middleware into background subagents', async () => {
     const modelMiddleware = {};
     const toolMiddleware = vi.fn();
+    const providerRegistry = new ProviderRegistry();
     const managerWithMiddleware = BackgroundAgentManager.create(
       NOOP_LOGGER,
       AgentSessionStore.create(),
@@ -122,6 +124,7 @@ describe('BackgroundAgentManager', () => {
         model: [modelMiddleware],
         tool: [toolMiddleware],
       },
+      providerRegistry,
     );
 
     const agentId = AgentId(await managerWithMiddleware.startBackgroundAgent({
@@ -138,6 +141,7 @@ describe('BackgroundAgentManager', () => {
       expect.objectContaining({
         modelMiddleware: [modelMiddleware],
         toolMiddleware: [toolMiddleware],
+        providerRegistry,
       }),
     );
   });

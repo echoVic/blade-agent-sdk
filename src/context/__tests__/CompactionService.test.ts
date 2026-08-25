@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
@@ -49,6 +50,7 @@ describe('CompactionService', () => {
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
     const messages: Message[] = [{ role: 'user', content: 'hello' }];
     const controller = new AbortController();
+    const providerRegistry = new ProviderRegistry();
 
     await compact(messages, {
       trigger: 'manual',
@@ -56,6 +58,7 @@ describe('CompactionService', () => {
       maxContextTokens: 128000,
       apiKey: 'test-key',
       baseURL: 'https://api.openai.com/v1',
+      providerRegistry,
       signal: controller.signal,
     });
 
@@ -67,6 +70,7 @@ describe('CompactionService', () => {
         timeout: 60_000,
       }),
       expect.anything(),
+      providerRegistry,
     );
     expect(mockSideQuery).toHaveBeenCalledWith(
       expect.anything(),

@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  CompactionOptions,
+  CompactionResult,
+} from '../../context/CompactionService.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
-const mockCompact = vi.fn(async () => ({
+const mockCompact = vi.fn(async (
+  _messages: Message[],
+  _options: CompactionOptions,
+): Promise<CompactionResult> => ({
   success: true,
   summary: 'summary',
   preTokens: 700,
@@ -172,6 +180,57 @@ describe('CompactionHandler', () => {
     await expect(stream.next()).rejects.toBe(leaseLost);
     expect(mockCompact).toHaveBeenCalledOnce();
     expect(convState.getContextMessages()).toEqual(originalMessages);
+  });
+
+  it('propagates the active provider registry to automatic and reactive compaction', async () => {
+    const providerRegistry = new ProviderRegistry();
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+          apiKey: 'test-key',
+          baseUrl: 'https://example.com',
+        }),
+      }) as never,
+      () => undefined,
+      undefined,
+      () => providerRegistry,
+    );
+    const automaticState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const automaticStream = handler.checkAndCompactInLoop(
+      automaticState,
+      { sessionId: SessionId('provider-registry-auto-session') },
+      2,
+      700,
+    );
+
+    await automaticStream.next();
+    await automaticStream.next();
+
+    const reactiveState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const reactiveStream = handler.reactiveCompact(
+      reactiveState,
+      { sessionId: SessionId('provider-registry-reactive-session') },
+    );
+
+    await reactiveStream.next();
+    await reactiveStream.next();
+
+    expect(mockCompact).toHaveBeenCalledTimes(2);
+    for (const [, options] of mockCompact.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ providerRegistry }));
+    }
   });
 
   it('propagates process-containment failures from automatic compaction hooks', async () => {

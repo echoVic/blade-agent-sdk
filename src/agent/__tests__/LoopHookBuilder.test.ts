@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CompactionService } from '../../context/CompactionService.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { InputId, RequestId, SessionId } from '../../types/branded.js';
 import { buildLoopConfig } from '../LoopHookBuilder.js';
@@ -169,6 +170,8 @@ describe('LoopHookBuilder request signal', () => {
     const requestController = new AbortController();
     contextController.abort(new Error('stale context signal'));
     const observedSignals: Array<AbortSignal | undefined> = [];
+    const observedRegistries: Array<ProviderRegistry | undefined> = [];
+    const providerRegistry = new ProviderRegistry();
     const checkAndCompactInLoop = vi.fn(async function* (
       _conversationState,
       runtimeContext: { signal?: AbortSignal },
@@ -188,6 +191,7 @@ describe('LoopHookBuilder request signal', () => {
     const compact = vi.spyOn(CompactionService, 'compact').mockImplementation(
       async (_messages, options) => {
         observedSignals.push(options.signal);
+        observedRegistries.push(options.providerRegistry);
         return {
           success: true,
           summary: 'summary',
@@ -231,6 +235,7 @@ describe('LoopHookBuilder request signal', () => {
       } as never,
       modelManager: {
         getContextManager: () => undefined,
+        getProviderRegistry: () => providerRegistry,
       } as never,
       runtimePatchManager: {} as never,
     });
@@ -254,6 +259,7 @@ describe('LoopHookBuilder request signal', () => {
       requestController.signal,
       requestController.signal,
     ]);
+    expect(observedRegistries).toEqual([providerRegistry]);
     compact.mockRestore();
   });
 });

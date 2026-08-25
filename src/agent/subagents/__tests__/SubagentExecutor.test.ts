@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/branded.js';
 
 const runAgenticLoop = vi.fn(async () => ({
@@ -138,11 +139,13 @@ describe('SubagentExecutor', () => {
   it('inherits model and tool middleware from the parent Session runtime', async () => {
     const modelMiddleware = {};
     const toolMiddleware = vi.fn();
+    const providerRegistry = new ProviderRegistry();
     const backgroundAgentManager = {
       getMiddleware: () => ({
         model: [modelMiddleware],
         tool: [toolMiddleware],
       }),
+      getProviderRegistry: () => providerRegistry,
     };
     const executor = new SubagentExecutor(
       {
@@ -177,6 +180,7 @@ describe('SubagentExecutor', () => {
       expect.objectContaining({
         modelMiddleware: [modelMiddleware],
         toolMiddleware: [toolMiddleware],
+        providerRegistry,
       }),
     );
   });

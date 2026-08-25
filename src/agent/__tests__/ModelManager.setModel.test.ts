@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatConfig } from '../../services/ChatServiceInterface.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import type { BladeConfig, ModelConfig } from '../../types/common.js';
 
-const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => ({
+const mockCreateChatServiceAsync = vi.fn(async (
+  config: ChatConfig,
+  _logger?: unknown,
+  _providerRegistry?: ProviderRegistry,
+) => ({
   chat: vi.fn(async () => ({ content: 'ok' })),
   streamChat: vi.fn(async function* () {}),
   getConfig: () => config,
@@ -41,7 +46,16 @@ describe('ModelManager.setModel', () => {
       ],
       currentModelId: 'default',
     };
-    const manager = new ModelManager(config);
+    const providerRegistry = new ProviderRegistry();
+    const manager = new ModelManager(
+      config,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [],
+      providerRegistry,
+    );
     const [model] = config.models;
     expect(model).toBeDefined();
     if (!model) {
@@ -50,7 +64,7 @@ describe('ModelManager.setModel', () => {
 
     await manager.applyModelConfig(model, 'init');
 
-    expect(mockCreateChatServiceAsync).toHaveBeenLastCalledWith(
+    expect(mockCreateChatServiceAsync.mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({
         providerId: 'gateway-primary',
         maxOutputTokens: 4096,
@@ -58,6 +72,7 @@ describe('ModelManager.setModel', () => {
         streamIdleTimeoutMs: 30_000,
       }),
     );
+    expect(mockCreateChatServiceAsync.mock.calls.at(-1)?.[2]).toBe(providerRegistry);
   });
 
   it('should update the active model name for subsequent turns', async () => {
