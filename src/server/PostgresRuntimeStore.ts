@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import {
@@ -18,7 +19,12 @@ import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import {
   DurableEventSequenceConflictError,
   DurableEventStoreError,
+  type DurableEventOperationOptions,
 } from '../session/events/DurableEventStore.js';
+import type {
+  DurableExecutionLease,
+  DurableExecutionLeaseAcquireOptions,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import {
   parseDurableEventDraft,
   parseDurableEventEnvelope,
@@ -52,10 +58,13 @@ import type {
 } from '../context/types.js';
 import {
   EventSequence,
+  type ExecutionLeaseId,
+  FencingToken,
   MessageId,
   type InputId,
   type RequestId,
   type SessionId,
+  type WorkerId,
 } from '../types/branded.js';
 import type {
   JsonObject,
@@ -72,6 +81,7 @@ import type {
   AgentServerSessionRecord,
 } from './AgentServerStore.js';
 import {
+  RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
   RuntimeStoreError,
   type RuntimeCommandCommit,
@@ -84,6 +94,21 @@ import {
   type RuntimeStore,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
+import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
+import type {
+  RuntimeEffectClaim,
+  RuntimeEffectClaimOptions,
+  RuntimeEffectFailureOptions,
+  RuntimeEffectLease,
+  RuntimeEffectReconciliation,
+  RuntimeRecoveryResult,
+  RuntimeSessionClaim,
+  RuntimeSessionClaimOptions,
+  RuntimeSessionRoute,
+  RuntimeSessionTransition,
+  RuntimeWorkerRecord,
+  RuntimeWorkerRegistration,
+} from './WorkerRuntime.js';
 
 const DEFAULT_MAX_EVENTS_PER_SESSION = 10_000;
 const DEFAULT_MAX_SESSIONS_PER_TENANT = 10_000;
@@ -130,10 +155,17 @@ interface EffectRow extends QueryResultRow {
   effect_type: string;
   payload: unknown;
   idempotency_key: string;
+  execution_mode: 'idempotent' | 'at_most_once';
   status: RuntimeEffectStatus;
   attempts: number;
   available_at: Date | string;
   created_at: Date | string;
+  worker_id: string | null;
+  lease_id: string | null;
+  fencing_token: string | number;
+  lease_expires_at: Date | string | null;
+  started_at: Date | string | null;
+  completed_at: Date | string | null;
   result: unknown | null;
   error: unknown | null;
 }
@@ -330,6 +362,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
   private readonly prefix: string;
   private readonly maxAgentEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
+  private readonly transactionContext = new AsyncLocalStorage<PoolClient>();
+  private readonly workerRuntime: PostgresWorkerRuntime;
   private initialization?: Promise<void>;
 
   constructor(options: PostgresRuntimeStoreOptions = {}) {
@@ -353,6 +387,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant =
       options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
+    this.workerRuntime = new PostgresWorkerRuntime(
+      this.pool,
+      this.schema,
+      this.prefix,
+      () => this.initialize(),
+      this.transactionContext,
+    );
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
       ['maxSessionsPerTenant', this.maxSessionsPerTenant],
@@ -389,7 +430,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }> {
     try {
       await this.initialize();
-      await this.pool.query('SELECT 1');
+      await this.queryClient().query('SELECT 1');
       return {
         ready: true,
         details: {
@@ -484,7 +525,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: string,
   ): Promise<void> {
     await this.initialize();
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `UPDATE ${this.table('commands')}
           SET status = 'sealed', expires_at = 'infinity', updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
@@ -503,7 +544,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     result: AgentCommandResult,
   ): Promise<void> {
     await this.initialize();
-    const updated = await this.pool.query(
+    const updated = await this.queryClient().query(
       `UPDATE ${this.table('commands')}
           SET status = 'completed', expires_at = 'infinity',
               result = $4::jsonb, updated_at = NOW()
@@ -522,7 +563,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: string,
   ): Promise<void> {
     await this.initialize();
-    await this.pool.query(
+    await this.queryClient().query(
       `DELETE FROM ${this.table('commands')}
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
           AND status = 'claimed'`,
@@ -532,7 +573,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
     await this.initialize();
-    await this.pool.query(
+    await this.queryClient().query(
       `INSERT INTO ${this.table('sessions')} (
          tenant_id, session_id, created_by, status,
          created_at, updated_at, metadata
@@ -558,7 +599,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<AgentServerSessionRecord | null> {
     await this.initialize();
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
          FROM ${this.table('sessions')}
@@ -607,7 +648,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     ) {
       throw new RangeError('Session list pagination is invalid');
     }
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
          FROM ${this.table('sessions')}
@@ -856,10 +897,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
       predicates.push(`status = $${values.length}`);
     }
     values.push(limit);
-    const result = await this.pool.query<EffectRow>(
-      `SELECT tenant_id, session_id, command_id, effect_id, effect_type,
-              payload, idempotency_key, status, attempts, available_at,
-              created_at, result, error
+    const result = await this.queryClient().query<EffectRow>(
+      `SELECT *
          FROM ${this.table('outbox')}
         WHERE ${predicates.join(' AND ')}
         ORDER BY created_at ASC, effect_id ASC
@@ -875,7 +914,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     name: string,
   ): Promise<RuntimeProjectionRecord | null> {
     await this.initialize();
-    const result = await this.pool.query<ProjectionRow>(
+    const result = await this.queryClient().query<ProjectionRow>(
       `SELECT projection_offset, state, updated_at
          FROM ${this.table('projections')}
         WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3`,
@@ -898,6 +937,212 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (this.ownsPool) {
       await this.pool.end();
     }
+  }
+
+  registerWorker(
+    registration: RuntimeWorkerRegistration,
+  ): Promise<RuntimeWorkerRecord> {
+    return this.workerRuntime.registerWorker(registration);
+  }
+
+  heartbeatWorker(
+    workerId: WorkerId,
+    ttlMs: number,
+  ): Promise<RuntimeWorkerRecord> {
+    return this.workerRuntime.heartbeatWorker(workerId, ttlMs);
+  }
+
+  drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
+    return this.workerRuntime.drainWorker(workerId);
+  }
+
+  getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null> {
+    return this.workerRuntime.getWorker(workerId);
+  }
+
+  enqueueSession(
+    tenantId: string,
+    sessionId: SessionId,
+    options?: {
+      readonly priority?: number;
+      readonly metadata?: JsonObject;
+    },
+  ): Promise<RuntimeSessionRoute> {
+    return this.workerRuntime.enqueueSession(tenantId, sessionId, options);
+  }
+
+  claimSession(
+    options: RuntimeSessionClaimOptions,
+  ): Promise<RuntimeSessionClaim | null> {
+    return this.workerRuntime.claimSession(options);
+  }
+
+  renewSessionLease(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    ttlMs: number,
+  ): Promise<RuntimeSessionClaim> {
+    return this.workerRuntime.renewSessionLease(tenantId, lease, ttlMs);
+  }
+
+  transitionSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    transition: RuntimeSessionTransition,
+  ): Promise<RuntimeSessionRoute> {
+    return this.workerRuntime.transitionSession(
+      tenantId,
+      lease,
+      transition,
+    );
+  }
+
+  handoffSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    metadata?: JsonObject,
+  ): Promise<RuntimeSessionRoute> {
+    return this.workerRuntime.handoffSession(tenantId, lease, metadata);
+  }
+
+  preemptSession(
+    tenantId: string,
+    sessionId: SessionId,
+    options?: {
+      readonly reason?: JsonObject;
+      readonly requeue?: boolean;
+    },
+  ): Promise<RuntimeSessionRoute> {
+    return this.workerRuntime.preemptSession(tenantId, sessionId, options);
+  }
+
+  getSessionRoute(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<RuntimeSessionRoute | null> {
+    return this.workerRuntime.getSessionRoute(tenantId, sessionId);
+  }
+
+  listWorkerSessions(
+    workerId: WorkerId,
+  ): Promise<readonly RuntimeSessionRoute[]> {
+    return this.workerRuntime.listWorkerSessions(workerId);
+  }
+
+  recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
+    return this.workerRuntime.recoverExpiredWork();
+  }
+
+  claimEffects(
+    options: RuntimeEffectClaimOptions,
+  ): Promise<readonly RuntimeEffectClaim[]> {
+    return this.workerRuntime.claimEffects(options);
+  }
+
+  renewEffectLease(
+    lease: RuntimeEffectLease,
+    ttlMs: number,
+  ): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.renewEffectLease(lease, ttlMs);
+  }
+
+  startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.startEffect(lease);
+  }
+
+  completeEffect(
+    lease: RuntimeEffectLease,
+    result?: JsonObject,
+  ): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.completeEffect(lease, result);
+  }
+
+  failEffect(
+    lease: RuntimeEffectLease,
+    error: JsonObject,
+    options?: RuntimeEffectFailureOptions,
+  ): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.failEffect(lease, error, options);
+  }
+
+  reconcileEffect(
+    tenantId: string,
+    effectId: string,
+    outcome: RuntimeEffectReconciliation,
+  ): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.reconcileEffect(tenantId, effectId, outcome);
+  }
+
+  requiresExecutionLease(
+    tenantId: string,
+    sessionId: SessionId,
+    options?: DurableEventOperationOptions,
+  ): Promise<boolean> {
+    return this.workerRuntime.requiresExecutionLease(
+      tenantId,
+      sessionId,
+      options,
+    );
+  }
+
+  acquireExecutionLease(
+    tenantId: string,
+    sessionId: SessionId,
+    options: DurableExecutionLeaseAcquireOptions,
+  ): Promise<DurableExecutionLease> {
+    return this.workerRuntime.acquireExecutionLease(
+      tenantId,
+      sessionId,
+      options,
+    );
+  }
+
+  renewExecutionLease(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    ttlMs: number,
+    options?: DurableEventOperationOptions,
+  ): Promise<DurableExecutionLease> {
+    return this.workerRuntime.renewExecutionLease(
+      tenantId,
+      lease,
+      ttlMs,
+      options,
+    );
+  }
+
+  assertExecutionLease(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void> {
+    return this.workerRuntime.assertExecutionLease(tenantId, lease, options);
+  }
+
+  withExecutionLease<T>(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    operation: () => Promise<T>,
+    options?: DurableEventOperationOptions,
+  ): Promise<T> {
+    return this.workerRuntime.withExecutionLease(
+      tenantId,
+      lease,
+      operation,
+      options,
+    );
+  }
+
+  releaseExecutionLease(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void> {
+    return this.workerRuntime.releaseExecutionLease(
+      tenantId,
+      lease,
+      options,
+    );
   }
 
   async appendDurableEvents(
@@ -926,6 +1171,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
     });
     options.signal?.throwIfAborted();
     return this.transaction(async (client) => {
+      await this.workerRuntime.assertExecutionFenceWithClient(
+        client,
+        tenantId,
+        sessionId,
+        options.executionFence,
+      );
       const previousSequence = await this.currentHead(
         client,
         tenantId,
@@ -1009,7 +1260,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<EventSequence | null> {
     await this.initialize();
-    const result = await this.pool.query<StreamHeadRow>(
+    const result = await this.queryClient().query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
          FROM ${this.table('stream_heads')}
         WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'durable'`,
@@ -1090,7 +1341,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         'transcript',
         undefined,
         events.map((event) => ({ sequence, eventId, recordedAt }) => ({
-          schemaVersion: RUNTIME_STORE_SCHEMA_VERSION,
+          schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
           eventId,
           sequence,
           tenantId,
@@ -1164,7 +1415,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async listSessionProjectionIds(tenantId: string): Promise<string[]> {
     await this.initialize();
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `SELECT session_id
          FROM ${this.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2
@@ -1176,7 +1427,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async cleanupSessionProjections(tenantId: string): Promise<void> {
     await this.initialize();
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `SELECT session_id
          FROM ${this.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2
@@ -1196,7 +1447,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     tenantId: string,
   ): Promise<SessionRepositoryStorageStats> {
     await this.initialize();
-    const result = await this.pool.query(
+    const result = await this.queryClient().query(
       `SELECT COUNT(*)::int AS total_sessions,
               COALESCE(SUM(octet_length(state::text)), 0)::bigint AS total_size
          FROM ${this.table('projections')}
@@ -1300,6 +1551,16 @@ export class PostgresRuntimeStore implements RuntimeStore {
       effectIds.add(effect.effectId);
       idempotencyKeys.add(effect.idempotencyKey);
       assertJsonObject(effect.payload, `Effect payload at index ${index}`);
+      if (
+        effect.executionMode !== undefined
+        && effect.executionMode !== 'idempotent'
+        && effect.executionMode !== 'at_most_once'
+      ) {
+        throw new RuntimeStoreError(
+          'RUNTIME_STORE_INVALID_TRANSACTION',
+          `Effect executionMode at index ${index} is invalid`,
+        );
+      }
       if (
         effect.availableAt
         && !Number.isFinite(Date.parse(effect.availableAt))
@@ -1423,11 +1684,26 @@ export class PostgresRuntimeStore implements RuntimeStore {
         effect_type TEXT NOT NULL,
         payload JSONB NOT NULL,
         idempotency_key TEXT NOT NULL,
+        execution_mode TEXT NOT NULL DEFAULT 'idempotent'
+          CONSTRAINT ${this.prefix}_outbox_execution_mode_check
+          CHECK (execution_mode IN ('idempotent', 'at_most_once')),
         status TEXT NOT NULL DEFAULT 'pending'
-          CHECK (status IN ('pending', 'completed', 'failed')),
+          CONSTRAINT ${this.prefix}_outbox_status_check
+          CHECK (
+            status IN (
+              'pending', 'claimed', 'executing',
+              'completed', 'failed', 'uncertain'
+            )
+          ),
         attempts INTEGER NOT NULL DEFAULT 0,
         available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        worker_id TEXT,
+        lease_id TEXT,
+        fencing_token BIGINT NOT NULL DEFAULT 0,
+        lease_expires_at TIMESTAMPTZ,
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
         result JSONB,
         error JSONB,
         PRIMARY KEY (tenant_id, effect_id),
@@ -1453,19 +1729,30 @@ export class PostgresRuntimeStore implements RuntimeStore {
          ON CONFLICT (key) DO NOTHING`,
         [String(RUNTIME_STORE_SCHEMA_VERSION)],
       );
-      const version = await client.query(
+      const storedVersion = await client.query(
         `SELECT value
            FROM ${this.table('metadata')}
           WHERE key = 'schema_version'`,
       );
+      const previousSchemaVersion = Number(storedVersion.rows[0]?.value);
       if (
-        Number(version.rows[0]?.value) !== RUNTIME_STORE_SCHEMA_VERSION
+        previousSchemaVersion !== 1
+        && previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
       ) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Unsupported Runtime Store schema version: ${String(
-            version.rows[0]?.value,
+            storedVersion.rows[0]?.value,
           )}`,
+        );
+      }
+      await this.workerRuntime.createSchema(client, previousSchemaVersion);
+      if (previousSchemaVersion === 1) {
+        await client.query(
+          `UPDATE ${this.table('metadata')}
+              SET value = $1
+            WHERE key = 'schema_version' AND value = '1'`,
+          [String(RUNTIME_STORE_SCHEMA_VERSION)],
         );
       }
     } finally {
@@ -1483,13 +1770,24 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return `${this.schema}.${quoteIdentifier(`${this.prefix}_${suffix}`, 'table')}`;
   }
 
+  private queryClient(): Pool | PoolClient {
+    return this.transactionContext.getStore() ?? this.pool;
+  }
+
   private async transaction<T>(
     operation: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
+    const activeClient = this.transactionContext.getStore();
+    if (activeClient) {
+      return operation(activeClient);
+    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await operation(client);
+      const result = await this.transactionContext.run(
+        client,
+        () => operation(client),
+      );
       await client.query('COMMIT');
       return result;
     } catch (error) {
@@ -1709,7 +2007,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       'domain',
       current,
       (commit.events ?? []).map((draft) => ({ sequence, eventId, recordedAt }) => ({
-        schemaVersion: RUNTIME_STORE_SCHEMA_VERSION,
+        schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
         eventId: draft.eventId ?? eventId,
         tenantId: commit.tenantId,
         sessionId: commit.sessionId,
@@ -1733,11 +2031,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
       const result = await client.query<EffectRow>(
         `INSERT INTO ${this.table('outbox')} (
            tenant_id, effect_id, session_id, command_id, effect_type,
-           payload, idempotency_key, available_at
-         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-         RETURNING tenant_id, session_id, command_id, effect_id, effect_type,
-                   payload, idempotency_key, status, attempts, available_at,
-                   created_at, result, error`,
+           payload, idempotency_key, available_at, execution_mode
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+         RETURNING *`,
         [
           commit.tenantId,
           effect.effectId,
@@ -1747,6 +2043,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           JSON.stringify(effect.payload),
           effect.idempotencyKey,
           effect.availableAt ?? new Date().toISOString(),
+          effect.executionMode ?? 'idempotent',
         ],
       );
       const row = result.rows[0];
@@ -1849,9 +2146,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       [commit.tenantId, commit.sessionId, commit.command.commandId],
     );
     const effects = await client.query<EffectRow>(
-      `SELECT tenant_id, session_id, command_id, effect_id, effect_type,
-              payload, idempotency_key, status, attempts, available_at,
-              created_at, result, error
+      `SELECT *
          FROM ${this.table('outbox')}
         WHERE tenant_id = $1 AND session_id = $2 AND command_id = $3
         ORDER BY created_at ASC, effect_id ASC`,
@@ -1908,10 +2203,23 @@ export class PostgresRuntimeStore implements RuntimeStore {
       type: row.effect_type,
       payload: asJsonObject(row.payload),
       idempotencyKey: row.idempotency_key,
+      executionMode: row.execution_mode,
       status: row.status,
       attempts: row.attempts,
       availableAt: asIso(row.available_at),
       createdAt: asIso(row.created_at),
+      ...(row.worker_id ? { workerId: row.worker_id as WorkerId } : {}),
+      ...(row.lease_id
+        ? { leaseId: row.lease_id as ExecutionLeaseId }
+        : {}),
+      ...(asNumber(row.fencing_token) > 0
+        ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
+        : {}),
+      ...(row.lease_expires_at
+        ? { leaseExpiresAt: asIso(row.lease_expires_at) }
+        : {}),
+      ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
+      ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
       ...(row.result ? { result: asJsonObject(row.result) } : {}),
       ...(row.error ? { error: asJsonObject(row.error) } : {}),
     };
@@ -2366,5 +2674,75 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
 
   getHeadSequence(sessionId: SessionId): Promise<EventSequence | null> {
     return this.runtime.getDurableHead(this.tenantId, sessionId);
+  }
+
+  requiresExecutionLease(
+    sessionId: SessionId,
+    options?: DurableEventOperationOptions,
+  ): Promise<boolean> {
+    return this.runtime.requiresExecutionLease(
+      this.tenantId,
+      sessionId,
+      options,
+    );
+  }
+
+  acquireExecutionLease(
+    sessionId: SessionId,
+    options: DurableExecutionLeaseAcquireOptions,
+  ): Promise<DurableExecutionLease> {
+    return this.runtime.acquireExecutionLease(
+      this.tenantId,
+      sessionId,
+      options,
+    );
+  }
+
+  renewExecutionLease(
+    lease: DurableExecutionLease,
+    ttlMs: number,
+    options?: DurableEventOperationOptions,
+  ): Promise<DurableExecutionLease> {
+    return this.runtime.renewExecutionLease(
+      this.tenantId,
+      lease,
+      ttlMs,
+      options,
+    );
+  }
+
+  assertExecutionLease(
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void> {
+    return this.runtime.assertExecutionLease(
+      this.tenantId,
+      lease,
+      options,
+    );
+  }
+
+  withExecutionLease<T>(
+    lease: DurableExecutionLease,
+    operation: () => Promise<T>,
+    options?: DurableEventOperationOptions,
+  ): Promise<T> {
+    return this.runtime.withExecutionLease(
+      this.tenantId,
+      lease,
+      operation,
+      options,
+    );
+  }
+
+  releaseExecutionLease(
+    lease: DurableExecutionLease,
+    options?: DurableEventOperationOptions,
+  ): Promise<void> {
+    return this.runtime.releaseExecutionLease(
+      this.tenantId,
+      lease,
+      options,
+    );
   }
 }
