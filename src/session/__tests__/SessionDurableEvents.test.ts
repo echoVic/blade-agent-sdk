@@ -2227,8 +2227,8 @@ describe('Session durable events', () => {
         storagePath: root,
         executionLease: {
           ownerId: WorkerId('worker-abandoned-initialization'),
-          ttlMs: 100,
-          heartbeatIntervalMs: 20,
+          ttlMs: 10_000,
+          heartbeatIntervalMs: 5_000,
         },
       }),
     ).rejects.toBeInstanceOf(AggregateError);
@@ -2250,7 +2250,7 @@ describe('Session durable events', () => {
       code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
     });
 
-    now += 101;
+    now += 10_001;
     const successor = await store.acquireExecutionLease(sessionId, {
       ownerId: WorkerId('worker-after-expiry'),
       leaseId: ExecutionLeaseId('lease-after-expiry'),

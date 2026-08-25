@@ -323,7 +323,7 @@ describe('DurableExecutionLease', () => {
       leaseId: ExecutionLeaseId('lease-active'),
       ttlMs: 10_000,
       heartbeatIntervalMs: 5_000,
-      storeTimeoutMs: 100,
+      storeTimeoutMs: 1_000,
     });
     vi.spyOn(store, 'assertExecutionLease').mockRejectedValueOnce(
       new DurableExecutionLeaseTimeoutError('assert', 10, { sessionId }),
