@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as root from '../index.js';
 import type {
   AgentMiddlewareConfig,
+  AgentCommand,
   AgentPlugin,
   BuiltinProviderType,
   ChatConfig,
@@ -47,6 +48,7 @@ import type {
   SessionHandoffErrorCode,
   SessionHandoffResult,
   SessionOptions,
+  SessionRepository,
   SessionTool,
   ToolCatalogEntry,
   ToolEffect,
@@ -67,6 +69,8 @@ import type {
 } from '../index.js';
 import {
   CommandId,
+  AGENT_PROTOCOL_VERSION,
+  AgentCommandType,
   collectToolExecution,
   completeToolExecution,
   composeMiddleware,
@@ -123,6 +127,7 @@ import {
   createMemoryWriteTool,
   FileSystemMemoryStore,
   JsonlDurableEventStore,
+  JsonlSessionRepository,
   MemoryManager,
 } from '../node/index.js';
 
@@ -133,6 +138,7 @@ describe('root exports', () => {
     expect('MemoryManager' in root).toBe(false);
     expect('createMemoryReadTool' in root).toBe(false);
     expect('JsonlDurableEventStore' in root).toBe(false);
+    expect('JsonlSessionRepository' in root).toBe(false);
     expect('createSdkMcpServer' in root).toBe(false);
   });
 
@@ -194,6 +200,9 @@ describe('root exports', () => {
     });
     expect(durableEventCursor).toBeTypeOf('function');
     expect(JsonlDurableEventStore).toBeDefined();
+    expect(JsonlSessionRepository).toBeDefined();
+    expect(AGENT_PROTOCOL_VERSION).toBe(1);
+    expect(AgentCommandType.SESSION_CREATE).toBe('session.create');
     expect(CommandId('command-1')).toBe('command-1');
     expect(EventId('event-1')).toBe('event-1');
     expect(EventSequence(1)).toBe(1);
@@ -229,6 +238,9 @@ describe('root exports', () => {
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
+    expectTypeOf<AgentCommand['protocolVersion']>().toEqualTypeOf<1>();
+    expectTypeOf<SessionOptions['sessionRepository']>()
+      .toEqualTypeOf<SessionRepository | undefined>();
     expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<AgentMiddlewareConfig | undefined>();
     expectTypeOf<
       NonNullable<AgentMiddlewareConfig['tool']>[number]
