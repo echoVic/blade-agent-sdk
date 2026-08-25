@@ -115,6 +115,8 @@ Types:
 - `AgentServerStore`
 - `RuntimeStore`
 - `RuntimeTenantStore`
+- `RUNTIME_STORE_SCHEMA_VERSION`
+- `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION`
 - `RuntimeCommandCommit`
 - `RuntimeCommitResult`
 - `RuntimeDomainEvent`
@@ -123,6 +125,17 @@ Types:
 - `RuntimeEffectIntent`
 - `RuntimeEffectRecord`
 - `RuntimeEffectStatus`
+- `RuntimeWorkerRecord`
+- `RuntimeWorkerRegistration`
+- `RuntimeSessionRoute`
+- `RuntimeSessionClaim`
+- `RuntimeSessionState`
+- `RuntimeEffectClaim`
+- `RuntimeEffectLease`
+- `RuntimeEffectExecutionMode`
+- `RuntimeEffectReconciliation`
+- `WorkerRuntimeStore`
+- `WorkerRuntimeError`
 - `RuntimeProjectionCheckpoint`
 - `RuntimeProjectionRecord`
 - `AgentCommandClaim`
@@ -144,8 +157,8 @@ Types:
 - `AgentProtocolErrorCode`
 - `assertRuntimeStoreConformance` (`/server/testing`)
 
-See [Server Runtime](./server-runtime) and [Runtime Store](./runtime-store) for
-deployment and failure semantics.
+See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store), and
+[Worker Runtime](./worker-runtime) for deployment and failure semantics.
 
 ## Durable Events
 

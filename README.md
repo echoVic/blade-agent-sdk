@@ -136,7 +136,7 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
-- `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, transcripts, and durable journals
+- `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, worker leases, routing, transcripts, and durable journals
 - `/server/testing`: framework-independent Runtime Store conformance suite
 - `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
 - `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
@@ -178,6 +178,8 @@ or configure one shared `runtimeStore`. See
 [Server Runtime](./docs/en/server-runtime.md) for the HTTP/SSE server,
 browser client, multi-tenant storage, idempotency, approvals, and telemetry.
 For multi-instance storage, see [Runtime Store](./docs/en/runtime-store.md).
+For worker coordination and crash recovery, see
+[Worker Runtime](./docs/en/worker-runtime.md).
 
 The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 
@@ -187,6 +189,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 - [Middleware and plugins](./docs/en/middleware.md)
 - [Server Runtime](./docs/en/server-runtime.md)
 - [Runtime Store](./docs/en/runtime-store.md)
+- [Worker Runtime](./docs/en/worker-runtime.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)
