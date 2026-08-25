@@ -24,7 +24,12 @@ export const PROVIDER_TYPES = [
   'openai-compatible',
 ] as const;
 
-export type ProviderType = (typeof PROVIDER_TYPES)[number];
+export type BuiltinProviderType = (typeof PROVIDER_TYPES)[number];
+export type ProviderType = BuiltinProviderType | (string & {});
+
+export function isBuiltinProviderType(value: string): value is BuiltinProviderType {
+  return (PROVIDER_TYPES as readonly string[]).includes(value);
+}
 
 export interface ModelConfig {
   id: string;

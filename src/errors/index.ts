@@ -5,6 +5,8 @@ export type { HookTimeoutErrorCode } from './HookTimeoutError.js';
 export { ModelTimeoutError } from './ModelTimeoutError.js';
 export type { ModelTimeoutErrorCode } from './ModelTimeoutError.js';
 export { PermissionDeniedError } from './PermissionDeniedError.js';
+export { ProviderRegistryError } from './ProviderRegistryError.js';
+export type { ProviderRegistryErrorCode } from './ProviderRegistryError.js';
 export { SdkError } from './SdkError.js';
 export type { SdkErrorOptions } from './SdkError.js';
 export { SessionHandoffError } from './SessionHandoffError.js';

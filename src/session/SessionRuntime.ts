@@ -138,6 +138,7 @@ export class SessionRuntime {
         model: this.pluginHost.getModelMiddleware(),
         tool: this.pluginHost.getToolMiddleware(),
       },
+      options.providerRegistry,
     );
     this.contextManager = new ContextManager({
       storage: {
@@ -170,6 +171,7 @@ export class SessionRuntime {
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
+      providerRegistry: this.options.providerRegistry,
       modelMiddleware: this.pluginHost.getModelMiddleware(),
       toolMiddleware: this.pluginHost.getToolMiddleware(),
       runtimeManaged: true,

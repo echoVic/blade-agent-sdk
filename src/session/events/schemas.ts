@@ -9,11 +9,7 @@ import {
   ToolAttemptId,
   TurnId,
 } from '../../types/branded.js';
-import {
-  type JsonObject,
-  type JsonValue,
-  PROVIDER_TYPES,
-} from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDataMap,
@@ -166,7 +162,7 @@ const DurableEventDataSchemas = {
       model: NonEmptyStringSchema,
       modelIdentity: z.object({
         provider: NonEmptyStringSchema,
-        api: z.enum(PROVIDER_TYPES),
+        api: NonEmptyStringSchema,
         model: NonEmptyStringSchema,
       }).strict().optional(),
       streaming: z.boolean(),
@@ -341,6 +337,22 @@ const DurableEventEnvelopeSchema = z
         path: ['data'],
         message: `${value.type} provider identity requires durable event schema v4`,
       });
+    }
+    if (value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED) {
+      const parsedData = DurableEventDataSchemas[
+        DurableEventTypeValue.MODEL_REQUEST_STARTED
+      ].safeParse(value.data);
+      if (
+        parsedData.success
+        && parsedData.data.modelIdentity !== undefined
+        && parsedData.data.modelIdentity.model !== parsedData.data.model
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['data', 'modelIdentity', 'model'],
+          message: 'Model identity must match the model request',
+        });
+      }
     }
     if (
       value.schemaVersion === 2

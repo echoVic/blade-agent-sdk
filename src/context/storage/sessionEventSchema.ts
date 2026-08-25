@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type JsonValue, PROVIDER_TYPES } from '../../types/common.js';
+import type { JsonValue } from '../../types/common.js';
 import type { SessionEvent } from '../types.js';
 
 const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
@@ -86,7 +86,7 @@ const SessionEventSchema = z.discriminatedUnion('type', [
       model: z.string().optional(),
       modelIdentity: z.object({
         provider: NonEmptyStringSchema,
-        api: z.enum(PROVIDER_TYPES),
+        api: NonEmptyStringSchema,
         model: NonEmptyStringSchema,
       }).strict().optional(),
       usage: z.object({

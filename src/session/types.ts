@@ -10,6 +10,7 @@ import type {
   RuntimePatch,
 } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type {
   ExecutionContext,
@@ -24,6 +25,7 @@ import type {
 } from '../tools/types/index.js';
 import type { EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
 import type {
+  BuiltinProviderType,
   JsonObject,
   JsonValue,
   McpServerConfig,
@@ -52,6 +54,7 @@ import type {
 export type {
   AgentMiddlewareConfig,
   AgentPlugin,
+  BuiltinProviderType,
   ExecutionContext,
   ProviderType,
   TokenUsage,
@@ -269,6 +272,8 @@ export type SessionTool = ToolDefinition<never> | ErasedTool;
 
 export interface SessionOptions {
   provider: ProviderConfig;
+  /** Instance-scoped custom provider adapters. */
+  providerRegistry?: ProviderRegistry;
   model: string;
   temperature?: number;
   maxOutputTokens?: number;

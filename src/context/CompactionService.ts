@@ -10,6 +10,7 @@ import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
@@ -37,6 +38,10 @@ export interface CompactionOptions {
   baseURL?: string;
   /** Provider 类型（可选，默认从调用方透传或按 baseURL 推断） */
   provider?: ProviderType;
+  /** Logical provider ID used for provider-aware history. */
+  providerId?: string;
+  /** Instance-scoped custom provider adapters. */
+  providerRegistry?: ProviderRegistry;
   /** Provider 自定义 headers（可选，压缩时沿用主对话配置） */
   customHeaders?: Record<string, string>;
   /** 真实的 preTokens（可选，来自 LLM usage，比估算更准确） */
@@ -363,9 +368,11 @@ async function generateSummary(
         maxOutputTokens: 8000,
         timeout: 60000,
         provider: options.provider || inferProvider(baseURL),
+        providerId: options.providerId,
         customHeaders: options.customHeaders,
       },
       NOOP_LOGGER,
+      options.providerRegistry,
     ),
   );
 

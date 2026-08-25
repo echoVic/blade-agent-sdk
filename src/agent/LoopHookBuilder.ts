@@ -186,6 +186,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             {
               trigger: 'auto',
               provider: cs.provider,
+              providerId: cs.providerId,
+              providerRegistry: modelManager.getProviderRegistry(),
               modelName: cs.model,
               maxContextTokens: cs.maxContextTokens ?? 128000,
               apiKey: cs.apiKey,

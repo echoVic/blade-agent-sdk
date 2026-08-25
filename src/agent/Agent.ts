@@ -30,6 +30,7 @@ import type {
     IChatService,
     Message,
 } from '../services/ChatServiceInterface.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
@@ -78,6 +79,7 @@ export interface AgentRuntimeDeps {
   subagentRegistry?: SubagentRegistry;
   backgroundAgentManager?: BackgroundAgentManager;
   hookRuntime?: HookRuntime;
+  providerRegistry?: ProviderRegistry;
   modelMiddleware?: readonly ModelMiddleware[];
   toolMiddleware?: readonly ToolMiddleware[];
   runtimeManaged?: boolean;
@@ -147,6 +149,7 @@ export class Agent {
           model: deps.modelMiddleware,
           tool: deps.toolMiddleware,
         },
+        deps.providerRegistry,
       );
     this.hookRuntime = deps.hookRuntime;
     this.modelManager = new ModelManager(
@@ -156,6 +159,7 @@ export class Agent {
       getContextCwd(this.defaultContext),
       this.rootLogger,
       deps.modelMiddleware,
+      deps.providerRegistry,
     );
     this.planExecutor = new PlanExecutor(config.language, this.rootLogger);
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
@@ -212,6 +216,7 @@ export class Agent {
         () => this.modelManager.getChatService(),
         () => this.modelManager.getContextManager(),
         this.rootLogger,
+        () => this.modelManager.getProviderRegistry(),
       );
 
       this.loopRunner = new LoopRunner(

@@ -26,7 +26,6 @@ import {
   type JsonValue,
   type ModelConfig,
   PermissionMode,
-  type ProviderType,
 } from '../types/common.js';
 import { ActiveRequestController, type RequestAbortReason } from './ActiveRequestController.js';
 import {
@@ -456,7 +455,7 @@ class Session implements ISession {
     return {
       id: 'default',
       name: this.options.model,
-      provider: this.mapProviderType(provider.type),
+      provider: provider.type,
       providerId: provider.id?.trim() || provider.type,
       model: this.options.model,
       apiKey: provider.apiKey || '',
@@ -471,18 +470,6 @@ class Session implements ISession {
       thinkingEnabled: this.options.thinkingEnabled,
       thinkingBudget: this.options.thinkingBudget,
     };
-  }
-
-  private mapProviderType(type: ProviderConfig['type']): ProviderType {
-    const mapping: Record<string, ProviderType> = {
-      openai: 'openai',
-      'openai-compatible': 'openai-compatible',
-      anthropic: 'anthropic',
-      gemini: 'gemini',
-      deepseek: 'deepseek',
-      'azure-openai': 'azure-openai',
-    };
-    return mapping[type] || 'openai-compatible';
   }
 
   private getDefaultBaseUrl(type: ProviderConfig['type']): string {
