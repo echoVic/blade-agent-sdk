@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.10] - 2026-08-25
+
+### Refactoring
+
+- Split runtime defaults into a server facade without implicit host access and a local Node.js facade, replacing the local entry point with node.
+
 ## [5.3.9] - 2026-08-25
 
 ### Fixes
