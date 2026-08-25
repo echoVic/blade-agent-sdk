@@ -990,6 +990,7 @@ describe('JsonlDurableEventStore', () => {
         cancelledCallbackRan = true;
       },
     );
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25));
 
     controller.abort(abortReason);
 
@@ -1166,28 +1167,45 @@ describe('JsonlDurableEventStore', () => {
   );
 
   it('rejects invalid lock timeout options', () => {
-    expect(() => new JsonlDurableEventStore(storageRoot, { lockTimeoutMs: -1 })).toThrow(
-      /lockTimeoutMs/,
-    );
-    expect(() => new JsonlDurableEventStore(storageRoot, { lockTimeoutMs: 1.5 })).toThrow(
-      /lockTimeoutMs/,
-    );
+    for (const lockTimeoutMs of [-1, 1.5]) {
+      let error: unknown;
+      try {
+        new JsonlDurableEventStore(storageRoot, { lockTimeoutMs });
+      } catch (cause) {
+        error = cause;
+      }
+      expect(error).toBeInstanceOf(DurableEventStoreError);
+      expect(error).toMatchObject({
+        code: 'DURABLE_EVENT_INVALID_OPTIONS',
+        message: expect.stringContaining('lockTimeoutMs'),
+      });
+    }
   });
 
   it('rejects invalid operation timeout options', () => {
-    expect(
+    for (const createStoreWithInvalidOptions of [
       () =>
         new JsonlDurableEventStore(storageRoot, {
           lockTimeoutMs: 10,
           operationTimeoutMs: 9,
         }),
-    ).toThrow(/operationTimeoutMs/);
-    expect(
       () =>
         new JsonlDurableEventStore(storageRoot, {
           operationTimeoutMs: 0,
         }),
-    ).toThrow(/operationTimeoutMs/);
+    ]) {
+      let error: unknown;
+      try {
+        createStoreWithInvalidOptions();
+      } catch (cause) {
+        error = cause;
+      }
+      expect(error).toBeInstanceOf(DurableEventStoreError);
+      expect(error).toMatchObject({
+        code: 'DURABLE_EVENT_INVALID_OPTIONS',
+        message: expect.stringContaining('operationTimeoutMs'),
+      });
+    }
   });
 
   it('allows an immediate lock attempt when lockTimeoutMs is zero', async () => {
