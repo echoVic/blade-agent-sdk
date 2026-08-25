@@ -1,7 +1,6 @@
 import type { Stats } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { Readable } from 'node:stream';
 import type { Entry } from 'fast-glob';
 import fg from 'fast-glob';
 import { z } from 'zod';
@@ -15,13 +14,25 @@ function getEntryStats(entry: Entry): Stats | undefined {
   return stats as Stats;
 }
 
+function isGlobEntry(value: unknown): value is Entry {
+  return (
+    typeof value === 'object' && value !== null && 'path' in value && typeof value.path === 'string'
+  );
+}
+
+function destroyReadable(stream: NodeJS.ReadableStream, error?: Error): void {
+  const destroy = Reflect.get(stream, 'destroy');
+  if (typeof destroy === 'function') {
+    Reflect.apply(destroy, stream, error ? [error] : []);
+  }
+}
+
 import { FileFilter } from '../../../utils/filePatterns.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-    ExecutionContext,
-    GlobMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { GlobMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
@@ -57,27 +68,26 @@ export const globTool = createTool({
   interruptBehavior: 'cancel',
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    pattern: ToolSchemas.glob({
-      description: 'Glob pattern string (supports *, ?, ** wildcards)',
+  schema: lazySchema(() =>
+    z.object({
+      pattern: ToolSchemas.glob({
+        description: 'Glob pattern string (supports *, ?, ** wildcards)',
+      }),
+      path: z.string().optional().describe('Search path (optional, defaults to cwd)'),
+      max_results: ToolSchemas.semanticNumber()
+        .pipe(
+          z
+            .number()
+            .int('Must be an integer')
+            .min(1, 'Must be greater than 0')
+            .max(1000, 'At most 1000 results can be returned'),
+        )
+        .default(100)
+        .describe('Maximum number of results'),
+      include_directories: z.boolean().default(false).describe('Include directories in results'),
+      case_sensitive: z.boolean().default(false).describe('Case sensitive matching'),
     }),
-    path: z.string().optional().describe('Search path (optional, defaults to cwd)'),
-    max_results: ToolSchemas.semanticNumber()
-      .pipe(
-        z
-          .number()
-          .int('Must be an integer')
-          .min(1, 'Must be greater than 0')
-          .max(1000, 'At most 1000 results can be returned')
-      )
-      .default(100)
-      .describe('Maximum number of results'),
-    include_directories: z
-      .boolean()
-      .default(false)
-      .describe('Include directories in results'),
-    case_sensitive: z.boolean().default(false).describe('Case sensitive matching'),
-  })),
+  ),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {
@@ -92,13 +102,7 @@ export const globTool = createTool({
 
   // 执行函数
   async *execute(params, context: ExecutionContext) {
-    const {
-      pattern,
-      path,
-      max_results,
-      include_directories,
-      case_sensitive,
-    } = params;
+    const { pattern, path, max_results, include_directories, case_sensitive } = params;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
@@ -181,7 +185,7 @@ export const globTool = createTool({
           caseSensitive: case_sensitive,
           signal,
         },
-        fileFilter
+        fileFilter,
       );
 
       const sortedMatches = sortMatches(matches);
@@ -269,7 +273,7 @@ async function performGlobSearch(
     caseSensitive: boolean;
     signal: AbortSignal;
   },
-  fileFilter: FileFilter
+  fileFilter: FileFilter,
 ): Promise<{ matches: FileMatch[]; wasTruncated: boolean }> {
   // 复用 FileFilter 已解析的 ignore 模式（避免重复读取 .gitignore）
   // negates 由 FileFilter 在二次过滤时使用
@@ -296,7 +300,7 @@ async function performGlobSearch(
         stats: true,
         onlyFiles: !options.includeDirectories,
         ignore,
-      }) as unknown as Readable;
+      });
 
       let ended = false;
       let abortHandler: (() => void) | null = null; // 声明在前，定义在后
@@ -304,11 +308,7 @@ async function performGlobSearch(
       // 移除 abort 监听器的辅助函数
       const removeAbortListener = () => {
         if (abortHandler) {
-          if (options.signal.removeEventListener) {
-            options.signal.removeEventListener('abort', abortHandler);
-          } else if ('onabort' in options.signal) {
-            (options.signal as unknown as { onabort: null }).onabort = null;
-          }
+          options.signal.removeEventListener('abort', abortHandler);
           abortHandler = null; // 避免重复清理
         }
       };
@@ -317,18 +317,22 @@ async function performGlobSearch(
         if (!ended) {
           ended = true;
           wasTruncated = true; // 标记因达到 maxResults 而截断
-          stream.destroy();
+          destroyReadable(stream);
           removeAbortListener(); // 清理监听器
           resolvePromise({ matches, wasTruncated });
         }
       };
 
-      const onData = (entry: Entry) => {
+      const onData = (value: unknown) => {
+        if (!isGlobEntry(value)) {
+          return;
+        }
+        const entry = value;
         // 检查用户中止 - 抛出错误而非返回部分结果
         if (options.signal.aborted) {
           if (!ended) {
             ended = true;
-            stream.destroy(createAbortError('文件搜索被用户中止'));
+            destroyReadable(stream, createAbortError('文件搜索被用户中止'));
           }
           return;
         }
@@ -373,16 +377,12 @@ async function performGlobSearch(
         if (!ended) {
           ended = true;
           removeAbortListener(); // 清理监听器（虽然 abort 只触发一次，但保持一致性）
-          stream.destroy(createAbortError('文件搜索被用户中止'));
+          destroyReadable(stream, createAbortError('文件搜索被用户中止'));
         }
       };
 
       // 兼容不同版本的 AbortSignal API
-      if (options.signal.addEventListener) {
-        options.signal.addEventListener('abort', abortHandler);
-      } else if ('onabort' in options.signal) {
-        (options.signal as unknown as { onabort: () => void }).onabort = abortHandler;
-      }
+      options.signal.addEventListener('abort', abortHandler);
 
       stream.once('error', (err) => {
         if (!ended) {
@@ -399,7 +399,7 @@ async function performGlobSearch(
           resolvePromise({ matches, wasTruncated });
         }
       });
-    }
+    },
   );
 }
 

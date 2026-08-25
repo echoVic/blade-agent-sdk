@@ -1,5 +1,5 @@
-import type { JsonValue } from '../../types/common.js';
-import type { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../types.js';
+import type { JsonValue } from '../../types/json.js';
+import type { ContextData, ContextMessage, ContextToolCall, WorkspaceContext } from '../types.js';
 
 /**
  * 内存存储实现 - 用于当前会话的快速数据访问
@@ -65,7 +65,7 @@ export class MemoryStore {
   /**
    * 添加工具调用记录
    */
-  addToolCall(toolCall: ToolCall): void {
+  addToolCall(toolCall: ContextToolCall): void {
     if (!this.contextData) {
       throw new Error('上下文数据未初始化');
     }

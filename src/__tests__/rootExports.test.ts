@@ -1,11 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import * as root from '../index.js';
 import type {
-  AgentMiddlewareConfig,
   AgentCommand,
+  AgentMiddlewareConfig,
   AgentPlugin,
   BuiltinProviderType,
-  ChatConfig,
   ConfirmationDetails,
   ConfirmationHandler,
   DurableAcceptedRequestRecovery,
@@ -40,15 +38,16 @@ import type {
   InputSubmission,
   ISession,
   ModelIdentity,
+  ModelServiceConfig,
   PendingSessionInput,
   ProviderAdapter,
   ProviderRegistryErrorCode,
   ProviderType,
   RuntimePatch,
+  SessionEventStore,
   SessionHandoffErrorCode,
   SessionHandoffResult,
   SessionOptions,
-  SessionEventStore,
   SessionPersistence,
   SessionRepository,
   SessionTool,
@@ -60,8 +59,8 @@ import type {
   ToolExecutionStartedLifecycle,
   ToolExecutionUpdate,
   ToolInvocationLifecycle,
-  ToolMiddleware,
   ToolMessage,
+  ToolMiddleware,
   ToolPermissionResolution,
   ToolProgress,
   ToolResult,
@@ -69,10 +68,11 @@ import type {
   ToolSettledLifecycle,
   ToolYield,
 } from '../index.js';
+import * as root from '../index.js';
 import {
-  CommandId,
   AGENT_PROTOCOL_VERSION,
   AgentCommandType,
+  CommandId,
   collectToolExecution,
   completeToolExecution,
   composeMiddleware,
@@ -83,9 +83,9 @@ import {
   DURABLE_EXECUTION_LEASE_FORMAT,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
+  DurableEventStoreTimeoutError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
-  DurableEventStoreTimeoutError,
   DurableEventType,
   DurableExecutionLease,
   DurableExecutionLeaseError,
@@ -114,9 +114,9 @@ import {
   ProviderRegistryError,
   projectDurableSession,
   RequestId,
-  SessionId,
   SessionDurableRecorderError,
   SessionHandoffError,
+  SessionId,
   SessionInputError,
   SubagentExecutor,
   SubagentRegistry,
@@ -161,11 +161,9 @@ describe('root exports', () => {
     expect(definePlugin({ name: 'test' })).toEqual({ name: 'test' });
     expect(ProviderRegistry).toBeDefined();
     expect(
-      new ProviderRegistryError(
-        'PROVIDER_ADAPTER_NOT_FOUND',
-        'missing',
-        { providerType: 'custom-api' },
-      ),
+      new ProviderRegistryError('PROVIDER_ADAPTER_NOT_FOUND', 'missing', {
+        providerType: 'custom-api',
+      }),
     ).toMatchObject({
       code: 'PROVIDER_ADAPTER_NOT_FOUND',
       providerType: 'custom-api',
@@ -193,11 +191,7 @@ describe('root exports', () => {
     expect(DurableEventSubscriptionError).toBeDefined();
     expect(DEFAULT_DURABLE_STORE_TIMEOUT_MS).toBe(15_000);
     expect(
-      new DurableEventStoreTimeoutError(
-        'read',
-        SessionId('timeout-session'),
-        100,
-      ),
+      new DurableEventStoreTimeoutError('read', SessionId('timeout-session'), 100),
     ).toMatchObject({
       code: 'DURABLE_EVENT_IO_TIMEOUT',
       operation: 'read',
@@ -247,8 +241,9 @@ describe('root exports', () => {
 
   it('exports runtime tool contracts at the root entrypoint', () => {
     expectTypeOf<AgentCommand['protocolVersion']>().toEqualTypeOf<1>();
-    expectTypeOf<SessionOptions['sessionRepository']>()
-      .toEqualTypeOf<SessionRepository | undefined>();
+    expectTypeOf<SessionOptions['sessionRepository']>().toEqualTypeOf<
+      SessionRepository | undefined
+    >();
     expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<AgentMiddlewareConfig | undefined>();
     expectTypeOf<
       NonNullable<AgentMiddlewareConfig['tool']>[number]
@@ -270,9 +265,7 @@ describe('root exports', () => {
     expectTypeOf<ToolPermissionResolution['decision']>().toEqualTypeOf<
       'allow' | 'deny' | 'cancel'
     >();
-    expectTypeOf<ConfirmationDetails['abortSignal']>().toEqualTypeOf<
-      AbortSignal | undefined
-    >();
+    expectTypeOf<ConfirmationDetails['abortSignal']>().toEqualTypeOf<AbortSignal | undefined>();
     expectTypeOf<ConfirmationHandler['requestConfirmation']>().toBeFunction();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
@@ -288,12 +281,10 @@ describe('root exports', () => {
     expectTypeOf<'custom-api'>().toMatchTypeOf<ProviderType>();
     expectTypeOf<ProviderAdapter['type']>().toEqualTypeOf<ProviderType>();
     expectTypeOf<Parameters<ProviderAdapter['create']>[0]>().toEqualTypeOf<
-      Readonly<ChatConfig>
+      Readonly<ModelServiceConfig>
     >();
     expectTypeOf<ProviderRegistryErrorCode>().toEqualTypeOf<
-      | 'PROVIDER_ADAPTER_INVALID'
-      | 'PROVIDER_ADAPTER_DUPLICATE'
-      | 'PROVIDER_ADAPTER_NOT_FOUND'
+      'PROVIDER_ADAPTER_INVALID' | 'PROVIDER_ADAPTER_DUPLICATE' | 'PROVIDER_ADAPTER_NOT_FOUND'
     >();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();

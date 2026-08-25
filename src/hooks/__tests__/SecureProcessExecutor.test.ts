@@ -2,13 +2,12 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SessionId } from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
 import { signalProcessTree } from '../../tools/builtin/shell/processTree.js';
+import { HookEvent, PermissionMode } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
 import { DEFAULT_HOOK_CONFIG } from '../HookConfig.js';
 import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
-import type { HookExecutionContext, HookInput } from '../types/HookTypes.js';
+import type { HookExecutionContext, HookInput } from '../types.js';
 import { HookProcessContainmentError } from '../WindowsProcessJob.js';
 
 const roots: string[] = [];
@@ -211,11 +210,7 @@ describe('SecureProcessExecutor', () => {
   ])('terminates and reaps the hook process tree on $mode', async ({ mode, expectedTimeout }) => {
     const root = await mkdtemp(join(tmpdir(), `hook-${mode}-tree-`));
     roots.push(root);
-    const fixture = await createProcessTreeFixture(
-      root,
-      false,
-      mode === 'timeout' ? 5_000 : 500,
-    );
+    const fixture = await createProcessTreeFixture(root, false, mode === 'timeout' ? 5_000 : 500);
     const controller = new AbortController();
     const executor = new SecureProcessExecutor(50);
     const execution = executor.execute(
@@ -258,55 +253,52 @@ describe('SecureProcessExecutor', () => {
     processGroups.delete(groupPid);
   });
 
-  it(
-    'reaps descendants after the hook command parent has exited',
-    async () => {
-      const root = await mkdtemp(join(tmpdir(), 'hook-exited-parent-'));
-      roots.push(root);
-      const fixture = await createProcessTreeFixture(root, true);
-      const executor = new SecureProcessExecutor(50);
-      const execution = executor.execute(
-        fixture.command,
-        createInput(root),
-        createContext(root),
-        5_000,
-      );
+  it('reaps descendants after the hook command parent has exited', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hook-exited-parent-'));
+    roots.push(root);
+    const fixture = await createProcessTreeFixture(root, true);
+    const executor = new SecureProcessExecutor(50);
+    const execution = executor.execute(
+      fixture.command,
+      createInput(root),
+      createContext(root),
+      5_000,
+    );
 
-      await vi.waitFor(
-        async () => {
-          expect(await pathExists(fixture.readyPath)).toBe(true);
-        },
-        { timeout: 2_000 },
-      );
-      const { groupPid, parentPid, childPid } = JSON.parse(
-        await readFile(fixture.readyPath, 'utf8'),
-      ) as { groupPid: number; parentPid: number; childPid: number };
-      processGroups.add(groupPid);
-      processGroups.add(childPid);
-      await vi.waitFor(
-        () => {
-          expect(() => process.kill(parentPid, 0)).toThrow();
-        },
-        { timeout: 2_000 },
-      );
+    await vi.waitFor(
+      async () => {
+        expect(await pathExists(fixture.readyPath)).toBe(true);
+      },
+      { timeout: 2_000 },
+    );
+    const { groupPid, parentPid, childPid } = JSON.parse(
+      await readFile(fixture.readyPath, 'utf8'),
+    ) as { groupPid: number; parentPid: number; childPid: number };
+    processGroups.add(groupPid);
+    processGroups.add(childPid);
+    await vi.waitFor(
+      () => {
+        expect(() => process.kill(parentPid, 0)).toThrow();
+      },
+      { timeout: 2_000 },
+    );
 
-      await expect(execution).resolves.toMatchObject({
-        exitCode: 0,
-        timedOut: false,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 550));
+    await expect(execution).resolves.toMatchObject({
+      exitCode: 0,
+      timedOut: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 550));
 
-      expect(await pathExists(fixture.markerPath)).toBe(false);
-      await vi.waitFor(
-        () => {
-          expect(() => process.kill(childPid, 0)).toThrow();
-        },
-        { timeout: 2_000 },
-      );
-      processGroups.delete(groupPid);
-      processGroups.delete(childPid);
-    },
-  );
+    expect(await pathExists(fixture.markerPath)).toBe(false);
+    await vi.waitFor(
+      () => {
+        expect(() => process.kill(childPid, 0)).toThrow();
+      },
+      { timeout: 2_000 },
+    );
+    processGroups.delete(groupPid);
+    processGroups.delete(childPid);
+  });
 
   it.runIf(process.platform === 'win32')(
     'fails closed when the contained wrapper cannot spawn',

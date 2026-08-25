@@ -1,7 +1,7 @@
 import type { UserMessageContent } from '../agent/types.js';
-import type { ContentPart } from '../services/ChatServiceInterface.js';
+import type { ModelContent } from '../model/message.js';
 import type { RuntimeContext } from '../runtime/index.js';
-import type { JsonObject, JsonValue } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import { SessionDurableRecorderError } from './events/SessionDurableRecorder.js';
 
@@ -27,7 +27,7 @@ export function parseDurableUserMessageContent(input: JsonValue): UserMessageCon
     );
   }
 
-  return input.map((value, index): ContentPart => {
+  return input.map((value, index): ModelContent => {
     if (!isJsonObject(value)) {
       throw new SessionDurableRecorderError(
         `Recoverable request content part ${index} is not an object`,
@@ -45,7 +45,7 @@ export function parseDurableUserMessageContent(input: JsonValue): UserMessageCon
         ...(value.providerOptions
           ? {
               providerOptions: structuredClone(value.providerOptions) as Extract<
-                ContentPart,
+                ModelContent,
                 { type: 'text' }
               >['providerOptions'],
             }

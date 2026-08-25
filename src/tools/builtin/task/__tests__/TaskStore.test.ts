@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SessionId } from '../../../../types/branded.js';
+import { SessionId } from '../../../../types/identifiers.js';
 import { TaskStore } from '../TaskStore.js';
 
 const tempDirs: string[] = [];

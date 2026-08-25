@@ -2,12 +2,11 @@ import { z } from 'zod';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { WebFetchMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import type {
-  ExecutionContext,
-  WebFetchMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
@@ -38,53 +37,49 @@ export const webFetchTool = createTool({
   interruptBehavior: 'cancel',
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    url: z.string().url().describe('URL to request'),
-    method: z
-      .enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'])
-      .default('GET')
-      .describe('HTTP method'),
-    extract_content: ToolSchemas.flag({
-      defaultValue: false,
-      description:
-        'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
+  schema: lazySchema(() =>
+    z.object({
+      url: z.string().url().describe('URL to request'),
+      method: z
+        .enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'])
+        .default('GET')
+        .describe('HTTP method'),
+      extract_content: ToolSchemas.flag({
+        defaultValue: false,
+        description:
+          'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
+      }),
+      jina_options: z
+        .object({
+          with_generated_alt: ToolSchemas.flag({
+            defaultValue: false,
+            description: 'Generate alt text for images',
+          }),
+          with_links_summary: ToolSchemas.flag({
+            defaultValue: false,
+            description: 'Include summary of all links',
+          }),
+          wait_for_selector: z
+            .string()
+            .optional()
+            .describe('Wait for specific CSS selector to load'),
+        })
+        .optional()
+        .describe('Jina Reader advanced options (only used when extract_content is true)'),
+      headers: z.record(z.string()).optional().describe('Request headers (optional)'),
+      body: z.string().optional().describe('Request body (optional)'),
+      timeout: ToolSchemas.timeout(1000, 120000, 30000),
+      follow_redirects: ToolSchemas.flag({
+        defaultValue: true,
+        description: 'Follow redirects',
+      }),
+      max_redirects: z.number().int().min(0).max(10).default(5).describe('Maximum redirect hops'),
+      return_headers: ToolSchemas.flag({
+        defaultValue: false,
+        description: 'Return response headers',
+      }),
     }),
-    jina_options: z
-      .object({
-        with_generated_alt: ToolSchemas.flag({
-          defaultValue: false,
-          description: 'Generate alt text for images',
-        }),
-        with_links_summary: ToolSchemas.flag({
-          defaultValue: false,
-          description: 'Include summary of all links',
-        }),
-        wait_for_selector: z
-          .string()
-          .optional()
-          .describe('Wait for specific CSS selector to load'),
-      })
-      .optional()
-      .describe('Jina Reader advanced options (only used when extract_content is true)'),
-    headers: z.record(z.string()).optional().describe('Request headers (optional)'),
-    body: z.string().optional().describe('Request body (optional)'),
-    timeout: ToolSchemas.timeout(1000, 120000, 30000),
-    follow_redirects: ToolSchemas.flag({
-      defaultValue: true,
-      description: 'Follow redirects',
-    }),
-    max_redirects: z
-      .number()
-      .int()
-      .min(0)
-      .max(10)
-      .default(5)
-      .describe('Maximum redirect hops'),
-    return_headers: ToolSchemas.flag({
-      defaultValue: false,
-      description: 'Return response headers',
-    }),
-  })),
+  ),
 
   resolveBehaviorHint: () => ({
     kind: ToolKind.ReadOnly,
@@ -98,8 +93,9 @@ export const webFetchTool = createTool({
     const isReadOnly = method === 'GET' || method === 'HEAD';
     return {
       kind: isReadOnly ? ToolKind.ReadOnly : ToolKind.Execute,
-      sideEffect:
-        isReadOnly ? 'pure' : method === 'PUT' || method === 'DELETE'
+      sideEffect: isReadOnly
+        ? 'pure'
+        : method === 'PUT' || method === 'DELETE'
           ? 'idempotent'
           : 'non_idempotent',
       isReadOnly,
@@ -349,16 +345,7 @@ async function performRequest(options: {
   max_redirects: number;
   signal?: AbortSignal;
 }): Promise<WebResponse> {
-  const {
-    url,
-    method,
-    headers,
-    body,
-    timeout,
-    follow_redirects,
-    max_redirects,
-    signal,
-  } = options;
+  const { url, method, headers, body, timeout, follow_redirects, max_redirects, signal } = options;
 
   const normalizedHeaders: Record<string, string> = {
     'User-Agent': 'Blade-AI/1.0',
@@ -394,7 +381,7 @@ async function performRequest(options: {
         redirect: 'manual',
       },
       timeout,
-      signal
+      signal,
     );
 
     const location = response.headers.get('location');
@@ -451,7 +438,7 @@ async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeout: number,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -542,25 +529,25 @@ async function fetchWithJinaReader(options: {
   }
 
   const response = await fetchWithTimeout(
-      jinaUrl,
-      {
-        method: 'GET',
-        headers,
-      },
-      timeout,
-      signal
-    );
+    jinaUrl,
+    {
+      method: 'GET',
+      headers,
+    },
+    timeout,
+    signal,
+  );
 
-    if (!response.ok) {
-      throw new Error(`Jina Reader error: ${response.status} ${response.statusText}`);
-    }
+  if (!response.ok) {
+    throw new Error(`Jina Reader error: ${response.status} ${response.statusText}`);
+  }
 
-    const markdownContent = await response.text();
+  const markdownContent = await response.text();
 
-    // 解析 Jina Reader 响应
-    const parsed = parseJinaResponse(markdownContent);
+  // 解析 Jina Reader 响应
+  const parsed = parseJinaResponse(markdownContent);
 
-    // 返回标准 WebResponse 格式
+  // 返回标准 WebResponse 格式
   return {
     status: response.status,
     status_text: response.statusText,

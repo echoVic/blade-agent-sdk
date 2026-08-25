@@ -1,16 +1,17 @@
 import { SdkError } from '../errors/SdkError.js';
-import type {
-  AgentCommandResult,
-} from '../protocol/index.js';
+import type { AgentCommandResult } from '../protocol/index.js';
 import type { DurableExecutionLeaseStore } from '../session/events/DurableExecutionLeaseStore.js';
 import type { SessionPersistence } from '../session/SessionRepository.js';
 import type {
+  CommandId,
+  EventId,
+  EventSequence,
   ExecutionLeaseId,
   FencingToken,
   SessionId,
   WorkerId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type { AgentServerStore } from './AgentServerStore.js';
 import type {
   RuntimeEffectExecutionMode,
@@ -21,7 +22,7 @@ export const RUNTIME_STORE_SCHEMA_VERSION = 2 as const;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface RuntimeDomainEventDraft {
-  readonly eventId?: string;
+  readonly eventId?: EventId;
   readonly type: string;
   readonly data: JsonObject;
   readonly occurredAt?: string;
@@ -29,11 +30,11 @@ export interface RuntimeDomainEventDraft {
 
 export interface RuntimeDomainEvent extends RuntimeDomainEventDraft {
   readonly schemaVersion: typeof RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION;
-  readonly eventId: string;
+  readonly eventId: EventId;
   readonly tenantId: string;
   readonly sessionId: SessionId;
-  readonly commandId: string;
-  readonly sequence: number;
+  readonly commandId: CommandId;
+  readonly sequence: EventSequence;
   readonly occurredAt: string;
   readonly recordedAt: string;
 }
@@ -58,7 +59,7 @@ export type RuntimeEffectStatus =
 export interface RuntimeEffectRecord extends RuntimeEffectIntent {
   readonly tenantId: string;
   readonly sessionId: SessionId;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly executionMode: RuntimeEffectExecutionMode;
   readonly status: RuntimeEffectStatus;
   readonly attempts: number;
@@ -93,12 +94,12 @@ export interface RuntimeCommandCommit {
   readonly tenantId: string;
   readonly sessionId: SessionId;
   readonly command: {
-    readonly commandId: string;
+    readonly commandId: CommandId;
     readonly fingerprint: string;
-    readonly leaseId?: string;
+    readonly leaseId?: ExecutionLeaseId;
     readonly result: AgentCommandResult;
   };
-  readonly expectedLastSequence?: number | null;
+  readonly expectedLastSequence?: EventSequence | null;
   readonly events?: readonly RuntimeDomainEventDraft[];
   readonly effects?: readonly RuntimeEffectIntent[];
   readonly projection?: RuntimeProjectionCheckpoint;
@@ -113,16 +114,14 @@ export interface RuntimeCommitResult {
 
 export interface RuntimeDomainEventPage {
   readonly events: readonly RuntimeDomainEvent[];
-  readonly headSequence: number | null;
+  readonly headSequence: EventSequence | null;
   readonly hasMore: boolean;
 }
 
 export interface RuntimeStore extends AgentServerStore, WorkerRuntimeStore {
   initialize(): Promise<void>;
   forTenant(tenantId: string): RuntimeTenantStore;
-  commitRuntimeTransaction(
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeCommitResult>;
+  commitRuntimeTransaction(commit: RuntimeCommandCommit): Promise<RuntimeCommitResult>;
   readDomainEvents(
     tenantId: string,
     sessionId: SessionId,
@@ -156,11 +155,7 @@ export type RuntimeStoreErrorCode =
 
 export class RuntimeStoreError extends SdkError {
   // biome-ignore lint/complexity/noUselessConstructor: narrows the public error-code contract
-  constructor(
-    code: RuntimeStoreErrorCode,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
+  constructor(code: RuntimeStoreErrorCode, message: string, options?: { cause?: unknown }) {
     super(code, message, options);
   }
 }

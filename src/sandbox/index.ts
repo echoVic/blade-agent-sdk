@@ -1,3 +1,17 @@
-export { getSandboxExecutor, SandboxExecutor, type SandboxCapabilities, type SandboxExecutionOptions } from './SandboxExecutor.js';
-export { getSandboxService, SandboxService, type SandboxCheckResult, type SandboxExecutionContext } from './SandboxService.js';
-
+export type {
+  NetworkSandboxSettings,
+  SandboxIgnoreViolations,
+  SandboxSettings,
+} from './config.js';
+export {
+  getSandboxExecutor,
+  type SandboxCapabilities,
+  type SandboxExecutionOptions,
+  SandboxExecutor,
+} from './SandboxExecutor.js';
+export {
+  getSandboxService,
+  type SandboxCheckResult,
+  type SandboxExecutionContext,
+  SandboxService,
+} from './SandboxService.js';

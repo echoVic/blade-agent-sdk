@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  getRuntimePatchEffect,
-  normalizePermissionEffects,
-} from '../ToolEffects.js';
+import { getRuntimePatchEffect, normalizePermissionEffects } from '../effects.js';
 
 describe('ToolEffects helpers', () => {
   it('preserves explicit effects and appends permission updates', () => {

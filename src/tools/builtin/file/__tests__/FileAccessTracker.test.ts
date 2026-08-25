@@ -1,10 +1,10 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import { FileAccessTracker } from '../FileAccessTracker.js';
-import { writeFile, mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { assertDefined } from '../../../../__tests__/helpers/assertDefined.js';
-import { SessionId } from '../../../../types/branded.js';
+import { SessionId } from '../../../../types/identifiers.js';
+import { FileAccessTracker } from '../FileAccessTracker.js';
 
 describe('FileAccessTracker', () => {
   let tracker: FileAccessTracker;

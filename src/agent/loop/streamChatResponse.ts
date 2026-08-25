@@ -2,9 +2,9 @@
  * streamChatResponse — 纯流式响应收集
  *
  * 从 StreamResponseHandler 类提取为自由函数。职责：
- * - 从 chatService.streamChat 收集完整 ChatResponse（content / reasoningContent / toolCalls / usage）
+ * - 从 modelService.streamChat 收集完整 ModelResponse（content / reasoningContent / toolCalls / usage）
  * - 产出 content_delta / thinking_delta 增量事件
- * - 0-chunk 空响应 / streaming-not-supported 错误自动降级到 chatService.chat
+ * - 0-chunk 空响应 / streaming-not-supported 错误自动降级到 modelService.chat
  *
  * 没有类成员状态 — 纯 generator。
  */
@@ -12,12 +12,8 @@
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { streamDebug } from '../../logging/StreamDebugLogger.js';
-import type {
-  ChatResponse,
-  IChatService,
-  Message,
-  StreamToolCall,
-} from '../../services/ChatServiceInterface.js';
+import type { ModelMessage, ModelStreamToolCall } from '../../model/message.js';
+import type { ModelResponse, ModelService } from '../../model/service.js';
 
 type StreamDelta =
   | { type: 'content_delta'; delta: string }
@@ -31,7 +27,7 @@ interface ToolCallAccumulatorEntry {
 
 function accumulateToolCall(
   accumulator: Map<number, ToolCallAccumulatorEntry>,
-  chunk: StreamToolCall,
+  chunk: ModelStreamToolCall,
 ): void {
   const tc = chunk as {
     index?: number;
@@ -51,7 +47,7 @@ function accumulateToolCall(
 
 function buildFinalToolCalls(
   accumulator: Map<number, ToolCallAccumulatorEntry>,
-): ChatResponse['toolCalls'] | undefined {
+): ModelResponse['toolCalls'] | undefined {
   if (accumulator.size === 0) return undefined;
   return Array.from(accumulator.values())
     .filter((tc) => tc.id && tc.name)
@@ -70,27 +66,25 @@ function isStreamingNotSupportedError(error: unknown): boolean {
     'sse not supported',
     'does not support streaming',
   ];
-  return streamErrors.some((msg) =>
-    error.message.toLowerCase().includes(msg.toLowerCase()),
-  );
+  return streamErrors.some((msg) => error.message.toLowerCase().includes(msg.toLowerCase()));
 }
 
 export async function* streamChatResponse(
-  getChatService: () => IChatService,
-  messages: readonly Message[],
+  getModelService: () => ModelService,
+  messages: readonly ModelMessage[],
   tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   signal?: AbortSignal,
   logger?: InternalLogger,
-): AsyncGenerator<StreamDelta, ChatResponse> {
+): AsyncGenerator<StreamDelta, ModelResponse> {
   const log = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
-  const chatService = getChatService();
+  const modelService = getModelService();
   let fullContent = '';
   let fullReasoningContent = '';
-  let streamUsage: ChatResponse['usage'];
+  let streamUsage: ModelResponse['usage'];
   const toolCallAccumulator = new Map<number, ToolCallAccumulatorEntry>();
 
   try {
-    const stream = chatService.streamChat(messages, tools, signal);
+    const stream = modelService.streamChat(messages, tools, signal);
     let chunkCount = 0;
 
     for await (const chunk of stream) {
@@ -129,13 +123,13 @@ export async function* streamChatResponse(
     }
 
     if (
-      chunkCount === 0
-      && !signal?.aborted
-      && fullContent.length === 0
-      && toolCallAccumulator.size === 0
+      chunkCount === 0 &&
+      !signal?.aborted &&
+      fullContent.length === 0 &&
+      toolCallAccumulator.size === 0
     ) {
       log.warn('[Agent] 流式响应返回0个chunk，回退到非流式模式');
-      return chatService.chat(messages, tools, signal);
+      return modelService.chat(messages, tools, signal);
     }
 
     return {
@@ -147,7 +141,7 @@ export async function* streamChatResponse(
   } catch (error) {
     if (isStreamingNotSupportedError(error)) {
       log.warn('[Agent] 流式请求失败，降级到非流式模式');
-      return chatService.chat(messages, tools, signal);
+      return modelService.chat(messages, tools, signal);
     }
     throw error;
   }

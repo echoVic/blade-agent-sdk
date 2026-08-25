@@ -1,11 +1,8 @@
 import { open, readFile, stat, truncate, unlink } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { SdkError } from '../../errors/SdkError.js';
-import {
-  syncParentDirectory,
-  withAdvisoryFileLock,
-} from '../../utils/advisoryFileLock.js';
-import type { SessionEvent } from '../types.js';
+import type { TranscriptEvent } from '../../session/transcript.js';
+import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
 import { parseSessionEvent } from './sessionEventSchema.js';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
@@ -20,11 +17,7 @@ export type JSONLStoreErrorCode =
 
 export class JSONLStoreError extends SdkError {
   // biome-ignore lint/complexity/noUselessConstructor: narrows the internal error-code contract
-  constructor(
-    code: JSONLStoreErrorCode,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
+  constructor(code: JSONLStoreErrorCode, message: string, options?: { cause?: unknown }) {
     super(code, message, options);
   }
 }
@@ -35,17 +28,14 @@ export interface JSONLStoreOptions {
 }
 
 interface LoadedFile {
-  entries: SessionEvent[];
+  entries: TranscriptEvent[];
   exists: boolean;
   committedBytes: number;
   totalBytes: number;
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === code;
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
 
 /**
@@ -73,12 +63,12 @@ export class JSONLStore {
   }
 
   /** Append one committed JSONL record. */
-  async append(entry: SessionEvent): Promise<void> {
+  async append(entry: TranscriptEvent): Promise<void> {
     await this.appendEntries([entry]);
   }
 
   /** Append one committed batch without allowing records from other writers to interleave. */
-  async appendBatch(entries: SessionEvent[]): Promise<void> {
+  async appendBatch(entries: TranscriptEvent[]): Promise<void> {
     if (entries.length === 0) {
       return;
     }
@@ -89,7 +79,7 @@ export class JSONLStore {
    * Append a record only when the file has no committed records.
    * Returns true when the record was written.
    */
-  async appendIfEmpty(entry: SessionEvent): Promise<boolean> {
+  async appendIfEmpty(entry: TranscriptEvent): Promise<boolean> {
     const content = this.serializeEntries([entry]);
     return this.runWithLock('write', async () => {
       const loaded = await this.loadFileUnlocked();
@@ -102,7 +92,7 @@ export class JSONLStore {
   }
 
   /** Read all committed records. */
-  async readAll(): Promise<SessionEvent[]> {
+  async readAll(): Promise<TranscriptEvent[]> {
     return this.runWithLock('read', async () => {
       const loaded = await this.loadFileUnlocked();
       return loaded.entries;
@@ -110,19 +100,15 @@ export class JSONLStore {
   }
 
   /** Read a stable snapshot and await each callback in file order. */
-  async readStream(
-    callback: (entry: SessionEvent) => void | Promise<void>,
-  ): Promise<void> {
+  async readStream(callback: (entry: TranscriptEvent) => void | Promise<void>): Promise<void> {
     const entries = await this.readAll();
     for (const entry of entries) {
       await callback(entry);
     }
   }
 
-  async filter(
-    predicate: (entry: SessionEvent) => boolean,
-  ): Promise<SessionEvent[]> {
-    const results: SessionEvent[] = [];
+  async filter(predicate: (entry: TranscriptEvent) => boolean): Promise<TranscriptEvent[]> {
+    const results: TranscriptEvent[] = [];
     await this.readStream((entry) => {
       if (predicate(entry)) {
         results.push(entry);
@@ -131,7 +117,7 @@ export class JSONLStore {
     return results;
   }
 
-  async readLast(count: number): Promise<SessionEvent[]> {
+  async readLast(count: number): Promise<TranscriptEvent[]> {
     const all = await this.readAll();
     return all.slice(-count);
   }
@@ -187,7 +173,7 @@ export class JSONLStore {
     return this.filePath;
   }
 
-  private async appendEntries(entries: readonly SessionEvent[]): Promise<void> {
+  private async appendEntries(entries: readonly TranscriptEvent[]): Promise<void> {
     const content = this.serializeEntries(entries);
     await this.runWithLock('write', async () => {
       const loaded = await this.loadRawFileUnlocked();
@@ -195,7 +181,7 @@ export class JSONLStore {
     });
   }
 
-  private serializeEntries(entries: readonly SessionEvent[]): string {
+  private serializeEntries(entries: readonly TranscriptEvent[]): string {
     try {
       return `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
     } catch (error) {
@@ -241,9 +227,7 @@ export class JSONLStore {
     const loaded = await this.loadRawFileUnlocked();
     let committed: string;
     try {
-      committed = UTF8_DECODER.decode(
-        loaded.bytes.subarray(0, loaded.committedBytes),
-      );
+      committed = UTF8_DECODER.decode(loaded.bytes.subarray(0, loaded.committedBytes));
     } catch (error) {
       throw new JSONLStoreError(
         'SESSION_JSONL_CORRUPT_LOG',
@@ -251,7 +235,7 @@ export class JSONLStore {
         { cause: error },
       );
     }
-    const entries: SessionEvent[] = [];
+    const entries: TranscriptEvent[] = [];
     const eventIds = new Set<string>();
     let sessionId: string | undefined;
     for (const [index, line] of committed.split('\n').entries()) {
@@ -264,9 +248,7 @@ export class JSONLStore {
           throw new Error(`Duplicate Session event ID: ${parsed.id}`);
         }
         if (sessionId !== undefined && parsed.sessionId !== sessionId) {
-          throw new Error(
-            `Session ID changed from ${sessionId} to ${parsed.sessionId}`,
-          );
+          throw new Error(`Session ID changed from ${sessionId} to ${parsed.sessionId}`);
         }
         eventIds.add(parsed.id);
         sessionId ??= parsed.sessionId;
@@ -320,10 +302,7 @@ export class JSONLStore {
     };
   }
 
-  private runWithLock<T>(
-    operation: 'read' | 'write',
-    callback: () => Promise<T>,
-  ): Promise<T> {
+  private runWithLock<T>(operation: 'read' | 'write', callback: () => Promise<T>): Promise<T> {
     const operationErrorCode =
       operation === 'write' ? 'SESSION_JSONL_WRITE_FAILED' : 'SESSION_JSONL_READ_FAILED';
     return withAdvisoryFileLock(

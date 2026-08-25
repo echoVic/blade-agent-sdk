@@ -12,13 +12,10 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
-import { AgentId } from '../../types/branded.js';
-import {
-  syncParentDirectory,
-  withAdvisoryFileLock,
-} from '../../utils/advisoryFileLock.js';
+import { AgentId } from '../../types/identifiers.js';
+import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
 import type { AgentProgress } from '../types.js';
 
 const AGENT_SESSION_LOCK_TIMEOUT_MS = 10_000;
@@ -45,7 +42,7 @@ export interface AgentSession {
   prompt: string;
 
   /** 会话消息历史 */
-  messages: Message[];
+  messages: ModelMessage[];
 
   /** 会话状态 */
   status: AgentSessionStatus;
@@ -149,10 +146,7 @@ export class AgentSessionStore {
   async saveSession(session: AgentSession): Promise<boolean> {
     return this.runWithSessionLock(session.id, 'write', async () => {
       const current = this.loadSessionFromDisk(session.id);
-      if (
-        current &&
-        !this.canReplaceExecution(current.executionFence, session.executionFence)
-      ) {
+      if (current && !this.canReplaceExecution(current.executionFence, session.executionFence)) {
         return false;
       }
 
@@ -231,10 +225,7 @@ export class AgentSessionStore {
   ): Promise<AgentSession | undefined> {
     return this.runWithSessionLock(agentId, 'write', async () => {
       const session = this.loadSessionFromDisk(agentId);
-      if (
-        !session ||
-        !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
-      ) {
+      if (!session || !this.sameExecutionFence(session.executionFence, expectedExecutionFence)) {
         return undefined;
       }
 
@@ -255,7 +246,7 @@ export class AgentSessionStore {
    */
   async appendMessages(
     agentId: AgentId,
-    messages: Message[],
+    messages: ModelMessage[],
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
     const session = this.loadSession(agentId);
@@ -263,9 +254,13 @@ export class AgentSessionStore {
       return undefined;
     }
 
-    return this.updateSession(agentId, {
-      messages: [...session.messages, ...messages],
-    }, expectedExecutionFence);
+    return this.updateSession(
+      agentId,
+      {
+        messages: [...session.messages, ...messages],
+      },
+      expectedExecutionFence,
+    );
   }
 
   /**
@@ -274,7 +269,7 @@ export class AgentSessionStore {
    */
   async updateRunningSession(
     agentId: AgentId,
-    updates: { messages?: Message[]; progress?: AgentProgress },
+    updates: { messages?: ModelMessage[]; progress?: AgentProgress },
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
     return this.runWithSessionLock(agentId, 'write', async () => {
@@ -306,13 +301,17 @@ export class AgentSessionStore {
     stats?: AgentSession['stats'],
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
-    return this.updateSession(agentId, {
-      status: result.success ? 'completed' : 'failed',
-      result,
-      stats,
-      completedAt: Date.now(),
-      progress: undefined,
-    }, expectedExecutionFence);
+    return this.updateSession(
+      agentId,
+      {
+        status: result.success ? 'completed' : 'failed',
+        result,
+        stats,
+        completedAt: Date.now(),
+        progress: undefined,
+      },
+      expectedExecutionFence,
+    );
   }
 
   /**
@@ -324,13 +323,17 @@ export class AgentSessionStore {
     stats?: AgentSession['stats'],
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
-    return this.updateSession(agentId, {
-      status: 'cancelled',
-      result: result ?? { success: false, message: '' },
-      stats,
-      completedAt: Date.now(),
-      progress: undefined,
-    }, expectedExecutionFence);
+    return this.updateSession(
+      agentId,
+      {
+        status: 'cancelled',
+        result: result ?? { success: false, message: '' },
+        stats,
+        completedAt: Date.now(),
+        progress: undefined,
+      },
+      expectedExecutionFence,
+    );
   }
 
   /**
@@ -343,10 +346,7 @@ export class AgentSessionStore {
     try {
       return await this.runWithSessionLock(agentId, 'write', async () => {
         const session = this.loadSessionFromDisk(agentId);
-        if (
-          session &&
-          !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
-        ) {
+        if (session && !this.sameExecutionFence(session.executionFence, expectedExecutionFence)) {
           return false;
         }
         await this.deleteSessionFile(agentId);
@@ -400,9 +400,7 @@ export class AgentSessionStore {
    * 清理过期会话
    * @param maxAgeMs 最大保留时间（毫秒），默认 7 天
    */
-  async cleanupExpiredSessions(
-    maxAgeMs: number = 7 * 24 * 60 * 60 * 1000,
-  ): Promise<number> {
+  async cleanupExpiredSessions(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): Promise<number> {
     const now = Date.now();
     const sessions = this.listSessions();
     let cleaned = 0;
@@ -483,9 +481,7 @@ export class AgentSessionStore {
           initialize: (cause) => this.storageError(agentId, operation, cause),
           acquire: (cause) => this.storageError(agentId, operation, cause),
           timeout: () =>
-            new Error(
-              `Timed out acquiring the background agent ${operation} lock for ${agentId}`,
-            ),
+            new Error(`Timed out acquiring the background agent ${operation} lock for ${agentId}`),
           release: (cause) => this.storageError(agentId, operation, cause),
         },
       },
@@ -493,15 +489,8 @@ export class AgentSessionStore {
     );
   }
 
-  private storageError(
-    agentId: AgentId,
-    operation: 'read' | 'write',
-    cause: unknown,
-  ): Error {
-    return new Error(
-      `Failed to ${operation} background agent session ${agentId}`,
-      { cause },
-    );
+  private storageError(agentId: AgentId, operation: 'read' | 'write', cause: unknown): Error {
+    return new Error(`Failed to ${operation} background agent session ${agentId}`, { cause });
   }
 
   private canReplaceExecution(
@@ -527,9 +516,6 @@ export class AgentSessionStore {
     if (!left || !right) {
       return left === right;
     }
-    return (
-      left.leaseId === right.leaseId &&
-      left.fencingToken === right.fencingToken
-    );
+    return left.leaseId === right.leaseId && left.fencingToken === right.fencingToken;
   }
 }

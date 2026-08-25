@@ -1,36 +1,40 @@
 import * as fs from 'node:fs/promises';
-import {
-  JSONLStore,
-  JSONLStoreError,
-} from '@/context/storage/JSONLStore.js';
+import { JSONLStore, JSONLStoreError } from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
-import type {
-  PartInfo,
-  PendingInputInfo,
-  SessionEvent,
-  SessionInfo,
-} from '../context/types.js';
-import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
-import type { JsonValue, MessageRole } from '../types/common.js';
-import { MessageId, type SessionId } from '../types/branded.js';
+import type { MessageRole } from '../types/constants.js';
+import {
+  type EventId,
+  MessageId,
+  type PartId,
+  SessionId,
+  ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonValue } from '../types/json.js';
+import type {
+  PersistedPendingInput,
+  TranscriptEvent,
+  TranscriptPart,
+  TranscriptSession,
+} from './transcript.js';
 
 interface SessionTimelineEntry {
-  id: string;
-  parentMessageId?: string;
+  id: MessageId;
+  parentMessageId?: MessageId;
   createdAt: number;
-  message: Message;
+  message: ModelMessage;
 }
 
 interface SessionToolCallState {
-  id: string;
+  id: ToolUseId;
   name: string;
   input: JsonValue;
   output?: JsonValue;
-  messageId?: string;
+  messageId?: MessageId;
   timestamp: number;
   status: 'pending' | 'success' | 'error';
   error?: string;
@@ -38,7 +42,7 @@ interface SessionToolCallState {
 
 interface SessionSubagentRef {
   messageId: MessageId;
-  childSessionId: string;
+  childSessionId: SessionId;
   agentType: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   summary?: string;
@@ -56,30 +60,30 @@ export interface SessionSummary {
 
 export interface SessionSnapshot {
   sessionId: SessionId;
-  messages: Message[];
-  messageIds: string[];
+  messages: ModelMessage[];
+  messageIds: MessageId[];
   lastActivity: number;
   summary?: string;
 }
 
 export interface SessionState extends SessionSnapshot {
   createdAt: number;
-  sessionInfo: Partial<SessionInfo>;
+  sessionInfo: Partial<TranscriptSession>;
   timeline: SessionTimelineEntry[];
-  summaryMessageIds: string[];
+  summaryMessageIds: MessageId[];
   toolCalls: SessionToolCallState[];
   subagentRefs: SessionSubagentRef[];
-  pendingInputs: PendingInputInfo[];
+  pendingInputs: PersistedPendingInput[];
 }
 
 export interface SessionStore {
   loadState(sessionId: SessionId): Promise<SessionState | null>;
-  loadMessages(sessionId: SessionId): Promise<Message[]>;
+  loadMessages(sessionId: SessionId): Promise<ModelMessage[]>;
   forkState(
     sessionId: SessionId,
-    options?: { messageId?: string },
+    options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null>;
-  listSessions(): Promise<string[]>;
+  listSessions(): Promise<SessionId[]>;
   getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null>;
 }
 
@@ -88,18 +92,18 @@ export class NoopSessionStore implements SessionStore {
     return null;
   }
 
-  async loadMessages(_sessionId: SessionId): Promise<Message[]> {
+  async loadMessages(_sessionId: SessionId): Promise<ModelMessage[]> {
     return [];
   }
 
   async forkState(
     _sessionId: SessionId,
-    _options?: { messageId?: string },
+    _options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null> {
     return null;
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     return [];
   }
 
@@ -109,10 +113,10 @@ export class NoopSessionStore implements SessionStore {
 }
 
 interface MessageRecord {
-  id: string;
-  parentMessageId?: string;
+  id: MessageId;
+  parentMessageId?: MessageId;
   createdAt: number;
-  message: Message;
+  message: ModelMessage;
 }
 
 function toTimestamp(value: string | undefined, fallback: string): number {
@@ -120,13 +124,13 @@ function toTimestamp(value: string | undefined, fallback: string): number {
 }
 
 /**
- * Collapse a ContentPart[] down to `Message['content']`.
+ * Collapse a ModelContent[] down to `ModelMessage['content']`.
  * Single text-only part is returned as a plain string for backward compat.
  *
  * NOTE: no cloning — this operates on the internal builder state.
  * The final export to `SessionState` is protected by `cloneMessage`.
  */
-function toMessageContent(parts: ContentPart[]): Message['content'] {
+function toMessageContent(parts: ModelContent[]): ModelMessage['content'] {
   if (parts.length === 1 && parts[0]?.type === 'text') {
     return parts[0].text;
   }
@@ -143,11 +147,11 @@ function toMessageContent(parts: ContentPart[]): Message['content'] {
  * happens later in `cloneMessage` when the record is exported.
  */
 function upsertContentPart(
-  contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>,
+  contentParts: Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>,
   messageId: MessageId,
-  partId: string,
-  content: ContentPart,
-): ContentPart[] {
+  partId: PartId,
+  content: ModelContent,
+): ModelContent[] {
   const existing = contentParts.get(messageId) ?? [];
   const index = existing.findIndex((part) => part.partId === partId);
 
@@ -190,33 +194,35 @@ function inferRole(partType: string): MessageRole {
   }
 }
 
-function isEmptyAssistantMessage(message: Message): boolean {
-  return message.role === 'assistant'
-    && message.content === ''
-    && !message.reasoningContent
-    && !message.tool_calls?.length;
+function isEmptyAssistantMessage(message: ModelMessage): boolean {
+  return (
+    message.role === 'assistant' &&
+    message.content === '' &&
+    !message.reasoningContent &&
+    !message.tool_calls?.length
+  );
 }
 
 interface ToolCallOccurrence {
   key: string;
-  sourceMessageId: string;
-  toolCallId: string;
+  sourceMessageId: MessageId;
+  toolCallId: ToolUseId;
   matched: boolean;
 }
 
 interface ToolOccurrencePlan {
-  callsByEventId: Map<string, ToolCallOccurrence>;
-  resultsByEventId: Map<string, ToolCallOccurrence>;
+  callsByEventId: Map<EventId, ToolCallOccurrence>;
+  resultsByEventId: Map<EventId, ToolCallOccurrence>;
 }
 
-function getPartToolCallId(part: PartInfo): string {
+function getPartToolCallId(part: TranscriptPart): ToolUseId {
   const payload = isRecord(part.payload) ? part.payload : {};
-  return typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId;
+  return ToolUseId(typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId);
 }
 
-function createToolOccurrencePlan(entries: SessionEvent[]): ToolOccurrencePlan {
-  const callsByEventId = new Map<string, ToolCallOccurrence>();
-  const resultsByEventId = new Map<string, ToolCallOccurrence>();
+function createToolOccurrencePlan(entries: TranscriptEvent[]): ToolOccurrencePlan {
+  const callsByEventId = new Map<EventId, ToolCallOccurrence>();
+  const resultsByEventId = new Map<EventId, ToolCallOccurrence>();
   const callsBySource = new Map<string, ToolCallOccurrence>();
   const latestResultBySource = new Map<string, ToolCallOccurrence>();
   const unmatchedByToolCallId = new Map<string, ToolCallOccurrence[]>();
@@ -248,9 +254,8 @@ function createToolOccurrencePlan(entries: SessionEvent[]): ToolOccurrencePlan {
       continue;
     }
 
-    let occurrence = entry.type === 'part_updated'
-      ? latestResultBySource.get(sourceKey)
-      : undefined;
+    let occurrence =
+      entry.type === 'part_updated' ? latestResultBySource.get(sourceKey) : undefined;
     if (!occurrence) {
       const unmatched = unmatchedByToolCallId.get(toolCallId) ?? [];
       occurrence = unmatched.shift();
@@ -291,10 +296,10 @@ export class JsonlSessionStore implements SessionStore {
       return null;
     }
 
-    const messageRecords = new Map<string, MessageRecord>();
-    const contentParts = new Map<string, Array<{ partId: string; content: ContentPart }>>();
-    const orderedMessageIds: string[] = [];
-    const summaryMessageIds = new Set<string>();
+    const messageRecords = new Map<MessageId, MessageRecord>();
+    const contentParts = new Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>();
+    const orderedMessageIds: MessageId[] = [];
+    const summaryMessageIds = new Set<MessageId>();
     const toolCalls = new Map<string, SessionToolCallState>();
     const toolOccurrencePlan = createToolOccurrencePlan(entries);
     const projectedCallMessageIds = new Map<string, MessageId>();
@@ -302,8 +307,8 @@ export class JsonlSessionStore implements SessionStore {
     const resultMessageIdsByOccurrence = new Map<string, MessageId>();
     const resultOccurrenceByMessageId = new Map<string, string>();
     const subagentRefs: SessionSubagentRef[] = [];
-    const pendingInputs = new Map<string, PendingInputInfo>();
-    let sessionInfo: Partial<SessionInfo> = { sessionId };
+    const pendingInputs = new Map<string, PersistedPendingInput>();
+    let sessionInfo: Partial<TranscriptSession> = { sessionId };
     let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
     let lastActivity = createdAt;
     let summary: string | undefined;
@@ -312,7 +317,7 @@ export class JsonlSessionStore implements SessionStore {
       messageId: MessageId,
       role: MessageRole,
       timestamp: string,
-      parentMessageId?: string,
+      parentMessageId?: MessageId,
     ): MessageRecord => {
       const existing = messageRecords.get(messageId);
       if (existing) {
@@ -369,15 +374,15 @@ export class JsonlSessionStore implements SessionStore {
         record.parentMessageId = data.parentMessageId;
         record.message.role = data.role;
         record.message.id = data.messageId;
-        record.message.modelIdentity = data.modelIdentity
-          ? { ...data.modelIdentity }
-          : undefined;
+        record.message.modelIdentity = data.modelIdentity ? { ...data.modelIdentity } : undefined;
 
         if (data.model || data.usage || data.customMetadata) {
           record.message.metadata = {
             ...(data.model ? { model: data.model } : {}),
             ...(data.usage ? { usage: data.usage } : {}),
-            ...(data.customMetadata && typeof data.customMetadata === 'object' ? data.customMetadata as Record<string, unknown> : {}),
+            ...(data.customMetadata && typeof data.customMetadata === 'object'
+              ? (data.customMetadata as Record<string, unknown>)
+              : {}),
           };
         }
 
@@ -402,11 +407,12 @@ export class JsonlSessionStore implements SessionStore {
       }
 
       const data = entry.data;
-      const occurrence = data.partType === 'tool_call'
-        ? toolOccurrencePlan.callsByEventId.get(entry.id)
-        : data.partType === 'tool_result'
-          ? toolOccurrencePlan.resultsByEventId.get(entry.id)
-          : undefined;
+      const occurrence =
+        data.partType === 'tool_call'
+          ? toolOccurrencePlan.callsByEventId.get(entry.id)
+          : data.partType === 'tool_result'
+            ? toolOccurrencePlan.resultsByEventId.get(entry.id)
+            : undefined;
       if ((data.partType === 'tool_call' || data.partType === 'tool_result') && !occurrence) {
         continue;
       }
@@ -415,12 +421,13 @@ export class JsonlSessionStore implements SessionStore {
       }
 
       let messageId = data.messageId;
-      let inferredParentMessageId: string | undefined;
+      let inferredParentMessageId: MessageId | undefined;
       if (data.partType === 'tool_call' && occurrence) {
         const sourceRecord = messageRecords.get(data.messageId);
         if (sourceRecord && sourceRecord.message.role !== 'assistant') {
-          messageId = projectedCallMessageIds.get(data.messageId)
-            ?? MessageId(`${data.messageId}:tool-calls`);
+          messageId =
+            projectedCallMessageIds.get(data.messageId) ??
+            MessageId(`${data.messageId}:tool-calls`);
           projectedCallMessageIds.set(data.messageId, messageId);
           inferredParentMessageId = data.messageId;
         }
@@ -433,8 +440,8 @@ export class JsonlSessionStore implements SessionStore {
           const sourceRecord = messageRecords.get(data.messageId);
           const currentOwner = resultOccurrenceByMessageId.get(data.messageId);
           if (
-            (sourceRecord && sourceRecord.message.role !== 'tool')
-            || (currentOwner && currentOwner !== occurrence.key)
+            (sourceRecord && sourceRecord.message.role !== 'tool') ||
+            (currentOwner && currentOwner !== occurrence.key)
           ) {
             messageId = MessageId(`${data.messageId}:tool-result:${occurrence.key}`);
           }
@@ -471,12 +478,13 @@ export class JsonlSessionStore implements SessionStore {
       .map((messageId) => messageRecords.get(messageId))
       .filter((record): record is MessageRecord => record !== undefined);
     const referencedMessageIds = new Set([
-      ...records.flatMap((record) => record.parentMessageId ? [record.parentMessageId] : []),
-      ...subagentRefs.map((ref) => String(ref.messageId)),
+      ...records.flatMap((record) => (record.parentMessageId ? [record.parentMessageId] : [])),
+      ...subagentRefs.map((ref) => ref.messageId),
     ]);
     const timeline = records
-      .filter((record) => !isEmptyAssistantMessage(record.message)
-        || referencedMessageIds.has(record.id))
+      .filter(
+        (record) => !isEmptyAssistantMessage(record.message) || referencedMessageIds.has(record.id),
+      )
       .map((record) => ({
         id: record.id,
         parentMessageId: record.parentMessageId,
@@ -486,7 +494,8 @@ export class JsonlSessionStore implements SessionStore {
 
     const messageIds = timeline.map((entry) => entry.id);
     const messages = timeline.map((entry) => cloneMessage(entry.message));
-    const snapshotSummary = this.getLastSummaryForIds(messageIds, summaryMessageIds, timeline) ?? summary;
+    const snapshotSummary =
+      this.getLastSummaryForIds(messageIds, summaryMessageIds, timeline) ?? summary;
 
     return {
       sessionId,
@@ -504,7 +513,7 @@ export class JsonlSessionStore implements SessionStore {
         ...toolCall,
       })),
       subagentRefs: subagentRefs
-        .filter((ref) => messageIds.includes(String(ref.messageId)))
+        .filter((ref) => messageIds.includes(ref.messageId))
         .map((ref) => ({ ...ref })),
       pendingInputs: Array.from(pendingInputs.values()).map((input) => ({
         ...input,
@@ -513,14 +522,14 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  async loadMessages(sessionId: SessionId): Promise<Message[]> {
+  async loadMessages(sessionId: SessionId): Promise<ModelMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages ?? [];
   }
 
   async forkState(
     sessionId: SessionId,
-    options?: { messageId?: string },
+    options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null> {
     const state = await this.loadState(sessionId);
     if (!state) {
@@ -531,7 +540,7 @@ export class JsonlSessionStore implements SessionStore {
     if (options?.messageId) {
       const index = state.messageIds.indexOf(options.messageId);
       if (index === -1) {
-        throw new Error(`Message with ID "${options.messageId}" not found in session history`);
+        throw new Error(`ModelMessage with ID "${options.messageId}" not found in session history`);
       }
       endIndex = index + 1;
     }
@@ -544,24 +553,19 @@ export class JsonlSessionStore implements SessionStore {
       sessionId,
       messages,
       messageIds,
-      lastActivity: timeline.length > 0
-        ? (timeline.at(-1)?.createdAt ?? state.createdAt)
-        : state.createdAt,
-      summary: this.getLastSummaryForIds(
-        messageIds,
-        new Set(state.summaryMessageIds),
-        timeline,
-      ),
+      lastActivity:
+        timeline.length > 0 ? (timeline.at(-1)?.createdAt ?? state.createdAt) : state.createdAt,
+      summary: this.getLastSummaryForIds(messageIds, new Set(state.summaryMessageIds), timeline),
     };
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     try {
       const storagePath = this.storageRoot;
       const files = await fs.readdir(storagePath, { withFileTypes: true });
       return files
         .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
-        .map((file) => file.name.replace(/\.jsonl$/, ''))
+        .map((file) => SessionId(file.name.replace(/\.jsonl$/, '')))
         .sort();
     } catch {
       return [];
@@ -585,7 +589,7 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  private async readEntries(sessionId: SessionId): Promise<SessionEvent[]> {
+  private async readEntries(sessionId: SessionId): Promise<TranscriptEvent[]> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
     const entries = await store.readAll();
@@ -600,13 +604,13 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   private applyPartToMessage(params: {
-    part: PartInfo;
+    part: TranscriptPart;
     record: MessageRecord;
-    contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>;
+    contentParts: Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>;
     toolCalls: Map<string, SessionToolCallState>;
     toolOccurrenceKey?: string;
     subagentRefs: SessionSubagentRef[];
-    summaryMessageIds: Set<string>;
+    summaryMessageIds: Set<MessageId>;
     onSummary: (summary: string) => void;
   }): void {
     const {
@@ -633,7 +637,7 @@ export class JsonlSessionStore implements SessionStore {
       case 'text': {
         const payload = isRecord(part.payload) ? part.payload : {};
         const providerOptions = isRecord(payload.providerOptions)
-          ? payload.providerOptions as Extract<ContentPart, { type: 'text' }>['providerOptions']
+          ? (payload.providerOptions as Extract<ModelContent, { type: 'text' }>['providerOptions'])
           : undefined;
         const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
           type: 'text',
@@ -647,11 +651,12 @@ export class JsonlSessionStore implements SessionStore {
         const payload = isRecord(part.payload) ? part.payload : {};
         // `dataUrl` is the canonical field written by PersistentStore; `url` is
         // accepted as a legacy / external-source fallback.
-        const url = typeof payload.dataUrl === 'string'
-          ? payload.dataUrl
-          : typeof payload.url === 'string'
-            ? payload.url
-            : '';
+        const url =
+          typeof payload.dataUrl === 'string'
+            ? payload.dataUrl
+            : typeof payload.url === 'string'
+              ? payload.url
+              : '';
         const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
           type: 'image_url',
           image_url: {
@@ -663,12 +668,12 @@ export class JsonlSessionStore implements SessionStore {
       }
       case 'tool_call': {
         const payload = isRecord(part.payload) ? part.payload : {};
-        const toolName =
-          typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
-        const toolCallId =
-          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId;
+        const toolName = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
+        const toolCallId = ToolUseId(
+          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
+        );
         const input = cloneJsonValue(payload.input as JsonValue);
-        const toolCall: ToolCall = {
+        const toolCall: ModelToolCall = {
           id: toolCallId,
           type: 'function',
           function: {
@@ -696,13 +701,12 @@ export class JsonlSessionStore implements SessionStore {
       }
       case 'tool_result': {
         const payload = isRecord(part.payload) ? part.payload : {};
-        const toolCallId =
-          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId;
-        const toolName =
-          typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
+        const toolCallId = ToolUseId(
+          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
+        );
+        const toolName = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
         const output = cloneJsonValue(payload.output as JsonValue);
-        const error =
-          typeof payload.error === 'string' ? payload.error : undefined;
+        const error = typeof payload.error === 'string' ? payload.error : undefined;
 
         record.message.role = 'tool';
         record.message.tool_call_id = toolCallId;
@@ -740,17 +744,19 @@ export class JsonlSessionStore implements SessionStore {
         const payload = isRecord(part.payload) ? part.payload : {};
         const childSessionId =
           typeof payload.childSessionId === 'string' ? payload.childSessionId : undefined;
-        const agentType =
-          typeof payload.agentType === 'string' ? payload.agentType : undefined;
+        const agentType = typeof payload.agentType === 'string' ? payload.agentType : undefined;
         const status = payload.status;
         if (
           childSessionId &&
           agentType &&
-          (status === 'running' || status === 'completed' || status === 'failed' || status === 'cancelled')
+          (status === 'running' ||
+            status === 'completed' ||
+            status === 'failed' ||
+            status === 'cancelled')
         ) {
           subagentRefs.push({
             messageId: MessageId(record.id),
-            childSessionId,
+            childSessionId: SessionId(childSessionId),
             agentType,
             status,
             summary: typeof payload.summary === 'string' ? payload.summary : undefined,
@@ -771,7 +777,7 @@ export class JsonlSessionStore implements SessionStore {
   private getLastSummaryForIds(
     messageIds: string[],
     summaryMessageIds: Set<string>,
-    timeline: Array<{ id: string; message: Message }>,
+    timeline: Array<{ id: string; message: ModelMessage }>,
   ): string | undefined {
     for (let index = messageIds.length - 1; index >= 0; index -= 1) {
       const messageId = messageIds[index];

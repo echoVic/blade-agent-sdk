@@ -1,8 +1,14 @@
 import { nanoid } from 'nanoid';
-import type { SessionId } from '../types/branded.js';
+import type { TokenUsage } from '../model/usage.js';
 import type { HookEvent } from '../types/constants.js';
-import type { JsonValue } from '../types/common.js';
-import type { TokenUsage } from '../types/common.js';
+import {
+  type SessionId,
+  SpanId,
+  type ToolUseId,
+  TraceEventId,
+  TraceId,
+} from '../types/identifiers.js';
+import type { JsonValue } from '../types/json.js';
 import type {
   AgentTrace,
   HookTraceCollector,
@@ -40,9 +46,9 @@ function toJsonValue(value: unknown): JsonValue {
 
 export class TraceRecorder implements HookTraceCollector {
   readonly trace: AgentTrace;
-  private readonly spanStack = new Map<string, TraceSpan>();
+  private readonly spanStack = new Map<SpanId, TraceSpan>();
   private readonly capturePayloads: boolean;
-  private readonly rootSpanId: string;
+  private readonly rootSpanId: SpanId;
 
   constructor(
     sessionId: SessionId,
@@ -52,7 +58,7 @@ export class TraceRecorder implements HookTraceCollector {
     const startedAt = nowIso();
     this.capturePayloads = options?.capturePayloads ?? false;
     this.trace = {
-      id: `trace_${nanoid()}`,
+      id: TraceId(`trace_${nanoid()}`),
       sessionId,
       status: 'running',
       startedAt,
@@ -72,8 +78,8 @@ export class TraceRecorder implements HookTraceCollector {
     name: string,
     attributes?: Record<string, unknown>,
     parentId = this.rootSpanId,
-  ): string {
-    const id = `${kind}_${nanoid()}`;
+  ): SpanId {
+    const id = SpanId(`${kind}_${nanoid()}`);
     const span: TraceSpan = {
       id,
       traceId: this.trace.id,
@@ -89,7 +95,11 @@ export class TraceRecorder implements HookTraceCollector {
     return id;
   }
 
-  endSpan(spanId: string, status: TraceStatus = 'success', attributes?: Record<string, unknown>): void {
+  endSpan(
+    spanId: SpanId,
+    status: TraceStatus = 'success',
+    attributes?: Record<string, unknown>,
+  ): void {
     const span = this.spanStack.get(spanId);
     if (!span || span.endedAt) return;
 
@@ -106,9 +116,9 @@ export class TraceRecorder implements HookTraceCollector {
     this.spanStack.delete(spanId);
   }
 
-  addEvent(type: string, data?: Record<string, unknown>, spanId?: string): void {
+  addEvent(type: string, data?: Record<string, unknown>, spanId?: SpanId): void {
     this.trace.events.push({
-      id: `event_${nanoid()}`,
+      id: TraceEventId(`event_${nanoid()}`),
       traceId: this.trace.id,
       spanId,
       type,
@@ -117,26 +127,26 @@ export class TraceRecorder implements HookTraceCollector {
     });
   }
 
-  recordTurnStart(turn: number, maxTurns?: number): string {
+  recordTurnStart(turn: number, maxTurns?: number): SpanId {
     const spanId = this.startSpan('turn', `turn.${turn}`, { turn, maxTurns });
     this.addEvent('turn_start', { turn, maxTurns }, spanId);
     return spanId;
   }
 
-  recordTurnEnd(spanId: string | undefined, turn: number): void {
+  recordTurnEnd(spanId: SpanId | undefined, turn: number): void {
     this.addEvent('turn_end', { turn }, spanId);
     if (spanId) this.endSpan(spanId);
   }
 
-  recordToolStart(toolCallId: string, name: string, input: unknown): string {
+  recordToolStart(toolCallId: ToolUseId, name: string, input: unknown): SpanId {
     const spanId = this.startSpan('tool', name, { toolCallId, input });
     this.addEvent('tool_use', { toolCallId, name, input }, spanId);
     return spanId;
   }
 
   recordToolResult(
-    spanId: string | undefined,
-    toolCallId: string,
+    spanId: SpanId | undefined,
+    toolCallId: ToolUseId,
     name: string,
     output: unknown,
     isError?: boolean,
@@ -149,18 +159,18 @@ export class TraceRecorder implements HookTraceCollector {
     this.addEvent('usage', { usage });
   }
 
-  recordHookStart(event: HookEvent, payload: Record<string, unknown>): string {
+  recordHookStart(event: HookEvent, payload: Record<string, unknown>): SpanId {
     const spanId = this.startSpan('hook', event, { event, payload });
     this.addEvent('hook_start', { event, payload }, spanId);
     return spanId;
   }
 
-  recordHookEnd(spanId: string, payload?: Record<string, unknown>): void {
+  recordHookEnd(spanId: SpanId, payload?: Record<string, unknown>): void {
     this.addEvent('hook_end', payload, spanId);
     this.endSpan(spanId, 'success', payload);
   }
 
-  recordHookError(spanId: string, error: unknown): void {
+  recordHookError(spanId: SpanId, error: unknown): void {
     this.addEvent('hook_error', { error: this.errorMessage(error) }, spanId);
     this.endSpan(spanId, 'error', { error: this.errorMessage(error) });
   }
@@ -177,7 +187,9 @@ export class TraceRecorder implements HookTraceCollector {
     return this.getTrace();
   }
 
-  private summarizeRecord(record: Record<string, unknown>): Record<string, JsonValue | TracePayloadSummary | undefined> {
+  private summarizeRecord(
+    record: Record<string, unknown>,
+  ): Record<string, JsonValue | TracePayloadSummary | undefined> {
     return Object.fromEntries(
       Object.entries(record).map(([key, value]) => [key, this.summarizeValue(value)]),
     );

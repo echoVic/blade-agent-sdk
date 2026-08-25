@@ -4,11 +4,10 @@ import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-    ExecutionContext,
-    ReadMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { ReadMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
@@ -26,18 +25,20 @@ export const readTool = createTool({
   maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    file_path: ToolSchemas.filePath({
-      description: 'File path to read (must be absolute)',
+  schema: lazySchema(() =>
+    z.object({
+      file_path: ToolSchemas.filePath({
+        description: 'File path to read (must be absolute)',
+      }),
+      offset: ToolSchemas.lineNumber({
+        description: 'Starting line number (0-based, text files only)',
+      }).optional(),
+      limit: ToolSchemas.lineLimit({
+        description: 'Number of lines to read (text files only)',
+      }).optional(),
+      encoding: ToolSchemas.encoding(),
     }),
-    offset: ToolSchemas.lineNumber({
-      description: 'Starting line number (0-based, text files only)',
-    }).optional(),
-    limit: ToolSchemas.lineLimit({
-      description: 'Number of lines to read (text files only)',
-    }).optional(),
-    encoding: ToolSchemas.encoding(),
-  })),
+  ),
 
   validateInput: (_params, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {
@@ -157,8 +158,7 @@ export const readTool = createTool({
         file_path,
         file_size: stats?.size,
         file_type: ext,
-        last_modified:
-          stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
+        last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         encoding: encoding,
       };
 
@@ -193,11 +193,7 @@ export const readTool = createTool({
       }
 
       // 处理行级切片（仅文本文件）
-      if (
-        (offset !== undefined || limit !== undefined) &&
-        encoding === 'utf8' &&
-        isTextFile
-      ) {
+      if ((offset !== undefined || limit !== undefined) && encoding === 'utf8' && isTextFile) {
         const lines = content.split('\n');
         const startLine = offset || 0;
         const endLine = limit !== undefined ? startLine + limit : lines.length;
@@ -207,8 +203,7 @@ export const readTool = createTool({
           .map((line, index) => {
             const lineNumber = startLine + index + 1;
             // 截断过长的行
-            const truncatedLine =
-              line.length > 2000 ? `${line.substring(0, 2000)}...` : line;
+            const truncatedLine = line.length > 2000 ? `${line.substring(0, 2000)}...` : line;
             return `${lineNumber.toString().padStart(6)}→${truncatedLine}`;
           })
           .join('\n');
@@ -222,9 +217,7 @@ export const readTool = createTool({
       // 生成 summary 用于流式显示
       const fileName = basename(file_path);
       const linesRead = metadata.lines_read || metadata.total_lines;
-      const summary = linesRead
-        ? `读取 ${linesRead} 行从 ${fileName}`
-        : `读取 ${fileName}`;
+      const summary = linesRead ? `读取 ${linesRead} 行从 ${fileName}` : `读取 ${fileName}`;
 
       metadata.summary = summary;
 

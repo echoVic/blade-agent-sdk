@@ -1,5 +1,5 @@
 import { encodingForModel } from 'js-tiktoken';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { ModelMessage, ModelToolCall } from '../model/message.js';
 
 interface Encoding {
   encode: (text: string) => number[];
@@ -11,18 +11,12 @@ function getEncoding(modelName: string): Encoding {
   let encoding = encodingCache.get(modelName);
   if (!encoding) {
     try {
-      encoding = encodingForModel(
-        modelName as Parameters<typeof encodingForModel>[0]
-      ) as unknown as Encoding;
+      encoding = encodingForModel(modelName as Parameters<typeof encodingForModel>[0]);
     } catch {
       try {
-        encoding = encodingForModel(
-          'gpt-4' as Parameters<typeof encodingForModel>[0]
-        ) as unknown as Encoding;
+        encoding = encodingForModel('gpt-4' as Parameters<typeof encodingForModel>[0]);
       } catch {
-        console.warn(
-          `[TokenCounter] 无法为模型 ${modelName} 获取 encoding，使用粗略估算`
-        );
+        console.warn(`[TokenCounter] 无法为模型 ${modelName} 获取 encoding，使用粗略估算`);
         encoding = {
           encode: (text: string) => {
             return new Array(Math.ceil(text.length / 4));
@@ -36,10 +30,7 @@ function getEncoding(modelName: string): Encoding {
   return encoding;
 }
 
-function countToolCallTokens(
-  toolCalls: ToolCall[],
-  encoding: Encoding
-): number {
+function countToolCallTokens(toolCalls: ModelToolCall[], encoding: Encoding): number {
   let tokens = 0;
 
   for (const call of toolCalls) {
@@ -61,7 +52,7 @@ function countToolCallTokens(
   return tokens;
 }
 
-export function countTokens(messages: Message[], modelName: string): number {
+export function countTokens(messages: ModelMessage[], modelName: string): number {
   const encoding = getEncoding(modelName);
   let totalTokens = 0;
 
@@ -97,10 +88,10 @@ export function getTokenLimit(maxTokens: number): number {
 }
 
 export function shouldCompact(
-  messages: Message[],
+  messages: ModelMessage[],
   modelName: string,
   maxTokens: number,
-  thresholdPercent = 0.8
+  thresholdPercent = 0.8,
 ): boolean {
   const currentTokens = countTokens(messages, modelName);
   const threshold = Math.floor(maxTokens * thresholdPercent);

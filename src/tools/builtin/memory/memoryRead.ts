@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import type { Memory } from '../../../memory/MemoryTypes.js';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
+import type { Memory } from '../../../memory/types.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryReadSchema = z.discriminatedUnion('operation', [
@@ -59,9 +59,7 @@ Operations:
             status: 'success',
             model: toJsonValue(summaries),
             metadata: {
-              summary: summaries.length === 0
-                ? '记忆列表为空'
-                : `列出 ${summaries.length} 条记忆`,
+              summary: summaries.length === 0 ? '记忆列表为空' : `列出 ${summaries.length} 条记忆`,
             },
           };
         }

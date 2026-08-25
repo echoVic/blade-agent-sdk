@@ -3,11 +3,7 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  AgentId,
-  ExecutionLeaseId,
-  FencingToken,
-} from '../../../types/branded.js';
+import { AgentId, ExecutionLeaseId, FencingToken } from '../../../types/identifiers.js';
 import { type AgentSession, AgentSessionStore } from '../AgentSessionStore.js';
 
 const tempDirs: string[] = [];
@@ -83,24 +79,30 @@ describe('AgentSessionStore', () => {
       fencingToken: FencingToken(2),
     };
 
-    await expect(store.saveSession({
-      ...createSession(agentId),
-      executionFence: staleFence,
-    })).resolves.toBe(true);
-    await expect(store.saveSession({
-      ...createSession(agentId),
-      description: 'Successor execution',
-      executionFence: successorFence,
-    })).resolves.toBe(true);
+    await expect(
+      store.saveSession({
+        ...createSession(agentId),
+        executionFence: staleFence,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      store.saveSession({
+        ...createSession(agentId),
+        description: 'Successor execution',
+        executionFence: successorFence,
+      }),
+    ).resolves.toBe(true);
 
     await expect(
       store.markCancelled(agentId, undefined, undefined, staleFence),
     ).resolves.toBeUndefined();
-    await expect(store.saveSession({
-      ...createSession(agentId),
-      description: 'Stale replacement',
-      executionFence: staleFence,
-    })).resolves.toBe(false);
+    await expect(
+      store.saveSession({
+        ...createSession(agentId),
+        description: 'Stale replacement',
+        executionFence: staleFence,
+      }),
+    ).resolves.toBe(false);
     expect(store.loadSession(agentId)).toMatchObject({
       description: 'Successor execution',
       status: 'running',
@@ -109,12 +111,7 @@ describe('AgentSessionStore', () => {
     await expect(store.deleteSession(agentId)).resolves.toBe(false);
 
     await expect(
-      store.markCompleted(
-        agentId,
-        { success: true, message: 'done' },
-        undefined,
-        successorFence,
-      ),
+      store.markCompleted(agentId, { success: true, message: 'done' }, undefined, successorFence),
     ).resolves.toMatchObject({ status: 'completed' });
     await new Promise<void>((resolve) => setTimeout(resolve, 2));
     await expect(store.cleanupExpiredSessions(0)).resolves.toBe(1);

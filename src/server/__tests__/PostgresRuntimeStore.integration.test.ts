@@ -1,19 +1,14 @@
 import { Pool } from 'pg';
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AgentCommandType, type AgentPrincipal } from '../../protocol/index.js';
-import {
-  ExecutionLeaseId,
-  type SessionId,
-  WorkerId,
-} from '../../types/branded.js';
 import { DurableExecutionLease } from '../../session/events/DurableExecutionLease.js';
+import {
+  CommandId,
+  EventId,
+  ExecutionLeaseId,
+  SessionId,
+  WorkerId,
+} from '../../types/identifiers.js';
 import { AgentServer } from '../AgentServer.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
@@ -97,43 +92,44 @@ describePostgres('PostgresRuntimeStore', () => {
   });
 
   it('rejects invalid transaction payloads before writing a receipt', async () => {
-    const commandId = `invalid-${Date.now()}`;
-    await expect(store.commitRuntimeTransaction({
-      tenantId: 'tenant-invalid',
-      sessionId: `session-${commandId}` as SessionId,
-      command: {
-        commandId,
-        fingerprint: `fingerprint-${commandId}`,
-        result: {
-          protocolVersion: 1,
+    const commandId = CommandId(`invalid-${Date.now()}`);
+    await expect(
+      store.commitRuntimeTransaction({
+        tenantId: 'tenant-invalid',
+        sessionId: SessionId(`session-${commandId}`),
+        command: {
           commandId,
-          ok: true,
-          data: {},
+          fingerprint: `fingerprint-${commandId}`,
+          result: {
+            protocolVersion: 1,
+            commandId,
+            ok: true,
+            data: {},
+          },
         },
-      },
-      effects: [{
-        effectId: `effect-${commandId}`,
-        type: 'invalid',
-        payload: { value: Number.NaN },
-        idempotencyKey: `key-${commandId}`,
-      }],
-    })).rejects.toMatchObject({
+        effects: [
+          {
+            effectId: `effect-${commandId}`,
+            type: 'invalid',
+            payload: { value: Number.NaN },
+            idempotencyKey: `key-${commandId}`,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
       code: 'RUNTIME_STORE_INVALID_TRANSACTION',
     });
-    await expect(store.claimCommand(
-      'tenant-invalid',
-      commandId,
-      `fingerprint-${commandId}`,
-      1000,
-    )).resolves.toMatchObject({ status: 'claimed' });
+    await expect(
+      store.claimCommand('tenant-invalid', commandId, `fingerprint-${commandId}`, 1000),
+    ).resolves.toMatchObject({ status: 'claimed' });
   });
 
   it('uses the database clock for immediately available effects', async () => {
     const suffix = `${process.pid}-${Date.now()}`;
     const tenantId = `tenant-database-clock-${suffix}`;
     const workerId = WorkerId(`worker-database-clock-${suffix}`);
-    const sessionId = `session-database-clock-${suffix}` as SessionId;
-    const commandId = `command-database-clock-${suffix}`;
+    const sessionId = SessionId(`session-database-clock-${suffix}`);
+    const commandId = CommandId(`command-database-clock-${suffix}`);
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2035-01-01T00:00:00.000Z'));
     try {
@@ -150,12 +146,14 @@ describePostgres('PostgresRuntimeStore', () => {
             data: {},
           },
         },
-        effects: [{
-          effectId: `effect-${suffix}`,
-          type: 'database-clock',
-          payload: {},
-          idempotencyKey: `effect-key-${suffix}`,
-        }],
+        effects: [
+          {
+            effectId: `effect-${suffix}`,
+            type: 'database-clock',
+            payload: {},
+            idempotencyKey: `effect-key-${suffix}`,
+          },
+        ],
       });
     } finally {
       vi.useRealTimers();
@@ -166,91 +164,100 @@ describePostgres('PostgresRuntimeStore', () => {
       ttlMs: 10_000,
     });
 
-    await expect(store.claimEffects({
-      tenantId,
-      workerId,
-      ttlMs: 10_000,
-      limit: 1,
-    })).resolves.toHaveLength(1);
+    await expect(
+      store.claimEffects({
+        tenantId,
+        workerId,
+        ttlMs: 10_000,
+        limit: 1,
+      }),
+    ).resolves.toHaveLength(1);
   });
 
   it('maps duplicate event and effect identities to stable conflicts with rollback', async () => {
     const suffix = `${process.pid}-${Date.now()}`;
     const tenantId = `tenant-conflict-${suffix}`;
-    const seedSessionId = `session-seed-${suffix}` as SessionId;
-    const duplicateEventId = `event-${suffix}`;
+    const seedSessionId = SessionId(`session-seed-${suffix}`);
+    const duplicateEventId = EventId(`event-${suffix}`);
     const duplicateEffectKey = `effect-key-${suffix}`;
+    const seedCommandId = CommandId(`seed-${suffix}`);
     await store.commitRuntimeTransaction({
       tenantId,
       sessionId: seedSessionId,
       command: {
-        commandId: `seed-${suffix}`,
+        commandId: seedCommandId,
         fingerprint: `seed-fingerprint-${suffix}`,
         result: {
           protocolVersion: 1,
-          commandId: `seed-${suffix}`,
+          commandId: seedCommandId,
           ok: true,
           data: {},
         },
       },
       expectedLastSequence: null,
-      events: [{
-        eventId: duplicateEventId,
-        type: 'seeded',
-        data: {},
-      }],
-      effects: [{
-        effectId: `seed-effect-${suffix}`,
-        type: 'seeded',
-        payload: {},
-        idempotencyKey: duplicateEffectKey,
-      }],
+      events: [
+        {
+          eventId: duplicateEventId,
+          type: 'seeded',
+          data: {},
+        },
+      ],
+      effects: [
+        {
+          effectId: `seed-effect-${suffix}`,
+          type: 'seeded',
+          payload: {},
+          idempotencyKey: duplicateEffectKey,
+        },
+      ],
     });
 
     for (const duplicate of ['event', 'effect'] as const) {
-      const commandId = `duplicate-${duplicate}-${suffix}`;
-      const sessionId = `session-${duplicate}-${suffix}` as SessionId;
-      await expect(store.commitRuntimeTransaction({
-        tenantId,
-        sessionId,
-        command: {
-          commandId,
-          fingerprint: `fingerprint-${commandId}`,
-          result: {
-            protocolVersion: 1,
+      const commandId = CommandId(`duplicate-${duplicate}-${suffix}`);
+      const sessionId = SessionId(`session-${duplicate}-${suffix}`);
+      await expect(
+        store.commitRuntimeTransaction({
+          tenantId,
+          sessionId,
+          command: {
             commandId,
-            ok: true,
-            data: {},
+            fingerprint: `fingerprint-${commandId}`,
+            result: {
+              protocolVersion: 1,
+              commandId,
+              ok: true,
+              data: {},
+            },
           },
-        },
-        expectedLastSequence: null,
-        events: [{
-          eventId: duplicate === 'event'
-            ? duplicateEventId
-            : `unique-event-${suffix}`,
-          type: 'duplicate',
-          data: { duplicate },
-        }],
-        effects: duplicate === 'effect'
-          ? [{
-              effectId: `effect-${suffix}`,
+          expectedLastSequence: null,
+          events: [
+            {
+              eventId: duplicate === 'event' ? duplicateEventId : EventId(`unique-event-${suffix}`),
               type: 'duplicate',
-              payload: {},
-              idempotencyKey: duplicateEffectKey,
-            }]
-          : [],
-      })).rejects.toMatchObject({
+              data: { duplicate },
+            },
+          ],
+          effects:
+            duplicate === 'effect'
+              ? [
+                  {
+                    effectId: `effect-${suffix}`,
+                    type: 'duplicate',
+                    payload: {},
+                    idempotencyKey: duplicateEffectKey,
+                  },
+                ]
+              : [],
+        }),
+      ).rejects.toMatchObject({
         code: 'RUNTIME_STORE_COMMAND_CONFLICT',
       });
+      await expect(store.readDomainEvents(tenantId, sessionId)).resolves.toMatchObject({
+        events: [],
+      });
       await expect(
-        store.readDomainEvents(tenantId, sessionId),
-      ).resolves.toMatchObject({ events: [] });
-      await expect(store.claimCommand(
-        tenantId,
-        commandId,
-        `fingerprint-${commandId}`,
-        1000,
-      )).resolves.toMatchObject({ status: 'claimed' });
+        store.claimCommand(tenantId, commandId, `fingerprint-${commandId}`, 1000),
+      ).resolves.toMatchObject({ status: 'claimed' });
     }
   });
 
@@ -272,10 +279,10 @@ describePostgres('PostgresRuntimeStore', () => {
       tablePrefix: 'runtime',
     });
     try {
-      await expect(Promise.all([
-        first.initialize(),
-        second.initialize(),
-      ])).resolves.toEqual([undefined, undefined]);
+      await expect(Promise.all([first.initialize(), second.initialize()])).resolves.toEqual([
+        undefined,
+        undefined,
+      ]);
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${concurrentSchema}" CASCADE`);
       await Promise.all([firstPool.end(), secondPool.end()]);
@@ -347,8 +354,8 @@ describePostgres('PostgresRuntimeStore', () => {
           'completed_at',
         ]),
       );
-      const commandId = `migration-command-${Date.now()}`;
-      const sessionId = `migration-session-${Date.now()}` as SessionId;
+      const commandId = CommandId(`migration-command-${Date.now()}`);
+      const sessionId = SessionId(`migration-session-${Date.now()}`);
       await migrated.commitRuntimeTransaction({
         tenantId: 'migration-tenant',
         sessionId,
@@ -398,10 +405,10 @@ describePostgres('PostgresRuntimeStore', () => {
       schema,
       tablePrefix: 'runtime',
     });
-    const sessionId = `single-pool-${Date.now()}` as SessionId;
+    const sessionId = SessionId(`single-pool-${Date.now()}`);
     const tenantId = 'tenant-single-pool';
     const tenantStore = singleStore.forTenant(tenantId);
-    const seedCommandId = `single-pool-seed-${Date.now()}`;
+    const seedCommandId = CommandId(`single-pool-seed-${Date.now()}`);
     const duplicateEffectId = `single-pool-effect-${Date.now()}`;
     await singleStore.commitRuntimeTransaction({
       tenantId,
@@ -436,7 +443,7 @@ describePostgres('PostgresRuntimeStore', () => {
     );
     try {
       await lease.runFenced(async () => {
-        const conflictingCommandId = `single-pool-conflict-${Date.now()}`;
+        const conflictingCommandId = CommandId(`single-pool-conflict-${Date.now()}`);
         await expect(singleStore.commitRuntimeTransaction({
           tenantId,
           sessionId,
@@ -483,25 +490,29 @@ describePostgres('PostgresRuntimeStore', () => {
       requirePersistentSessions: true,
       eventPollIntervalMs: 5,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: 'postgres-create',
-      type: AgentCommandType.SESSION_CREATE,
-      data: {},
-    }, principal);
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('postgres-create'),
+        type: AgentCommandType.SESSION_CREATE,
+        data: {},
+      },
+      principal,
+    );
     expect(created.ok).toBe(true);
     if (!created.ok) {
       throw new Error(created.error.message);
     }
-    const sessionId = (
-      created.data as { session: { sessionId: SessionId } }
-    ).session.sessionId;
-    const submitted = await server.execute({
-      protocolVersion: 1,
-      commandId: 'postgres-submit',
-      type: AgentCommandType.INPUT_SUBMIT,
-      data: { sessionId, input: 'hello' },
-    }, principal);
+    const sessionId = (created.data as { session: { sessionId: SessionId } }).session.sessionId;
+    const submitted = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('postgres-submit'),
+        type: AgentCommandType.INPUT_SUBMIT,
+        data: { sessionId, input: 'hello' },
+      },
+      principal,
+    );
     expect(submitted.ok).toBe(true);
 
     const events = [];
@@ -511,18 +522,18 @@ describePostgres('PostgresRuntimeStore', () => {
         break;
       }
     }
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: 'session.stream',
-        data: expect.objectContaining({
-          type: 'content',
-          delta: 'postgres-ok',
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'session.stream',
+          data: expect.objectContaining({
+            type: 'content',
+            delta: 'postgres-ok',
+          }),
         }),
-      }),
-    ]));
-    expect(
-      await store.forTenant(principal.tenantId).loadState(sessionId),
-    ).toMatchObject({
+      ]),
+    );
+    expect(await store.forTenant(principal.tenantId).loadState(sessionId)).toMatchObject({
       sessionId,
       messages: expect.any(Array),
     });
@@ -542,12 +553,17 @@ describePostgres('PostgresRuntimeStore', () => {
       }),
     });
 
-    await expect(server.execute({
-      protocolVersion: 1,
-      commandId: `conflicting-store-${Date.now()}`,
-      type: AgentCommandType.SESSION_CREATE,
-      data: {},
-    }, principal)).resolves.toMatchObject({
+    await expect(
+      server.execute(
+        {
+          protocolVersion: 1,
+          commandId: CommandId(`conflicting-store-${Date.now()}`),
+          type: AgentCommandType.SESSION_CREATE,
+          data: {},
+        },
+        principal,
+      ),
+    ).resolves.toMatchObject({
       ok: false,
       error: { code: 'SESSION_CONFLICT' },
     });
@@ -566,55 +582,47 @@ describePostgres('PostgresRuntimeStore', () => {
     });
     try {
       await second.initialize();
-      const commandId = `shared-command-${Date.now()}`;
+      const commandId = CommandId(`shared-command-${Date.now()}`);
       const claims = await Promise.all([
-        store.claimCommand(
-          'tenant-shared',
-          commandId,
-          'fingerprint-shared',
-          10_000,
-        ),
-        second.claimCommand(
-          'tenant-shared',
-          commandId,
-          'fingerprint-shared',
-          10_000,
-        ),
+        store.claimCommand('tenant-shared', commandId, 'fingerprint-shared', 10_000),
+        second.claimCommand('tenant-shared', commandId, 'fingerprint-shared', 10_000),
       ]);
-      expect(claims.map(({ status }) => status).sort()).toEqual([
-        'claimed',
-        'in_progress',
-      ]);
+      expect(claims.map(({ status }) => status).sort()).toEqual(['claimed', 'in_progress']);
 
-      const sessionId = `shared-session-${Date.now()}` as SessionId;
-      const makeCommit = (suffix: string) => ({
-        tenantId: 'tenant-shared',
-        sessionId,
-        command: {
-          commandId: `transaction-${suffix}`,
-          fingerprint: `fingerprint-${suffix}`,
-          result: {
-            protocolVersion: 1 as const,
-            commandId: `transaction-${suffix}`,
-            ok: true as const,
-            data: { committed: suffix },
+      const sessionId = SessionId(`shared-session-${Date.now()}`);
+      const makeCommit = (suffix: string) => {
+        const transactionCommandId = CommandId(`transaction-${suffix}`);
+        return {
+          tenantId: 'tenant-shared',
+          sessionId,
+          command: {
+            commandId: transactionCommandId,
+            fingerprint: `fingerprint-${suffix}`,
+            result: {
+              protocolVersion: 1 as const,
+              commandId: transactionCommandId,
+              ok: true as const,
+              data: { committed: suffix },
+            },
           },
-        },
-        expectedLastSequence: null,
-        events: [{ type: 'request.accepted', data: { source: suffix } }],
-        effects: [{
-          effectId: `effect-${suffix}`,
-          type: 'tool.execute',
-          payload: { source: suffix },
-          idempotencyKey: `effect-${suffix}`,
-        }],
-        projection: {
-          name: 'shared',
-          expectedOffset: null,
-          offset: 1,
-          state: { source: suffix },
-        },
-      });
+          expectedLastSequence: null,
+          events: [{ type: 'request.accepted', data: { source: suffix } }],
+          effects: [
+            {
+              effectId: `effect-${suffix}`,
+              type: 'tool.execute',
+              payload: { source: suffix },
+              idempotencyKey: `effect-${suffix}`,
+            },
+          ],
+          projection: {
+            name: 'shared',
+            expectedOffset: null,
+            offset: 1,
+            state: { source: suffix },
+          },
+        };
+      };
       const outcomes = await Promise.allSettled([
         store.commitRuntimeTransaction(makeCommit('a')),
         second.commitRuntimeTransaction(makeCommit('b')),
@@ -622,12 +630,8 @@ describePostgres('PostgresRuntimeStore', () => {
 
       expect(outcomes.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
       expect(outcomes.filter(({ status }) => status === 'rejected')).toHaveLength(1);
-      expect(
-        (await store.readDomainEvents('tenant-shared', sessionId)).events,
-      ).toHaveLength(1);
-      expect(
-        await store.listEffects('tenant-shared', { sessionId }),
-      ).toHaveLength(1);
+      expect((await store.readDomainEvents('tenant-shared', sessionId)).events).toHaveLength(1);
+      expect(await store.listEffects('tenant-shared', { sessionId })).toHaveLength(1);
     } finally {
       await secondPool.end();
     }
@@ -645,7 +649,7 @@ describePostgres('PostgresRuntimeStore', () => {
     });
     const suffix = `scheduler-${Date.now()}`;
     const tenantId = `tenant-${suffix}`;
-    const sessionId = `session-${suffix}` as SessionId;
+    const sessionId = SessionId(`session-${suffix}`);
     const firstWorkerId = WorkerId(`worker-a-${suffix}`);
     const secondWorkerId = WorkerId(`worker-b-${suffix}`);
     try {
@@ -679,7 +683,7 @@ describePostgres('PostgresRuntimeStore', () => {
       ]);
       expect(sessionClaims.filter((claim) => claim !== null)).toHaveLength(1);
 
-      const effectCommandId = `effect-command-${suffix}`;
+      const effectCommandId = CommandId(`effect-command-${suffix}`);
       await store.commitRuntimeTransaction({
         tenantId,
         sessionId,

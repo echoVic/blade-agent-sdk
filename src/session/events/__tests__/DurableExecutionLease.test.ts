@@ -8,13 +8,13 @@ import {
   FencingToken,
   SessionId,
   WorkerId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
 import type { DurableEventStore } from '../DurableEventStore.js';
 import { DurableExecutionLease } from '../DurableExecutionLease.js';
 import {
   DurableExecutionLeaseError,
-  DurableExecutionLeaseTimeoutError,
   type DurableExecutionLeaseStore,
+  DurableExecutionLeaseTimeoutError,
   isDurableExecutionLeaseStore,
 } from '../DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
@@ -309,9 +309,9 @@ describe('DurableExecutionLease', () => {
 
     await rejection;
     expect(lease.signal.aborted).toBe(true);
-    expect(
-      (lease.signal.reason as DurableExecutionLeaseTimeoutError).timeoutMs,
-    ).toBeLessThan(1_000);
+    expect((lease.signal.reason as DurableExecutionLeaseTimeoutError).timeoutMs).toBeLessThan(
+      1_000,
+    );
     await lease.release();
   });
 
@@ -434,13 +434,11 @@ describe('DurableExecutionLease', () => {
     let storeSignal: AbortSignal | undefined;
     let lateOperation: (() => Promise<unknown>) | undefined;
     let persistenceRan = false;
-    vi.spyOn(store, 'withExecutionLease').mockImplementation(
-      async (_lease, operation, options) => {
-        storeSignal = options?.signal;
-        lateOperation = operation;
-        return await new Promise<never>(() => {});
-      },
-    );
+    vi.spyOn(store, 'withExecutionLease').mockImplementation(async (_lease, operation, options) => {
+      storeSignal = options?.signal;
+      lateOperation = operation;
+      return await new Promise<never>(() => {});
+    });
     const persistence = lease.runFenced(async () => {
       persistenceRan = true;
       return 'unreachable';
@@ -546,15 +544,11 @@ describe('DurableExecutionLease', () => {
     const store = await createStore();
     const renew = vi.spyOn(store, 'renewExecutionLease');
     const release = vi.spyOn(store, 'releaseExecutionLease');
-    const lease = await DurableExecutionLease.acquire(
-      store,
-      SessionId('abandoned-lease-session'),
-      {
-        ownerId: WorkerId('worker-a'),
-        ttlMs: 10_000,
-        heartbeatIntervalMs: 20,
-      },
-    );
+    const lease = await DurableExecutionLease.acquire(store, SessionId('abandoned-lease-session'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 20,
+    });
 
     lease.abandon(new Error('runtime cleanup failed'));
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
@@ -580,9 +574,7 @@ describe('DurableExecutionLease', () => {
       },
     );
 
-    await expect(lease.runFenced(async () => 'persisted')).resolves.toBe(
-      'persisted',
-    );
+    await expect(lease.runFenced(async () => 'persisted')).resolves.toBe('persisted');
     expect(runFenced).toHaveBeenCalledOnce();
     await lease.release();
   });
@@ -721,13 +713,10 @@ describe('DurableExecutionLease', () => {
   it('accepts structural lease Stores without requiring the JSONL adapter', async () => {
     const store = await createStore();
     const leaseStore = {
-      append: (...args: Parameters<DurableEventStore['append']>) =>
-        store.append(...args),
-      read: (...args: Parameters<DurableEventStore['read']>) =>
-        store.read(...args),
-      getHeadSequence: (
-        ...args: Parameters<DurableEventStore['getHeadSequence']>
-      ) => store.getHeadSequence(...args),
+      append: (...args: Parameters<DurableEventStore['append']>) => store.append(...args),
+      read: (...args: Parameters<DurableEventStore['read']>) => store.read(...args),
+      getHeadSequence: (...args: Parameters<DurableEventStore['getHeadSequence']>) =>
+        store.getHeadSequence(...args),
       requiresExecutionLease: (
         ...args: Parameters<DurableExecutionLeaseStore['requiresExecutionLease']>
       ) => store.requiresExecutionLease(...args),
@@ -750,13 +739,9 @@ describe('DurableExecutionLease', () => {
     } satisfies DurableExecutionLeaseStore;
 
     expect(isDurableExecutionLeaseStore(leaseStore)).toBe(true);
-    const lease = await DurableExecutionLease.acquire(
-      leaseStore,
-      SessionId('structural-session'),
-      {
-        ownerId: WorkerId('worker-a'),
-      },
-    );
+    const lease = await DurableExecutionLease.acquire(leaseStore, SessionId('structural-session'), {
+      ownerId: WorkerId('worker-a'),
+    });
     await lease.release();
   });
 });

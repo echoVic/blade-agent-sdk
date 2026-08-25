@@ -11,8 +11,8 @@ import type {
   SessionId,
   ToolAttemptId,
   TurnId,
-} from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+} from '../../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import { toJsonValue } from '../../utils/jsonValue.js';
 import { parseDurableUserMessageContent } from '../DurableRequestRecovery.js';
 import type { DurableEventStore } from './DurableEventStore.js';
@@ -310,37 +310,32 @@ function validatePersistedRequestRollover(
   const [turnStarted, turnAborted, requestInterrupted, accepted] = events.slice(-4);
   const requestStarted = events.length === 5 ? events[0] : undefined;
   const recoveryTurn = command.sourceLastTurn + 1;
-  const recovery = accepted?.type === DurableEventType.REQUEST_ACCEPTED
-    ? accepted.data.recovery
-    : undefined;
+  const recovery =
+    accepted?.type === DurableEventType.REQUEST_ACCEPTED ? accepted.data.recovery : undefined;
   if (
-    (events.length !== 4 && events.length !== 5)
-    || (
-      requestStarted !== undefined
-      && (
-        requestStarted.type !== DurableEventType.REQUEST_STARTED
-        || requestStarted.requestId !== command.requestId
-      )
-    )
-    || turnStarted?.type !== DurableEventType.TURN_STARTED
-    || turnStarted.requestId !== command.requestId
-    || turnStarted.turnId !== command.recoveryTurnId
-    || turnStarted.data.turn !== recoveryTurn
-    || turnAborted?.type !== DurableEventType.TURN_ABORTED
-    || turnAborted.requestId !== command.requestId
-    || turnAborted.turnId !== command.recoveryTurnId
-    || turnAborted.data.turn !== recoveryTurn
-    || turnAborted.data.reason !== 'process_restart'
-    || requestInterrupted?.type !== DurableEventType.REQUEST_INTERRUPTED
-    || requestInterrupted.requestId !== command.requestId
-    || requestInterrupted.data.reason !== 'process_restart'
-    || accepted?.type !== DurableEventType.REQUEST_ACCEPTED
-    || accepted.requestId !== command.recoveryRequestId
-    || accepted.data.inputId !== command.recoveryInputId
-    || !recovery
-    || recovery.requestId !== command.requestId
-    || recovery.turnId !== command.recoveryTurnId
-    || recovery.turn !== recoveryTurn
+    (events.length !== 4 && events.length !== 5) ||
+    (requestStarted !== undefined &&
+      (requestStarted.type !== DurableEventType.REQUEST_STARTED ||
+        requestStarted.requestId !== command.requestId)) ||
+    turnStarted?.type !== DurableEventType.TURN_STARTED ||
+    turnStarted.requestId !== command.requestId ||
+    turnStarted.turnId !== command.recoveryTurnId ||
+    turnStarted.data.turn !== recoveryTurn ||
+    turnAborted?.type !== DurableEventType.TURN_ABORTED ||
+    turnAborted.requestId !== command.requestId ||
+    turnAborted.turnId !== command.recoveryTurnId ||
+    turnAborted.data.turn !== recoveryTurn ||
+    turnAborted.data.reason !== 'process_restart' ||
+    requestInterrupted?.type !== DurableEventType.REQUEST_INTERRUPTED ||
+    requestInterrupted.requestId !== command.requestId ||
+    requestInterrupted.data.reason !== 'process_restart' ||
+    accepted?.type !== DurableEventType.REQUEST_ACCEPTED ||
+    accepted.requestId !== command.recoveryRequestId ||
+    accepted.data.inputId !== command.recoveryInputId ||
+    !recovery ||
+    recovery.requestId !== command.requestId ||
+    recovery.turnId !== command.recoveryTurnId ||
+    recovery.turn !== recoveryTurn
   ) {
     throw new DurableSessionRecoveryError(
       'DURABLE_RECOVERY_INVALID_STATE',
@@ -365,8 +360,7 @@ function validatePersistedRequestRollover(
     command.sourceLastTurn,
   );
   if (
-    JSON.stringify(toJsonValue(continuation))
-    !== JSON.stringify(toJsonValue(expectedContinuation))
+    JSON.stringify(toJsonValue(continuation)) !== JSON.stringify(toJsonValue(expectedContinuation))
   ) {
     throw new DurableSessionRecoveryError(
       'DURABLE_RECOVERY_INVALID_STATE',
@@ -399,16 +393,14 @@ function parseReconciledRequestPreparation(
   command: DurableRequestRolloverCommand,
 ): UserMessageContent {
   if (
-    command.preparation?.status !== 'reconciled'
-    || !Number.isSafeInteger(command.sourceLastTurn)
-    || command.sourceLastTurn < 0
-    || !Array.isArray(command.preparation.appliedInputIds)
-    || command.preparation.appliedInputIds.some(
-      (appliedInputId) =>
-        typeof appliedInputId !== 'string' || appliedInputId.trim() === '',
-    )
-    || new Set(command.preparation.appliedInputIds).size
-      !== command.preparation.appliedInputIds.length
+    command.preparation?.status !== 'reconciled' ||
+    !Number.isSafeInteger(command.sourceLastTurn) ||
+    command.sourceLastTurn < 0 ||
+    !Array.isArray(command.preparation.appliedInputIds) ||
+    command.preparation.appliedInputIds.some(
+      (appliedInputId) => typeof appliedInputId !== 'string' || appliedInputId.trim() === '',
+    ) ||
+    new Set(command.preparation.appliedInputIds).size !== command.preparation.appliedInputIds.length
   ) {
     throw new DurableSessionRecoveryError(
       'DURABLE_RECOVERY_INVALID_STATE',
@@ -427,12 +419,8 @@ function parseReconciledRequestPreparation(
   }
 }
 
-function inputIdsEqual(
-  left: readonly InputId[],
-  right: readonly InputId[],
-): boolean {
-  return left.length === right.length
-    && left.every((inputId, index) => inputId === right[index]);
+function inputIdsEqual(left: readonly InputId[], right: readonly InputId[]): boolean {
+  return left.length === right.length && left.every((inputId, index) => inputId === right[index]);
 }
 
 function composeRecoveryContinuation(
@@ -496,12 +484,10 @@ function buildTurnRecoveryContinuation(
       (permissionDecision === 'deny' || permissionDecision === 'cancel');
     const recoveredFromPermission = tool.status === 'scheduled' && permissionDecision === 'allow';
     const unconfirmedModelResponse =
-      tool.modelAttemptId !== undefined
-      && modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
+      tool.modelAttemptId !== undefined &&
+      modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
     const unfinished =
-      tool.status === 'scheduled'
-      || tool.status === 'started'
-      || tool.status === 'outcome_unknown';
+      tool.status === 'scheduled' || tool.status === 'started' || tool.status === 'outcome_unknown';
     const effectiveInput =
       tool.permission?.status === 'resolved' ? tool.permission.input : tool.input;
     return {
@@ -511,15 +497,16 @@ function buildTurnRecoveryContinuation(
       input: boundedRecoveryValue(effectiveInput),
       sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
       executionStarted: tool.executionStarted,
-      status: unconfirmedModelResponse && unfinished
-        ? 'discarded_unconfirmed_model_response'
-        : permissionCancelledBeforeExecution
-        ? 'cancelled_before_execution'
-        : tool.status === 'scheduled'
-          ? 'not_started'
-          : tool.status === 'started' || tool.status === 'outcome_unknown'
-            ? 'interrupted_before_trusted_completion'
-            : tool.status,
+      status:
+        unconfirmedModelResponse && unfinished
+          ? 'discarded_unconfirmed_model_response'
+          : permissionCancelledBeforeExecution
+            ? 'cancelled_before_execution'
+            : tool.status === 'scheduled'
+              ? 'not_started'
+              : tool.status === 'started' || tool.status === 'outcome_unknown'
+                ? 'interrupted_before_trusted_completion'
+                : tool.status,
       ...(tool.permission ? { permission: boundedRecoveryValue(tool.permission) } : {}),
       ...(tool.result !== undefined ? { result: boundedRecoveryValue(tool.result) } : {}),
       ...(tool.error ? { error: boundedRecoveryValue(tool.error) } : {}),
@@ -537,22 +524,14 @@ function buildTurnRecoveryContinuation(
             modelAttempts: retainedModelAttempts.map((attempt) => ({
               modelAttemptId: attempt.modelAttemptId,
               model: attempt.model,
-              ...(attempt.modelIdentity
-                ? { modelIdentity: attempt.modelIdentity }
-                : {}),
+              ...(attempt.modelIdentity ? { modelIdentity: attempt.modelIdentity } : {}),
               streaming: attempt.streaming,
               status: attempt.status,
-              ...(attempt.response
-                ? { response: boundedRecoveryValue(attempt.response) }
-                : {}),
-              ...(attempt.error
-                ? { error: boundedRecoveryValue(attempt.error) }
-                : {}),
+              ...(attempt.response ? { response: boundedRecoveryValue(attempt.response) } : {}),
+              ...(attempt.error ? { error: boundedRecoveryValue(attempt.error) } : {}),
               ...(attempt.abortReason ? { abortReason: attempt.abortReason } : {}),
             })),
-            ...(omittedModelAttempts > 0
-              ? { modelAttemptsOmitted: omittedModelAttempts }
-              : {}),
+            ...(omittedModelAttempts > 0 ? { modelAttemptsOmitted: omittedModelAttempts } : {}),
           }
         : {}),
       toolOutcomes,
@@ -560,16 +539,16 @@ function buildTurnRecoveryContinuation(
     [
       ...(turn.modelAttempts.length > 0
         ? [
-            'Treat completed model responses as authoritative prior output and do not regenerate them. '
-              + 'Failed or aborted model attempts have no trusted response.',
+            'Treat completed model responses as authoritative prior output and do not regenerate them. ' +
+              'Failed or aborted model attempts have no trusted response.',
           ]
         : []),
-      'Do not repeat tool operations marked completed. '
-        + 'Operations marked not_started are safe to execute once. Operations marked '
-        + 'interrupted_before_trusted_completion may be retried only when their '
-        + 'side-effect contract permits it. Operations marked cancelled_before_execution '
-        + 'require fresh permission. Operations marked discarded_unconfirmed_model_response '
-        + 'must not be retried. Continue the original task.',
+      'Do not repeat tool operations marked completed. ' +
+        'Operations marked not_started are safe to execute once. Operations marked ' +
+        'interrupted_before_trusted_completion may be retried only when their ' +
+        'side-effect contract permits it. Operations marked cancelled_before_execution ' +
+        'require fresh permission. Operations marked discarded_unconfirmed_model_response ' +
+        'must not be retried. Continue the original task.',
     ],
   );
 }
@@ -591,13 +570,11 @@ function buildRequestRecoveryContinuation(
       boundary: sourceLastTurn === 0 ? 'before_first_turn' : 'between_turns',
     },
     [
-      'Pre-turn side effects were explicitly reconciled. '
-        + (
-          sourceLastTurn === 0
-            ? 'No primary model turn started before the restart. '
-            : `No model turn started after completed turn ${sourceLastTurn}. `
-        )
-        + 'Execute this prepared input once.',
+      'Pre-turn side effects were explicitly reconciled. ' +
+        (sourceLastTurn === 0
+          ? 'No primary model turn started before the restart. '
+          : `No model turn started after completed turn ${sourceLastTurn}. `) +
+        'Execute this prepared input once.',
     ],
   );
 }
@@ -762,13 +739,11 @@ export class DurableSessionRecoveryCoordinator {
     const recoveryPlan = this.getRecoveryPlan();
     const request = projection.activeRequest;
     if (
-      (
-        recoveryPlan.action !== 'rollover_request'
-        && recoveryPlan.action !== 'reconcile_request_inputs'
-      )
-      || !request
-      || (request.status !== 'running' && request.status !== 'accepted')
-      || request.activeTurn
+      (recoveryPlan.action !== 'rollover_request' &&
+        recoveryPlan.action !== 'reconcile_request_inputs') ||
+      !request ||
+      (request.status !== 'running' && request.status !== 'accepted') ||
+      request.activeTurn
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
@@ -795,9 +770,9 @@ export class DurableSessionRecoveryCoordinator {
       );
     }
     if (
-      request.maxTurns === undefined
-      || request.model === undefined
-      || request.context === undefined
+      request.maxTurns === undefined ||
+      request.model === undefined ||
+      request.context === undefined
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
@@ -889,22 +864,24 @@ export class DurableSessionRecoveryCoordinator {
     await this.journal.refresh();
     const event = requestOutcomeEvent(command);
     if (this.journal.getCommandEvents(command.commandId)) {
-      return this.result(await this.commitRecovery({
-        commandId: command.commandId,
-        events: [event],
-      }));
+      return this.result(
+        await this.commitRecovery({
+          commandId: command.commandId,
+          events: [event],
+        }),
+      );
     }
 
     const projection = this.getProjection();
     const recoveryPlan = this.getRecoveryPlan();
     const request = projection.activeRequest;
     if (
-      recoveryPlan.action !== 'reconcile_request_outcome'
-      || !request
-      || request.status !== 'running'
-      || request.activeTurn
-      || request.lastTurn === 0
-      || request.lastTurnEventId === null
+      recoveryPlan.action !== 'reconcile_request_outcome' ||
+      !request ||
+      request.status !== 'running' ||
+      request.activeTurn ||
+      request.lastTurn === 0 ||
+      request.lastTurnEventId === null
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
@@ -1056,10 +1033,13 @@ export class DurableSessionRecoveryCoordinator {
       },
     );
 
-    const commit = await this.commitRecovery({
-      commandId: command.commandId,
-      events,
-    }, projection.headSequence);
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events,
+      },
+      projection.headSequence,
+    );
     return {
       ...this.result(commit),
       continuation,
@@ -1078,10 +1058,12 @@ export class DurableSessionRecoveryCoordinator {
     await this.journal.refresh();
     const event = modelOutcomeEvent(command);
     if (this.journal.getCommandEvents(command.commandId)) {
-      return this.result(await this.commitRecovery({
-        commandId: command.commandId,
-        events: [event],
-      }));
+      return this.result(
+        await this.commitRecovery({
+          commandId: command.commandId,
+          events: [event],
+        }),
+      );
     }
 
     const expectedHeadSequence = this.getProjection().headSequence;
@@ -1094,10 +1076,10 @@ export class DurableSessionRecoveryCoordinator {
       );
     }
     if (
-      request.requestId !== command.requestId
-      || turn.turnId !== command.turnId
-      || attempt.modelAttemptId !== command.modelAttemptId
-      || attempt.status !== 'started'
+      request.requestId !== command.requestId ||
+      turn.turnId !== command.turnId ||
+      attempt.modelAttemptId !== command.modelAttemptId ||
+      attempt.status !== 'started'
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_TARGET_NOT_FOUND',
@@ -1105,10 +1087,13 @@ export class DurableSessionRecoveryCoordinator {
       );
     }
 
-    const commit = await this.commitRecovery({
-      commandId: command.commandId,
-      events: [event],
-    }, expectedHeadSequence);
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events: [event],
+      },
+      expectedHeadSequence,
+    );
     return this.result(commit);
   }
 
@@ -1159,10 +1144,13 @@ export class DurableSessionRecoveryCoordinator {
       }
     })();
 
-    const commit = await this.commitRecovery({
-      commandId: command.commandId,
-      events: [event],
-    }, expectedHeadSequence);
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events: [event],
+      },
+      expectedHeadSequence,
+    );
     return this.result(commit);
   }
 
@@ -1172,26 +1160,29 @@ export class DurableSessionRecoveryCoordinator {
     const { request, turn, tool } = this.findToolAttempt(command.toolAttemptId);
     const recoveredFromPermission =
       tool.permission?.status === 'resolved' && tool.permission.decision === 'allow';
-    const commit = await this.commitRecovery({
-      commandId: command.commandId,
-      events: [
-        {
-          type: DurableEventType.TOOL_STARTED,
-          requestId: request.requestId,
-          turnId: turn.turnId,
-          toolAttemptId: tool.toolAttemptId,
-          data: {
-            toolCallId: tool.toolCallId,
-            toolName: tool.toolName,
-            input: recoveredFromPermission ? (tool.permission?.input ?? tool.input) : tool.input,
-            // A permission round-trip may have changed input after scheduling.
-            // Without the live Tool resolver, only the most conservative
-            // classification is safe across the restart boundary.
-            sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events: [
+          {
+            type: DurableEventType.TOOL_STARTED,
+            requestId: request.requestId,
+            turnId: turn.turnId,
+            toolAttemptId: tool.toolAttemptId,
+            data: {
+              toolCallId: tool.toolCallId,
+              toolName: tool.toolName,
+              input: recoveredFromPermission ? (tool.permission?.input ?? tool.input) : tool.input,
+              // A permission round-trip may have changed input after scheduling.
+              // Without the live Tool resolver, only the most conservative
+              // classification is safe across the restart boundary.
+              sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
+            },
           },
-        },
-      ],
-    }, expectedHeadSequence);
+        ],
+      },
+      expectedHeadSequence,
+    );
     return this.result(commit);
   }
 
@@ -1233,10 +1224,13 @@ export class DurableSessionRecoveryCoordinator {
           ]),
     ];
 
-    const commit = await this.commitRecovery({
-      commandId: command.commandId,
-      events,
-    }, expectedHeadSequence);
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events,
+      },
+      expectedHeadSequence,
+    );
     return this.result(commit);
   }
 
@@ -1310,9 +1304,8 @@ export class DurableSessionRecoveryCoordinator {
     expectedHeadSequence?: EventSequence | null,
   ): Promise<DurableCommandCommitResult> {
     try {
-      const options: DurableCommandCommitOptions = expectedHeadSequence === undefined
-        ? {}
-        : { expectedHeadSequence };
+      const options: DurableCommandCommitOptions =
+        expectedHeadSequence === undefined ? {} : { expectedHeadSequence };
       return await this.journal.commit(command, options);
     } catch (cause) {
       if (cause instanceof DurableEventProjectionError) {

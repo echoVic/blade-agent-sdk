@@ -1,5 +1,5 @@
+import type { ModelMessage } from '../../model/message.js';
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
 import type { PermissionUpdate } from '../../types/permissions.js';
 
 export type ToolEffect =
@@ -13,7 +13,7 @@ export type ToolEffect =
     }
   | {
       type: 'newMessages';
-      messages: Message[];
+      messages: ModelMessage[];
     }
   | {
       type: 'permissionUpdates';

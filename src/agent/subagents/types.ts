@@ -1,6 +1,6 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
-import { PermissionMode } from '../../types/common.js';
+import { PermissionMode } from '../../types/constants.js';
 
 /**
  * Claude Code permissionMode 类型

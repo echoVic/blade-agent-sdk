@@ -1,5 +1,9 @@
 # Provider 配置
 
+Provider 无关的消息、配置、服务、重试和用量契约可从
+`@blade-ai/agent-sdk/model` 导入。该入口是 browser-safe 的，不加载具体
+Provider SDK。
+
 ## 支持的 Provider
 
 | Provider | `type` 值 | 说明 |
@@ -11,7 +15,7 @@
 | DeepSeek | `'deepseek'` | DeepSeek 模型 |
 | OpenAI 兼容 | `'openai-compatible'` | 任何兼容 OpenAI API 的服务 |
 
-## ProviderConfig
+## ProviderConnectionConfig
 
 ```ts
 type BuiltinProviderType =
@@ -22,7 +26,7 @@ type BuiltinProviderType =
   | 'deepseek'
   | 'openai-compatible';
 
-interface ProviderConfig {
+interface ProviderConnectionConfig {
   id?: string;
   type: BuiltinProviderType | (string & {});
   apiKey?: string;
@@ -70,15 +74,15 @@ Provider、adapter、模型，或恢复不含来源信息的旧历史时，reaso
 import {
   createSession,
   ProviderRegistry,
-  type ChatConfig,
-  type IChatService,
+  type ModelServiceConfig,
+  type ModelService,
   type ProviderAdapter,
 } from '@blade-ai/agent-sdk';
 
 const adapter = {
   type: 'acme-chat',
-  async create(config: Readonly<ChatConfig>): Promise<IChatService> {
-    return new AcmeChatService(config);
+  async create(config: Readonly<ModelServiceConfig>): Promise<ModelService> {
+    return new AcmeModelService(config);
   },
 } satisfies ProviderAdapter;
 
@@ -93,7 +97,7 @@ const session = await createSession({
 });
 ```
 
-Adapter 返回现有 `IChatService` 契约，因此 model middleware、request/stream idle
+Adapter 返回现有 `ModelService` 契约，因此 model middleware、request/stream idle
 deadline、durable model attempt、subagent 和 compaction 会继续走同一运行时链路。
 自定义 adapter 也可以只在当前 Registry 实例中覆盖内置 `type`。重复、非法注册
 以及未注册的未知 adapter type 都会以 `ProviderRegistryError` fail-closed。

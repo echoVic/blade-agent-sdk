@@ -1,10 +1,10 @@
-import type { SessionId } from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+import { type SessionId, TurnId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type { RuntimeContext } from './RuntimeContext.js';
 
 export interface ContextSnapshot {
   readonly sessionId: SessionId;
-  readonly turnId: string;
+  readonly turnId: TurnId;
   readonly context: RuntimeContext;
   readonly filesystemRoots: string[];
   /**
@@ -31,10 +31,7 @@ function mergeStringRecords(
   };
 }
 
-function mergeUnknownRecords(
-  base?: JsonObject,
-  override?: JsonObject,
-): JsonObject | undefined {
+function mergeUnknownRecords(base?: JsonObject, override?: JsonObject): JsonObject | undefined {
   if (!base && !override) {
     return undefined;
   }
@@ -59,9 +56,7 @@ export function mergeContext(
           // Turn-scoped filesystem roots are intentionally replace-only.
           // This keeps the current turn's accessible roots explicit rather than additive.
           roots:
-            overrideCapabilities?.filesystem?.roots
-            ?? baseCapabilities?.filesystem?.roots
-            ?? [],
+            overrideCapabilities?.filesystem?.roots ?? baseCapabilities?.filesystem?.roots ?? [],
         }
       : undefined;
 
@@ -76,20 +71,14 @@ export function mergeContext(
       ...(overrideCapabilities ?? {}),
       ...(filesystem ? { filesystem } : {}),
     },
-    environment: mergeStringRecords(
-      defaultContext.environment,
-      turnContext?.environment,
-    ),
-    metadata: mergeUnknownRecords(
-      defaultContext.metadata,
-      turnContext?.metadata,
-    ),
+    environment: mergeStringRecords(defaultContext.environment, turnContext?.environment),
+    metadata: mergeUnknownRecords(defaultContext.metadata, turnContext?.metadata),
   };
 }
 
 export function createContextSnapshot(
   sessionId: SessionId,
-  turnId: string,
+  turnId: TurnId | string,
   defaultContext: RuntimeContext = {},
   turnContext?: RuntimeContext,
 ): ContextSnapshot {
@@ -97,7 +86,7 @@ export function createContextSnapshot(
   const filesystemRoots = context.capabilities?.filesystem?.roots ?? [];
   return {
     sessionId,
-    turnId,
+    turnId: TurnId(turnId),
     context,
     filesystemRoots,
     cwd: context.capabilities?.filesystem?.cwd,

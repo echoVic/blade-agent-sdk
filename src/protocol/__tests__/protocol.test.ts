@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_PROTOCOL_VERSION,
   AgentCommandType,
+  agentInitializationDataSchema,
   parseAgentCommand,
   parseAgentCommandResult,
   parseAgentServerEvent,
@@ -9,22 +10,24 @@ import {
 
 describe('agent protocol v1', () => {
   it('parses strict versioned commands', () => {
-    expect(parseAgentCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: 'command-1',
-      type: AgentCommandType.INPUT_SUBMIT,
-      data: {
-        sessionId: 'session-1',
-        input: [
-          { type: 'text', text: 'inspect this' },
-          {
-            type: 'image_url',
-            image_url: { url: 'data:image/png;base64,AA==' },
-          },
-        ],
-        priority: 'next',
-      },
-    })).toMatchObject({
+    expect(
+      parseAgentCommand({
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: 'command-1',
+        type: AgentCommandType.INPUT_SUBMIT,
+        data: {
+          sessionId: 'session-1',
+          input: [
+            { type: 'text', text: 'inspect this' },
+            {
+              type: 'image_url',
+              image_url: { url: 'data:image/png;base64,AA==' },
+            },
+          ],
+          priority: 'next',
+        },
+      }),
+    ).toMatchObject({
       type: 'input.submit',
       data: { sessionId: 'session-1' },
     });
@@ -55,23 +58,45 @@ describe('agent protocol v1', () => {
   });
 
   it('parses success and failure responses', () => {
-    expect(parseAgentCommandResult({
-      protocolVersion: 1,
-      commandId: 'command-1',
-      ok: true,
-      data: { accepted: true },
-    })).toMatchObject({ ok: true });
-    expect(parseAgentCommandResult({
-      protocolVersion: 1,
-      commandId: 'command-2',
-      ok: false,
-      error: {
-        code: 'OVERLOADED',
-        message: 'busy',
-        retryable: true,
-        retryAfterMs: 100,
+    expect(
+      parseAgentCommandResult({
+        protocolVersion: 1,
+        commandId: 'command-1',
+        ok: true,
+        data: { accepted: true },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      parseAgentCommandResult({
+        protocolVersion: 1,
+        commandId: 'command-2',
+        ok: false,
+        error: {
+          code: 'OVERLOADED',
+          message: 'busy',
+          retryable: true,
+          retryAfterMs: 100,
+        },
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('parses initialize data with a server timestamp', () => {
+    const data = {
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      commands: Object.values(AgentCommandType),
+      transports: ['http-sse'],
+      serverTime: new Date().toISOString(),
+      features: {
+        approvals: true,
+        durableEvents: true,
+        eventReplay: true,
+        idempotentCommands: true,
       },
-    })).toMatchObject({ ok: false });
+    };
+
+    expect(agentInitializationDataSchema.parse(data)).toEqual(data);
+    expect(() => agentInitializationDataSchema.parse({ ...data, serverTime: 'invalid' })).toThrow();
   });
 
   it('parses transport events without accepting unknown envelope fields', () => {
@@ -93,5 +118,23 @@ describe('agent protocol v1', () => {
       sequence: 1,
     });
     expect(() => parseAgentServerEvent({ ...event, extra: true })).toThrow();
+    expect(() =>
+      parseAgentServerEvent({
+        ...event,
+        data: {
+          type: 'content',
+          sessionId: 'session-1',
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseAgentServerEvent({
+        ...event,
+        data: {
+          ...event.data,
+          sessionId: 'another-session',
+        },
+      }),
+    ).toThrow(/does not match/);
   });
 });

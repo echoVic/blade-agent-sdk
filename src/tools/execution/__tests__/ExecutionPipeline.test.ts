@@ -7,21 +7,17 @@ import { ConfigError } from '../../../errors/ConfigError.js';
 import type { HookRuntime } from '../../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
+import { PermissionMode } from '../../../types/constants.js';
+import { InputId, PermissionRequestId, SessionId, TurnId } from '../../../types/identifiers.js';
+import type { JsonObject } from '../../../types/json.js';
+import type { PermissionHandler } from '../../../types/permissions.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { InputId, PermissionRequestId, SessionId } from '../../../types/branded.js';
-import { type JsonObject, PermissionMode } from '../../../types/common.js';
-import type { PermissionHandler } from '../../../types/permissions.js';
-import {
-  collectToolExecution,
-  completeToolExecution,
-  type ExecutionContext,
-  type Tool,
-  ToolErrorType,
-  type ToolResult,
-  type ToolYield,
-} from '../../types/index.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { ToolResult, ToolYield } from '../../types/result.js';
+import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
+import type { Tool } from '../../types/tool.js';
 import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 import { ExecutionPipeline } from '../ExecutionPipeline.js';
 import { FileLockManager } from '../FileLockManager.js';
@@ -93,7 +89,7 @@ describe('ExecutionPipeline', () => {
             model: String(id),
           };
         },
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -103,7 +99,7 @@ describe('ExecutionPipeline', () => {
       },
     });
     const executions = gates.map((_, id) =>
-      executePipeline(pipeline, 'LimitedRead', { id }, { permissionMode: PermissionMode.YOLO })
+      executePipeline(pipeline, 'LimitedRead', { id }, { permissionMode: PermissionMode.YOLO }),
     );
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -253,11 +249,7 @@ describe('ExecutionPipeline', () => {
       },
     );
     await vi.waitFor(() => {
-      expect(addAbortListener).toHaveBeenCalledWith(
-        'abort',
-        expect.any(Function),
-        { once: true },
-      );
+      expect(addAbortListener).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
     });
 
     controller.abort(new Error('cancel file lock wait'));
@@ -300,10 +292,11 @@ describe('ExecutionPipeline', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'Lease check cancellation tool' },
         schema: z.object({}),
-        execute: () => completeToolExecution({
-          status: 'success',
-          model: 'unexpected',
-        }),
+        execute: () =>
+          completeToolExecution({
+            status: 'success',
+            model: 'unexpected',
+          }),
       }),
     );
 
@@ -416,10 +409,14 @@ describe('ExecutionPipeline', () => {
         async *execute(_params, context) {
           try {
             await new Promise<void>((_resolve, reject) => {
-              context.signal?.addEventListener('abort', () => {
-                observedAbort = true;
-                reject(context.signal?.reason);
-              }, { once: true });
+              context.signal?.addEventListener(
+                'abort',
+                () => {
+                  observedAbort = true;
+                  reject(context.signal?.reason);
+                },
+                { once: true },
+              );
             });
             return { status: 'success', model: 'unexpected' };
           } finally {
@@ -524,11 +521,7 @@ describe('ExecutionPipeline', () => {
       permissionMode: PermissionMode.YOLO,
       toolTimeoutMs: 50,
     });
-    const execution = pipeline.execute(
-      'PausedStream',
-      {},
-      { permissionMode: PermissionMode.YOLO },
-    );
+    const execution = pipeline.execute('PausedStream', {}, { permissionMode: PermissionMode.YOLO });
 
     await expect(execution.next()).resolves.toEqual({
       done: false,
@@ -553,10 +546,13 @@ describe('ExecutionPipeline', () => {
     const registry = new ToolRegistry();
     const scheduler = new ConcurrencyScheduler({ execute: 1 });
     const started = deferred();
-    const queuedExecute = vi.fn(() => ({
-      status: 'success',
-      model: 'unexpected queued execution',
-    }) as ToolResult);
+    const queuedExecute = vi.fn(
+      () =>
+        ({
+          status: 'success',
+          model: 'unexpected queued execution',
+        }) as ToolResult,
+    );
 
     registerTool(
       registry,
@@ -639,12 +635,7 @@ describe('ExecutionPipeline', () => {
     expect(queuedExecute).not.toHaveBeenCalled();
 
     await expect(
-      executePipeline(
-        pipeline,
-        'UncooperativeTool',
-        {},
-        { permissionMode: PermissionMode.YOLO },
-      ),
+      executePipeline(pipeline, 'UncooperativeTool', {}, { permissionMode: PermissionMode.YOLO }),
     ).resolves.toMatchObject({
       status: 'error',
       error: {
@@ -657,21 +648,10 @@ describe('ExecutionPipeline', () => {
   it('uses a bounded default and rejects invalid tool timeout values', () => {
     const registry = new ToolRegistry();
     const defaultPipeline = new ExecutionPipeline(registry);
-    expect(
-      (defaultPipeline as unknown as { toolTimeoutMs: number }).toolTimeoutMs,
-    ).toBe(600_000);
+    expect((defaultPipeline as unknown as { toolTimeoutMs: number }).toolTimeoutMs).toBe(600_000);
 
-    for (const toolTimeoutMs of [
-      0,
-      -1,
-      1.5,
-      Number.NaN,
-      Number.POSITIVE_INFINITY,
-      2_147_483_648,
-    ]) {
-      expect(
-        () => new ExecutionPipeline(registry, { toolTimeoutMs }),
-      ).toThrow(ConfigError);
+    for (const toolTimeoutMs of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+      expect(() => new ExecutionPipeline(registry, { toolTimeoutMs })).toThrow(ConfigError);
     }
   });
 
@@ -715,9 +695,7 @@ describe('ExecutionPipeline', () => {
 
   it('does not normalize a tool containment failure into a ToolResult', async () => {
     const registry = new ToolRegistry();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
 
     registerTool(
       registry,
@@ -753,9 +731,7 @@ describe('ExecutionPipeline', () => {
     const controller = new AbortController();
     const started = deferred();
     const releaseCleanup = deferred();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
 
     registerTool(
       registry,
@@ -809,10 +785,12 @@ describe('ExecutionPipeline', () => {
     const containmentError = new HookProcessContainmentError(
       'Permission Hook process cleanup failed',
     );
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -876,10 +854,12 @@ describe('ExecutionPipeline', () => {
     const containmentError = new HookProcessContainmentError(
       'Permission Hook process cleanup failed',
     );
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -969,26 +949,29 @@ describe('ExecutionPipeline', () => {
           isConcurrencySafe: mode === 'read',
           isDestructive: mode === 'write',
         }),
-        execute: ({ mode }) => completeToolExecution({
-          status: 'success',
-          model: `ok:${mode}`,
-        }),
-      })
+        execute: ({ mode }) =>
+          completeToolExecution({
+            status: 'success',
+            model: `ok:${mode}`,
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.PLAN,
     });
 
-    const readResult = await executePipeline(pipeline,
+    const readResult = await executePipeline(
+      pipeline,
       'DynamicTool',
       { mode: 'read' },
-      { permissionMode: PermissionMode.PLAN }
+      { permissionMode: PermissionMode.PLAN },
     );
-    const writeResult = await executePipeline(pipeline,
+    const writeResult = await executePipeline(
+      pipeline,
       'DynamicTool',
       { mode: 'write' },
-      { permissionMode: PermissionMode.PLAN }
+      { permissionMode: PermissionMode.PLAN },
     );
 
     expect(readResult.status).toBe('success');
@@ -1012,11 +995,12 @@ describe('ExecutionPipeline', () => {
         schema: z.object({
           value: z.string(),
         }),
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
-      })
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1024,10 +1008,11 @@ describe('ExecutionPipeline', () => {
       permissionHandler,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'WriteTool',
       { value: 'blocked' },
-      { permissionMode: PermissionMode.PLAN }
+      { permissionMode: PermissionMode.PLAN },
     );
 
     expect(permissionHandler).toHaveBeenCalledTimes(1);
@@ -1037,10 +1022,12 @@ describe('ExecutionPipeline', () => {
 
   it('stops before execute when validateInput fails', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ value }: { value: string }) => completeToolExecution({
-      status: 'success',
-      model: value,
-    }));
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
 
     registerTool(
       registry,
@@ -1060,17 +1047,18 @@ describe('ExecutionPipeline', () => {
               }
             : undefined,
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'ValidatedTool',
       { value: 'bad' },
-      { permissionMode: PermissionMode.YOLO }
+      { permissionMode: PermissionMode.YOLO },
     );
 
     expect(result.status).toBe('error');
@@ -1093,10 +1081,12 @@ describe('ExecutionPipeline', () => {
       const release = deferred();
       const controller = new AbortController();
       const cancellation = new Error(`${boundary} cancelled`);
-      const executeSpy = vi.fn(() => completeToolExecution({
-        status: 'success',
-        model: 'unexpected',
-      }));
+      const executeSpy = vi.fn(() =>
+        completeToolExecution({
+          status: 'success',
+          model: 'unexpected',
+        }),
+      );
       let callbackSignal: AbortSignal | undefined;
 
       const waitForRelease = async <T>(signal: AbortSignal | undefined, result: T): Promise<T> => {
@@ -1117,18 +1107,14 @@ describe('ExecutionPipeline', () => {
           schema: z.object({}),
           ...(boundary === 'validateInput'
             ? {
-                validateInput: (
-                  _params: JsonObject,
-                  context: ExecutionContext,
-                ) => waitForRelease(context.signal, undefined),
+                validateInput: (_params: JsonObject, context: ExecutionContext) =>
+                  waitForRelease(context.signal, undefined),
               }
             : {}),
           ...(boundary === 'checkPermissions'
             ? {
-                checkPermissions: (
-                  _params: JsonObject,
-                  context: ExecutionContext,
-                ) => waitForRelease(context.signal, { behavior: 'allow' as const }),
+                checkPermissions: (_params: JsonObject, context: ExecutionContext) =>
+                  waitForRelease(context.signal, { behavior: 'allow' as const }),
               }
             : boundary === 'confirmationHandler'
               ? {
@@ -1142,27 +1128,31 @@ describe('ExecutionPipeline', () => {
         }),
       );
 
-      const permissionHandler = boundary === 'permissionHandler'
-        ? (async (request) =>
-            waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler
-        : undefined;
-      const canUseTool = boundary === 'canUseTool'
-        ? async (
-            _toolName: string,
-            _input: JsonObject,
-            options: { signal: AbortSignal },
-          ) => waitForRelease(options.signal, { behavior: 'allow' as const })
-        : undefined;
+      const permissionHandler =
+        boundary === 'permissionHandler'
+          ? ((async (request) =>
+              waitForRelease(request.signal, {
+                behavior: 'allow' as const,
+              })) satisfies PermissionHandler)
+          : undefined;
+      const canUseTool =
+        boundary === 'canUseTool'
+          ? async (_toolName: string, _input: JsonObject, options: { signal: AbortSignal }) =>
+              waitForRelease(options.signal, { behavior: 'allow' as const })
+          : undefined;
       const pipeline = new ExecutionPipeline(registry, {
         permissionMode: PermissionMode.YOLO,
         permissionHandler,
         canUseTool,
       });
       let cleanupWasVisibleToEarlierAbortListener = false;
-      controller.signal.addEventListener('abort', () => {
-        cleanupWasVisibleToEarlierAbortListener =
-          pipeline.hasPendingPermissionCleanup();
-      }, { once: true });
+      controller.signal.addEventListener(
+        'abort',
+        () => {
+          cleanupWasVisibleToEarlierAbortListener = pipeline.hasPendingPermissionCleanup();
+        },
+        { once: true },
+      );
 
       const internalHandler = (async (request) =>
         waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler;
@@ -1172,9 +1162,8 @@ describe('ExecutionPipeline', () => {
         ).permissionRuleHandler = internalHandler;
       }
       if (boundary === 'pathSafetyHandler') {
-        (
-          pipeline as unknown as { pathSafetyHandler: PermissionHandler }
-        ).pathSafetyHandler = internalHandler;
+        (pipeline as unknown as { pathSafetyHandler: PermissionHandler }).pathSafetyHandler =
+          internalHandler;
       }
 
       const permissionResolutions: string[] = [];
@@ -1243,10 +1232,12 @@ describe('ExecutionPipeline', () => {
 
   it('lets tool-level checkPermissions deny before the external permission handler runs', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ value }: { value: string }) => completeToolExecution({
-      status: 'success',
-      model: value,
-    }));
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
     const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
 
     registerTool(
@@ -1268,7 +1259,7 @@ describe('ExecutionPipeline', () => {
               }
             : undefined,
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1276,10 +1267,11 @@ describe('ExecutionPipeline', () => {
       permissionHandler,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'GuardedTool',
       { value: 'blocked' },
-      { permissionMode: PermissionMode.YOLO }
+      { permissionMode: PermissionMode.YOLO },
     );
 
     expect(result.status).toBe('error');
@@ -1290,10 +1282,12 @@ describe('ExecutionPipeline', () => {
 
   it('passes resolved tool metadata into permissionHandler and applies updated input', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ value }: { value: string }) => completeToolExecution({
-      status: 'success',
-      model: value,
-    }));
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
     const permissionHandler = vi.fn(async () => {
       return {
         behavior: 'allow' as const,
@@ -1321,7 +1315,7 @@ describe('ExecutionPipeline', () => {
           isDestructive: mode === 'write',
         }),
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1329,10 +1323,11 @@ describe('ExecutionPipeline', () => {
       permissionHandler,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'DynamicPermissionTool',
       { mode: 'write', value: 'original' },
-      { permissionMode: PermissionMode.YOLO }
+      { permissionMode: PermissionMode.YOLO },
     );
 
     expect(result.status).toBe('success');
@@ -1348,12 +1343,9 @@ describe('ExecutionPipeline', () => {
           signature: 'DynamicPermissionTool',
           description: 'Dynamic permission tool',
         },
-      })
+      }),
     );
-    expect(executeSpy).toHaveBeenCalledWith(
-      { mode: 'write', value: 'patched' },
-      expect.anything(),
-    );
+    expect(executeSpy).toHaveBeenCalledWith({ mode: 'write', value: 'patched' }, expect.anything());
   });
 
   it('uses preparePermissionMatcher to derive permission signatures after input updates', async () => {
@@ -1378,11 +1370,12 @@ describe('ExecutionPipeline', () => {
           signatureContent: `sig:${value}`,
           abstractRule: `rule:${value}`,
         }),
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
-      })
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1390,10 +1383,11 @@ describe('ExecutionPipeline', () => {
       permissionHandler,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'PermissionMatcherTool',
       { value: 'original' },
-      { permissionMode: PermissionMode.YOLO }
+      { permissionMode: PermissionMode.YOLO },
     );
 
     expect(result.status).toBe('success');
@@ -1450,11 +1444,12 @@ describe('ExecutionPipeline', () => {
         preparePermissionMatcher: ({ value }) => ({
           signatureContent: `sig:${value}`,
         }),
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
-      })
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1462,22 +1457,24 @@ describe('ExecutionPipeline', () => {
       permissionHandler,
     });
 
-    const firstResult = await executePipeline(pipeline,
+    const firstResult = await executePipeline(
+      pipeline,
       'PermissionEffectTool',
       { value: 'original' },
       {
         permissionMode: PermissionMode.DEFAULT,
         confirmationHandler: firstConfirmationHandler,
-      }
+      },
     );
 
-    const secondResult = await executePipeline(pipeline,
+    const secondResult = await executePipeline(
+      pipeline,
       'PermissionEffectTool',
       { value: 'patched' },
       {
         permissionMode: PermissionMode.DEFAULT,
         confirmationHandler: secondConfirmationHandler,
-      }
+      },
     );
 
     expect(firstResult.status).toBe('success');
@@ -1488,10 +1485,12 @@ describe('ExecutionPipeline', () => {
 
   it('preserves tool-level ask requirements even when permissionHandler allows', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ value }: { value: string }) => completeToolExecution({
-      status: 'success',
-      model: value,
-    }));
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
     const confirmationHandler = {
       requestConfirmation: vi.fn(async () => ({
         approved: false,
@@ -1515,7 +1514,7 @@ describe('ExecutionPipeline', () => {
           message: 'Tool requires confirmation',
         }),
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1523,13 +1522,14 @@ describe('ExecutionPipeline', () => {
       permissionHandler: async () => ({ behavior: 'allow' }),
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'AskTool',
       { value: 'pending' },
       {
         permissionMode: PermissionMode.YOLO,
         confirmationHandler,
-      }
+      },
     );
 
     expect(result.status).toBe('error');
@@ -1552,25 +1552,27 @@ describe('ExecutionPipeline', () => {
         description: { short: 'Limited output tool' },
         schema: z.object({}),
         maxResultSizeChars: 32,
-        execute: () => completeToolExecution({
-          status: 'success',
-          model: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        }),
-      })
+        execute: () =>
+          completeToolExecution({
+            status: 'success',
+            model: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'LimitedOutputTool',
       {},
       {
         permissionMode: PermissionMode.YOLO,
         contextSnapshot: {
           sessionId: SessionId('session-1'),
-          turnId: 'turn-1',
+          turnId: TurnId('turn-1'),
           cwd: workspaceRoot,
           environment: {},
           filesystemRoots: [workspaceRoot],
@@ -1583,7 +1585,7 @@ describe('ExecutionPipeline', () => {
             },
           },
         },
-      }
+      },
     );
 
     expect(result.status).toBe('success');
@@ -1661,14 +1663,15 @@ describe('ExecutionPipeline', () => {
             model: 'ok',
           };
         },
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'LegacyEffectTool',
       {},
       { permissionMode: PermissionMode.YOLO },
@@ -1739,9 +1742,7 @@ describe('ExecutionPipeline', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'Dangerous tool' },
         describe: (params) => ({
-          short: params?.target
-            ? `Delete file: ${params.target}`
-            : 'Dangerous tool',
+          short: params?.target ? `Delete file: ${params.target}` : 'Dangerous tool',
         }),
         schema: z.object({
           target: z.string(),
@@ -1750,11 +1751,12 @@ describe('ExecutionPipeline', () => {
           behavior: 'ask',
           message: 'Needs confirmation',
         }),
-        execute: ({ target }) => completeToolExecution({
-          status: 'success',
-          model: target,
-        }),
-      })
+        execute: ({ target }) =>
+          completeToolExecution({
+            status: 'success',
+            model: target,
+          }),
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1762,29 +1764,32 @@ describe('ExecutionPipeline', () => {
       permissionHandler: async () => ({ behavior: 'allow' }),
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'DangerousTool',
       { target: '/tmp/secret.txt' },
       {
         permissionMode: PermissionMode.YOLO,
         confirmationHandler,
-      }
+      },
     );
 
     expect(result.status).toBe('error');
     expect(confirmationHandler.requestConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({
         title: '权限确认: Delete file: /tmp/secret.txt',
-      })
+      }),
     );
   });
 
   it('denies dangerous paths before tool execution', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ file_path }: { file_path: string }) => completeToolExecution({
-      status: 'success',
-      model: file_path,
-    }));
+    const executeSpy = vi.fn(({ file_path }: { file_path: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: file_path,
+      }),
+    );
 
     registerTool(
       registry,
@@ -1798,17 +1803,18 @@ describe('ExecutionPipeline', () => {
           file_path: z.string(),
         }),
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'DangerousPathTool',
       { file_path: '/etc/passwd' },
-      { permissionMode: PermissionMode.YOLO }
+      { permissionMode: PermissionMode.YOLO },
     );
 
     expect(result.status).toBe('error');
@@ -1818,10 +1824,12 @@ describe('ExecutionPipeline', () => {
 
   it('keeps explicit sensitive-path confirmation even after downstream permission allows', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(({ file_path }: { file_path: string }) => completeToolExecution({
-      status: 'success',
-      model: file_path,
-    }));
+    const executeSpy = vi.fn(({ file_path }: { file_path: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: file_path,
+      }),
+    );
     const confirmationHandler = {
       requestConfirmation: vi.fn(async () => ({
         approved: false,
@@ -1844,7 +1852,7 @@ describe('ExecutionPipeline', () => {
           file_path: z.string(),
         }),
         execute: executeSpy,
-      })
+      }),
     );
 
     const pipeline = new ExecutionPipeline(registry, {
@@ -1855,13 +1863,14 @@ describe('ExecutionPipeline', () => {
       permissionHandler: async () => ({ behavior: 'allow' }),
     });
 
-    const result = await executePipeline(pipeline,
+    const result = await executePipeline(
+      pipeline,
       'SensitiveReadTool',
       { file_path: '/tmp/id_rsa' },
       {
         permissionMode: PermissionMode.YOLO,
         confirmationHandler,
-      }
+      },
     );
 
     expect(result.status).toBe('error');
@@ -1944,10 +1953,12 @@ describe('ExecutionPipeline', () => {
 
   it('records denied and cancelled permission decisions without starting execution', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -2021,10 +2032,12 @@ describe('ExecutionPipeline', () => {
 
   it('blocks the side effect when an execution-start lifecycle boundary fails', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -2066,10 +2079,12 @@ describe('ExecutionPipeline', () => {
 
   it('checks the execution fence immediately before the tool side effect', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -2089,7 +2104,8 @@ describe('ExecutionPipeline', () => {
       'DURABLE_EXECUTION_LEASE_LOST',
       'execution lease lost',
     );
-    const assertExecutionLease = vi.fn()
+    const assertExecutionLease = vi
+      .fn()
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(leaseError);
@@ -2114,10 +2130,12 @@ describe('ExecutionPipeline', () => {
 
   it('rechecks the execution fence after lock acquisition and before hooks', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -2133,7 +2151,8 @@ describe('ExecutionPipeline', () => {
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
     });
-    const assertExecutionLease = vi.fn()
+    const assertExecutionLease = vi
+      .fn()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('execution lease lost while queued'));
     const onExecutionStarted = vi.fn(async () => {});
@@ -2160,10 +2179,12 @@ describe('ExecutionPipeline', () => {
     const registry = new ToolRegistry();
     const boundary = deferred();
     const boundaryStarted = deferred();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({
@@ -2211,10 +2232,12 @@ describe('ExecutionPipeline', () => {
 
   it('blocks the side effect when permission resolution cannot be persisted', async () => {
     const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
     registerTool(
       registry,
       createTool({

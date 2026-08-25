@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
-import type { SessionId } from '../../types/branded.js';
+import type { SessionId } from '../../types/identifiers.js';
 
 /**
  * 路径转义工具 - 将项目路径转为目录名
@@ -68,10 +68,10 @@ export function normalizeSessionStorageRoot(storageRoot: string): string {
 
 function sessionFileName(sessionId: SessionId): string {
   if (
-    sessionId.length === 0
-    || sessionId.includes('\0')
-    || sessionId.includes('/')
-    || sessionId.includes('\\')
+    sessionId.length === 0 ||
+    sessionId.includes('\0') ||
+    sessionId.includes('/') ||
+    sessionId.includes('\\')
   ) {
     throw new TypeError('Session ID must be a non-empty path-segment-safe string');
   }
@@ -86,7 +86,11 @@ function sessionFileName(sessionId: SessionId): string {
  * @param sessionId 会话 ID
  * @returns {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export function getSessionFilePath(storageRoot: string, projectPath: string, sessionId: SessionId): string {
+export function getSessionFilePath(
+  storageRoot: string,
+  projectPath: string,
+  sessionId: SessionId,
+): string {
   return path.join(getProjectStoragePath(storageRoot, projectPath), sessionFileName(sessionId));
 }
 

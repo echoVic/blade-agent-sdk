@@ -1,3 +1,4 @@
+import type { SessionId } from '../types/identifiers.js';
 import type { AgentLogger, LogEntry, LogLevelName } from '../types/logging.js';
 
 export enum LogLevel {
@@ -43,7 +44,7 @@ class NoopLogger implements InternalLogger {
 class SessionLoggerAdapter implements InternalLogger {
   constructor(
     private readonly target: AgentLogger | null,
-    private readonly sessionId?: string,
+    private readonly sessionId?: SessionId,
     private readonly category: LogCategory = LogCategory.GENERAL,
   ) {}
 
@@ -93,7 +94,7 @@ class SessionLoggerAdapter implements InternalLogger {
 
 export function createRootLogger(
   logger?: AgentLogger | null,
-  sessionId?: string,
+  sessionId?: SessionId,
 ): InternalLogger {
   return new SessionLoggerAdapter(logger ?? null, sessionId);
 }

@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import { decideTurnLimit } from '../loop/decideTurnLimit.js';
 
 describe('decideTurnLimit — single-writer invariants', () => {
   const baseInput = {
     maxTurns: 3,
     turnsCount: 3,
-    contextMessages: [{ role: 'user', content: 'Hi' }] as Message[],
+    contextMessages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
     toolCallsCount: 2,
     startTime: Date.now() - 100,
     totalTokens: 321,
   };
 
   it('onTurnLimitCompact receives only contextMessages, not full messages array', async () => {
-    const compactHandler = vi.fn(async (ctx: { contextMessages: Message[] }) => {
+    const compactHandler = vi.fn(async (ctx: { contextMessages: ModelMessage[] }) => {
       // Verify the ctx shape: only contextMessages, no 'messages' key
       expect(ctx).toHaveProperty('contextMessages');
       expect(ctx).not.toHaveProperty('messages');
@@ -33,8 +33,8 @@ describe('decideTurnLimit — single-writer invariants', () => {
   });
 
   it('returns compactedMessages for AgentLoop to apply (single writer)', async () => {
-    const compacted: Message[] = [{ role: 'assistant', content: 'summary' }];
-    const continueMsg: Message = { role: 'user', content: 'continue' };
+    const compacted: ModelMessage[] = [{ role: 'assistant', content: 'summary' }];
+    const continueMsg: ModelMessage = { role: 'user', content: 'continue' };
 
     const decision = await decideTurnLimit({
       ...baseInput,

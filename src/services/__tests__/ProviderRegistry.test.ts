@@ -1,17 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
-import {
-  type ChatConfig,
-  createChatServiceAsync,
-  type IChatService,
-} from '../ChatServiceInterface.js';
-import {
-  type ProviderAdapter,
-  ProviderRegistry,
-} from '../ProviderRegistry.js';
+import type { ModelServiceConfig } from '../../model/config.js';
+import type { ModelService } from '../../model/service.js';
+import { createModelService } from '../createModelService.js';
+import { type ProviderAdapter, ProviderRegistry } from '../ProviderRegistry.js';
 
-function config(provider = 'custom-api'): ChatConfig {
+function config(provider = 'custom-api'): ModelServiceConfig {
   return {
     provider,
     providerId: 'logical-provider',
@@ -21,7 +16,7 @@ function config(provider = 'custom-api'): ChatConfig {
   };
 }
 
-function service(chatConfig: ChatConfig): IChatService {
+function service(modelConfig: ModelServiceConfig): ModelService {
   return {
     async chat() {
       return { content: 'ok' };
@@ -33,7 +28,7 @@ function service(chatConfig: ChatConfig): IChatService {
       yield { content: 'ok' };
     },
     getConfig() {
-      return chatConfig;
+      return modelConfig;
     },
     updateConfig() {},
   };
@@ -41,17 +36,16 @@ function service(chatConfig: ChatConfig): IChatService {
 
 describe('ProviderRegistry', () => {
   it('creates a service through a registered custom adapter', async () => {
-    const create = vi.fn((chatConfig: Readonly<ChatConfig>) =>
-      service({ ...chatConfig }));
-    const registry = new ProviderRegistry([
-      { type: 'custom-api', create },
-    ]);
-    const chatConfig = config();
+    const create = vi.fn((modelConfig: Readonly<ModelServiceConfig>) =>
+      service({ ...modelConfig }),
+    );
+    const registry = new ProviderRegistry([{ type: 'custom-api', create }]);
+    const modelConfig = config();
 
-    const result = await registry.create(chatConfig);
+    const result = await registry.create(modelConfig);
 
-    expect(result.getConfig()).toEqual(chatConfig);
-    expect(create).toHaveBeenCalledWith(chatConfig);
+    expect(result.getConfig()).toEqual(modelConfig);
+    expect(create).toHaveBeenCalledWith(modelConfig);
     expect(registry.has('custom-api')).toBe(true);
     expect(registry.get('custom-api')).toBeDefined();
     expect(registry.list().map((adapter) => adapter.type)).toEqual(['custom-api']);
@@ -60,7 +54,7 @@ describe('ProviderRegistry', () => {
   it('rejects duplicate and malformed adapters', () => {
     const adapter: ProviderAdapter = {
       type: 'custom-api',
-      create: (chatConfig) => service({ ...chatConfig }),
+      create: (modelConfig) => service({ ...modelConfig }),
     };
 
     expect(() => new ProviderRegistry([adapter, adapter])).toThrowError(
@@ -69,13 +63,14 @@ describe('ProviderRegistry', () => {
         providerType: 'custom-api',
       }),
     );
-    expect(() =>
-      new ProviderRegistry([
-        {
-          ...adapter,
-          type: ' custom-api ',
-        },
-      ]),
+    expect(
+      () =>
+        new ProviderRegistry([
+          {
+            ...adapter,
+            type: ' custom-api ',
+          },
+        ]),
     ).toThrowError(
       expect.objectContaining({
         code: 'PROVIDER_ADAPTER_INVALID',
@@ -92,7 +87,7 @@ describe('ProviderRegistry', () => {
     const registry = new ProviderRegistry([
       {
         type: 'custom-api',
-        create: () => ({}) as IChatService,
+        create: () => ({}) as ModelService,
       },
     ]);
     await expect(registry.create(config())).rejects.toMatchObject({
@@ -110,9 +105,9 @@ describe('ProviderRegistry', () => {
       },
     ]);
 
-    await expect(
-      createChatServiceAsync(config(), NOOP_LOGGER, customRegistry),
-    ).resolves.toBe(customService);
+    await expect(createModelService(config(), NOOP_LOGGER, customRegistry)).resolves.toBe(
+      customService,
+    );
 
     const overrideService = service(config('openai'));
     const overrideRegistry = new ProviderRegistry([
@@ -121,9 +116,9 @@ describe('ProviderRegistry', () => {
         create: () => overrideService,
       },
     ]);
-    await expect(
-      createChatServiceAsync(config('openai'), NOOP_LOGGER, overrideRegistry),
-    ).resolves.toBe(overrideService);
+    await expect(createModelService(config('openai'), NOOP_LOGGER, overrideRegistry)).resolves.toBe(
+      overrideService,
+    );
   });
 
   it('keeps adapters isolated between registry instances', async () => {
@@ -147,8 +142,8 @@ describe('ProviderRegistry', () => {
   });
 
   it('rejects an unknown adapter when no registry entry exists', async () => {
-    await expect(
-      createChatServiceAsync(config(), NOOP_LOGGER),
-    ).rejects.toBeInstanceOf(ProviderRegistryError);
+    await expect(createModelService(config(), NOOP_LOGGER)).rejects.toBeInstanceOf(
+      ProviderRegistryError,
+    );
   });
 });

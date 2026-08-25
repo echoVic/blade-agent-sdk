@@ -1,6 +1,6 @@
-import type { JsonValue } from '../../types/common.js';
-import type { ToolEffect } from './ToolEffects.js';
-import type { ToolResultMetadata } from './ToolMetadata.js';
+import type { JsonValue } from '../../types/json.js';
+import type { ToolEffect } from './effects.js';
+import type { ToolResultMetadata } from './metadata.js';
 
 export type ToolModelContent = JsonValue;
 
@@ -118,9 +118,7 @@ export async function collectToolExecution<
 export async function* completeToolExecution<
   TData = JsonValue,
   TMetadata extends ToolResultMetadata = ToolResultMetadata,
->(
-  result: ToolResult<TData, TMetadata>,
-): ToolExecution<TData, TMetadata> {
+>(result: ToolResult<TData, TMetadata>): ToolExecution<TData, TMetadata> {
   return result;
 }
 

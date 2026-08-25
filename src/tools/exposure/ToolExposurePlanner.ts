@@ -1,15 +1,11 @@
-import { PermissionMode } from '../../types/common.js';
-import {
-  resolveToolBehaviorHint,
-  type FunctionDeclaration,
-  type Tool,
-  type ToolExposureMode,
-} from '../types/index.js';
+import { PermissionMode } from '../../types/constants.js';
 import type {
   ToolCatalogEntry,
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
+import { resolveToolBehaviorHint } from '../types/kind.js';
+import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
 export interface RuntimeToolPolicySnapshot {
   allow?: string[];
@@ -145,17 +141,17 @@ export class ToolExposurePlanner {
 
     if (entry && sourcePolicy) {
       if (
-        sourcePolicy.allowedSources
-        && sourcePolicy.allowedSources.length > 0
-        && !sourcePolicy.allowedSources.includes(entry.source.kind)
+        sourcePolicy.allowedSources &&
+        sourcePolicy.allowedSources.length > 0 &&
+        !sourcePolicy.allowedSources.includes(entry.source.kind)
       ) {
         return 'source-policy';
       }
 
       if (
-        sourcePolicy.allowedTrustLevels
-        && sourcePolicy.allowedTrustLevels.length > 0
-        && !sourcePolicy.allowedTrustLevels.includes(entry.source.trustLevel)
+        sourcePolicy.allowedTrustLevels &&
+        sourcePolicy.allowedTrustLevels.length > 0 &&
+        !sourcePolicy.allowedTrustLevels.includes(entry.source.trustLevel)
       ) {
         return 'source-policy';
       }
@@ -176,10 +172,7 @@ export class ToolExposurePlanner {
     return 'runtime-allow-list';
   }
 
-  private resolveExposureMode(
-    tool: Tool,
-    discoveredTools: Set<string>,
-  ): ToolExposureMode {
+  private resolveExposureMode(tool: Tool, discoveredTools: Set<string>): ToolExposureMode {
     if (discoveredTools.has(tool.name)) {
       return 'eager';
     }

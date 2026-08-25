@@ -5,13 +5,10 @@ import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
-import { InputId, RequestId, SessionId } from '../../types/branded.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import { buildLoopConfig } from '../LoopHookBuilder.js';
 
-function createStopCheck(
-  executeStopCheck: HookRuntime['executeStopCheck'],
-  signal?: AbortSignal,
-) {
+function createStopCheck(executeStopCheck: HookRuntime['executeStopCheck'], signal?: AbortSignal) {
   const config = buildLoopConfig({
     context: {
       messages: [],
@@ -42,15 +39,16 @@ describe('LoopHookBuilder stop hook', () => {
   it('propagates request cancellation from a running Stop hook', async () => {
     const controller = new AbortController();
     const cancellation = new Error('request cancelled');
-    const stopCheck = createStopCheck(vi.fn(async () => {
-      controller.abort(cancellation);
-      controller.signal.throwIfAborted();
-      return { shouldStop: true };
-    }), controller.signal);
+    const stopCheck = createStopCheck(
+      vi.fn(async () => {
+        controller.abort(cancellation);
+        controller.signal.throwIfAborted();
+        return { shouldStop: true };
+      }),
+      controller.signal,
+    );
 
-    await expect(
-      stopCheck({ content: 'done', turn: 1 }),
-    ).rejects.toBe(cancellation);
+    await expect(stopCheck({ content: 'done', turn: 1 })).rejects.toBe(cancellation);
   });
 
   it('propagates execution lease failures from a Stop hook', async () => {
@@ -58,51 +56,50 @@ describe('LoopHookBuilder stop hook', () => {
       'DURABLE_EXECUTION_LEASE_LOST',
       'worker is stale',
     );
-    const stopCheck = createStopCheck(vi.fn(async () => {
-      throw leaseError;
-    }));
+    const stopCheck = createStopCheck(
+      vi.fn(async () => {
+        throw leaseError;
+      }),
+    );
 
-    await expect(
-      stopCheck({ content: 'done', turn: 1 }),
-    ).rejects.toBe(leaseError);
+    await expect(stopCheck({ content: 'done', turn: 1 })).rejects.toBe(leaseError);
   });
 
   it('propagates process-containment failures from a Stop hook', async () => {
     const containmentError = new HookProcessContainmentError(
       'Windows Job Object support is unavailable',
     );
-    const stopCheck = createStopCheck(vi.fn(async () => {
-      throw containmentError;
-    }));
+    const stopCheck = createStopCheck(
+      vi.fn(async () => {
+        throw containmentError;
+      }),
+    );
 
-    await expect(
-      stopCheck({ content: 'done', turn: 1 }),
-    ).rejects.toBe(containmentError);
+    await expect(stopCheck({ content: 'done', turn: 1 })).rejects.toBe(containmentError);
   });
 
   it('preserves a containment failure when Stop hook cancellation races cleanup', async () => {
     const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
+    const stopCheck = createStopCheck(
+      vi.fn(async () => {
+        controller.abort(new Error('request cancelled'));
+        throw containmentError;
+      }),
+      controller.signal,
     );
-    const stopCheck = createStopCheck(vi.fn(async () => {
-      controller.abort(new Error('request cancelled'));
-      throw containmentError;
-    }), controller.signal);
 
-    await expect(
-      stopCheck({ content: 'done', turn: 1 }),
-    ).rejects.toBe(containmentError);
+    await expect(stopCheck({ content: 'done', turn: 1 })).rejects.toBe(containmentError);
   });
 
   it('preserves the fail-safe stop fallback for ordinary Hook errors', async () => {
-    const stopCheck = createStopCheck(vi.fn(async () => {
-      throw new Error('hook failed');
-    }));
+    const stopCheck = createStopCheck(
+      vi.fn(async () => {
+        throw new Error('hook failed');
+      }),
+    );
 
-    await expect(
-      stopCheck({ content: 'done', turn: 1 }),
-    ).resolves.toEqual({ shouldStop: true });
+    await expect(stopCheck({ content: 'done', turn: 1 })).resolves.toEqual({ shouldStop: true });
   });
 });
 
@@ -111,13 +108,12 @@ describe('LoopHookBuilder request signal', () => {
     const contextController = new AbortController();
     const requestController = new AbortController();
     contextController.abort(new Error('stale context signal'));
-    const applyUserPromptSubmit = vi.fn<HookRuntime['applyUserPromptSubmit']>(async (
-      content,
-      options = {},
-    ) => {
-      options.abortSignal?.throwIfAborted();
-      return content;
-    });
+    const applyUserPromptSubmit = vi.fn<HookRuntime['applyUserPromptSubmit']>(
+      async (content, options = {}) => {
+        options.abortSignal?.throwIfAborted();
+        return content;
+      },
+    );
     const getContextManager = vi.fn(() => undefined);
     const config = buildLoopConfig({
       context: {
@@ -146,23 +142,24 @@ describe('LoopHookBuilder request signal', () => {
       throw new Error('Input hook was not configured');
     }
 
-    await expect(applyInput({
-      input: {
-        inputId: InputId('steering-input'),
-        content: 'Apply this input',
-        priority: 'next',
-        acceptedAt: 1,
-      },
-      turn: 1,
-    })).resolves.toMatchObject({
+    await expect(
+      applyInput({
+        input: {
+          inputId: InputId('steering-input'),
+          content: 'Apply this input',
+          priority: 'next',
+          acceptedAt: 1,
+        },
+        turn: 1,
+      }),
+    ).resolves.toMatchObject({
       role: 'user',
       content: 'Apply this input',
     });
 
-    expect(applyUserPromptSubmit).toHaveBeenCalledWith(
-      'Apply this input',
-      { abortSignal: requestController.signal },
-    );
+    expect(applyUserPromptSubmit).toHaveBeenCalledWith('Apply this input', {
+      abortSignal: requestController.signal,
+    });
     expect(getContextManager).toHaveBeenCalledOnce();
   });
 
@@ -189,8 +186,9 @@ describe('LoopHookBuilder request signal', () => {
       yield* [] as never[];
       return false;
     });
-    const compact = vi.spyOn(CompactionService, 'compact').mockImplementation(
-      async (_messages, options) => {
+    const compact = vi
+      .spyOn(CompactionService, 'compact')
+      .mockImplementation(async (_messages, options) => {
         observedSignals.push(options.signal);
         observedRegistries.push(options.providerRegistry);
         return {
@@ -203,8 +201,7 @@ describe('LoopHookBuilder request signal', () => {
           boundaryMessage: { role: 'system', content: '' },
           summaryMessage: { role: 'user', content: 'summary' },
         };
-      },
-    );
+      });
     const config = buildLoopConfig({
       context: {
         messages: [],
@@ -217,7 +214,7 @@ describe('LoopHookBuilder request signal', () => {
         conversationState: {
           getContextMessages: () => [],
         },
-        getChatService: () => ({
+        getModelService: () => ({
           getConfig: () => ({
             model: 'test-model',
             maxContextTokens: 128000,
@@ -268,9 +265,7 @@ describe('LoopHookBuilder request signal', () => {
       { providerType: 'custom-api' },
     );
     compact.mockRejectedValueOnce(registryError);
-    await expect(
-      turnLimitCompact({ contextMessages: [] }),
-    ).rejects.toBe(registryError);
+    await expect(turnLimitCompact({ contextMessages: [] })).rejects.toBe(registryError);
 
     compact.mockRestore();
   });

@@ -1,16 +1,18 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
+import { PermissionMode } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ChatContext, LoopResult } from '../types.js';
-import { PermissionMode } from '../../types/common.js';
-import { SessionId } from '../../types/branded.js';
-import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
-const createMockChatService = () => ({
-  chat: vi.fn(() => Promise.resolve({
-    content: 'Test response',
-    toolCalls: [],
-    usage: { promptTokens: 100, completionTokens: 50 },
-  })),
+const createMockModelService = () => ({
+  chat: vi.fn(() =>
+    Promise.resolve({
+      content: 'Test response',
+      toolCalls: [],
+      usage: { promptTokens: 100, completionTokens: 50 },
+    }),
+  ),
   streamChat: vi.fn(async function* () {
     yield { content: 'Hello ' };
     yield { content: 'World' };
@@ -23,19 +25,19 @@ const createMockChatService = () => ({
   }),
 });
 
-const createMockAgent = (chatService: ReturnType<typeof createMockChatService>) => {
+const createMockAgent = (modelService: ReturnType<typeof createMockModelService>) => {
   const events: AgentEvent[] = [];
-  
+
   return {
     streamChat: async function* (
       _message: string,
       context: ChatContext,
-      options?: { maxTurns?: number; signal?: AbortSignal }
+      options?: { maxTurns?: number; signal?: AbortSignal },
     ): AsyncGenerator<AgentEvent, LoopResult> {
       events.push({ type: 'turn_start', turn: 1, maxTurns: options?.maxTurns ?? 10 });
       yield { type: 'turn_start', turn: 1, maxTurns: options?.maxTurns ?? 10 };
 
-      for await (const chunk of chatService.streamChat()) {
+      for await (const chunk of modelService.streamChat()) {
         if (chunk.content) {
           events.push({ type: 'content_delta', delta: chunk.content });
           yield { type: 'content_delta', delta: chunk.content };
@@ -49,7 +51,7 @@ const createMockAgent = (chatService: ReturnType<typeof createMockChatService>) 
         events.push({ type: 'turn_start', turn: 1, maxTurns: 10 });
         yield { type: 'turn_start', turn: 1, maxTurns: 10 };
 
-        for await (const chunk of chatService.streamChat()) {
+        for await (const chunk of modelService.streamChat()) {
           if (chunk.content) {
             events.push({ type: 'content_delta', delta: chunk.content });
             yield { type: 'content_delta', delta: chunk.content };
@@ -87,12 +89,12 @@ const createMockAgent = (chatService: ReturnType<typeof createMockChatService>) 
 };
 
 describe('Agent.streamChat', () => {
-  let chatService: ReturnType<typeof createMockChatService>;
+  let modelService: ReturnType<typeof createMockModelService>;
   let agent: ReturnType<typeof createMockAgent>;
 
   beforeEach(() => {
-    chatService = createMockChatService();
-    agent = createMockAgent(chatService);
+    modelService = createMockModelService();
+    agent = createMockAgent(modelService);
   });
 
   describe('Plan mode streaming realtime', () => {
@@ -116,10 +118,10 @@ describe('Agent.streamChat', () => {
 
       expect(receivedEvents.length).toBeGreaterThan(0);
 
-      const contentDeltas = receivedEvents.filter(e => e.type === 'content_delta');
+      const contentDeltas = receivedEvents.filter((e) => e.type === 'content_delta');
       expect(contentDeltas.length).toBeGreaterThan(0);
 
-      const turnStarts = receivedEvents.filter(e => e.type === 'turn_start');
+      const turnStarts = receivedEvents.filter((e) => e.type === 'turn_start');
       expect(turnStarts.length).toBe(2);
     });
 
@@ -163,14 +165,14 @@ describe('Agent.streamChat', () => {
       }
 
       const turnStartIndices = eventTypes
-        .map((type, idx) => type === 'turn_start' ? idx : -1)
-        .filter(idx => idx !== -1);
+        .map((type, idx) => (type === 'turn_start' ? idx : -1))
+        .filter((idx) => idx !== -1);
 
       expect(turnStartIndices.length).toBe(2);
 
       const streamEndIndices = eventTypes
-        .map((type, idx) => type === 'stream_end' ? idx : -1)
-        .filter(idx => idx !== -1);
+        .map((type, idx) => (type === 'stream_end' ? idx : -1))
+        .filter((idx) => idx !== -1);
 
       expect(streamEndIndices.length).toBe(2);
 
@@ -241,8 +243,8 @@ describe('Agent.streamChat', () => {
 
   describe('Error handling in stream', () => {
     it('should handle errors gracefully', async () => {
-      const errorChatService = {
-        ...chatService,
+      const errorModelService = {
+        ...modelService,
         streamChat: vi.fn(async function* () {
           yield { content: 'Start' };
           throw new Error('Stream error');
@@ -252,12 +254,12 @@ describe('Agent.streamChat', () => {
       const errorAgent = {
         streamChat: async function* (
           _message: string,
-          _context: ChatContext
+          _context: ChatContext,
         ): AsyncGenerator<AgentEvent, LoopResult> {
           yield { type: 'turn_start', turn: 1, maxTurns: 10 };
 
           try {
-            for await (const chunk of errorChatService.streamChat()) {
+            for await (const chunk of errorModelService.streamChat()) {
               if (chunk.content) {
                 yield { type: 'content_delta', delta: chunk.content };
               }
@@ -292,7 +294,7 @@ describe('Agent.streamChat', () => {
         events.push(event);
       }
 
-      const errorEvent = events.find(e => e.type === 'error');
+      const errorEvent = events.find((e) => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect((errorEvent as { type: 'error'; message: string }).message).toBe('Stream error');
     });

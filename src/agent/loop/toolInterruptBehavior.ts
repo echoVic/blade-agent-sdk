@@ -2,24 +2,20 @@ import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
   type ToolKind,
-} from '../../tools/types/ToolKind.js';
-import type { JsonObject } from '../../types/common.js';
+} from '../../tools/types/kind.js';
+import type { JsonObject } from '../../types/json.js';
 
 type InterruptBehavior = ToolBehavior['interruptBehavior'];
 
 type ToolRegistryLike = {
-  get(
-    name: string,
-  ):
+  get(name: string):
     | {
         kind?: ToolKind;
         isReadOnly?: boolean;
         isConcurrencySafe?: boolean;
         isDestructive?: boolean;
         interruptBehavior?: InterruptBehavior;
-        resolveBehavior?: (
-          params: JsonObject,
-        ) => Partial<ToolBehavior> | ToolBehavior;
+        resolveBehavior?: (params: JsonObject) => Partial<ToolBehavior> | ToolBehavior;
       }
     | undefined;
 };
@@ -43,10 +39,7 @@ export function createInterruptAwareAbortSignal(options: {
   const controller = new AbortController();
   const cleanups: Array<() => void> = [];
 
-  const linkSignal = (
-    signal: AbortSignal | undefined,
-    shouldPropagate: () => boolean,
-  ) => {
+  const linkSignal = (signal: AbortSignal | undefined, shouldPropagate: () => boolean) => {
     if (!signal) {
       return;
     }

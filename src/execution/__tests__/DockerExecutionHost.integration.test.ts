@@ -15,7 +15,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { ExecutionId } from '../../types/branded.js';
+import { ExecutionId } from '../../types/identifiers.js';
 import { EphemeralCredentialBroker } from '../CredentialBroker.js';
 import { DockerExecutionHost } from '../DockerExecutionHost.js';
 import type {

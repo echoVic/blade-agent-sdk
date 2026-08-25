@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  ChatConfig,
-  ChatResponse,
-  IChatService,
-} from '../../services/ChatServiceInterface.js';
-import type { RetryEvent } from '../../services/RetryPolicy.js';
+import type { ModelServiceConfig } from '../../model/config.js';
+import type { ModelRetryEvent } from '../../model/retry.js';
+import type { ModelResponse, ModelService } from '../../model/service.js';
 import type { ModelMiddleware } from '../ModelMiddleware.js';
-import { wrapChatService } from '../ModelMiddleware.js';
+import { wrapModelService } from '../ModelMiddleware.js';
 
-function createService(calls: string[]): IChatService {
-  let config: ChatConfig = {
+function createService(calls: string[]): ModelService {
+  let config: ModelServiceConfig = {
     provider: 'openai-compatible',
     apiKey: 'test',
     baseUrl: 'https://example.test',
@@ -49,7 +46,7 @@ function createService(calls: string[]): IChatService {
   };
 }
 
-describe('wrapChatService', () => {
+describe('wrapModelService', () => {
   it('wraps unary model calls in onion order and allows request/response transforms', async () => {
     const calls: string[] = [];
     const middleware: ModelMiddleware[] = [
@@ -73,11 +70,11 @@ describe('wrapChatService', () => {
         },
       },
     ];
-    const wrapped = wrapChatService(createService(calls), middleware);
+    const wrapped = wrapModelService(createService(calls), middleware);
 
-    await expect(
-      wrapped.chat([{ role: 'user', content: 'original' }]),
-    ).resolves.toEqual({ content: 'base:second:first' });
+    await expect(wrapped.chat([{ role: 'user', content: 'original' }])).resolves.toEqual({
+      content: 'base:second:first',
+    });
     expect(calls).toEqual([
       'first:before',
       'second:before',
@@ -91,7 +88,7 @@ describe('wrapChatService', () => {
     const calls: string[] = [];
     const original = new AbortController();
     const replacement = new AbortController();
-    const wrapped = wrapChatService(createService(calls), [
+    const wrapped = wrapModelService(createService(calls), [
       {
         wrapChat(request, next) {
           return next({
@@ -108,11 +105,7 @@ describe('wrapChatService', () => {
     ]);
 
     await expect(
-      wrapped.chat(
-        [{ role: 'user', content: 'input' }],
-        undefined,
-        original.signal,
-      ),
+      wrapped.chat([{ role: 'user', content: 'input' }], undefined, original.signal),
     ).rejects.toThrow('Model middleware cannot replace the AbortSignal');
     expect(calls).toEqual([]);
   });
@@ -140,7 +133,7 @@ describe('wrapChatService', () => {
         }
       },
     };
-    const wrapped = wrapChatService(createService(calls), [middleware]);
+    const wrapped = wrapModelService(createService(calls), [middleware]);
 
     const chunks = [];
     for await (const chunk of wrapped.streamChat([{ role: 'user', content: 'input' }])) {
@@ -150,8 +143,8 @@ describe('wrapChatService', () => {
 
     const retry = wrapped.chatWithRetryEvents?.([{ role: 'user', content: 'input' }]);
     expect(retry).toBeDefined();
-    const events: RetryEvent[] = [];
-    let response: ChatResponse | undefined;
+    const events: ModelRetryEvent[] = [];
+    let response: ModelResponse | undefined;
     while (retry) {
       const step = await retry.next();
       if (step.done) {
@@ -176,7 +169,7 @@ describe('wrapChatService', () => {
   it('preserves config access and optional retry capability', () => {
     const calls: string[] = [];
     const base = createService(calls);
-    const wrapped = wrapChatService(base, [{}]);
+    const wrapped = wrapModelService(base, [{}]);
 
     wrapped.updateConfig({ model: 'next-model' });
 
@@ -189,7 +182,7 @@ describe('wrapChatService', () => {
     const service = createService(calls);
     service.chatWithRetryEvents = undefined;
 
-    const wrapped = wrapChatService(service, [{}]);
+    const wrapped = wrapModelService(service, [{}]);
 
     expect(wrapped.chatWithRetryEvents).toBeUndefined();
   });
@@ -206,7 +199,7 @@ describe('wrapChatService', () => {
         providerClosed = true;
       }
     };
-    const wrapped = wrapChatService(base, [
+    const wrapped = wrapModelService(base, [
       {
         async *wrapStream(request, next) {
           try {

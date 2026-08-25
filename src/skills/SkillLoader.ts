@@ -10,8 +10,8 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { JsonObject } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
+import type { JsonObject } from '../types/json.js';
 import { getErrorCode } from '../utils/errorUtils.js';
 import {
   defaultSkillSource,
@@ -23,7 +23,7 @@ import {
   type SkillParseResult,
   type SkillShellConfig,
   type SkillSource,
-  type SkillSourceKind
+  type SkillSourceKind,
 } from './types.js';
 
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -79,7 +79,10 @@ function parseStringArray(raw: string | string[] | undefined): string[] | undefi
   if (typeof raw === 'string') {
     const hasComma = raw.includes(',');
     const separator = hasComma ? ',' : /\s+/;
-    return raw.split(separator).map((item) => item.trim()).filter(Boolean);
+    return raw
+      .split(separator)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   return undefined;
 }
@@ -106,13 +109,9 @@ function resolveSource(source: SourceInput, _filePath: string): SkillSource {
   return defaultSkillSource(source);
 }
 
-function parseShellConfig(
-  raw: RawFrontmatter['shell'],
-  source: SkillSource,
-): SkillShellConfig {
-  const shellToggle = typeof raw === 'boolean' || typeof raw === 'string'
-    ? parseBoolean(raw)
-    : undefined;
+function parseShellConfig(raw: RawFrontmatter['shell'], source: SkillSource): SkillShellConfig {
+  const shellToggle =
+    typeof raw === 'boolean' || typeof raw === 'string' ? parseBoolean(raw) : undefined;
   if (shellToggle === false) {
     return { enabled: false };
   }
@@ -170,13 +169,15 @@ function parseHooks(rawHooks: RawHookSpec[] | undefined): SkillHookSpec[] | unde
       return [];
     }
 
-    return [{
-      event: hook.event as HookEvent,
-      type: hook.type,
-      value: hook.value,
-      tools: hook.tools,
-      once: hook.once,
-    }];
+    return [
+      {
+        event: hook.event as HookEvent,
+        type: hook.type,
+        value: hook.value,
+        tools: hook.tools,
+        once: hook.once,
+      },
+    ];
   });
 
   return hooks.length > 0 ? hooks : undefined;
@@ -238,9 +239,7 @@ function validateMetadata(
         effort: frontmatter.effort,
         activeScope: frontmatter.scope ?? 'session',
       },
-      conditions: frontmatter.paths
-        ? { paths: parseStringArray(frontmatter.paths) }
-        : undefined,
+      conditions: frontmatter.paths ? { paths: parseStringArray(frontmatter.paths) } : undefined,
       shell,
       license: frontmatter.license,
       compatibility: frontmatter.compatibility,
@@ -352,7 +351,9 @@ export async function processInlineCommands(
       logger?.info(`[SkillLoader] 执行内联命令: \`${cmd}\`${logCtx}`);
 
       if (allowlist !== 'all' && Array.isArray(allowlist)) {
-        const prefixMatch = allowlist.some((prefix) => cmd === prefix.trimEnd() || cmd.startsWith(prefix));
+        const prefixMatch = allowlist.some(
+          (prefix) => cmd === prefix.trimEnd() || cmd.startsWith(prefix),
+        );
         if (!prefixMatch || SHELL_META_CHARS.test(cmd)) {
           const reason = !prefixMatch ? 'allowlist 前缀不匹配' : '包含 shell 元字符';
           logger?.warn(`[SkillLoader] 内联命令被 allowlist 拦截 (${reason}): \`${cmd}\``);
@@ -395,7 +396,9 @@ async function executeShellCommand(
       stdoutBytes += chunk.length;
       if (stdoutBytes > INLINE_CMD_MAX_OUTPUT_BYTES) {
         truncated = true;
-        logger?.warn(`[SkillLoader] 内联命令输出超过 ${INLINE_CMD_MAX_OUTPUT_BYTES / 1024}KB，已截断: \`${cmd}\``);
+        logger?.warn(
+          `[SkillLoader] 内联命令输出超过 ${INLINE_CMD_MAX_OUTPUT_BYTES / 1024}KB，已截断: \`${cmd}\``,
+        );
         return;
       }
       stdout += chunk.toString('utf-8');

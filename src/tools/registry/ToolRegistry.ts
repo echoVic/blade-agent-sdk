@@ -1,8 +1,8 @@
-import { PermissionMode } from '../../types/common.js';
+import { PermissionMode } from '../../types/constants.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
 import { searchTools } from '../search/toolSearch.js';
-import type { FunctionDeclaration, Tool } from '../types/index.js';
-import { isToolSideEffect, resolveToolBehaviorHint } from '../types/index.js';
+import { isToolSideEffect, resolveToolBehaviorHint } from '../types/kind.js';
+import type { FunctionDeclaration, Tool } from '../types/tool.js';
 
 /**
  * 工具注册表
@@ -237,7 +237,7 @@ export class ToolRegistry {
       categories: this.categories.size,
       tags: this.tags.size,
       toolsByCategory: Object.fromEntries(
-        Array.from(this.categories.entries()).map(([cat, tools]) => [cat, tools.size])
+        Array.from(this.categories.entries()).map(([cat, tools]) => [cat, tools.size]),
       ),
     };
   }

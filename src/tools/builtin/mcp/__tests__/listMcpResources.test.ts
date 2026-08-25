@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectToolExecution } from '../../../types/index.js';
-import { createListMcpResourcesTool } from '../listMcpResources.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
+import { collectToolExecution } from '../../../types/result.js';
+import { createListMcpResourcesTool } from '../listMcpResources.js';
 
 const mockGetAllServers = vi.fn(() => new Map());
 
@@ -10,9 +10,8 @@ const mockRegistry = {
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
 const listMcpResourcesTool = createListMcpResourcesTool(mockRegistry);
-const executeListMcpResources = (
-  params: Parameters<typeof listMcpResourcesTool.execute>[0],
-) => collectToolExecution(listMcpResourcesTool.execute(params));
+const executeListMcpResources = (params: Parameters<typeof listMcpResourcesTool.execute>[0]) =>
+  collectToolExecution(listMcpResourcesTool.execute(params));
 
 describe('listMcpResourcesTool', () => {
   beforeEach(() => {
@@ -62,7 +61,7 @@ describe('listMcpResourcesTool', () => {
           Promise.resolve([
             { uri: 'file:///test.txt', name: 'Test File', description: 'A test file' },
             { uri: 'db://users/1', name: 'User 1', mimeType: 'application/json' },
-          ])
+          ]),
         ),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
@@ -87,7 +86,7 @@ describe('listMcpResourcesTool', () => {
         new Map([
           ['server1', { client: mockClient1 }],
           ['server2', { client: mockClient2 }],
-        ])
+        ]),
       );
 
       const result = await executeListMcpResources({ serverName: 'server1' });

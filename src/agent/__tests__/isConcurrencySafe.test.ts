@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ToolKind,
-  isReadOnlyKind,
-  createToolBehavior,
-} from '../../tools/types/ToolKind.js';
+import { createToolBehavior, isReadOnlyKind, ToolKind } from '../../tools/types/kind.js';
 
 describe('isConcurrencySafe inference', () => {
   describe('isReadOnlyKind', () => {
@@ -11,12 +7,9 @@ describe('isConcurrencySafe inference', () => {
       expect(isReadOnlyKind(ToolKind.ReadOnly)).toBe(true);
     });
 
-    it.each([ToolKind.Write, ToolKind.Execute])(
-      'returns false for %s',
-      (kind) => {
-        expect(isReadOnlyKind(kind)).toBe(false);
-      },
-    );
+    it.each([ToolKind.Write, ToolKind.Execute])('returns false for %s', (kind) => {
+      expect(isReadOnlyKind(kind)).toBe(false);
+    });
   });
 
   describe('createToolBehavior defaults', () => {

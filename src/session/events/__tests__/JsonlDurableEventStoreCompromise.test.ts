@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EventId, SessionId } from '../../../types/branded.js';
+import { EventId, SessionId } from '../../../types/identifiers.js';
 
 const lockState = vi.hoisted(() => ({
   acquireError: undefined as Error | undefined,

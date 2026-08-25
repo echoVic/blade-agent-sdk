@@ -22,8 +22,8 @@ import { nanoid } from 'nanoid';
 import {
   ExecutionCheckpointId,
   ExecutionId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type {
   CredentialBroker,
   CredentialLease,

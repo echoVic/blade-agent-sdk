@@ -8,8 +8,8 @@
  */
 
 import { z } from 'zod';
-import type { JsonValue } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
+import { jsonValueSchema } from '../../types/jsonSchema.js';
 import type { Assert, KeysEqual } from '../../types/typeAssertions.js';
 import { lazySingleton } from '../../utils/lazySingleton.js';
 import type {
@@ -36,26 +36,8 @@ import type {
   SubagentStopInput,
   TaskCompletedInput,
   UserPromptSubmitInput,
-} from '../types/HookTypes.js';
-import {
-  DecisionBehavior,
-  HookType,
-  PermissionDecision,
-} from '../types/HookTypes.js';
-
-/**
- * Zod schema for recursive JSON values (string | number | boolean | null | JsonObject | JsonValue[])
- */
-export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-);
+} from '../types.js';
+import { DecisionBehavior, HookType, PermissionDecision } from '../types.js';
 
 // ============================================================================
 // Lazy Hook Schema Bundle
@@ -83,14 +65,14 @@ function buildHookSchemas() {
     hook_event_name: z.literal(HookEvent.PreToolUse),
     tool_name: z.string(),
     tool_use_id: z.string(),
-    tool_input: z.record(z.string(), JsonValueSchema),
+    tool_input: z.record(z.string(), jsonValueSchema),
   });
 
   const PostToolUseInputSchema = HookInputBaseSchema.extend({
     hook_event_name: z.literal(HookEvent.PostToolUse),
     tool_name: z.string(),
     tool_use_id: z.string(),
-    tool_input: z.record(z.string(), JsonValueSchema),
+    tool_input: z.record(z.string(), jsonValueSchema),
     tool_response: z.unknown(),
   });
 
@@ -103,7 +85,7 @@ function buildHookSchemas() {
     hook_event_name: z.literal(HookEvent.PostToolUseFailure),
     tool_name: z.string(),
     tool_use_id: z.string(),
-    tool_input: z.record(z.string(), JsonValueSchema),
+    tool_input: z.record(z.string(), jsonValueSchema),
     error: z.string(),
     error_type: z.string().optional(),
     is_interrupt: z.boolean(),
@@ -114,7 +96,7 @@ function buildHookSchemas() {
     hook_event_name: z.literal(HookEvent.PermissionRequest),
     tool_name: z.string(),
     tool_use_id: z.string(),
-    tool_input: z.record(z.string(), JsonValueSchema),
+    tool_input: z.record(z.string(), jsonValueSchema),
   });
 
   const UserPromptSubmitInputSchema = HookInputBaseSchema.extend({
@@ -283,13 +265,13 @@ function buildHookSchemas() {
     hookEventName: z.literal('PreToolUse'),
     permissionDecision: z.nativeEnum(PermissionDecision).optional(),
     permissionDecisionReason: z.string().optional(),
-    updatedInput: z.record(z.string(), JsonValueSchema).optional(),
+    updatedInput: z.record(z.string(), jsonValueSchema).optional(),
   });
 
   const PostToolUseOutputSchema = z.object({
     hookEventName: z.literal('PostToolUse'),
     additionalContext: z.string().optional(),
-    updatedOutput: JsonValueSchema.optional(),
+    updatedOutput: jsonValueSchema.optional(),
   });
 
   const StopOutputSchema = z.object({
@@ -519,29 +501,76 @@ type HookSchemasBundle = ReturnType<typeof buildHookSchemas>;
 // ---------------------------------------------------------------------------
 // Compile-time assertions: Zod schema keys ↔ TypeScript interface keys
 // ---------------------------------------------------------------------------
-type _AssertBaseKeys = Assert<KeysEqual<z.infer<HookSchemasBundle['HookInputBaseSchema']>, HookInputBase>>;
-type _AssertPreToolUse = Assert<KeysEqual<z.infer<HookSchemasBundle['PreToolUseInputSchema']>, PreToolUseInput>>;
-type _AssertPostToolUse = Assert<KeysEqual<z.infer<HookSchemasBundle['PostToolUseInputSchema']>, Omit<PostToolUseInput, 'tool_response'> & { tool_response: unknown }>>;
+type _AssertBaseKeys = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['HookInputBaseSchema']>, HookInputBase>
+>;
+type _AssertPreToolUse = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['PreToolUseInputSchema']>, PreToolUseInput>
+>;
+type _AssertPostToolUse = Assert<
+  KeysEqual<
+    z.infer<HookSchemasBundle['PostToolUseInputSchema']>,
+    Omit<PostToolUseInput, 'tool_response'> & { tool_response: unknown }
+  >
+>;
 type _AssertStop = Assert<KeysEqual<z.infer<HookSchemasBundle['StopInputSchema']>, StopInput>>;
-type _AssertPostToolUseFail = Assert<KeysEqual<z.infer<HookSchemasBundle['PostToolUseFailureInputSchema']>, PostToolUseFailureInput>>;
-type _AssertPermReq = Assert<KeysEqual<z.infer<HookSchemasBundle['PermissionRequestInputSchema']>, PermissionRequestInput>>;
-type _AssertUserPrompt = Assert<KeysEqual<z.infer<HookSchemasBundle['UserPromptSubmitInputSchema']>, UserPromptSubmitInput>>;
-type _AssertSessionStart = Assert<KeysEqual<z.infer<HookSchemasBundle['SessionStartInputSchema']>, SessionStartInput>>;
-type _AssertSessionEnd = Assert<KeysEqual<z.infer<HookSchemasBundle['SessionEndInputSchema']>, SessionEndInput>>;
-type _AssertSubagentStart = Assert<KeysEqual<z.infer<HookSchemasBundle['SubagentStartInputSchema']>, SubagentStartInput>>;
-type _AssertSubagentStop = Assert<KeysEqual<z.infer<HookSchemasBundle['SubagentStopInputSchema']>, SubagentStopInput>>;
-type _AssertTaskCompleted = Assert<KeysEqual<z.infer<HookSchemasBundle['TaskCompletedInputSchema']>, TaskCompletedInput>>;
-type _AssertNotification = Assert<KeysEqual<z.infer<HookSchemasBundle['NotificationInputSchema']>, NotificationInput>>;
-type _AssertCompaction = Assert<KeysEqual<z.infer<HookSchemasBundle['CompactionInputSchema']>, CompactionInput>>;
-type _AssertStopFailure = Assert<KeysEqual<z.infer<HookSchemasBundle['StopFailureInputSchema']>, StopFailureInput>>;
-type _AssertPreCompact = Assert<KeysEqual<z.infer<HookSchemasBundle['PreCompactInputSchema']>, PreCompactInput>>;
-type _AssertPostCompact = Assert<KeysEqual<z.infer<HookSchemasBundle['PostCompactInputSchema']>, PostCompactInput>>;
-type _AssertElicitation = Assert<KeysEqual<z.infer<HookSchemasBundle['ElicitationInputSchema']>, ElicitationInput>>;
-type _AssertElicitationResult = Assert<KeysEqual<z.infer<HookSchemasBundle['ElicitationResultInputSchema']>, ElicitationResultInput>>;
-type _AssertConfigChange = Assert<KeysEqual<z.infer<HookSchemasBundle['ConfigChangeInputSchema']>, ConfigChangeInput>>;
-type _AssertCwdChanged = Assert<KeysEqual<z.infer<HookSchemasBundle['CwdChangedInputSchema']>, CwdChangedInput>>;
-type _AssertFileChanged = Assert<KeysEqual<z.infer<HookSchemasBundle['FileChangedInputSchema']>, FileChangedInput>>;
-type _AssertInstructionsLoaded = Assert<KeysEqual<z.infer<HookSchemasBundle['InstructionsLoadedInputSchema']>, InstructionsLoadedInput>>;
+type _AssertPostToolUseFail = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['PostToolUseFailureInputSchema']>, PostToolUseFailureInput>
+>;
+type _AssertPermReq = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['PermissionRequestInputSchema']>, PermissionRequestInput>
+>;
+type _AssertUserPrompt = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['UserPromptSubmitInputSchema']>, UserPromptSubmitInput>
+>;
+type _AssertSessionStart = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['SessionStartInputSchema']>, SessionStartInput>
+>;
+type _AssertSessionEnd = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['SessionEndInputSchema']>, SessionEndInput>
+>;
+type _AssertSubagentStart = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['SubagentStartInputSchema']>, SubagentStartInput>
+>;
+type _AssertSubagentStop = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['SubagentStopInputSchema']>, SubagentStopInput>
+>;
+type _AssertTaskCompleted = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['TaskCompletedInputSchema']>, TaskCompletedInput>
+>;
+type _AssertNotification = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['NotificationInputSchema']>, NotificationInput>
+>;
+type _AssertCompaction = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['CompactionInputSchema']>, CompactionInput>
+>;
+type _AssertStopFailure = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['StopFailureInputSchema']>, StopFailureInput>
+>;
+type _AssertPreCompact = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['PreCompactInputSchema']>, PreCompactInput>
+>;
+type _AssertPostCompact = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['PostCompactInputSchema']>, PostCompactInput>
+>;
+type _AssertElicitation = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['ElicitationInputSchema']>, ElicitationInput>
+>;
+type _AssertElicitationResult = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['ElicitationResultInputSchema']>, ElicitationResultInput>
+>;
+type _AssertConfigChange = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['ConfigChangeInputSchema']>, ConfigChangeInput>
+>;
+type _AssertCwdChanged = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['CwdChangedInputSchema']>, CwdChangedInput>
+>;
+type _AssertFileChanged = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['FileChangedInputSchema']>, FileChangedInput>
+>;
+type _AssertInstructionsLoaded = Assert<
+  KeysEqual<z.infer<HookSchemasBundle['InstructionsLoadedInputSchema']>, InstructionsLoadedInput>
+>;
 
 // ============================================================================
 // Validation Helpers
@@ -551,7 +580,7 @@ type _AssertInstructionsLoaded = Assert<KeysEqual<z.infer<HookSchemasBundle['Ins
  * 安全解析 Hook 输出 (不抛出异常)
  */
 export function safeParseHookOutput(
-  data: unknown
+  data: unknown,
 ):
   | { success: true; data: z.infer<HookSchemasBundle['HookOutputSchema']> }
   | { success: false; error: z.ZodError } {

@@ -1,5 +1,5 @@
-import type { JsonValue } from '../types/common.js';
 import { SdkError } from '../errors/SdkError.js';
+import type { JsonValue } from '../types/json.js';
 
 export function toJsonValue(value: unknown): JsonValue {
   try {
@@ -12,10 +12,8 @@ export function toJsonValue(value: unknown): JsonValue {
     if (error instanceof SdkError) {
       throw error;
     }
-    throw new SdkError(
-      'JSON_SERIALIZATION_ERROR',
-      'Value is not JSON serializable',
-      { cause: error },
-    );
+    throw new SdkError('JSON_SERIALIZATION_ERROR', 'Value is not JSON serializable', {
+      cause: error,
+    });
   }
 }

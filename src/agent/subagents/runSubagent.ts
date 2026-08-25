@@ -1,11 +1,12 @@
-import { SessionId } from '../../types/branded.js';
-import type { BladeConfig, PermissionMode } from '../../types/common.js';
-import type { ContextSnapshot } from '../../runtime/index.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
-import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
+import type { ModelMessage } from '../../model/message.js';
+import type { ContextSnapshot } from '../../runtime/index.js';
+import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
+import type { PermissionMode } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
 import { Agent } from '../Agent.js';
+import type { BladeConfig } from '../config.js';
 import type { AgentProgress, LoopResult } from '../types.js';
 import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
@@ -20,7 +21,7 @@ export interface RunSubagentOptions {
   parentSessionId?: string;
   permissionMode?: PermissionMode;
   snapshot?: ContextSnapshot;
-  messages?: Message[];
+  messages?: ModelMessage[];
   signal?: AbortSignal;
   backgroundAgentManager?: BackgroundAgentManager;
   executionFence?: DurableExecutionFence;
@@ -81,12 +82,13 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     },
   );
 
-  const loopOptions = signal || onProgress
-    ? {
-        ...(signal ? { signal } : {}),
-        ...(onProgress ? { onProgress } : {}),
-      }
-    : undefined;
+  const loopOptions =
+    signal || onProgress
+      ? {
+          ...(signal ? { signal } : {}),
+          ...(onProgress ? { onProgress } : {}),
+        }
+      : undefined;
 
   const chatContext = {
     messages: messages ?? [],
@@ -95,11 +97,13 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     snapshot,
     permissionMode,
     systemPrompt: config.systemPrompt || '',
-    subagentInfo: {
-      parentSessionId: parentSessionId ?? '',
-      subagentType: config.name,
-      isSidechain: true,
-    },
+    subagentInfo: parentSessionId
+      ? {
+          parentSessionId: SessionId(parentSessionId),
+          subagentType: config.name,
+          isSidechain: true,
+        }
+      : undefined,
     omitEnvironment,
     executionFence,
     assertExecutionLease,

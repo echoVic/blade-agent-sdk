@@ -8,9 +8,9 @@
  * 4. 写入后记录文件访问
  */
 
-import type { MessageId, SessionId } from '../../../types/branded.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import type { ToolResult } from '../../types/ToolResult.js';
+import type { MessageId, SessionId } from '../../../types/identifiers.js';
+import type { ToolResult } from '../../types/result.js';
+import { ToolErrorType } from '../../types/result.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 import { SnapshotManager } from './SnapshotManager.js';
 
@@ -37,7 +37,8 @@ export interface WriteGuardResult {
 
 const NOT_READ_MESSAGES: Record<WriteOperation, string> = {
   edit: 'You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt to edit without reading the file.',
-  write: 'If this is an existing file, you MUST use the Read tool first to read the file\'s contents. This tool will fail if you did not read the file first.',
+  write:
+    "If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.",
 };
 
 const NOT_READ_ERROR_MESSAGES: Record<WriteOperation, string> = {

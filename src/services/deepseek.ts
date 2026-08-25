@@ -1,6 +1,9 @@
 import type { JSONSchema7 } from 'json-schema';
-import type { JsonObject, JsonValue, ModelConfig } from '../types/common.js';
-import type { Message, ProviderOptions, UsageInfo } from './ChatServiceInterface.js';
+import type { ModelConfig, ModelProviderOptions } from '../model/config.js';
+import type { ModelMessage } from '../model/message.js';
+import type { ModelToolDefinition } from '../model/service.js';
+import type { ModelUsage } from '../model/usage.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
 export const DEEPSEEK_BETA_BASE_URL = 'https://api.deepseek.com/beta';
@@ -132,12 +135,13 @@ export interface DeepSeekChatCompletionResponse {
     finish_reason?: string | null;
     index?: number;
   }>;
-  usage?: UsageInfo;
+  usage?: ModelUsage;
   cost?: DeepSeekCostBreakdown;
   raw: JsonValue;
 }
 
-export interface DeepSeekBatchChatCompletionItem extends Omit<DeepSeekChatCompletionOptions, 'apiKey' | 'baseUrl' | 'headers' | 'signal'> {
+export interface DeepSeekBatchChatCompletionItem
+  extends Omit<DeepSeekChatCompletionOptions, 'apiKey' | 'baseUrl' | 'headers' | 'signal'> {
   id: string;
 }
 
@@ -181,12 +185,10 @@ export interface DeepSeekBatchChatCompletionSummary extends DeepSeekCostSnapshot
   errorCount: number;
 }
 
-export interface DeepSeekToolDefinition {
-  name: string;
+export type DeepSeekToolDefinition = Omit<ModelToolDefinition, 'description'> & {
   description?: string;
-  parameters: JSONSchema7;
   strict?: boolean;
-}
+};
 
 export interface DeepSeekSerializedTool {
   type: 'function';
@@ -216,7 +218,7 @@ export interface DeepSeekFimCompletionResponse {
     finish_reason?: string | null;
     index?: number;
   }>;
-  usage?: UsageInfo;
+  usage?: ModelUsage;
   raw: JsonValue;
 }
 
@@ -245,13 +247,7 @@ type AIUsage = {
   raw?: JsonObject;
 };
 
-const DEEPSEEK_SUPPORTED_STRING_FORMATS = new Set([
-  'email',
-  'hostname',
-  'ipv4',
-  'ipv6',
-  'uuid',
-]);
+const DEEPSEEK_SUPPORTED_STRING_FORMATS = new Set(['email', 'hostname', 'ipv4', 'ipv6', 'uuid']);
 
 const DEEPSEEK_UNSUPPORTED_SCHEMA_KEYWORDS = [
   'additionalItems',
@@ -290,11 +286,13 @@ export function getDeepSeekPricing(model?: string): DeepSeekPricing | undefined 
 export function createDeepSeekTokenBudgetCostConfig(
   model?: string,
   pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
-): {
-  costPerInputToken: number;
-  costPerOutputToken: number;
-  costPerCacheReadToken: number;
-} | undefined {
+):
+  | {
+      costPerInputToken: number;
+      costPerOutputToken: number;
+      costPerCacheReadToken: number;
+    }
+  | undefined {
   if (!pricing) return undefined;
   return {
     costPerInputToken: pricing.inputCacheMiss,
@@ -311,13 +309,14 @@ interface DeepSeekTokenBreakdown {
 }
 
 /**
- * 从 UsageInfo 推导 token 分解：缓存命中/未命中、推理输出、普通输出。
+ * 从 ModelUsage 推导 token 分解：缓存命中/未命中、推理输出、普通输出。
  */
-function deriveDeepSeekTokenBreakdown(usage: UsageInfo): DeepSeekTokenBreakdown {
+function deriveDeepSeekTokenBreakdown(usage: ModelUsage): DeepSeekTokenBreakdown {
   const inputCacheHitTokens = usage.cacheReadInputTokens ?? 0;
-  const inputCacheMissTokens = usage.cacheMissInputTokens
-    ?? usage.billableInputTokens
-    ?? Math.max((usage.promptTokens ?? 0) - inputCacheHitTokens, 0);
+  const inputCacheMissTokens =
+    usage.cacheMissInputTokens ??
+    usage.billableInputTokens ??
+    Math.max((usage.promptTokens ?? 0) - inputCacheHitTokens, 0);
   const reasoningOutputTokens = usage.reasoningTokens ?? 0;
   const outputTokens = Math.max((usage.completionTokens ?? 0) - reasoningOutputTokens, 0);
   return {
@@ -329,18 +328,14 @@ function deriveDeepSeekTokenBreakdown(usage: UsageInfo): DeepSeekTokenBreakdown 
 }
 
 export function calculateDeepSeekCost(
-  usage: UsageInfo,
+  usage: ModelUsage,
   model?: string,
   pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
 ): DeepSeekCostBreakdown | undefined {
   if (!pricing) return undefined;
 
-  const {
-    inputCacheHitTokens,
-    inputCacheMissTokens,
-    reasoningOutputTokens,
-    outputTokens,
-  } = deriveDeepSeekTokenBreakdown(usage);
+  const { inputCacheHitTokens, inputCacheMissTokens, reasoningOutputTokens, outputTokens } =
+    deriveDeepSeekTokenBreakdown(usage);
   const inputCacheHitCost = inputCacheHitTokens * pricing.inputCacheHit;
   const inputCacheMissCost = inputCacheMissTokens * pricing.inputCacheMiss;
   const outputCost = outputTokens * pricing.output;
@@ -379,20 +374,17 @@ export class DeepSeekCostTracker {
     private readonly pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
   ) {}
 
-  recordUsage(usage: UsageInfo): DeepSeekCostBreakdown | undefined {
+  recordUsage(usage: ModelUsage): DeepSeekCostBreakdown | undefined {
     this.requestCount += 1;
     this.promptTokens += usage.promptTokens ?? 0;
     this.completionTokens += usage.completionTokens ?? 0;
-    this.totalTokens += usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0);
+    this.totalTokens +=
+      usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0);
 
     const breakdown = calculateDeepSeekCost(usage, this.model, this.pricing);
     if (!breakdown) {
-      const {
-        inputCacheHitTokens,
-        inputCacheMissTokens,
-        reasoningOutputTokens,
-        outputTokens,
-      } = deriveDeepSeekTokenBreakdown(usage);
+      const { inputCacheHitTokens, inputCacheMissTokens, reasoningOutputTokens, outputTokens } =
+        deriveDeepSeekTokenBreakdown(usage);
       this.inputCacheHitTokens += inputCacheHitTokens;
       this.inputCacheMissTokens += inputCacheMissTokens;
       this.reasoningOutputTokens += reasoningOutputTokens;
@@ -411,7 +403,9 @@ export class DeepSeekCostTracker {
     return breakdown;
   }
 
-  recordResponse(response: Pick<DeepSeekChatCompletionResponse, 'usage'>): DeepSeekCostBreakdown | undefined {
+  recordResponse(
+    response: Pick<DeepSeekChatCompletionResponse, 'usage'>,
+  ): DeepSeekCostBreakdown | undefined {
     return response.usage ? this.recordUsage(response.usage) : undefined;
   }
 
@@ -432,10 +426,11 @@ export class DeepSeekCostTracker {
       inputCacheMissCost: this.inputCacheMissCost,
       outputCost: this.outputCost,
       reasoningOutputCost: this.reasoningOutputCost,
-      totalCost: this.inputCacheHitCost
-        + this.inputCacheMissCost
-        + this.outputCost
-        + this.reasoningOutputCost,
+      totalCost:
+        this.inputCacheHitCost +
+        this.inputCacheMissCost +
+        this.outputCost +
+        this.reasoningOutputCost,
       currency: 'USD',
     };
   }
@@ -492,10 +487,11 @@ export function buildDeepSeekProviderOptions(config: {
   model: string;
   supportsThinking?: boolean;
   deepseek?: DeepSeekProviderOptions;
-}): ProviderOptions | undefined {
+}): ModelProviderOptions | undefined {
   const explicit = config.deepseek;
-  const thinking = explicit?.thinking
-    ?? (config.supportsThinking || isDeepSeekThinkingDefaultModel(config.model)
+  const thinking =
+    explicit?.thinking ??
+    (config.supportsThinking || isDeepSeekThinkingDefaultModel(config.model)
       ? { type: 'enabled' as const }
       : undefined);
 
@@ -518,34 +514,37 @@ export function shouldOmitDeepSeekSamplingOptions(config: {
   if (config.provider !== 'deepseek' && config.providerId !== 'deepseek') return false;
   const thinkingType = config.deepseek?.thinking?.type;
   if (thinkingType === 'disabled') return false;
-  return thinkingType === 'enabled'
-    || Boolean(config.supportsThinking)
-    || isDeepSeekThinkingDefaultModel(config.model);
+  return (
+    thinkingType === 'enabled' ||
+    Boolean(config.supportsThinking) ||
+    isDeepSeekThinkingDefaultModel(config.model)
+  );
 }
 
 export function mergeDeepSeekUsage(
   usage?: AIUsage,
   providerMetadata?: { deepseek?: DeepSeekProviderMetadata },
-): UsageInfo | undefined {
+): ModelUsage | undefined {
   if (!usage) return undefined;
 
   const prompt = usage.promptTokens ?? usage.inputTokens ?? 0;
   const completion = usage.completionTokens ?? usage.outputTokens ?? 0;
-  const result: UsageInfo = {
+  const result: ModelUsage = {
     promptTokens: prompt,
     completionTokens: completion,
     totalTokens: usage.totalTokens ?? prompt + completion,
   };
 
-  const cacheRead = usage.inputTokenDetails?.cacheReadTokens
-    ?? usage.cachedInputTokens
-    ?? providerMetadata?.deepseek?.promptCacheHitTokens;
+  const cacheRead =
+    usage.inputTokenDetails?.cacheReadTokens ??
+    usage.cachedInputTokens ??
+    providerMetadata?.deepseek?.promptCacheHitTokens;
   if (cacheRead !== undefined) {
     result.cacheReadInputTokens = cacheRead;
   }
 
-  const cacheMiss = usage.inputTokenDetails?.noCacheTokens
-    ?? providerMetadata?.deepseek?.promptCacheMissTokens;
+  const cacheMiss =
+    usage.inputTokenDetails?.noCacheTokens ?? providerMetadata?.deepseek?.promptCacheMissTokens;
   if (cacheMiss !== undefined) {
     result.cacheMissInputTokens = cacheMiss;
     result.billableInputTokens = cacheMiss;
@@ -566,7 +565,7 @@ export function mergeDeepSeekUsage(
   return result;
 }
 
-export function optimizeDeepSeekCachePrefix<T extends Message>(
+export function optimizeDeepSeekCachePrefix<T extends ModelMessage>(
   messages: readonly T[],
   options: DeepSeekCacheOptimizationOptions = {},
 ): T[] {
@@ -586,15 +585,19 @@ export function optimizeDeepSeekCachePrefix<T extends Message>(
   }
 
   const remainingPrefix = prefix.slice(cursor);
-  const stablePrefix = remainingPrefix.filter((message) => isDeepSeekStableCacheMessage(message, options));
+  const stablePrefix = remainingPrefix.filter((message) =>
+    isDeepSeekStableCacheMessage(message, options),
+  );
   if (stablePrefix.length === 0) return [...messages];
 
-  const volatilePrefix = remainingPrefix.filter((message) => !isDeepSeekStableCacheMessage(message, options));
+  const volatilePrefix = remainingPrefix.filter(
+    (message) => !isDeepSeekStableCacheMessage(message, options),
+  );
   return [...leadingSystems, ...stablePrefix, ...volatilePrefix, ...tail];
 }
 
 function isDeepSeekStableCacheMessage(
-  message: Message,
+  message: ModelMessage,
   options: DeepSeekCacheOptimizationOptions,
 ): boolean {
   const metadata = message.metadata;
@@ -604,10 +607,10 @@ function isDeepSeekStableCacheMessage(
   if ((metadata as JsonObject)[key] === expectedValue) return true;
   const deepseek = (metadata as JsonObject).deepseek;
   return Boolean(
-    deepseek
-    && typeof deepseek === 'object'
-    && !Array.isArray(deepseek)
-    && (deepseek as JsonObject).cache === 'stable',
+    deepseek &&
+      typeof deepseek === 'object' &&
+      !Array.isArray(deepseek) &&
+      (deepseek as JsonObject).cache === 'stable',
   );
 }
 
@@ -655,9 +658,10 @@ export function createDeepSeekLongContextPlan(
     reserveOutputTokens: undefined,
   });
   const reserveOutputTokens = options.reserveOutputTokens ?? 0;
-  const maxInputTokens = options.maxContextTokens === undefined
-    ? Number.POSITIVE_INFINITY
-    : Math.max(options.maxContextTokens - reserveOutputTokens, 1);
+  const maxInputTokens =
+    options.maxContextTokens === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(options.maxContextTokens - reserveOutputTokens, 1);
   const maxChunks = options.maxChunks ?? Number.POSITIVE_INFINITY;
   const includedChunks: DeepSeekLongContextChunk[] = [];
   let includedEstimatedTokens = 0;
@@ -722,12 +726,13 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
   const isReasonerAlias = modelConfig.model === 'deepseek-reasoner';
   const normalizedModel = normalizeDeepSeekModel(modelConfig.model);
   const isThinkingDefault = isDeepSeekThinkingDefaultModel(normalizedModel);
-  const strictTools = modelConfig.providerOptions?.deepseek
-    && typeof modelConfig.providerOptions.deepseek === 'object'
-    && !Array.isArray(modelConfig.providerOptions.deepseek)
-    && 'strictTools' in modelConfig.providerOptions.deepseek
-    ? Boolean(modelConfig.providerOptions.deepseek.strictTools)
-    : false;
+  const strictTools =
+    modelConfig.providerOptions?.deepseek &&
+    typeof modelConfig.providerOptions.deepseek === 'object' &&
+    !Array.isArray(modelConfig.providerOptions.deepseek) &&
+    'strictTools' in modelConfig.providerOptions.deepseek
+      ? Boolean(modelConfig.providerOptions.deepseek.strictTools)
+      : false;
   return {
     ...modelConfig,
     model: normalizedModel,
@@ -749,15 +754,15 @@ export function sanitizeDeepSeekStrictSchema(schema: JSONSchema7): JSONSchema7 {
 
 function hasSchemaShape(schema: JSONSchema7): boolean {
   return Boolean(
-    schema.type
-    || schema.properties
-    || schema.items
-    || schema.anyOf
-    || schema.oneOf
-    || schema.$ref
-    || (schema as Record<string, unknown>).$def
-    || schema.$defs
-    || schema.definitions,
+    schema.type ||
+      schema.properties ||
+      schema.items ||
+      schema.anyOf ||
+      schema.oneOf ||
+      schema.$ref ||
+      (schema as Record<string, unknown>).$def ||
+      schema.$defs ||
+      schema.definitions,
   );
 }
 
@@ -768,10 +773,7 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
     delete (result as Record<string, unknown>)[keyword];
   }
 
-  if (
-    typeof result.format === 'string'
-    && !DEEPSEEK_SUPPORTED_STRING_FORMATS.has(result.format)
-  ) {
+  if (typeof result.format === 'string' && !DEEPSEEK_SUPPORTED_STRING_FORMATS.has(result.format)) {
     delete result.format;
   }
 
@@ -787,7 +789,9 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
   }
 
   if (typeof result.additionalProperties === 'object' && result.additionalProperties !== null) {
-    result.additionalProperties = sanitizeDeepSeekSchemaNode(result.additionalProperties as JSONSchema7);
+    result.additionalProperties = sanitizeDeepSeekSchemaNode(
+      result.additionalProperties as JSONSchema7,
+    );
   }
 
   if (result.items && !Array.isArray(result.items)) {
@@ -799,7 +803,8 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
   }
 
   if (Array.isArray(result.oneOf)) {
-    result.anyOf = result.anyOf ?? result.oneOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+    result.anyOf =
+      result.anyOf ?? result.oneOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
     delete result.oneOf;
   }
 
@@ -854,7 +859,7 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
 }
 
 export function prepareDeepSeekTools(
-  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }> | undefined,
+  tools: readonly ModelToolDefinition[] | undefined,
   options?: DeepSeekProviderOptions,
 ): DeepSeekToolDefinition[] | undefined {
   if (!tools || tools.length === 0) return undefined;
@@ -871,7 +876,7 @@ export function prepareDeepSeekTools(
 }
 
 export function serializeDeepSeekTools(
-  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }> | undefined,
+  tools: readonly ModelToolDefinition[] | undefined,
   options?: DeepSeekProviderOptions,
 ): DeepSeekSerializedTool[] | undefined {
   const preparedTools = prepareDeepSeekTools(tools, options);
@@ -907,43 +912,46 @@ export async function createDeepSeekFimCompletion(
     signal: options.signal,
   });
 
-  const raw = await response.json().catch(() => ({})) as JsonObject;
+  const raw = (await response.json().catch(() => ({}))) as JsonObject;
   if (!response.ok) {
-    const message = typeof raw.error === 'object' && raw.error !== null && 'message' in raw.error
-      ? String((raw.error as JsonObject).message)
-      : `DeepSeek FIM request failed with HTTP ${response.status}`;
+    const message =
+      typeof raw.error === 'object' && raw.error !== null && 'message' in raw.error
+        ? String((raw.error as JsonObject).message)
+        : `DeepSeek FIM request failed with HTTP ${response.status}`;
     throw new Error(message);
   }
 
-  const usage = raw.usage && typeof raw.usage === 'object'
-    ? mergeDeepSeekUsage({
-      promptTokens: Number((raw.usage as JsonObject).prompt_tokens ?? 0),
-      completionTokens: Number((raw.usage as JsonObject).completion_tokens ?? 0),
-      totalTokens: Number((raw.usage as JsonObject).total_tokens ?? 0),
-      inputTokenDetails: {
-        cacheReadTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_hit_tokens),
-        noCacheTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_miss_tokens),
-      },
-      outputTokenDetails: {
-        reasoningTokens: toOptionalNumber(
-          ((raw.usage as JsonObject).completion_tokens_details as JsonObject | undefined)?.reasoning_tokens,
-        ),
-      },
-    })
-    : undefined;
+  const usage =
+    raw.usage && typeof raw.usage === 'object'
+      ? mergeDeepSeekUsage({
+          promptTokens: Number((raw.usage as JsonObject).prompt_tokens ?? 0),
+          completionTokens: Number((raw.usage as JsonObject).completion_tokens ?? 0),
+          totalTokens: Number((raw.usage as JsonObject).total_tokens ?? 0),
+          inputTokenDetails: {
+            cacheReadTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_hit_tokens),
+            noCacheTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_miss_tokens),
+          },
+          outputTokenDetails: {
+            reasoningTokens: toOptionalNumber(
+              ((raw.usage as JsonObject).completion_tokens_details as JsonObject | undefined)
+                ?.reasoning_tokens,
+            ),
+          },
+        })
+      : undefined;
 
   return {
     id: typeof raw.id === 'string' ? raw.id : undefined,
     model: typeof raw.model === 'string' ? raw.model : undefined,
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((choice) => {
-        const item = choice as JsonObject;
-        return {
-          text: typeof item.text === 'string' ? item.text : undefined,
-          finish_reason: typeof item.finish_reason === 'string' ? item.finish_reason : null,
-          index: typeof item.index === 'number' ? item.index : undefined,
-        };
-      })
+          const item = choice as JsonObject;
+          return {
+            text: typeof item.text === 'string' ? item.text : undefined,
+            finish_reason: typeof item.finish_reason === 'string' ? item.finish_reason : null,
+            index: typeof item.index === 'number' ? item.index : undefined,
+          };
+        })
       : [],
     usage,
     raw,
@@ -978,11 +986,12 @@ export async function createDeepSeekChatCompletion(
     signal: options.signal,
   });
 
-  const raw = await response.json().catch(() => ({})) as JsonObject;
+  const raw = (await response.json().catch(() => ({}))) as JsonObject;
   if (!response.ok) {
-    const message = typeof raw.error === 'object' && raw.error !== null && 'message' in raw.error
-      ? String((raw.error as JsonObject).message)
-      : `DeepSeek chat completion request failed with HTTP ${response.status}`;
+    const message =
+      typeof raw.error === 'object' && raw.error !== null && 'message' in raw.error
+        ? String((raw.error as JsonObject).message)
+        : `DeepSeek chat completion request failed with HTTP ${response.status}`;
     throw new Error(message);
   }
 
@@ -992,15 +1001,18 @@ export async function createDeepSeekChatCompletion(
     model: typeof raw.model === 'string' ? raw.model : undefined,
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((choice) => {
-        const item = choice as JsonObject;
-        return {
-          message: typeof item.message === 'object' && item.message !== null && !Array.isArray(item.message)
-            ? item.message as JsonObject
-            : undefined,
-          finish_reason: typeof item.finish_reason === 'string' ? item.finish_reason : null,
-          index: typeof item.index === 'number' ? item.index : undefined,
-        };
-      })
+          const item = choice as JsonObject;
+          return {
+            message:
+              typeof item.message === 'object' &&
+              item.message !== null &&
+              !Array.isArray(item.message)
+                ? (item.message as JsonObject)
+                : undefined,
+            finish_reason: typeof item.finish_reason === 'string' ? item.finish_reason : null,
+            index: typeof item.index === 'number' ? item.index : undefined,
+          };
+        })
       : [],
     usage,
     cost: usage ? calculateDeepSeekCost(usage, options.model) : undefined,
@@ -1043,10 +1055,9 @@ export async function createDeepSeekBatchChatCompletions(
     }
   }
 
-  await Promise.all(Array.from(
-    { length: Math.min(concurrency, options.requests.length) },
-    () => worker(),
-  ));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, options.requests.length) }, () => worker()),
+  );
   return results;
 }
 
@@ -1075,7 +1086,7 @@ export function summarizeDeepSeekBatchChatCompletions(
   };
 }
 
-function parseDeepSeekRawUsage(rawUsage: JsonValue | undefined): UsageInfo | undefined {
+function parseDeepSeekRawUsage(rawUsage: JsonValue | undefined): ModelUsage | undefined {
   if (!rawUsage || typeof rawUsage !== 'object' || Array.isArray(rawUsage)) return undefined;
   const usage = rawUsage as JsonObject;
   return mergeDeepSeekUsage({

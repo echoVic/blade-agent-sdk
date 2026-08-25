@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../../model/message.js';
 import { softCompact } from '../SoftCompactionStrategy.js';
 
 describe('softCompact', () => {
   it('truncates tool messages exceeding maxToolResultLength', () => {
-    const messages: Message[] = [
-      { role: 'tool', content: 'a'.repeat(25) },
-    ];
+    const messages: ModelMessage[] = [{ role: 'tool', content: 'a'.repeat(25) }];
 
     const result = softCompact(messages, { maxToolResultLength: 10 });
 
@@ -19,7 +17,7 @@ describe('softCompact', () => {
   });
 
   it('preserves non-tool messages unchanged', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       { role: 'system', content: 'system' },
       { role: 'user', content: 'user' },
       { role: 'assistant', content: 'assistant' },
@@ -34,7 +32,7 @@ describe('softCompact', () => {
   });
 
   it('counts truncated messages and saved chars correctly', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       { role: 'tool', content: '12345678901234567890' },
       { role: 'tool', content: 'abcdefghijklmno' },
       { role: 'assistant', content: 'keep me' },
@@ -57,9 +55,7 @@ describe('softCompact', () => {
   });
 
   it('respects custom maxToolResultLength option', () => {
-    const messages: Message[] = [
-      { role: 'tool', content: '1234567890' },
-    ];
+    const messages: ModelMessage[] = [{ role: 'tool', content: '1234567890' }];
 
     const result = softCompact(messages, { maxToolResultLength: 5 });
 

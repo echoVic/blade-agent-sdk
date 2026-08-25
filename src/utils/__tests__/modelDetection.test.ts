@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelConfig } from '../../types/common.js';
+import type { ModelConfig } from '../../model/config.js';
 import { isThinkingModel } from '../modelDetection.js';
 
 function createModelConfig(overrides: Partial<ModelConfig>): ModelConfig {
@@ -63,11 +63,15 @@ describe('modelDetection', () => {
     });
 
     it('should respect explicit supportsThinking=true config', () => {
-      expect(isThinkingModel(createModelConfig({ model: 'gpt-4', supportsThinking: true }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'gpt-4', supportsThinking: true }))).toBe(
+        true,
+      );
     });
 
     it('should respect explicit supportsThinking=false config even for thinking models', () => {
-      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1', supportsThinking: false }))).toBe(false);
+      expect(
+        isThinkingModel(createModelConfig({ model: 'deepseek-r1', supportsThinking: false })),
+      ).toBe(false);
     });
 
     it('should auto-detect when supportsThinking is not set', () => {

@@ -5,8 +5,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
-import type { JsonObject } from '../types/common.js';
+import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import type { JsonObject } from '../types/json.js';
 
 /**
  * 文件引用信息
@@ -50,7 +50,7 @@ const MAX_LINES_PER_FILE = 1000;
  * @param messages - 消息列表
  * @returns 文件引用列表（按重要性排序，最多 5 个）
  */
-export function analyzeFiles(messages: readonly Message[]): FileReference[] {
+export function analyzeFiles(messages: readonly ModelMessage[]): FileReference[] {
   const fileMap = new Map<string, FileReference>();
 
   messages.forEach((msg, index) => {
@@ -222,9 +222,7 @@ function extractPathsFromText(text: string): string[] {
  * @param toolCall - 工具调用对象
  * @returns 文件路径列表
  */
-function extractFilePathsFromToolCall(
-  toolCall: ToolCall
-): string[] {
+function extractFilePathsFromToolCall(toolCall: ModelToolCall): string[] {
   const paths: string[] = [];
 
   if (toolCall.type !== 'function' || !toolCall.function) {
@@ -273,7 +271,7 @@ function updateFileReference(
   fileMap: Map<string, FileReference>,
   path: string,
   index: number,
-  wasModified: boolean
+  wasModified: boolean,
 ): void {
   const existing = fileMap.get(path);
 

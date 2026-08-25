@@ -1,13 +1,13 @@
-import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import type { SessionRepository } from '../../session/SessionRepository.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
-import { PersistentStore } from '../storage/PersistentStore.js';
+import { SessionId, ToolUseId } from '../../types/identifiers.js';
 import { ContextManager } from '../ContextManager.js';
-import { SessionId } from '../../types/branded.js';
-import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
+import { PersistentStore } from '../storage/PersistentStore.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'context-manager-test-'));
@@ -66,7 +66,9 @@ describe('ContextManager', () => {
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', {
+      file_path: 'README.md',
+    });
     const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
       toolUse.toolCallId,
@@ -117,7 +119,7 @@ describe('ContextManager', () => {
     const firstSessionId = SessionId('session-first');
     await contextManager.createSession(undefined, {}, { sessionId: firstSessionId });
     await contextManager.addToolCall({
-      id: 'call-reused',
+      id: ToolUseId('call-reused'),
       name: 'Search',
       input: { query: 'first' },
       timestamp: Date.now(),
@@ -127,14 +129,14 @@ describe('ContextManager', () => {
     const secondSessionId = SessionId('session-second');
     await contextManager.createSession(undefined, {}, { sessionId: secondSessionId });
     await contextManager.addToolCall({
-      id: 'call-reused',
+      id: ToolUseId('call-reused'),
       name: 'Search',
       input: { query: 'second' },
       timestamp: Date.now(),
       status: 'pending',
     });
     await contextManager.addToolCall({
-      id: 'call-reused',
+      id: ToolUseId('call-reused'),
       name: 'Search',
       input: { query: 'second' },
       output: 'second result',

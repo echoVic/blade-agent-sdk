@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { InputId, RequestId } from '../../types/branded.js';
-import {
-  SessionInputInbox,
-} from '../SessionInputInbox.js';
-import {
-  InputPriority,
-  type PendingSessionInput,
-} from '../types.js';
+import { InputId, RequestId } from '../../types/identifiers.js';
+import { SessionInputInbox } from '../SessionInputInbox.js';
+import { InputPriority, type PendingSessionInput } from '../types.js';
 
 function input(
   id: string,
@@ -17,9 +12,7 @@ function input(
     inputId: InputId(id),
     content: id,
     priority,
-    targetRequestId: targetRequestId
-      ? RequestId(targetRequestId)
-      : undefined,
+    targetRequestId: targetRequestId ? RequestId(targetRequestId) : undefined,
     acceptedAt: Number(id.replace(/\D/g, '')) || 0,
   };
 }
@@ -33,10 +26,9 @@ describe('SessionInputInbox', () => {
     inbox.enqueue(input('input-1', InputPriority.NOW, requestId));
 
     expect(
-      inbox.claimForRequest(requestId, [
-        InputPriority.NOW,
-        InputPriority.NEXT,
-      ]).map((entry) => entry.inputId),
+      inbox
+        .claimForRequest(requestId, [InputPriority.NOW, InputPriority.NEXT])
+        .map((entry) => entry.inputId),
     ).toEqual(['input-1', 'input-3', 'input-2']);
     expect(inbox.size).toBe(3);
     inbox.acknowledge(InputId('input-1'));
@@ -66,9 +58,7 @@ describe('SessionInputInbox', () => {
     expect(inbox.claimForRequest(requestId, [InputPriority.NEXT])).toEqual([]);
 
     inbox.markCommitted(entry.inputId);
-    expect(inbox.claimForRequest(requestId, [InputPriority.NEXT])).toEqual([
-      entry,
-    ]);
+    expect(inbox.claimForRequest(requestId, [InputPriority.NEXT])).toEqual([entry]);
   });
 
   it('does not cancel input already claimed for application', () => {
@@ -86,9 +76,7 @@ describe('SessionInputInbox', () => {
 
   it('demotes restored and abandoned request inputs to later delivery', () => {
     const inbox = new SessionInputInbox();
-    inbox.restore([
-      input('input-1', InputPriority.NOW, 'request-dead'),
-    ]);
+    inbox.restore([input('input-1', InputPriority.NOW, 'request-dead')]);
     inbox.enqueue(input('input-2', InputPriority.NEXT, 'request-live'));
 
     inbox.releaseRequest(RequestId('request-live'));
@@ -110,17 +98,19 @@ describe('SessionInputInbox', () => {
   it('enforces count and byte limits without retaining rejected input', () => {
     const byCount = new SessionInputInbox(1, 100);
     byCount.enqueue(input('input-1', InputPriority.LATER));
-    expect(() => byCount.enqueue(input('input-2', InputPriority.LATER)))
-      .toThrowError(expect.objectContaining({
+    expect(() => byCount.enqueue(input('input-2', InputPriority.LATER))).toThrowError(
+      expect.objectContaining({
         code: 'SESSION_INPUT_QUEUE_FULL',
-      }));
+      }),
+    );
     expect(byCount.size).toBe(1);
 
     const byBytes = new SessionInputInbox(10, 4);
-    expect(() => byBytes.enqueue(input('input-12345', InputPriority.LATER)))
-      .toThrowError(expect.objectContaining({
+    expect(() => byBytes.enqueue(input('input-12345', InputPriority.LATER))).toThrowError(
+      expect.objectContaining({
         code: 'SESSION_INPUT_QUEUE_FULL',
-      }));
+      }),
+    );
     expect(byBytes.size).toBe(0);
   });
 
@@ -149,10 +139,7 @@ describe('SessionInputInbox', () => {
     // 前两条恢复成功，其余两条因超出 count 上限被丢弃且不抛错
     expect(inbox.size).toBe(2);
     expect(dropped).toBe(2);
-    expect(inbox.getAll().map((entry) => entry.inputId)).toEqual([
-      'input-1',
-      'input-2',
-    ]);
+    expect(inbox.getAll().map((entry) => entry.inputId)).toEqual(['input-1', 'input-2']);
   });
 
   it('restores all inputs when within capacity', () => {

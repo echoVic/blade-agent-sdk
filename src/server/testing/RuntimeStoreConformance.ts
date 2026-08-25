@@ -1,14 +1,13 @@
+import { AGENT_PROTOCOL_VERSION, AgentCommandType } from '../../protocol/index.js';
 import {
-  AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
-} from '../../protocol/index.js';
-import {
+  CommandId,
+  EventSequence,
   ExecutionLeaseId,
   InputId,
   RequestId,
   SessionId,
   WorkerId,
-} from '../../types/branded.js';
+} from '../../types/identifiers.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
 import { effectLease } from '../WorkerRuntime.js';
 
@@ -50,11 +49,7 @@ export async function assertRuntimeStoreConformance(
   const sessions = store.forTenant(tenantId);
   await sessions.createSession(sessionId);
   await sessions.saveMessage(sessionId, 'user', 'hello');
-  const tool = await sessions.saveToolUse(
-    sessionId,
-    'Search',
-    { query: 'blade' },
-  );
+  const tool = await sessions.saveToolUse(sessionId, 'Search', { query: 'blade' });
   await sessions.saveToolResult(
     sessionId,
     tool.toolCallId,
@@ -62,11 +57,11 @@ export async function assertRuntimeStoreConformance(
     { matches: 1 },
     tool.messageId,
   );
-  await sessions.saveCompaction(
-    sessionId,
-    'summary',
-    { trigger: 'manual', preTokens: 100, postTokens: 20 },
-  );
+  await sessions.saveCompaction(sessionId, 'summary', {
+    trigger: 'manual',
+    preTokens: 100,
+    postTokens: 20,
+  });
   await sessions.saveInputEnqueued(sessionId, {
     inputId: InputId(`input-${suffix}`),
     content: 'queued',
@@ -91,11 +86,7 @@ export async function assertRuntimeStoreConformance(
     priority: 'later',
     acceptedAt: 2,
   });
-  await sessions.saveInputCancelled(
-    sessionId,
-    InputId(`cancel-${suffix}`),
-    'conformance',
-  );
+  await sessions.saveInputCancelled(sessionId, InputId(`cancel-${suffix}`), 'conformance');
   const updatedState = await sessions.loadState(sessionId);
   assert(
     updatedState?.pendingInputs.length === 0,
@@ -122,14 +113,14 @@ export async function assertRuntimeStoreConformance(
     'Session storage stats must include projected Sessions',
   );
   assert(
-    await store.forTenant(otherTenantId).loadState(sessionId) === null,
+    (await store.forTenant(otherTenantId).loadState(sessionId)) === null,
     'Session projections must be tenant isolated',
   );
   const deleteSessionId = SessionId(`delete-${suffix}`);
   await sessions.createSession(deleteSessionId);
   await sessions.deleteSession(deleteSessionId);
   assert(
-    await sessions.loadState(deleteSessionId) === null,
+    (await sessions.loadState(deleteSessionId)) === null,
     'Deleted Session projection must not remain readable',
   );
   checks.push('session-projection');
@@ -148,12 +139,12 @@ export async function assertRuntimeStoreConformance(
     'Server Session record must round-trip',
   );
   assert(
-    await store.getSession(otherTenantId, sessionId) === null,
+    (await store.getSession(otherTenantId, sessionId)) === null,
     'Server Session records must be tenant isolated',
   );
   checks.push('tenant-isolation');
 
-  const commandId = `command-${suffix}`;
+  const commandId = CommandId(`command-${suffix}`);
   const fingerprint = `fingerprint-${suffix}`;
   const claim = await store.claimCommand(tenantId, commandId, fingerprint, 1000);
   assert(claim.status === 'claimed', 'First command claim must succeed');
@@ -167,30 +158,16 @@ export async function assertRuntimeStoreConformance(
     ok: true as const,
     data: { accepted: true },
   };
-  await store.completeCommand(
-    tenantId,
-    commandId,
-    claim.leaseId,
-    commandResult,
-  );
-  const replay = await store.claimCommand(
-    tenantId,
-    commandId,
-    fingerprint,
-    1000,
-  );
+  await store.completeCommand(tenantId, commandId, claim.leaseId, commandResult);
+  const replay = await store.claimCommand(tenantId, commandId, fingerprint, 1000);
   assert(
-    replay.status === 'completed'
-    && JSON.stringify(replay.result) === JSON.stringify(commandResult),
+    replay.status === 'completed' &&
+      JSON.stringify(replay.result) === JSON.stringify(commandResult),
     'Completed command must replay its deterministic result',
   );
   assert(
-    (await store.claimCommand(
-      tenantId,
-      commandId,
-      `${fingerprint}-different`,
-      1000,
-    )).status === 'conflict',
+    (await store.claimCommand(tenantId, commandId, `${fingerprint}-different`, 1000)).status ===
+      'conflict',
     'A reused command ID with a different fingerprint must conflict',
   );
   checks.push('command-receipts');
@@ -204,28 +181,28 @@ export async function assertRuntimeStoreConformance(
   });
   const agentEvents = await store.readEvents(tenantId, sessionId);
   assert(
-    agentEvents.events.length === 1
-    && agentEvents.events[0]?.sequence === 1,
+    agentEvents.events.length === 1 && agentEvents.events[0]?.sequence === 1,
     'Agent event stream must be sequenced',
   );
   checks.push('agent-events');
 
   const durable = await sessions.append(
     sessionId,
-    [{
-      type: 'session_created',
-      data: { source: 'create' },
-    }],
+    [
+      {
+        type: 'session_created',
+        data: { source: 'create' },
+      },
+    ],
     { expectedLastSequence: null },
   );
   assert(
-    durable.lastSequence === 1
-    && (await sessions.read(sessionId)).events.length === 1,
+    durable.lastSequence === 1 && (await sessions.read(sessionId)).events.length === 1,
     'Durable event stream must support compare-and-append',
   );
   checks.push('durable-events');
 
-  const transactionCommandId = `transaction-${suffix}`;
+  const transactionCommandId = CommandId(`transaction-${suffix}`);
   const transaction = {
     tenantId,
     sessionId,
@@ -240,16 +217,20 @@ export async function assertRuntimeStoreConformance(
       },
     },
     expectedLastSequence: null,
-    events: [{
-      type: 'request.accepted',
-      data: { requestId: RequestId(`request-${suffix}`) },
-    }],
-    effects: [{
-      effectId: `effect-${suffix}`,
-      type: 'tool.execute',
-      payload: { toolName: 'Search' },
-      idempotencyKey: `effect-key-${suffix}`,
-    }],
+    events: [
+      {
+        type: 'request.accepted',
+        data: { requestId: RequestId(`request-${suffix}`) },
+      },
+    ],
+    effects: [
+      {
+        effectId: `effect-${suffix}`,
+        type: 'tool.execute',
+        payload: { toolName: 'Search' },
+        idempotencyKey: `effect-key-${suffix}`,
+      },
+    ],
     projection: {
       name: 'conformance',
       expectedOffset: null,
@@ -261,10 +242,7 @@ export async function assertRuntimeStoreConformance(
   assert(committed.status === 'committed', 'Runtime transaction must commit');
   assert(committed.events.length === 1, 'Runtime transaction must append events');
   assert(committed.effects.length === 1, 'Runtime transaction must enqueue effects');
-  assert(
-    committed.projection?.offset === 1,
-    'Runtime transaction must checkpoint its projection',
-  );
+  assert(committed.projection?.offset === 1, 'Runtime transaction must checkpoint its projection');
   const replayed = await store.commitRuntimeTransaction(transaction);
   assert(replayed.status === 'replayed', 'Runtime transaction retry must replay');
   assert(
@@ -273,7 +251,7 @@ export async function assertRuntimeStoreConformance(
   );
   checks.push('atomic-runtime-commit');
 
-  const rollbackCommandId = `rollback-${suffix}`;
+  const rollbackCommandId = CommandId(`rollback-${suffix}`);
   let rejected = false;
   try {
     await store.commitRuntimeTransaction({
@@ -289,14 +267,16 @@ export async function assertRuntimeStoreConformance(
           data: {},
         },
       },
-      expectedLastSequence: 999,
+      expectedLastSequence: EventSequence(999),
       events: [{ type: 'must.rollback', data: {} }],
-      effects: [{
-        effectId: `rollback-effect-${suffix}`,
-        type: 'must.rollback',
-        payload: {},
-        idempotencyKey: `rollback-key-${suffix}`,
-      }],
+      effects: [
+        {
+          effectId: `rollback-effect-${suffix}`,
+          type: 'must.rollback',
+          payload: {},
+          idempotencyKey: `rollback-key-${suffix}`,
+        },
+      ],
     });
   } catch {
     rejected = true;
@@ -311,22 +291,20 @@ export async function assertRuntimeStoreConformance(
     'Rejected transaction must not enqueue effects',
   );
   assert(
-    (await store.claimCommand(
-      tenantId,
-      rollbackCommandId,
-      `fingerprint-${rollbackCommandId}`,
-      1000,
-    )).status === 'claimed',
+    (
+      await store.claimCommand(
+        tenantId,
+        rollbackCommandId,
+        `fingerprint-${rollbackCommandId}`,
+        1000,
+      )
+    ).status === 'claimed',
     'Rejected transaction must roll back its command receipt',
   );
   checks.push('transaction-rollback');
 
   assert(
-    (await store.getProjection(
-      tenantId,
-      sessionId,
-      'conformance',
-    ))?.state.status === 'accepted',
+    (await store.getProjection(tenantId, sessionId, 'conformance'))?.state.status === 'accepted',
     'Projection state must be readable at its committed offset',
   );
   checks.push('projection-checkpoint');
@@ -579,7 +557,7 @@ export async function assertRuntimeStoreConformance(
 
   const effectTenantId = `effect-tenant-${suffix}`;
   const effectSessionId = SessionId(`effect-session-${suffix}`);
-  const effectCommandId = `effect-command-${suffix}`;
+  const effectCommandId = CommandId(`effect-command-${suffix}`);
   await store.commitRuntimeTransaction({
     tenantId: effectTenantId,
     sessionId: effectSessionId,

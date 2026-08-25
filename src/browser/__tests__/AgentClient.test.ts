@@ -4,7 +4,7 @@ import {
   AgentCommandType,
   type AgentServerEvent,
 } from '../../protocol/index.js';
-import { SessionId } from '../../types/branded.js';
+import { EventId, EventSequence, SessionId } from '../../types/identifiers.js';
 import { AgentClient } from '../AgentClient.js';
 
 const sessionId = SessionId('session-1');
@@ -18,6 +18,7 @@ function initializeResponse(commandId: string): Response {
       protocolVersion: AGENT_PROTOCOL_VERSION,
       commands: Object.values(AgentCommandType),
       transports: ['http-sse'],
+      serverTime: '2026-08-25T00:00:00.000Z',
       features: {
         approvals: true,
         durableEvents: true,
@@ -55,24 +56,20 @@ describe('AgentClient events', () => {
     const eventRequests: Request[] = [];
     const responses = [
       sseResponse(
-        `id: 1\r\nevent: session.stream\r\ndata: ${JSON.stringify(event(
-          1,
-          'session.stream',
-          { type: 'content', delta: 'first', sessionId },
-        ))}\r\n\r\n`,
+        `id: 1\r\nevent: session.stream\r\ndata: ${JSON.stringify(
+          event(1, 'session.stream', { type: 'content', delta: 'first', sessionId }),
+        )}\r\n\r\n`,
       ),
       sseResponse(
-        `id: 2\nevent: session.closed\ndata: ${JSON.stringify(event(
-          2,
-          'session.closed',
-          { reason: 'test' },
-        ))}\n\n`,
+        `id: 2\nevent: session.closed\ndata: ${JSON.stringify(
+          event(2, 'session.closed', { reason: 'test' }),
+        )}\n\n`,
       ),
     ];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
       if (request.method === 'POST') {
-        const body = await request.json() as { commandId: string };
+        const body = (await request.json()) as { commandId: string };
         return initializeResponse(body.commandId);
       }
       eventRequests.push(request);
@@ -103,7 +100,7 @@ describe('AgentClient events', () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
       if (request.method === 'POST') {
-        const body = await request.json() as { commandId: string };
+        const body = (await request.json()) as { commandId: string };
         return initializeResponse(body.commandId);
       }
       eventRequests += 1;
@@ -130,20 +127,23 @@ describe('AgentClient events', () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
       if (request.method === 'POST') {
-        const body = await request.json() as { commandId: string };
+        const body = (await request.json()) as { commandId: string };
         return initializeResponse(body.commandId);
       }
       eventRequests += 1;
-      return Response.json({
-        protocolVersion: AGENT_PROTOCOL_VERSION,
-        commandId: 'events',
-        ok: false,
-        error: {
-          code: 'STALE_CURSOR',
-          message: 'Event cursor is stale',
-          retryable: false,
+      return Response.json(
+        {
+          protocolVersion: AGENT_PROTOCOL_VERSION,
+          commandId: 'events',
+          ok: false,
+          error: {
+            code: 'STALE_CURSOR',
+            message: 'Event cursor is stale',
+            retryable: false,
+          },
         },
-      }, { status: 409 });
+        { status: 409 },
+      );
     });
     const client = new AgentClient({
       baseUrl: 'https://agent.test/v1/agent',
@@ -171,8 +171,8 @@ describe('AgentClient events', () => {
     const iterator = client.events(sessionId, {
       after: {
         protocolVersion: AGENT_PROTOCOL_VERSION,
-        eventId: 'event-1',
-        sequence: 1,
+        eventId: EventId('event-1'),
+        sequence: EventSequence(1),
         sessionId: SessionId('session-2'),
       },
     });
@@ -185,21 +185,21 @@ describe('AgentClient events', () => {
 
   it('fails closed on a non-monotonic event sequence', async () => {
     const responses = [
-      sseResponse(`data: ${JSON.stringify(event(
-        1,
-        'session.stream',
-        { type: 'content', delta: 'first', sessionId },
-      ))}\n\n`),
-      sseResponse(`data: ${JSON.stringify(event(
-        1,
-        'session.stream',
-        { type: 'content', delta: 'duplicate', sessionId },
-      ))}\n\n`),
+      sseResponse(
+        `data: ${JSON.stringify(
+          event(1, 'session.stream', { type: 'content', delta: 'first', sessionId }),
+        )}\n\n`,
+      ),
+      sseResponse(
+        `data: ${JSON.stringify(
+          event(1, 'session.stream', { type: 'content', delta: 'duplicate', sessionId }),
+        )}\n\n`,
+      ),
     ];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
       if (request.method === 'POST') {
-        const body = await request.json() as { commandId: string };
+        const body = (await request.json()) as { commandId: string };
         return initializeResponse(body.commandId);
       }
       return responses.shift() ?? sseResponse();
@@ -229,7 +229,7 @@ describe('AgentClient commands', () => {
     const commandIds: string[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
-      const body = await request.json() as { commandId: string };
+      const body = (await request.json()) as { commandId: string };
       commandIds.push(body.commandId);
       if (commandIds.length === 1) {
         return new Response('rate limited', {

@@ -1,5 +1,5 @@
-import type { JsonObject } from '../types/common.js';
 import type { HookEvent } from '../types/constants.js';
+import type { JsonObject } from '../types/json.js';
 
 /**
  * Skills 系统类型定义
@@ -7,13 +7,7 @@ import type { HookEvent } from '../types/constants.js';
  * Skills 不再只是 prompt 片段，而是可发现、可编译、可执行的运行时能力包。
  */
 
-export type SkillSourceKind =
-  | 'managed'
-  | 'user'
-  | 'project'
-  | 'bundled'
-  | 'plugin'
-  | 'mcp';
+export type SkillSourceKind = 'managed' | 'user' | 'project' | 'bundled' | 'plugin' | 'mcp';
 
 export type SkillTrustLevel = 'trusted' | 'workspace' | 'remote';
 

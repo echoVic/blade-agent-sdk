@@ -4,15 +4,17 @@ import type {
   PermissionRequestId,
   SessionId,
   ToolUseId,
-} from '@/types/branded.js';
+} from '@/types/identifiers.js';
+import type { BladeConfig } from '../../agent/config.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
-import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
+import type { JsonObject } from '../../types/json.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolKind, ToolSideEffect } from './ToolKind.js';
-import type { ToolResult } from './ToolResult.js';
+import type { ToolKind, ToolSideEffect } from './kind.js';
+import type { ToolResult } from './result.js';
 
 interface QuestionOption {
   label: string;

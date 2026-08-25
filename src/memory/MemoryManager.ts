@@ -1,5 +1,5 @@
-import type { Memory, MemoryInput } from './MemoryTypes.js';
 import type { MemoryStore } from './MemoryStore.js';
+import type { Memory, MemoryInput } from './types.js';
 
 export class MemoryManager {
   constructor(private readonly store: MemoryStore) {}
@@ -32,7 +32,7 @@ export class MemoryManager {
       (memory) =>
         memory.name.toLowerCase().includes(q) ||
         memory.description.toLowerCase().includes(q) ||
-        memory.body.toLowerCase().includes(q)
+        memory.body.toLowerCase().includes(q),
     );
   }
 

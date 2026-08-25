@@ -7,30 +7,14 @@
  *   agent_start → (turn_start → [content/thinking/tool events] → turn_end)* → agent_end
  */
 
+import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import type { TokenUsage } from '../model/usage.js';
 import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
-import type {
-  ToolMessage,
-  ToolProgress,
-  ToolResult,
-} from '../tools/types/ToolResult.js';
-import type { InputId, RequestId } from '../types/branded.js';
+import type { ToolMessage, ToolProgress, ToolResult } from '../tools/types/result.js';
+import type { InputId, RequestId } from '../types/identifiers.js';
 import type { PermissionUpdate } from '../types/permissions.js';
 import type { TokenBudgetSnapshot } from './TokenBudget.js';
-
-// ===== Token 使用信息 =====
-
-export interface TokenUsageInfo {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  maxContextTokens: number;
-  cacheReadInputTokens?: number;
-  cacheMissInputTokens?: number;
-  billableInputTokens?: number;
-  reasoningTokens?: number;
-}
 
 // ===== Agent 生命周期事件 =====
 
@@ -118,56 +102,56 @@ export interface ThinkingEvent {
 /** 工具开始执行 */
 export interface ToolStartEvent {
   type: 'tool_start';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   toolKind?: 'readonly' | 'write' | 'execute';
 }
 
 /** 工具执行结束 */
 export interface ToolResultEvent {
   type: 'tool_result';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   result: ToolResult;
 }
 
 /** 工具执行进度 */
 export interface ToolProgressEvent {
   type: 'tool_progress';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   progress: ToolProgress;
 }
 
 /** 工具输出消息更新 */
 export interface ToolMessageEvent {
   type: 'tool_message';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   content: ToolMessage['content'];
 }
 
 /** 工具运行时 patch 事件 */
 export interface ToolRuntimePatchEvent {
   type: 'tool_runtime_patch';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   patch: RuntimePatch;
 }
 
 /** 工具上下文 patch 事件 */
 export interface ToolContextPatchEvent {
   type: 'tool_context_patch';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   patch: RuntimeContextPatch;
 }
 
 /** 工具注入消息事件 */
 export interface ToolNewMessagesEvent {
   type: 'tool_new_messages';
-  toolCall: ToolCall;
-  messages: Message[];
+  toolCall: ModelToolCall;
+  messages: ModelMessage[];
 }
 
 /** 工具权限更新事件 */
 export interface ToolPermissionUpdatesEvent {
   type: 'tool_permission_updates';
-  toolCall: ToolCall;
+  toolCall: ModelToolCall;
   updates: PermissionUpdate[];
 }
 
@@ -176,7 +160,7 @@ export interface ToolPermissionUpdatesEvent {
 /** Token 使用量 */
 export interface TokenUsageEvent {
   type: 'token_usage';
-  usage: TokenUsageInfo;
+  usage: TokenUsage;
 }
 
 /** Token 预算预警 */

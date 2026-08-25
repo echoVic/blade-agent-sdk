@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { PermissionMode } from '../../../types/common.js';
+import type { ModelToolCall } from '../../../model/message.js';
+import { PermissionMode } from '../../../types/constants.js';
 import { planToolExecution } from '../planToolExecution.js';
-import type { FunctionToolCall } from '../types.js';
 
-const makeCall = (name: string, args: Record<string, unknown> = {}): FunctionToolCall => ({
+const makeCall = (name: string, args: Record<string, unknown> = {}): ModelToolCall => ({
   id: `${name}-call`,
   type: 'function',
   function: {
@@ -21,10 +21,7 @@ describe('planToolExecution', () => {
   });
 
   it('returns serial mode in plan permission mode', () => {
-    const plan = planToolExecution(
-      [makeCall('Read'), makeCall('Glob')],
-      PermissionMode.PLAN,
-    );
+    const plan = planToolExecution([makeCall('Read'), makeCall('Glob')], PermissionMode.PLAN);
 
     expect(plan.mode).toBe('serial');
     expect(plan.calls.map((call) => call.function.name)).toEqual(['Read', 'Glob']);
@@ -38,14 +35,12 @@ describe('planToolExecution', () => {
   });
 
   it('delegates concurrency limits for ordinary calls without reordering them', () => {
-    const plan = planToolExecution(
-      [
-        makeCall('Edit'),
-        makeCall('Read'),
-        makeCall('Unknown'),
-        makeCall('Bash', { command: 'npm install' }),
-      ],
-    );
+    const plan = planToolExecution([
+      makeCall('Edit'),
+      makeCall('Read'),
+      makeCall('Unknown'),
+      makeCall('Bash', { command: 'npm install' }),
+    ]);
 
     expect(plan.mode).toBe('parallel');
     expect(plan.calls.map((call) => call.function.name)).toEqual([

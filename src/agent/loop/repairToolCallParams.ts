@@ -1,19 +1,17 @@
-import type { JsonObject, JsonValue } from '../../types/common.js';
-import type { FunctionToolCall } from './types.js';
+import type { ModelToolCall } from '../../model/message.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 
 export async function repairToolCallParams(
-  toolCall: FunctionToolCall,
+  toolCall: ModelToolCall,
   params: JsonObject,
 ): Promise<void> {
   if (
-    toolCall.function.name === 'Task'
-    && (typeof params.subagent_session_id !== 'string' || params.subagent_session_id.length === 0)
+    toolCall.function.name === 'Task' &&
+    (typeof params.subagent_session_id !== 'string' || params.subagent_session_id.length === 0)
   ) {
     const { nanoid } = await import('nanoid');
     params.subagent_session_id =
-      typeof params.resume === 'string' && params.resume.length > 0
-        ? params.resume
-        : nanoid();
+      typeof params.resume === 'string' && params.resume.length > 0 ? params.resume : nanoid();
   }
 
   if (typeof params.todos === 'string') {

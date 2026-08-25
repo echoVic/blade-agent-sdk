@@ -1,4 +1,5 @@
 import type { HookEvent } from '../types/constants.js';
+import type { MessageId, ToolUseId } from '../types/identifiers.js';
 
 export type RuntimePatchScope = 'turn' | 'session';
 
@@ -47,8 +48,8 @@ export interface RuntimeToolDiscoveryPatch {
 
 export interface RuntimePatchProvenance {
   toolName?: string;
-  toolCallId?: string;
-  toolUseUuid?: string | null;
+  toolCallId?: ToolUseId;
+  toolMessageId?: MessageId | null;
   appliedAt: number;
 }
 
@@ -119,9 +120,7 @@ export function summarizeRuntimePatchApplications(
 
   return {
     promptAppends,
-    mergedPromptAppend: promptAppends.length > 0
-      ? promptAppends.join('\n\n---\n\n')
-      : undefined,
+    mergedPromptAppend: promptAppends.length > 0 ? promptAppends.join('\n\n---\n\n') : undefined,
     mergedEnvironment,
   };
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ContentPart, Message } from '../../services/ChatServiceInterface.js';
+import type { ModelContent, ModelMessage } from '../../model/message.js';
 import { TokenCounter } from '../TokenCounter.js';
 
 describe('TokenCounter', () => {
@@ -9,16 +9,14 @@ describe('TokenCounter', () => {
 
   describe('countTokens', () => {
     it('should count tokens for simple messages', () => {
-      const messages: Message[] = [
-        { role: 'user', content: 'Hello, world!' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: 'Hello, world!' }];
 
       const count = TokenCounter.countTokens(messages, 'gpt-4');
       expect(count).toBeGreaterThan(0);
     });
 
     it('should count tokens for multiple messages', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there!' },
         { role: 'user', content: 'How are you?' },
@@ -29,36 +27,30 @@ describe('TokenCounter', () => {
     });
 
     it('should handle empty messages', () => {
-      const messages: Message[] = [];
+      const messages: ModelMessage[] = [];
       const count = TokenCounter.countTokens(messages, 'gpt-4');
       expect(count).toBe(0);
     });
 
     it('should handle messages with empty content', () => {
-      const messages: Message[] = [
-        { role: 'user', content: '' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: '' }];
 
       const count = TokenCounter.countTokens(messages, 'gpt-4');
       expect(count).toBeGreaterThan(0);
     });
 
     it('should handle messages with name field', () => {
-      const messages: Message[] = [
-        { role: 'user', content: 'Hello', name: 'TestUser' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: 'Hello', name: 'TestUser' }];
 
       const count = TokenCounter.countTokens(messages, 'gpt-4');
       expect(count).toBeGreaterThan(0);
     });
 
     it('should handle complex content (array)', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         {
           role: 'user',
-          content: [
-            { type: 'text', text: 'What is in this image?' },
-          ] as ContentPart[],
+          content: [{ type: 'text', text: 'What is in this image?' }] as ModelContent[],
         },
       ];
 
@@ -67,7 +59,7 @@ describe('TokenCounter', () => {
     });
 
     it('should handle tool calls', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         {
           role: 'assistant',
           content: '',
@@ -89,9 +81,7 @@ describe('TokenCounter', () => {
     });
 
     it('should use fallback encoding for unknown models', () => {
-      const messages: Message[] = [
-        { role: 'user', content: 'Hello, world!' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: 'Hello, world!' }];
 
       const count = TokenCounter.countTokens(messages, 'unknown-model-xyz');
       expect(count).toBeGreaterThan(0);
@@ -108,9 +98,7 @@ describe('TokenCounter', () => {
 
   describe('shouldCompact', () => {
     it('should return false when under threshold', () => {
-      const messages: Message[] = [
-        { role: 'user', content: 'Hello' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: 'Hello' }];
 
       const shouldCompact = TokenCounter.shouldCompact(messages, 'gpt-4', 4096);
       expect(shouldCompact).toBe(false);
@@ -118,16 +106,14 @@ describe('TokenCounter', () => {
 
     it('should return true when over threshold', () => {
       const longContent = 'Hello world. '.repeat(200);
-      const messages: Message[] = [
-        { role: 'user', content: longContent },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: longContent }];
 
       const shouldCompact = TokenCounter.shouldCompact(messages, 'gpt-4', 100, 0.5);
       expect(shouldCompact).toBe(true);
     });
 
     it('should respect custom threshold', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         { role: 'user', content: 'Hello world, this is a test message.' },
       ];
 
@@ -164,9 +150,7 @@ describe('TokenCounter', () => {
 
   describe('clearCache', () => {
     it('should clear encoding cache', () => {
-      const messages: Message[] = [
-        { role: 'user', content: 'Hello' },
-      ];
+      const messages: ModelMessage[] = [{ role: 'user', content: 'Hello' }];
 
       TokenCounter.countTokens(messages, 'gpt-4');
       TokenCounter.clearCache();

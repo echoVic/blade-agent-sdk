@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ToolKind } from '../../tools/types/ToolKind.js';
-import { PermissionMode } from '../common.js';
+import { ToolKind } from '../../tools/types/kind.js';
+import { PermissionMode } from '../constants.js';
 import {
   createCompositePermissionHandler,
   createModePermissionHandler,
@@ -8,7 +8,9 @@ import {
   createRuleBasedPermissionHandler,
 } from '../permissions.js';
 
-function createRequest(overrides: Partial<Parameters<ReturnType<typeof createModePermissionHandler>>[0]> = {}) {
+function createRequest(
+  overrides: Partial<Parameters<ReturnType<typeof createModePermissionHandler>>[0]> = {},
+) {
   return {
     toolName: 'ExampleTool',
     input: {},
@@ -30,16 +32,18 @@ describe('createModePermissionHandler', () => {
   it('denies non-readonly tools in plan mode', async () => {
     const handler = createModePermissionHandler(PermissionMode.DEFAULT);
 
-    const result = await handler(createRequest({
-      permissionMode: PermissionMode.PLAN,
-      toolKind: ToolKind.Write,
-      toolMeta: {
-        sideEffect: 'idempotent',
-        isReadOnly: false,
-        isConcurrencySafe: false,
-        isDestructive: false,
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        permissionMode: PermissionMode.PLAN,
+        toolKind: ToolKind.Write,
+        toolMeta: {
+          sideEffect: 'idempotent',
+          isReadOnly: false,
+          isConcurrencySafe: false,
+          isDestructive: false,
+        },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'deny',
@@ -51,15 +55,17 @@ describe('createModePermissionHandler', () => {
   it('auto-allows readonly tools even when the default mode is ask-oriented', async () => {
     const handler = createModePermissionHandler(PermissionMode.DEFAULT);
 
-    const result = await handler(createRequest({
-      toolKind: ToolKind.ReadOnly,
-      toolMeta: {
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        toolKind: ToolKind.ReadOnly,
+        toolMeta: {
+          sideEffect: 'pure',
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          isDestructive: false,
+        },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'allow',
@@ -69,9 +75,11 @@ describe('createModePermissionHandler', () => {
   it('uses the factory default mode when the request does not override it', async () => {
     const handler = createModePermissionHandler(PermissionMode.YOLO);
 
-    const result = await handler(createRequest({
-      permissionMode: undefined,
-    }));
+    const result = await handler(
+      createRequest({
+        permissionMode: undefined,
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'allow',
@@ -85,17 +93,19 @@ describe('createRuleBasedPermissionHandler', () => {
       allow: ['Read:/tmp/example.ts'],
     });
 
-    const result = await handler(createRequest({
-      toolName: 'Read',
-      toolKind: ToolKind.ReadOnly,
-      toolMeta: {
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        signature: 'Read:/tmp/example.ts',
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        toolName: 'Read',
+        toolKind: ToolKind.ReadOnly,
+        toolMeta: {
+          sideEffect: 'pure',
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          isDestructive: false,
+          signature: 'Read:/tmp/example.ts',
+        },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'allow',
@@ -107,17 +117,19 @@ describe('createRuleBasedPermissionHandler', () => {
       allow: ['Read:/tmp/allowed.ts'],
     });
 
-    const result = await handler(createRequest({
-      toolName: 'Read',
-      toolKind: ToolKind.ReadOnly,
-      toolMeta: {
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        signature: 'Read:/tmp/other.ts',
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        toolName: 'Read',
+        toolKind: ToolKind.ReadOnly,
+        toolMeta: {
+          sideEffect: 'pure',
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          isDestructive: false,
+          signature: 'Read:/tmp/other.ts',
+        },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'ask',
@@ -130,9 +142,11 @@ describe('createPathSafetyPermissionHandler', () => {
   it('denies dangerous system paths', async () => {
     const handler = createPathSafetyPermissionHandler();
 
-    const result = await handler(createRequest({
-      affectedPaths: ['/etc/passwd'],
-    }));
+    const result = await handler(
+      createRequest({
+        affectedPaths: ['/etc/passwd'],
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'deny',
@@ -143,18 +157,20 @@ describe('createPathSafetyPermissionHandler', () => {
   it('denies highly sensitive files without an explicit allow rule', async () => {
     const handler = createPathSafetyPermissionHandler();
 
-    const result = await handler(createRequest({
-      toolName: 'Read',
-      toolKind: ToolKind.ReadOnly,
-      affectedPaths: ['/tmp/id_rsa'],
-      toolMeta: {
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        signature: 'Read:/tmp/id_rsa',
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        toolName: 'Read',
+        toolKind: ToolKind.ReadOnly,
+        affectedPaths: ['/tmp/id_rsa'],
+        toolMeta: {
+          sideEffect: 'pure',
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          isDestructive: false,
+          signature: 'Read:/tmp/id_rsa',
+        },
+      }),
+    );
 
     expect(result.behavior).toBe('deny');
     if (result.behavior !== 'deny') {
@@ -169,18 +185,20 @@ describe('createPathSafetyPermissionHandler', () => {
       explicitAllowRules: ['Read:/tmp/id_rsa'],
     });
 
-    const result = await handler(createRequest({
-      toolName: 'Read',
-      toolKind: ToolKind.ReadOnly,
-      affectedPaths: ['/tmp/id_rsa'],
-      toolMeta: {
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        signature: 'Read:/tmp/id_rsa',
-      },
-    }));
+    const result = await handler(
+      createRequest({
+        toolName: 'Read',
+        toolKind: ToolKind.ReadOnly,
+        affectedPaths: ['/tmp/id_rsa'],
+        toolMeta: {
+          sideEffect: 'pure',
+          isReadOnly: true,
+          isConcurrencySafe: true,
+          isDestructive: false,
+          signature: 'Read:/tmp/id_rsa',
+        },
+      }),
+    );
 
     expect(result.behavior).toBe('ask');
     if (result.behavior !== 'ask') {
@@ -208,9 +226,11 @@ describe('createCompositePermissionHandler', () => {
       }),
     ]);
 
-    const result = await handler(createRequest({
-      input: { value: 'original' },
-    }));
+    const result = await handler(
+      createRequest({
+        input: { value: 'original' },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'allow',
@@ -231,9 +251,11 @@ describe('createCompositePermissionHandler', () => {
       }),
     ]);
 
-    const result = await handler(createRequest({
-      input: { value: 'original' },
-    }));
+    const result = await handler(
+      createRequest({
+        input: { value: 'original' },
+      }),
+    );
 
     expect(result).toEqual({
       behavior: 'ask',

@@ -1,21 +1,21 @@
-import { type Dispatcher, ProxyAgent, fetch as undiciFetch } from 'undici';
+import {
+  type Dispatcher,
+  ProxyAgent,
+  type Response as UndiciResponse,
+  fetch as undiciFetch,
+} from 'undici';
 import { z } from 'zod';
-import type { JsonValue } from '../../../types/common.js';
+import type { JsonValue } from '../../../types/json.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-    ExecutionContext,
-    WebSearchMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { WebSearchMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { getSearchCache } from './SearchCache.js';
-import {
-    getAllProviders,
-    getProviderCount,
-    type SearchProvider,
-} from './searchProviders.js';
+import { getAllProviders, getProviderCount, type SearchProvider } from './searchProviders.js';
 
 // ============================================================================
 // 类型定义
@@ -88,8 +88,8 @@ async function fetchWithTimeout(
   options: { headers: Record<string, string>; method?: string; body?: string },
   timeout: number,
   externalSignal?: AbortSignal,
-  dispatcher?: Dispatcher
-): Promise<Response> {
+  dispatcher?: Dispatcher,
+): Promise<UndiciResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const abortListener = () => controller.abort();
@@ -101,7 +101,7 @@ async function fetchWithTimeout(
       signal: controller.signal,
       dispatcher,
     });
-    return response as unknown as Response;
+    return response;
   } catch (error) {
     if (getErrorName(error) === 'AbortError') {
       throw new Error('搜索请求超时或被中止');
@@ -121,7 +121,7 @@ async function fetchWithRetry(
   options: { headers: Record<string, string>; method?: string; body?: string },
   timeout: number,
   signal?: AbortSignal,
-  dispatcher?: Dispatcher
+  dispatcher?: Dispatcher,
 ): Promise<Response> {
   let lastError: Error | null = null;
 
@@ -138,10 +138,7 @@ async function fetchWithRetry(
 
       // 如果还有重试机会
       if (attempt < RETRY_CONFIG.maxRetries - 1) {
-        const delay = Math.min(
-          RETRY_CONFIG.baseDelay * 2 ** attempt,
-          RETRY_CONFIG.maxDelay
-        );
+        const delay = Math.min(RETRY_CONFIG.baseDelay * 2 ** attempt, RETRY_CONFIG.maxDelay);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -162,7 +159,7 @@ async function searchWithProvider(
   query: string,
   timeout: number,
   signal?: AbortSignal,
-  dispatcher?: Dispatcher
+  dispatcher?: Dispatcher,
 ): Promise<{ results: WebSearchResult[]; providerName: string }> {
   // 检查缓存
   const cache = getSearchCache();
@@ -205,13 +202,7 @@ async function searchWithProvider(
     options.body = JSON.stringify(provider.buildBody(query));
   }
 
-  const response = await fetchWithRetry(
-    url,
-    options,
-    timeout,
-    signal,
-    dispatcher
-  );
+  const response = await fetchWithRetry(url, options, timeout, signal, dispatcher);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -239,7 +230,7 @@ async function searchWithProvider(
 async function searchWithFallback(
   query: string,
   timeout: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<{ results: WebSearchResult[]; providerName: string }> {
   const providers = getAllProviders();
   const dispatcher = getProxyAgent();
@@ -254,13 +245,7 @@ async function searchWithFallback(
     }
 
     try {
-      return await searchWithProvider(
-        provider,
-        query,
-        timeout,
-        signal,
-        dispatcher
-      );
+      return await searchWithProvider(provider, query, timeout, signal, dispatcher);
     } catch (error) {
       const errorMsg = `${provider.name}: ${getErrorMessage(error)}`;
       errors.push(errorMsg);
@@ -308,7 +293,7 @@ function matchesDomain(hostname: string, domain: string): boolean {
 function applyDomainFilters(
   results: WebSearchResult[],
   allowedDomains: string[],
-  blockedDomains: string[]
+  blockedDomains: string[],
 ): WebSearchResult[] {
   return results.filter((result) => {
     const hostname = extractHostname(result.url);
@@ -354,20 +339,22 @@ export const webSearchTool = createTool({
   sideEffect: 'pure',
   interruptBehavior: 'cancel',
 
-  schema: lazySchema(() => z.object({
-    query: z
-      .string()
-      .min(2, 'Search query must be at least 2 characters')
-      .describe('Search query'),
-    allowed_domains: z
-      .array(z.string().min(1))
-      .optional()
-      .describe('Return results only from these domains (optional)'),
-    blocked_domains: z
-      .array(z.string().min(1))
-      .optional()
-      .describe('Exclude results from these domains (optional)'),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      query: z
+        .string()
+        .min(2, 'Search query must be at least 2 characters')
+        .describe('Search query'),
+      allowed_domains: z
+        .array(z.string().min(1))
+        .optional()
+        .describe('Return results only from these domains (optional)'),
+      blocked_domains: z
+        .array(z.string().min(1))
+        .optional()
+        .describe('Exclude results from these domains (optional)'),
+    }),
+  ),
 
   description: {
     short: 'Search the web and use the results to inform responses',
@@ -419,7 +406,7 @@ IMPORTANT - Use the correct year in search queries:
       const { results: rawResults, providerName } = await searchWithFallback(
         query,
         SEARCH_TIMEOUT,
-        signal
+        signal,
       );
       yield {
         kind: 'message',
@@ -427,11 +414,7 @@ IMPORTANT - Use the correct year in search queries:
       };
 
       // 应用域名过滤
-      const filteredResults = applyDomainFilters(
-        rawResults,
-        allowedDomains,
-        blockedDomains
-      );
+      const filteredResults = applyDomainFilters(rawResults, allowedDomains, blockedDomains);
       const limitedResults = filteredResults.slice(0, MAX_RESULTS);
 
       const resultPayload: WebSearchPayload = {

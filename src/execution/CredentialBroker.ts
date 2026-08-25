@@ -2,8 +2,8 @@ import { nanoid } from 'nanoid';
 import type {
   CredentialLeaseId,
   ExecutionId,
-} from '../types/branded.js';
-import { CredentialLeaseId as toCredentialLeaseId } from '../types/branded.js';
+} from '../types/identifiers.js';
+import { CredentialLeaseId as toCredentialLeaseId } from '../types/identifiers.js';
 import { ExecutionHostError } from './ExecutionHost.js';
 
 export interface CredentialRequest {

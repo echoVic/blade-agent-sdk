@@ -161,14 +161,15 @@ const subpathOutput = run(process.execPath, [
     "const node = await import('@blade-ai/agent-sdk/node');",
     "const protocol = await import('@blade-ai/agent-sdk/protocol');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
+    "const model = await import('@blade-ai/agent-sdk/model');",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware, model.PROVIDER_TYPES.length);",
     "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
     "console.log(typeof server.EphemeralCredentialBroker, typeof server.ExecutionHostError, typeof node.DockerExecutionHost, core.ExecutionId('execution-1'), core.ExecutionCheckpointId('checkpoint-1'), core.CredentialLeaseId('credential-1'));",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function function function function function function function 1 function',
+  'default request_accepted empty function function function default function function function function function function function function function function function 1 function 6',
   'subpath imports',
 );
 assertIncludes(
@@ -197,6 +198,7 @@ verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');
 verifyBrowserSafeDist('dist/middleware/index.js');
+verifyBrowserSafeDist('dist/model/index.js');
 verifyBrowserSafeDist('dist/protocol/index.js');
 verifyBrowserSafeDist('dist/server/testing/index.js');
 verifyBrowserSafeDist('dist/tools/index.js');

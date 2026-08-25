@@ -1,5 +1,6 @@
 import type { HookEvent } from '../types/constants.js';
-import type { JsonValue } from '../types/common.js';
+import type { SessionId, SpanId, TraceEventId, TraceId } from '../types/identifiers.js';
+import type { JsonValue } from '../types/json.js';
 
 export type TraceStatus = 'running' | 'success' | 'error' | 'aborted';
 export type TraceSpanKind = 'session' | 'turn' | 'tool' | 'hook';
@@ -13,18 +14,18 @@ export interface TracePayloadSummary {
 }
 
 export interface TraceEvent {
-  id: string;
-  traceId: string;
-  spanId?: string;
+  id: TraceEventId;
+  traceId: TraceId;
+  spanId?: SpanId;
   type: string;
   timestamp: string;
   data?: Record<string, JsonValue | TracePayloadSummary | undefined>;
 }
 
 export interface TraceSpan {
-  id: string;
-  traceId: string;
-  parentId?: string;
+  id: SpanId;
+  traceId: TraceId;
+  parentId?: SpanId;
   kind: TraceSpanKind;
   name: string;
   status: TraceStatus;
@@ -35,8 +36,8 @@ export interface TraceSpan {
 }
 
 export interface AgentTrace {
-  id: string;
-  sessionId: string;
+  id: TraceId;
+  sessionId: SessionId;
   status: TraceStatus;
   startedAt: string;
   endedAt?: string;
@@ -56,7 +57,7 @@ export interface ObservabilityOptions {
 }
 
 export interface HookTraceCollector {
-  recordHookStart(event: HookEvent, payload: Record<string, unknown>): string;
-  recordHookEnd(spanId: string, payload?: Record<string, unknown>): void;
-  recordHookError(spanId: string, error: unknown): void;
+  recordHookStart(event: HookEvent, payload: Record<string, unknown>): SpanId;
+  recordHookEnd(spanId: SpanId, payload?: Record<string, unknown>): void;
+  recordHookError(spanId: SpanId, error: unknown): void;
 }

@@ -4,17 +4,16 @@ import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
-import {
-  AgentId,
-  ExecutionLeaseId,
-  FencingToken,
-  SessionId,
-} from '../../../types/branded.js';
+import { AgentId, ExecutionLeaseId, FencingToken, SessionId } from '../../../types/identifiers.js';
 import type { ChatContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
 const runAgenticLoop = vi.fn<
-  (message: string, context: ChatContext, options?: LoopOptions) => Promise<{
+  (
+    message: string,
+    context: ChatContext,
+    options?: LoopOptions,
+  ) => Promise<{
     success: boolean;
     finalMessage?: string;
     error?: { message?: string };
@@ -92,13 +91,15 @@ describe('BackgroundAgentManager', () => {
       },
     });
 
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Inspect repo',
-      prompt: 'inspect',
-      snapshot,
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Inspect repo',
+        prompt: 'inspect',
+        snapshot,
+      }),
+    );
 
     await manager.waitForCompletion(agentId, 1000);
 
@@ -127,12 +128,14 @@ describe('BackgroundAgentManager', () => {
       providerRegistry,
     );
 
-    const agentId = AgentId(await managerWithMiddleware.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Inspect repo',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await managerWithMiddleware.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Inspect repo',
+        prompt: 'inspect',
+      }),
+    );
     await managerWithMiddleware.waitForCompletion(agentId, 1000);
 
     expect(createAgent).toHaveBeenLastCalledWith(
@@ -147,12 +150,14 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('updates the session description when resuming with a new description', async () => {
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Original description',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Original description',
+        prompt: 'inspect',
+      }),
+    );
 
     await manager.waitForCompletion(agentId, 1000);
 
@@ -175,11 +180,7 @@ describe('BackgroundAgentManager', () => {
 
   it('maintains separate lifecycle and work controllers for a running agent', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (
-        _message: string,
-        _context: ChatContext,
-        options?: LoopOptions,
-      ) =>
+      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -194,19 +195,26 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Long running task',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Long running task',
+        prompt: 'inspect',
+      }),
+    );
 
-    const runtime = (manager as unknown as {
-      runningAgents: Map<string, {
-        lifecycleController: AbortController;
-        workController: AbortController;
-      }>;
-    }).runningAgents.get(agentId);
+    const runtime = (
+      manager as unknown as {
+        runningAgents: Map<
+          string,
+          {
+            lifecycleController: AbortController;
+            workController: AbortController;
+          }
+        >;
+      }
+    ).runningAgents.get(agentId);
 
     expect(runtime).toBeDefined();
     expect(runtime?.lifecycleController).toBeInstanceOf(AbortController);
@@ -223,11 +231,7 @@ describe('BackgroundAgentManager', () => {
 
   it('preserves cancelled status after killing a running agent', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (
-        _message: string,
-        _context: ChatContext,
-        options?: LoopOptions,
-      ) =>
+      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -242,12 +246,14 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Long running task',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Long running task',
+        prompt: 'inspect',
+      }),
+    );
 
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
     await expect(manager.killAgent(agentId)).resolves.toBe(true);
@@ -258,11 +264,7 @@ describe('BackgroundAgentManager', () => {
 
   it('seals new admissions only after all background agents settle', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (
-        _message: string,
-        _context: ChatContext,
-        options?: LoopOptions,
-      ) =>
+      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -277,12 +279,14 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Handoff blocker',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Handoff blocker',
+        prompt: 'inspect',
+      }),
+    );
 
     expect(manager.getActiveAgentIds()).toEqual([agentId]);
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
@@ -303,11 +307,7 @@ describe('BackgroundAgentManager', () => {
 
   it('seals admission and cancels every running agent after ownership loss', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (
-        _message: string,
-        _context: ChatContext,
-        options?: LoopOptions,
-      ) =>
+      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -321,12 +321,14 @@ describe('BackgroundAgentManager', () => {
           );
         }),
     );
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Lease-owned work',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Lease-owned work',
+        prompt: 'inspect',
+      }),
+    );
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
 
     await expect(manager.sealCancelAndWait()).resolves.toEqual([agentId]);
@@ -350,12 +352,14 @@ describe('BackgroundAgentManager', () => {
       });
       return { success: false, error: { message: 'cancelled late' } };
     });
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Unresponsive work',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Unresponsive work',
+        prompt: 'inspect',
+      }),
+    );
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
 
     await expect(manager.sealCancelAndWait(10)).rejects.toThrow(
@@ -369,11 +373,7 @@ describe('BackgroundAgentManager', () => {
 
   it('prevents a stale owner from overwriting successor state or output', async () => {
     const store = AgentSessionStore.create();
-    const oldManager = BackgroundAgentManager.create(
-      NOOP_LOGGER,
-      store,
-      SessionId('root-session'),
-    );
+    const oldManager = BackgroundAgentManager.create(NOOP_LOGGER, store, SessionId('root-session'));
     const successorManager = BackgroundAgentManager.create(
       NOOP_LOGGER,
       store,
@@ -389,7 +389,8 @@ describe('BackgroundAgentManager', () => {
       fencingToken: FencingToken(2),
     };
     let activeToken = 1;
-    const boundary = (token: number) =>
+    const boundary =
+      (token: number) =>
       async <T>(operation: () => Promise<T>): Promise<T> => {
         if (activeToken !== token) {
           throw new DurableExecutionLeaseError(
@@ -471,9 +472,7 @@ describe('BackgroundAgentManager', () => {
       outputFile: successorOutputFile,
     });
     if (successorOutputFile) {
-      await expect(readFile(successorOutputFile, 'utf8')).resolves.toContain(
-        'successor result',
-      );
+      await expect(readFile(successorOutputFile, 'utf8')).resolves.toContain('successor result');
       await rm(successorOutputFile, { force: true });
     }
   });

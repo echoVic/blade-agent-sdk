@@ -8,9 +8,9 @@ import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
+import type { ModelMessage } from '../../model/message.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
@@ -19,20 +19,13 @@ import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import {
-    completeToolExecution,
-    type ToolEffect,
-    type ToolResult,
-} from '../../tools/types/index.js';
-import { ToolKind } from '../../tools/types/ToolKind.js';
-import {
-    InputId,
-    RequestId,
-    SessionId,
-} from '../../types/branded.js';
-import type { BladeConfig } from '../../types/common.js';
-import { PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
+import type { ToolEffect } from '../../tools/types/effects.js';
+import { ToolKind } from '../../tools/types/kind.js';
+import type { ToolResult } from '../../tools/types/result.js';
+import { completeToolExecution } from '../../tools/types/result.js';
+import { HookEvent, PermissionMode } from '../../types/constants.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
+import type { BladeConfig } from '../config.js';
 import { LoopRunner } from '../LoopRunner.js';
 import type { ModelManager } from '../ModelManager.js';
 import { ConversationState } from '../state/ConversationState.js';
@@ -56,7 +49,7 @@ interface MockToolResult {
   effects?: ToolEffect[];
   runtimePatch?: unknown;
   contextPatch?: unknown;
-  newMessages?: Message[];
+  newMessages?: ModelMessage[];
 }
 
 function mockToolExecution<TArgs extends unknown[]>(
@@ -86,7 +79,10 @@ function mockToolExecution<TArgs extends unknown[]>(
       };
     }
     if (newMessages) {
-      yield { kind: 'effect' as const, effect: { type: 'newMessages' as const, messages: newMessages } };
+      yield {
+        kind: 'effect' as const,
+        effect: { type: 'newMessages' as const, messages: newMessages },
+      };
     }
     return result as ToolResult;
   });
@@ -106,7 +102,9 @@ function createRetryEventsMock<TArgs extends unknown[], TResult>(
   });
 }
 
-function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}): MockModelManager {
+function createMockModelManager(
+  overrides: Partial<Record<string, unknown>> = {},
+): MockModelManager {
   const mockContextMgr: MockContextMgr = {
     saveAppliedInputMessage: vi.fn(async () => 'input-message-uuid'),
     saveMessage: vi.fn(async () => 'uuid-1'),
@@ -120,7 +118,7 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
     usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
   }));
   return {
-    getChatService: () => ({
+    getModelService: () => ({
       chat: chatMock,
       streamChat: vi.fn(async function* () {}),
       getConfig: () => ({
@@ -193,7 +191,7 @@ describe('LoopRunner', () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
       let providerClosed = false;
-      const chatService = {
+      const modelService = {
         streamChat: vi.fn(async function* () {
           try {
             yield { content: 'partial' };
@@ -206,7 +204,7 @@ describe('LoopRunner', () => {
           maxContextTokens: 128000,
         }),
       };
-      vi.spyOn(mm, 'getChatService').mockReturnValue(chatService as never);
+      vi.spyOn(mm, 'getModelService').mockReturnValue(modelService as never);
       const onAborted = vi.fn(async () => {});
       const runner = new LoopRunner(
         baseConfig,
@@ -283,10 +281,7 @@ describe('LoopRunner', () => {
       });
 
       await expect(
-        runner.runLoop(
-          'Test message',
-          createContext({ runWithExecutionLease }),
-        ),
+        runner.runLoop('Test message', createContext({ runWithExecutionLease })),
       ).rejects.toBe(leaseError);
 
       expect(runWithExecutionLease).toHaveBeenCalledOnce();
@@ -299,11 +294,13 @@ describe('LoopRunner', () => {
       mm._chat
         .mockResolvedValueOnce({
           content: '',
-          toolCalls: [{
-            id: 'lease-progress-tool',
-            type: 'function',
-            function: { name: 'Read', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'lease-progress-tool',
+              type: 'function',
+              function: { name: 'Read', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
         })
         .mockResolvedValueOnce({
@@ -332,16 +329,16 @@ describe('LoopRunner', () => {
       const mm = createMockModelManager();
       mm._chat.mockResolvedValueOnce({
         content: '',
-        toolCalls: [{
-          id: 'containment-tool',
-          type: 'function',
-          function: { name: 'Task', arguments: '{}' },
-        }],
+        toolCalls: [
+          {
+            id: 'containment-tool',
+            type: 'function',
+            function: { name: 'Task', arguments: '{}' },
+          },
+        ],
         usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
       });
-      const containmentError = new HookProcessContainmentError(
-        'Hook process cleanup failed',
-      );
+      const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
       const pipeline = createMockPipeline();
       pipeline.execute = vi.fn(async function* () {
         yield* [] as never[];
@@ -349,9 +346,7 @@ describe('LoopRunner', () => {
       });
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
-      await expect(
-        runner.runLoop('Run a tool', createContext()),
-      ).rejects.toBe(containmentError);
+      await expect(runner.runLoop('Run a tool', createContext())).rejects.toBe(containmentError);
     });
 
     it('persists streaming tool turns in provider-compatible order', async () => {
@@ -397,7 +392,7 @@ describe('LoopRunner', () => {
         yield { finishReason: 'stop' };
       });
       const modelManager = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: vi.fn(),
           streamChat,
           getConfig: () => ({
@@ -476,12 +471,7 @@ describe('LoopRunner', () => {
     it('should let request maxTurns override the Session default', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(
-        baseConfig,
-        { ...baseOptions, maxTurns: 10 },
-        mm,
-        pipeline,
-      );
+      const runner = new LoopRunner(baseConfig, { ...baseOptions, maxTurns: 10 }, mm, pipeline);
 
       const result = await runner.runLoop('Hello', createContext(), {
         maxTurns: 0,
@@ -520,7 +510,14 @@ describe('LoopRunner', () => {
       // (it's managed by ConversationState), but may contain non-root system messages
       // with valid _systemSource (e.g., catalog, tool_injection).
       const hasRootPrompt = context.messages.some(
-        m => m.role === 'system' && !(m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata) && '_systemSource' in m.metadata)
+        (m) =>
+          m.role === 'system' &&
+          !(
+            m.metadata &&
+            typeof m.metadata === 'object' &&
+            !Array.isArray(m.metadata) &&
+            '_systemSource' in m.metadata
+          ),
       );
       expect(hasRootPrompt).toBe(false);
     });
@@ -528,12 +525,7 @@ describe('LoopRunner', () => {
     it('omits environment context when requested by the chat context', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(
-        baseConfig,
-        { systemPrompt: 'BASE PROMPT' },
-        mm,
-        pipeline,
-      );
+      const runner = new LoopRunner(baseConfig, { systemPrompt: 'BASE PROMPT' }, mm, pipeline);
 
       const context = createContext({ omitEnvironment: true });
       await runner.runLoop('Hello', context);
@@ -557,11 +549,13 @@ describe('LoopRunner', () => {
         if (chatCalls.length === 1) {
           return {
             content: 'Activating skill',
-            toolCalls: [{
-              id: 'skill-call',
-              type: 'function' as const,
-              function: { name: 'Skill', arguments: '{}' },
-            }],
+            toolCalls: [
+              {
+                id: 'skill-call',
+                type: 'function' as const,
+                function: { name: 'Skill', arguments: '{}' },
+              },
+            ],
             usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
           };
         }
@@ -573,7 +567,7 @@ describe('LoopRunner', () => {
       });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -637,21 +631,23 @@ describe('LoopRunner', () => {
       const result = await runner.runLoop('Hello', context);
 
       expect(result.success).toBe(true);
-      expect(runner.skillContext).toEqual(expect.objectContaining({
-        skillId: 'reader',
-        skillName: 'reader',
-        allowedTools: ['Read'],
-        basePath: '/tmp/reader',
-      }));
+      expect(runner.skillContext).toEqual(
+        expect.objectContaining({
+          skillId: 'reader',
+          skillName: 'reader',
+          allowedTools: ['Read'],
+          basePath: '/tmp/reader',
+        }),
+      );
       expect(chatFn).toHaveBeenCalledTimes(2);
-      expect(chatCalls[0]).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'Read' }),
-        expect.objectContaining({ name: 'Write' }),
-        expect.objectContaining({ name: 'Skill' }),
-      ]));
-      expect(chatCalls[1]).toEqual([
-        expect.objectContaining({ name: 'Read' }),
-      ]);
+      expect(chatCalls[0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'Read' }),
+          expect.objectContaining({ name: 'Write' }),
+          expect.objectContaining({ name: 'Skill' }),
+        ]),
+      );
+      expect(chatCalls[1]).toEqual([expect.objectContaining({ name: 'Read' })]);
     });
 
     it('applies toolSourcePolicy when exposing tools for a turn', () => {
@@ -667,10 +663,11 @@ describe('LoopRunner', () => {
           sideEffect: 'pure',
           description: { short: 'Builtin tool' },
           schema: z.object({}),
-          execute: () => completeToolExecution({
-            status: 'success',
-            model: 'builtin',
-          }),
+          execute: () =>
+            completeToolExecution({
+              status: 'success',
+              model: 'builtin',
+            }),
         }),
         {
           kind: 'builtin',
@@ -687,10 +684,11 @@ describe('LoopRunner', () => {
           sideEffect: 'pure',
           description: { short: 'Remote tool' },
           schema: z.object({}),
-          execute: () => completeToolExecution({
-            status: 'success',
-            model: 'remote',
-          }),
+          execute: () =>
+            completeToolExecution({
+              status: 'success',
+              model: 'remote',
+            }),
         }),
         {
           kind: 'mcp',
@@ -728,40 +726,49 @@ describe('LoopRunner', () => {
             permissionMode: PermissionMode,
           ) => { getTools(): Array<{ name: string }> };
         }
-      ).createLoopState(createContext(), new ConversationState(null, [], { role: 'user', content: 'test' }), PermissionMode.DEFAULT);
+      ).createLoopState(
+        createContext(),
+        new ConversationState(null, [], { role: 'user', content: 'test' }),
+        PermissionMode.DEFAULT,
+      );
 
       expect(loopState.getTools().map((tool) => tool.name)).toEqual(['BuiltinRead']);
     });
 
     it('caches skill activation analysis until the message list changes', async () => {
       const analyzeFilesSpy = vi.spyOn(FileAnalyzerModule, 'analyzeFiles');
-      const chatFn = vi.fn(async (_messages, tools) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('Skill')) {
+      const chatFn = vi
+        .fn(async (_messages, tools) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('Skill')) {
+            return {
+              content: 'Activate skill',
+              toolCalls: [
+                {
+                  id: 'skill-call',
+                  type: 'function' as const,
+                  function: { name: 'Skill', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Activate skill',
-            toolCalls: [{
+            content: 'Done',
+            toolCalls: [],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Activate skill',
+          toolCalls: [
+            {
               id: 'skill-call',
               type: 'function' as const,
               function: { name: 'Skill', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Done',
-          toolCalls: [],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Activate skill',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -771,7 +778,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -822,9 +829,12 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-      const result = await runner.runLoop('Hello', createContext({
-        systemPrompt: 'BASE PROMPT',
-      }));
+      const result = await runner.runLoop(
+        'Hello',
+        createContext({
+          systemPrompt: 'BASE PROMPT',
+        }),
+      );
 
       expect(result.success).toBe(true);
       expect(analyzeFilesSpy).toHaveBeenCalledTimes(2);
@@ -832,20 +842,22 @@ describe('LoopRunner', () => {
 
     it('loads deferred tools on the next turn after DiscoverTools activation', async () => {
       const chatCalls: Array<Array<{ name: string }>> = [];
-      const chatMessages: Message[][] = [];
+      const chatMessages: ModelMessage[][] = [];
       const chatFn = vi.fn(async (incomingMessages, tools) => {
-        chatMessages.push(incomingMessages as Message[]);
+        chatMessages.push(incomingMessages as ModelMessage[]);
         const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
         chatCalls.push(tools as Array<{ name: string }>);
 
         if (toolNames.includes('DiscoverTools') && !toolNames.includes('HeavyInspect')) {
           return {
             content: 'Load hidden tool',
-            toolCalls: [{
-              id: 'discover-call',
-              type: 'function' as const,
-              function: { name: 'DiscoverTools', arguments: '{"query":"heavy"}' },
-            }],
+            toolCalls: [
+              {
+                id: 'discover-call',
+                type: 'function' as const,
+                function: { name: 'DiscoverTools', arguments: '{"query":"heavy"}' },
+              },
+            ],
             usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
           };
         }
@@ -858,17 +870,18 @@ describe('LoopRunner', () => {
       });
 
       const mm = createMockModelManager();
-      mm.getChatService = () => ({
-        chat: chatFn,
-        streamChat: vi.fn(async function* () {}),
-        getConfig: () => ({
-          model: 'test-model',
-          maxContextTokens: 128000,
-          apiKey: 'test-key',
-          baseUrl: 'https://test.com',
-        }),
-        updateConfig: vi.fn(() => {}),
-      }) as never;
+      mm.getModelService = () =>
+        ({
+          chat: chatFn,
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }) as never;
 
       const readTool = createTool({
         name: 'Read',
@@ -942,11 +955,13 @@ describe('LoopRunner', () => {
     it('refreshes the chat service on the next turn after model switch', async () => {
       const firstChat = vi.fn(async () => ({
         content: 'Switching model',
-        toolCalls: [{
-          id: 'model-call',
-          type: 'function' as const,
-          function: { name: 'ModelSwitch', arguments: '{}' },
-        }],
+        toolCalls: [
+          {
+            id: 'model-call',
+            type: 'function' as const,
+            function: { name: 'ModelSwitch', arguments: '{}' },
+          },
+        ],
         usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
       }));
       const secondChat = vi.fn(async () => ({
@@ -955,7 +970,7 @@ describe('LoopRunner', () => {
         usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
       }));
 
-      let currentChatService = {
+      let currentModelService = {
         chat: firstChat,
         chatWithRetryEvents: createRetryEventsMock(firstChat),
         streamChat: vi.fn(async function* () {}),
@@ -969,7 +984,7 @@ describe('LoopRunner', () => {
       };
 
       const mm = {
-        getChatService: () => currentChatService,
+        getModelService: () => currentModelService,
         getContextManager: () => ({
           saveMessage: vi.fn(async () => 'uuid-1'),
           saveToolUse: vi.fn(async () => 'uuid-2'),
@@ -979,7 +994,7 @@ describe('LoopRunner', () => {
         getMaxContextTokens: () => 128000,
         switchModelIfNeeded: vi.fn(async (modelId: string) => {
           if (modelId === 'model-b') {
-            currentChatService = {
+            currentModelService = {
               chat: secondChat,
               chatWithRetryEvents: createRetryEventsMock(secondChat),
               streamChat: vi.fn(async function* () {}),
@@ -1025,22 +1040,27 @@ describe('LoopRunner', () => {
     });
 
     it('does not derive runtime state from legacy metadata on non-Skill tools', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'legacy-call',
-          type: 'function' as const,
-          function: { name: 'LegacyTool', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'legacy-call',
+              type: 'function' as const,
+              function: { name: 'LegacyTool', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Triggering legacy metadata',
-          toolCalls: [{
-            id: 'legacy-call',
-            type: 'function' as const,
-            function: { name: 'LegacyTool', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'legacy-call',
+              type: 'function' as const,
+              function: { name: 'LegacyTool', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1051,7 +1071,7 @@ describe('LoopRunner', () => {
 
       const switchModelIfNeeded = vi.fn(async () => {});
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1103,22 +1123,27 @@ describe('LoopRunner', () => {
     });
 
     it('does not derive runtime state from legacy metadata on Skill tools', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Triggering legacy skill metadata',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1129,7 +1154,7 @@ describe('LoopRunner', () => {
 
       const switchModelIfNeeded = vi.fn(async () => {});
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1181,22 +1206,27 @@ describe('LoopRunner', () => {
     });
 
     it('does not apply runtime patches from failed tool results', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Failing skill',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1207,7 +1237,7 @@ describe('LoopRunner', () => {
 
       const switchModelIfNeeded = vi.fn(async () => {});
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1272,22 +1302,27 @@ describe('LoopRunner', () => {
     });
 
     it('clears turn-scoped runtime patches after the loop completes', async () => {
-      const chatFn = vi.fn(async (_messages, _tools) => ({
-        content: 'Turn complete',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async (_messages, _tools) => ({
+          content: 'Turn complete',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Activating skill',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1297,7 +1332,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1361,11 +1396,13 @@ describe('LoopRunner', () => {
         if (chatCalls.length === 1) {
           return {
             content: 'Activate first skill',
-            toolCalls: [{
-              id: 'skill-call-1',
-              type: 'function' as const,
-              function: { name: 'Skill', arguments: '{}' },
-            }],
+            toolCalls: [
+              {
+                id: 'skill-call-1',
+                type: 'function' as const,
+                function: { name: 'Skill', arguments: '{}' },
+              },
+            ],
             usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
           };
         }
@@ -1373,11 +1410,13 @@ describe('LoopRunner', () => {
         if (chatCalls.length === 2) {
           return {
             content: 'Activate second skill',
-            toolCalls: [{
-              id: 'skill-call-2',
-              type: 'function' as const,
-              function: { name: 'Skill', arguments: '{}' },
-            }],
+            toolCalls: [
+              {
+                id: 'skill-call-2',
+                type: 'function' as const,
+                function: { name: 'Skill', arguments: '{}' },
+              },
+            ],
             usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
           };
         }
@@ -1390,7 +1429,7 @@ describe('LoopRunner', () => {
       });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1466,44 +1505,55 @@ describe('LoopRunner', () => {
       const result = await runner.runLoop('Hello', createContext());
 
       expect(result.success).toBe(true);
-      expect(runner.skillContext).toEqual(expect.objectContaining({
-        skillId: 'writer',
-        skillName: 'writer',
-        allowedTools: undefined,
-      }));
-      expect(chatCalls[0]).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'Read' }),
-        expect.objectContaining({ name: 'Write' }),
-        expect.objectContaining({ name: 'Skill' }),
-      ]));
+      expect(runner.skillContext).toEqual(
+        expect.objectContaining({
+          skillId: 'writer',
+          skillName: 'writer',
+          allowedTools: undefined,
+        }),
+      );
+      expect(chatCalls[0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'Read' }),
+          expect.objectContaining({ name: 'Write' }),
+          expect.objectContaining({ name: 'Skill' }),
+        ]),
+      );
       expect(chatCalls[1]).toEqual([
         expect.objectContaining({ name: 'Read' }),
         expect.objectContaining({ name: 'Skill' }),
       ]);
-      expect(chatCalls[2]).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'Read' }),
-        expect.objectContaining({ name: 'Write' }),
-        expect.objectContaining({ name: 'Skill' }),
-      ]));
+      expect(chatCalls[2]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'Read' }),
+          expect.objectContaining({ name: 'Write' }),
+          expect.objectContaining({ name: 'Skill' }),
+        ]),
+      );
     });
 
     it('registers session-scoped runtime hooks from skill runtime patches', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Activate skill hooks',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1513,7 +1563,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1555,11 +1605,13 @@ describe('LoopRunner', () => {
               name: 'reviewer',
               basePath: '/tmp/reviewer',
             },
-            hooks: [{
-              event: HookEvent.UserPromptSubmit,
-              type: 'append_prompt',
-              value: 'Always include concrete file paths.',
-            }],
+            hooks: [
+              {
+                event: HookEvent.UserPromptSubmit,
+                type: 'append_prompt',
+                value: 'Always include concrete file paths.',
+              },
+            ],
           } as RuntimePatch,
         })),
       } as unknown as ExecutionPipeline;
@@ -1573,7 +1625,18 @@ describe('LoopRunner', () => {
         } as never,
       });
 
-      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline, undefined, undefined, undefined, undefined, undefined, hookRuntime);
+      const runner = new LoopRunner(
+        baseConfig,
+        baseOptions,
+        mm,
+        pipeline,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        hookRuntime,
+      );
       await runner.runLoop('Hello', createContext());
 
       const rewritten = await hookRuntime.applyUserPromptSubmit('Original prompt');
@@ -1581,22 +1644,27 @@ describe('LoopRunner', () => {
     });
 
     it('clears turn-scoped runtime hooks after the loop completes', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Activate turn hook',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1606,7 +1674,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1648,11 +1716,13 @@ describe('LoopRunner', () => {
               name: 'reviewer',
               basePath: '/tmp/reviewer',
             },
-            hooks: [{
-              event: HookEvent.UserPromptSubmit,
-              type: 'append_prompt',
-              value: 'Turn-scoped hint.',
-            }],
+            hooks: [
+              {
+                event: HookEvent.UserPromptSubmit,
+                type: 'append_prompt',
+                value: 'Turn-scoped hint.',
+              },
+            ],
           } as RuntimePatch,
         })),
       } as unknown as ExecutionPipeline;
@@ -1666,7 +1736,18 @@ describe('LoopRunner', () => {
         } as never,
       });
 
-      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline, undefined, undefined, undefined, undefined, undefined, hookRuntime);
+      const runner = new LoopRunner(
+        baseConfig,
+        baseOptions,
+        mm,
+        pipeline,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        hookRuntime,
+      );
       await runner.runLoop('Hello', createContext());
 
       const rewritten = await hookRuntime.applyUserPromptSubmit('Original prompt');
@@ -1674,22 +1755,27 @@ describe('LoopRunner', () => {
     });
 
     it('applies session-scoped runtime system prompt append to subsequent prompt construction', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Activate prompt overlay',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1699,7 +1785,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1764,46 +1850,55 @@ describe('LoopRunner', () => {
 
     it('applies runtime environment overlays to subsequent tool executions in the same loop', async () => {
       const observedEnvironments: Array<Record<string, string> | undefined> = [];
-      const chatFn = vi.fn(async (_messages, tools = []) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('Skill')) {
+      const chatFn = vi
+        .fn(async (_messages, tools = []) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('Skill')) {
+            return {
+              content: 'Activate env skill',
+              toolCalls: [
+                {
+                  id: 'skill-call',
+                  type: 'function' as const,
+                  function: { name: 'Skill', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Activate env skill',
-            toolCalls: [{
+            content: 'Inspect env',
+            toolCalls: [
+              {
+                id: 'env-call',
+                type: 'function' as const,
+                function: { name: 'EnvTool', arguments: '{}' },
+              },
+            ],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Activate env skill',
+          toolCalls: [
+            {
               id: 'skill-call',
               type: 'function' as const,
               function: { name: 'Skill', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Inspect env',
-          toolCalls: [{
-            id: 'env-call',
-            type: 'function' as const,
-            function: { name: 'EnvTool', arguments: '{}' },
-          }],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Activate env skill',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Inspect env',
-          toolCalls: [{
-            id: 'env-call',
-            type: 'function' as const,
-            function: { name: 'EnvTool', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'env-call',
+              type: 'function' as const,
+              function: { name: 'EnvTool', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1813,7 +1908,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -1849,36 +1944,38 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: mockToolExecution(async (
-          toolName: string,
-          _params: Record<string, unknown>,
-          executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
-        ) => {
-          if (toolName === 'Skill') {
+        execute: mockToolExecution(
+          async (
+            toolName: string,
+            _params: Record<string, unknown>,
+            executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
+          ) => {
+            if (toolName === 'Skill') {
+              return {
+                status: 'success',
+                model: 'Skill activated',
+                runtimePatch: {
+                  scope: 'session',
+                  source: 'skill',
+                  skill: {
+                    id: 'env-skill',
+                    name: 'env-skill',
+                    basePath: '/tmp/env-skill',
+                  },
+                  environment: {
+                    SKILL_MODE: 'enabled',
+                  },
+                },
+              };
+            }
+
+            observedEnvironments.push(executionContext.contextSnapshot?.environment);
             return {
               status: 'success',
-              model: 'Skill activated',
-              runtimePatch: {
-                scope: 'session',
-                source: 'skill',
-                skill: {
-                  id: 'env-skill',
-                  name: 'env-skill',
-                  basePath: '/tmp/env-skill',
-                },
-                environment: {
-                  SKILL_MODE: 'enabled',
-                },
-              },
+              model: 'Environment inspected',
             };
-          }
-
-          observedEnvironments.push(executionContext.contextSnapshot?.environment);
-          return {
-            status: 'success',
-            model: 'Environment inspected',
-          };
-        }),
+          },
+        ),
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
@@ -1893,54 +1990,63 @@ describe('LoopRunner', () => {
     });
 
     it('merges runtime system prompt appends from multiple runtime patches in application order', async () => {
-      const chatFn = vi.fn(async (_messages, tools = []) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('PatchA')) {
+      const chatFn = vi
+        .fn(async (_messages, tools = []) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('PatchA')) {
+            return {
+              content: 'Apply patch A',
+              toolCalls: [
+                {
+                  id: 'patch-a-call',
+                  type: 'function' as const,
+                  function: { name: 'PatchA', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
+          if (toolNames.includes('PatchB')) {
+            return {
+              content: 'Apply patch B',
+              toolCalls: [
+                {
+                  id: 'patch-b-call',
+                  type: 'function' as const,
+                  function: { name: 'PatchB', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Apply patch A',
-            toolCalls: [{
+            content: 'Done',
+            toolCalls: [],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Apply patch A',
+          toolCalls: [
+            {
               id: 'patch-a-call',
               type: 'function' as const,
               function: { name: 'PatchA', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        if (toolNames.includes('PatchB')) {
-          return {
-            content: 'Apply patch B',
-            toolCalls: [{
-              id: 'patch-b-call',
-              type: 'function' as const,
-              function: { name: 'PatchB', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Done',
-          toolCalls: [],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Apply patch A',
-          toolCalls: [{
-            id: 'patch-a-call',
-            type: 'function' as const,
-            function: { name: 'PatchA', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Apply patch B',
-          toolCalls: [{
-            id: 'patch-b-call',
-            type: 'function' as const,
-            function: { name: 'PatchB', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'patch-b-call',
+              type: 'function' as const,
+              function: { name: 'PatchB', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -1950,7 +2056,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -2018,75 +2124,88 @@ describe('LoopRunner', () => {
 
     it('merges runtime environment overlays and records runtime patch provenance', async () => {
       const observedEnvironments: Array<Record<string, string> | undefined> = [];
-      const chatFn = vi.fn(async (_messages, tools = []) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('PatchEnvA')) {
+      const chatFn = vi
+        .fn(async (_messages, tools = []) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('PatchEnvA')) {
+            return {
+              content: 'Apply env patch A',
+              toolCalls: [
+                {
+                  id: 'patch-env-a-call',
+                  type: 'function' as const,
+                  function: { name: 'PatchEnvA', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
+          if (toolNames.includes('PatchEnvB')) {
+            return {
+              content: 'Apply env patch B',
+              toolCalls: [
+                {
+                  id: 'patch-env-b-call',
+                  type: 'function' as const,
+                  function: { name: 'PatchEnvB', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
+          if (toolNames.includes('EnvTool')) {
+            return {
+              content: 'Inspect env',
+              toolCalls: [
+                {
+                  id: 'env-tool-call',
+                  type: 'function' as const,
+                  function: { name: 'EnvTool', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Apply env patch A',
-            toolCalls: [{
+            content: 'Done',
+            toolCalls: [],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Apply env patch A',
+          toolCalls: [
+            {
               id: 'patch-env-a-call',
               type: 'function' as const,
               function: { name: 'PatchEnvA', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        if (toolNames.includes('PatchEnvB')) {
-          return {
-            content: 'Apply env patch B',
-            toolCalls: [{
-              id: 'patch-env-b-call',
-              type: 'function' as const,
-              function: { name: 'PatchEnvB', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        if (toolNames.includes('EnvTool')) {
-          return {
-            content: 'Inspect env',
-            toolCalls: [{
-              id: 'env-tool-call',
-              type: 'function' as const,
-              function: { name: 'EnvTool', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Done',
-          toolCalls: [],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Apply env patch A',
-          toolCalls: [{
-            id: 'patch-env-a-call',
-            type: 'function' as const,
-            function: { name: 'PatchEnvA', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Apply env patch B',
-          toolCalls: [{
-            id: 'patch-env-b-call',
-            type: 'function' as const,
-            function: { name: 'PatchEnvB', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'patch-env-b-call',
+              type: 'function' as const,
+              function: { name: 'PatchEnvB', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Inspect env',
-          toolCalls: [{
-            id: 'env-tool-call',
-            type: 'function' as const,
-            function: { name: 'EnvTool', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'env-tool-call',
+              type: 'function' as const,
+              function: { name: 'EnvTool', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -2095,13 +2214,14 @@ describe('LoopRunner', () => {
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         });
 
-      const saveToolUse = vi.fn()
+      const saveToolUse = vi
+        .fn()
         .mockResolvedValueOnce('tool-use-a')
         .mockResolvedValueOnce('tool-use-b')
         .mockResolvedValueOnce('tool-use-env');
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -2143,47 +2263,49 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: mockToolExecution(async (
-          toolName: string,
-          _params: Record<string, unknown>,
-          executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
-        ) => {
-          if (toolName === 'PatchEnvA') {
+        execute: mockToolExecution(
+          async (
+            toolName: string,
+            _params: Record<string, unknown>,
+            executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
+          ) => {
+            if (toolName === 'PatchEnvA') {
+              return {
+                status: 'success',
+                model: 'Patch env A applied',
+                runtimePatch: {
+                  scope: 'session',
+                  source: 'tool',
+                  environment: {
+                    ENV_A: '1',
+                    SHARED_ENV: 'a',
+                  },
+                },
+              };
+            }
+
+            if (toolName === 'PatchEnvB') {
+              return {
+                status: 'success',
+                model: 'Patch env B applied',
+                runtimePatch: {
+                  scope: 'session',
+                  source: 'tool',
+                  environment: {
+                    ENV_B: '2',
+                    SHARED_ENV: 'b',
+                  },
+                },
+              };
+            }
+
+            observedEnvironments.push(executionContext.contextSnapshot?.environment);
             return {
               status: 'success',
-              model: 'Patch env A applied',
-              runtimePatch: {
-                scope: 'session',
-                source: 'tool',
-                environment: {
-                  ENV_A: '1',
-                  SHARED_ENV: 'a',
-                },
-              },
+              model: 'Environment inspected',
             };
-          }
-
-          if (toolName === 'PatchEnvB') {
-            return {
-              status: 'success',
-              model: 'Patch env B applied',
-              runtimePatch: {
-                scope: 'session',
-                source: 'tool',
-                environment: {
-                  ENV_B: '2',
-                  SHARED_ENV: 'b',
-                },
-              },
-            };
-          }
-
-          observedEnvironments.push(executionContext.contextSnapshot?.environment);
-          return {
-            status: 'success',
-            model: 'Environment inspected',
-          };
-        }),
+          },
+        ),
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
@@ -2198,24 +2320,26 @@ describe('LoopRunner', () => {
         }),
       ]);
       expect(
-        (runner as unknown as {
-          getRuntimePatchApplications: () => Array<{
-            provenance: { toolName: string; toolCallId: string; toolUseUuid: string | null };
-          }>;
-        }).getRuntimePatchApplications(),
+        (
+          runner as unknown as {
+            getRuntimePatchApplications: () => Array<{
+              provenance: { toolName: string; toolCallId: string; toolMessageId: string | null };
+            }>;
+          }
+        ).getRuntimePatchApplications(),
       ).toEqual([
         expect.objectContaining({
           provenance: expect.objectContaining({
             toolName: 'PatchEnvA',
             toolCallId: 'patch-env-a-call',
-            toolUseUuid: 'uuid-1',
+            toolMessageId: 'uuid-1',
           }),
         }),
         expect.objectContaining({
           provenance: expect.objectContaining({
             toolName: 'PatchEnvB',
             toolCallId: 'patch-env-b-call',
-            toolUseUuid: 'uuid-1',
+            toolMessageId: 'uuid-1',
           }),
         }),
       ]);
@@ -2223,46 +2347,55 @@ describe('LoopRunner', () => {
 
     it('applies ToolResult.contextPatch to subsequent tool executions in the same loop', async () => {
       const observedPageIds: Array<string | undefined> = [];
-      const chatFn = vi.fn(async (_messages, tools = []) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('BrowserBootstrap')) {
+      const chatFn = vi
+        .fn(async (_messages, tools = []) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('BrowserBootstrap')) {
+            return {
+              content: 'Bootstrap browser context',
+              toolCalls: [
+                {
+                  id: 'bootstrap-call',
+                  type: 'function' as const,
+                  function: { name: 'BrowserBootstrap', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Bootstrap browser context',
-            toolCalls: [{
+            content: 'Inspect browser context',
+            toolCalls: [
+              {
+                id: 'inspect-call',
+                type: 'function' as const,
+                function: { name: 'BrowserInspect', arguments: '{}' },
+              },
+            ],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Bootstrap browser context',
+          toolCalls: [
+            {
               id: 'bootstrap-call',
               type: 'function' as const,
               function: { name: 'BrowserBootstrap', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Inspect browser context',
-          toolCalls: [{
-            id: 'inspect-call',
-            type: 'function' as const,
-            function: { name: 'BrowserInspect', arguments: '{}' },
-          }],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Bootstrap browser context',
-          toolCalls: [{
-            id: 'bootstrap-call',
-            type: 'function' as const,
-            function: { name: 'BrowserBootstrap', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Inspect browser context',
-          toolCalls: [{
-            id: 'inspect-call',
-            type: 'function' as const,
-            function: { name: 'BrowserInspect', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'inspect-call',
+              type: 'function' as const,
+              function: { name: 'BrowserInspect', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -2272,7 +2405,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -2302,42 +2435,54 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => {
             callCount += 1;
             if (callCount === 1) {
-              return [{ name: 'BrowserBootstrap', description: 'Bootstrap browser context', parameters: {} }];
+              return [
+                {
+                  name: 'BrowserBootstrap',
+                  description: 'Bootstrap browser context',
+                  parameters: {},
+                },
+              ];
             }
-            return [{ name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} }];
+            return [
+              { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
+            ];
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: mockToolExecution(async (
-          toolName: string,
-          _params: Record<string, unknown>,
-          executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
-        ) => {
-          if (toolName === 'BrowserBootstrap') {
-            return {
-              status: 'success',
-              model: 'Browser bootstrapped',
-              contextPatch: {
-                scope: 'session',
-                context: {
-                  capabilities: {
-                    browser: {
-                      pageId: 'page-123',
+        execute: mockToolExecution(
+          async (
+            toolName: string,
+            _params: Record<string, unknown>,
+            executionContext: {
+              contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } };
+            },
+          ) => {
+            if (toolName === 'BrowserBootstrap') {
+              return {
+                status: 'success',
+                model: 'Browser bootstrapped',
+                contextPatch: {
+                  scope: 'session',
+                  context: {
+                    capabilities: {
+                      browser: {
+                        pageId: 'page-123',
+                      },
                     },
                   },
                 },
-              },
-            };
-          }
+              };
+            }
 
-          observedPageIds.push(
-            executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
-          );
-          return {
-            status: 'success',
-            model: 'Browser inspected',
-          };
-        }),
+            observedPageIds.push(
+              executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
+            );
+            return {
+              status: 'success',
+              model: 'Browser inspected',
+            };
+          },
+        ),
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
@@ -2348,22 +2493,27 @@ describe('LoopRunner', () => {
     });
 
     it('persists yielded newMessages after the tool result in session storage order', async () => {
-      const chatFn = vi.fn(async () => ({
-        content: 'Done',
-        toolCalls: [{
-          id: 'skill-call',
-          type: 'function' as const,
-          function: { name: 'Skill', arguments: '{}' },
-        }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      }))
+      const chatFn = vi
+        .fn(async () => ({
+          content: 'Done',
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }))
         .mockResolvedValueOnce({
           content: 'Activate skill',
-          toolCalls: [{
-            id: 'skill-call',
-            type: 'function' as const,
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -2376,7 +2526,7 @@ describe('LoopRunner', () => {
       const saveToolUse = vi.fn(async () => 'tool-use-uuid');
       const saveToolResult = vi.fn(async () => 'tool-result-uuid');
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -2418,7 +2568,10 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-      const result = await runner.runLoop('Hello', createContext({ sessionId: SessionId('sess-1') }));
+      const result = await runner.runLoop(
+        'Hello',
+        createContext({ sessionId: SessionId('sess-1') }),
+      );
 
       expect(result.success).toBe(true);
       expect(saveToolUse).not.toHaveBeenCalled();
@@ -2431,10 +2584,12 @@ describe('LoopRunner', () => {
       const injectedMessageIndex = saveMessageCalls.findIndex(
         (call) => call[2] === 'Injected assistant context',
       );
-      expect(saveMessage.mock.invocationCallOrder[assistantToolCallIndex])
-        .toBeLessThan(saveToolResult.mock.invocationCallOrder[0] ?? 0);
-      expect(saveToolResult.mock.invocationCallOrder[0])
-        .toBeLessThan(saveMessage.mock.invocationCallOrder[injectedMessageIndex] ?? 0);
+      expect(saveMessage.mock.invocationCallOrder[assistantToolCallIndex]).toBeLessThan(
+        saveToolResult.mock.invocationCallOrder[0] ?? 0,
+      );
+      expect(saveToolResult.mock.invocationCallOrder[0]).toBeLessThan(
+        saveMessage.mock.invocationCallOrder[injectedMessageIndex] ?? 0,
+      );
       expect(saveMessage).toHaveBeenCalledWith(
         'sess-1',
         'assistant',
@@ -2468,12 +2623,7 @@ describe('LoopRunner', () => {
         targetRequestId: requestId,
         acceptedAt: 1,
       });
-      const runControl = new ActiveRequestController(
-        requestId,
-        undefined,
-        inbox,
-        initialInputId,
-      );
+      const runControl = new ActiveRequestController(requestId, undefined, inbox, initialInputId);
 
       const result = await runner.runLoop(
         'Initial request',
@@ -2506,7 +2656,7 @@ describe('LoopRunner', () => {
         'input-message-uuid',
         undefined,
       );
-      const modelMessages = mm._chat.mock.calls[0]?.[0] as Message[];
+      const modelMessages = mm._chat.mock.calls[0]?.[0] as ModelMessage[];
       expect(modelMessages.slice(-2).map((message) => message.content)).toEqual([
         'Initial request',
         'Apply this correction',
@@ -2517,46 +2667,55 @@ describe('LoopRunner', () => {
     it('consumes ToolResult.effects for context patches and injected messages', async () => {
       const observedPageIds: Array<string | undefined> = [];
       const saveMessage = vi.fn(async () => 'msg-uuid');
-      const chatFn = vi.fn(async (_messages, tools = []) => {
-        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
-        if (toolNames.includes('BrowserBootstrap')) {
+      const chatFn = vi
+        .fn(async (_messages, tools = []) => {
+          const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+          if (toolNames.includes('BrowserBootstrap')) {
+            return {
+              content: 'Bootstrap browser context',
+              toolCalls: [
+                {
+                  id: 'bootstrap-call',
+                  type: 'function' as const,
+                  function: { name: 'BrowserBootstrap', arguments: '{}' },
+                },
+              ],
+              usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+            };
+          }
+
           return {
-            content: 'Bootstrap browser context',
-            toolCalls: [{
+            content: 'Inspect browser context',
+            toolCalls: [
+              {
+                id: 'inspect-call',
+                type: 'function' as const,
+                function: { name: 'BrowserInspect', arguments: '{}' },
+              },
+            ],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        })
+        .mockResolvedValueOnce({
+          content: 'Bootstrap browser context',
+          toolCalls: [
+            {
               id: 'bootstrap-call',
               type: 'function' as const,
               function: { name: 'BrowserBootstrap', arguments: '{}' },
-            }],
-            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-          };
-        }
-
-        return {
-          content: 'Inspect browser context',
-          toolCalls: [{
-            id: 'inspect-call',
-            type: 'function' as const,
-            function: { name: 'BrowserInspect', arguments: '{}' },
-          }],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      })
-        .mockResolvedValueOnce({
-          content: 'Bootstrap browser context',
-          toolCalls: [{
-            id: 'bootstrap-call',
-            type: 'function' as const,
-            function: { name: 'BrowserBootstrap', arguments: '{}' },
-          }],
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
           content: 'Inspect browser context',
-          toolCalls: [{
-            id: 'inspect-call',
-            type: 'function' as const,
-            function: { name: 'BrowserInspect', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'inspect-call',
+              type: 'function' as const,
+              function: { name: 'BrowserInspect', arguments: '{}' },
+            },
+          ],
           usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
         })
         .mockResolvedValueOnce({
@@ -2566,7 +2725,7 @@ describe('LoopRunner', () => {
         });
 
       const mm = {
-        getChatService: () => ({
+        getModelService: () => ({
           chat: chatFn,
           chatWithRetryEvents: createRetryEventsMock(chatFn),
           streamChat: vi.fn(async function* () {}),
@@ -2596,57 +2755,70 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => {
             callCount += 1;
             if (callCount === 1) {
-              return [{ name: 'BrowserBootstrap', description: 'Bootstrap browser context', parameters: {} }];
+              return [
+                {
+                  name: 'BrowserBootstrap',
+                  description: 'Bootstrap browser context',
+                  parameters: {},
+                },
+              ];
             }
-            return [{ name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} }];
+            return [
+              { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
+            ];
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: mockToolExecution(async (
-          toolName: string,
-          _params: Record<string, unknown>,
-          executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
-        ) => {
-          if (toolName === 'BrowserBootstrap') {
-            return {
-              status: 'success',
-              model: 'Browser bootstrapped',
-              effects: [
-                {
-                  type: 'contextPatch' as const,
-                  patch: {
-                    scope: 'session',
-                    context: {
-                      capabilities: {
-                        browser: {
-                          pageId: 'page-456',
+        execute: mockToolExecution(
+          async (
+            toolName: string,
+            _params: Record<string, unknown>,
+            executionContext: {
+              contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } };
+            },
+          ) => {
+            if (toolName === 'BrowserBootstrap') {
+              return {
+                status: 'success',
+                model: 'Browser bootstrapped',
+                effects: [
+                  {
+                    type: 'contextPatch' as const,
+                    patch: {
+                      scope: 'session',
+                      context: {
+                        capabilities: {
+                          browser: {
+                            pageId: 'page-456',
+                          },
                         },
                       },
                     },
                   },
-                },
-                {
-                  type: 'newMessages' as const,
-                  messages: [
-                    { role: 'assistant' as const, content: 'Injected via effects' },
-                  ],
-                },
-              ],
-            };
-          }
+                  {
+                    type: 'newMessages' as const,
+                    messages: [{ role: 'assistant' as const, content: 'Injected via effects' }],
+                  },
+                ],
+              };
+            }
 
-          observedPageIds.push(
-            executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
-          );
-          return {
-            status: 'success',
-            model: 'Browser inspected',
-          };
-        }),
+            observedPageIds.push(
+              executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
+            );
+            return {
+              status: 'success',
+              model: 'Browser inspected',
+            };
+          },
+        ),
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-      const result = await runner.runLoop('Hello', createContext({ sessionId: SessionId('sess-2') }));
+      const result = await runner.runLoop(
+        'Hello',
+        createContext({ sessionId: SessionId('sess-2') }),
+      );
 
       expect(result.success).toBe(true);
       expect(observedPageIds).toEqual(['page-456']);

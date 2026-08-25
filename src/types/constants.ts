@@ -53,7 +53,7 @@ export const MessageRole = {
 
 export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
 
-export const StreamMessageType = {
+export const SessionStreamEventType = {
   TURN_START: 'turn_start',
   TURN_END: 'turn_end',
   TURN_INTERRUPTED: 'turn_interrupted',
@@ -73,7 +73,8 @@ export const StreamMessageType = {
   ERROR: 'error',
 } as const;
 
-export type StreamMessageType = (typeof StreamMessageType)[keyof typeof StreamMessageType];
+export type SessionStreamEventType =
+  (typeof SessionStreamEventType)[keyof typeof SessionStreamEventType];
 
 export const PermissionDecision = {
   ALLOW: 'allow',

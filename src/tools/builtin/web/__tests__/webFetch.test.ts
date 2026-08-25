@@ -1,7 +1,7 @@
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { collectToolExecution } from '../../../types/index.js';
+import { collectToolExecution } from '../../../types/result.js';
 import { webFetchTool } from '../webFetch.js';
 
 const servers: Server[] = [];

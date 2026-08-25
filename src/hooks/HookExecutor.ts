@@ -4,13 +4,9 @@
  * 负责执行单个或多个 Hooks
  */
 
-import type { JsonObject, JsonValue } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
-import {
-  getRecoverableHookErrorMessage,
-  isHookProcessContainmentError,
-} from './WindowsProcessJob.js';
 import {
   type CommandHook,
   type CompactionHookResult,
@@ -39,8 +35,12 @@ import {
   type SubagentStartHookResult,
   type SubagentStopHookResult,
   type TaskCompletedHookResult,
-  type UserPromptSubmitHookResult
-} from './types/HookTypes.js';
+  type UserPromptSubmitHookResult,
+} from './types.js';
+import {
+  getRecoverableHookErrorMessage,
+  isHookProcessContainmentError,
+} from './WindowsProcessJob.js';
 
 /**
  * Hook 执行器
@@ -59,14 +59,13 @@ export class HookExecutor {
   async executePreToolHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PreToolHookResult> {
     if (hooks.length === 0) {
       return { decision: 'allow' };
     }
 
-    let cumulativeInput: JsonObject =
-      'tool_input' in input ? input.tool_input : {};
+    let cumulativeInput: JsonObject = 'tool_input' in input ? input.tool_input : {};
 
     const warnings: string[] = [];
 
@@ -166,7 +165,7 @@ export class HookExecutor {
   async executePostToolHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PostToolHookResult> {
     if (hooks.length === 0) {
       return {};
@@ -174,12 +173,7 @@ export class HookExecutor {
 
     // 限制并发数
     const maxConcurrent = context.config.maxConcurrentHooks || 5;
-    const results = await this.executeHooksConcurrently(
-      hooks,
-      input,
-      context,
-      maxConcurrent
-    );
+    const results = await this.executeHooksConcurrently(hooks, input, context, maxConcurrent);
 
     // 合并结果
     const additionalContexts: string[] = [];
@@ -224,7 +218,7 @@ export class HookExecutor {
   async executeStopHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<StopHookResult> {
     if (hooks.length === 0) {
       return { shouldStop: true };
@@ -272,7 +266,7 @@ export class HookExecutor {
   async executeSubagentStartHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<SubagentStartHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -322,7 +316,7 @@ export class HookExecutor {
   async executeSubagentStopHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<SubagentStopHookResult> {
     if (hooks.length === 0) {
       return { shouldStop: true };
@@ -377,7 +371,7 @@ export class HookExecutor {
   async executeTaskCompletedHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<TaskCompletedHookResult> {
     if (hooks.length === 0) {
       return { allowCompletion: true };
@@ -431,7 +425,7 @@ export class HookExecutor {
   async executePermissionRequestHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PermissionRequestHookResult> {
     if (hooks.length === 0) {
       return { decision: 'ask' };
@@ -481,7 +475,7 @@ export class HookExecutor {
   async executeUserPromptSubmitHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<UserPromptSubmitHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -532,8 +526,7 @@ export class HookExecutor {
     return {
       proceed: true,
       updatedPrompt,
-      contextInjection:
-        contextInjections.length > 0 ? contextInjections.join('\n\n') : undefined,
+      contextInjection: contextInjections.length > 0 ? contextInjections.join('\n\n') : undefined,
       warning: warnings.length > 0 ? warnings.join('\n') : undefined,
     };
   }
@@ -546,7 +539,7 @@ export class HookExecutor {
   async executeSessionStartHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<SessionStartHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -595,7 +588,7 @@ export class HookExecutor {
   async executeSessionEndHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<SessionEndHookResult> {
     if (hooks.length === 0) {
       return {};
@@ -605,12 +598,7 @@ export class HookExecutor {
 
     // 并行执行，不阻塞
     const maxConcurrent = context.config.maxConcurrentHooks || 5;
-    const results = await this.executeHooksConcurrently(
-      hooks,
-      input,
-      context,
-      maxConcurrent
-    );
+    const results = await this.executeHooksConcurrently(hooks, input, context, maxConcurrent);
 
     for (const result of results) {
       if (result.status === 'warning') {
@@ -629,7 +617,7 @@ export class HookExecutor {
   async executePostToolUseFailureHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PostToolUseFailureHookResult> {
     if (hooks.length === 0) {
       return {};
@@ -639,12 +627,7 @@ export class HookExecutor {
     const additionalContexts: string[] = [];
 
     const maxConcurrent = context.config.maxConcurrentHooks || 5;
-    const results = await this.executeHooksConcurrently(
-      hooks,
-      input,
-      context,
-      maxConcurrent
-    );
+    const results = await this.executeHooksConcurrently(hooks, input, context, maxConcurrent);
 
     for (const result of results) {
       if (result.status === 'warning') {
@@ -671,7 +654,7 @@ export class HookExecutor {
   async executeNotificationHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<NotificationHookResult> {
     const originalMessage = 'message' in input ? String(input.message) : '';
 
@@ -723,7 +706,7 @@ export class HookExecutor {
   async executeCompactionHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<CompactionHookResult> {
     if (hooks.length === 0) {
       return { blockCompaction: false };
@@ -770,7 +753,7 @@ export class HookExecutor {
   async executeStopFailureHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<StopFailureHookResult> {
     if (hooks.length === 0) {
       return { shouldRetry: false };
@@ -817,7 +800,7 @@ export class HookExecutor {
   async executePreCompactHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PreCompactHookResult> {
     if (hooks.length === 0) {
       return { blockCompaction: false };
@@ -864,7 +847,7 @@ export class HookExecutor {
   async executeElicitationHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<ElicitationHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -887,7 +870,8 @@ export class HookExecutor {
         if (specific && 'proceed' in specific && specific.proceed === false) {
           return {
             proceed: false,
-            response: 'response' in specific ? String(specific.response ?? '') || undefined : undefined,
+            response:
+              'response' in specific ? String(specific.response ?? '') || undefined : undefined,
             warning: warnings.length > 0 ? warnings.join('\n') : undefined,
           };
         }
@@ -909,7 +893,7 @@ export class HookExecutor {
   async executeElicitationResultHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<ElicitationResultHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -944,7 +928,7 @@ export class HookExecutor {
   async executeCwdChangedHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<CwdChangedHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -990,7 +974,7 @@ export class HookExecutor {
   async executeFileChangedHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<FileChangedHookResult> {
     if (hooks.length === 0) {
       return { action: 'reload' };
@@ -1034,7 +1018,7 @@ export class HookExecutor {
   async executeInstructionsLoadedHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<InstructionsLoadedHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -1079,7 +1063,7 @@ export class HookExecutor {
   async executePostCompactHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<PostCompactHookResult> {
     if (hooks.length === 0) {
       return {};
@@ -1089,12 +1073,7 @@ export class HookExecutor {
     const additionalContexts: string[] = [];
 
     const maxConcurrent = context.config.maxConcurrentHooks || 5;
-    const results = await this.executeHooksConcurrently(
-      hooks,
-      input,
-      context,
-      maxConcurrent
-    );
+    const results = await this.executeHooksConcurrently(hooks, input, context, maxConcurrent);
 
     for (const result of results) {
       if (result.status === 'warning') {
@@ -1124,7 +1103,7 @@ export class HookExecutor {
   async executeConfigChangeHooks(
     hooks: Hook[],
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<ConfigChangeHookResult> {
     if (hooks.length === 0) {
       return { proceed: true };
@@ -1133,12 +1112,7 @@ export class HookExecutor {
     const warnings: string[] = [];
 
     const maxConcurrent = context.config.maxConcurrentHooks || 5;
-    const results = await this.executeHooksConcurrently(
-      hooks,
-      input,
-      context,
-      maxConcurrent
-    );
+    const results = await this.executeHooksConcurrently(hooks, input, context, maxConcurrent);
 
     for (const result of results) {
       if (result.status === 'warning') {
@@ -1158,7 +1132,7 @@ export class HookExecutor {
   private async executeHook(
     hook: Hook,
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<HookExecutionResult> {
     if (hook.type === HookType.Command) {
       return this.executeCommandHook(hook, input, context);
@@ -1174,17 +1148,12 @@ export class HookExecutor {
   private async executeCommandHook(
     hook: CommandHook,
     input: HookInput,
-    context: HookExecutionContext
+    context: HookExecutionContext,
   ): Promise<HookExecutionResult> {
     const timeoutMs = (hook.timeout ?? context.config.defaultTimeout ?? 60) * 1000;
 
     try {
-      const result = await this.processExecutor.execute(
-        hook.command,
-        input,
-        context,
-        timeoutMs
-      );
+      const result = await this.processExecutor.execute(hook.command, input, context, timeoutMs);
 
       return this.outputParser.parse(result, hook, {
         timeoutBehavior: context.config.timeoutBehavior,
@@ -1206,7 +1175,7 @@ export class HookExecutor {
     hooks: Hook[],
     input: HookInput,
     context: HookExecutionContext,
-    maxConcurrent: number
+    maxConcurrent: number,
   ): Promise<HookExecutionResult[]> {
     const results: Promise<HookExecutionResult>[] = [];
     const executing = new Set<Promise<void>>();

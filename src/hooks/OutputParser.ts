@@ -4,7 +4,7 @@
  * 解析 Hook 命令的输出
  */
 
-import type { JsonValue } from '../types/common.js';
+import type { JsonValue } from '../types/json.js';
 import { safeParseHookOutput } from './schemas/HookSchemas.js';
 import {
   type Hook,
@@ -13,9 +13,11 @@ import {
   HookExitCode,
   type HookOutput,
   type ProcessResult,
-} from './types/HookTypes.js';
+} from './types.js';
 
-const VALID_EXIT_CODES = new Set(Object.values(HookExitCode).filter((v): v is number => typeof v === 'number'));
+const VALID_EXIT_CODES = new Set(
+  Object.values(HookExitCode).filter((v): v is number => typeof v === 'number'),
+);
 
 function toHookExitCode(code: number): HookExitCode {
   if (VALID_EXIT_CODES.has(code)) {
@@ -34,7 +36,7 @@ export class OutputParser {
   parse(
     result: ProcessResult,
     hook: Hook,
-    config?: Pick<HookConfig, 'timeoutBehavior' | 'failureBehavior'>
+    config?: Pick<HookConfig, 'timeoutBehavior' | 'failureBehavior'>,
   ): HookExecutionResult {
     // 1. 超时 - 根据 timeoutBehavior 配置处理
     if (result.timedOut) {
@@ -114,7 +116,7 @@ export class OutputParser {
   private parseByExitCode(
     result: ProcessResult,
     hook: Hook,
-    config?: Pick<HookConfig, 'timeoutBehavior' | 'failureBehavior'>
+    config?: Pick<HookConfig, 'timeoutBehavior' | 'failureBehavior'>,
   ): HookExecutionResult {
     const exitCode = toHookExitCode(result.exitCode);
 
@@ -151,8 +153,7 @@ export class OutputParser {
 
       default: {
         // NON_BLOCKING_ERROR - 根据 failureBehavior 配置处理
-        const errorMsg =
-          result.stderr || result.stdout || `Hook failed with exit code ${exitCode}`;
+        const errorMsg = result.stderr || result.stdout || `Hook failed with exit code ${exitCode}`;
         return this.buildFailureResult(
           config?.failureBehavior || 'ignore',
           errorMsg,

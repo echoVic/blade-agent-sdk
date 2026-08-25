@@ -1,12 +1,11 @@
 import { z } from 'zod';
-import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
-import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/index.js';
-import { ToolKind } from '../../types/ToolKind.js';
-import { lazySchema } from '../../validation/lazySchema.js';
-import type { SessionId } from '../../../types/branded.js';
+import type { SessionId } from '../../../types/identifiers.js';
+import { jsonValueSchema } from '../../../types/jsonSchema.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import type { UpdateTaskInput } from './TaskStore.js';
+import { createTool } from '../../core/createTool.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { TaskStore } from './TaskStore.js';
 
 export function createTaskUpdateTool({ sessionId }: { sessionId: SessionId }) {
@@ -25,17 +24,25 @@ Use \`deleted\` to permanently remove a task.
 
 ONLY mark a task as completed when you have FULLY accomplished it.`,
     },
-    schema: lazySchema(() => z.object({
-      taskId: z.string().describe('The ID of the task to update'),
-      status: z.enum(['pending', 'in_progress', 'completed', 'deleted']).optional(),
-      subject: z.string().optional(),
-      description: z.string().optional(),
-      activeForm: z.string().optional(),
-      owner: z.string().optional(),
-      metadata: z.record(z.string(), JsonValueSchema).optional().describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
-      addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
-      addBlockedBy: z.array(z.string()).optional().describe('Task IDs that must complete before this one can start'),
-    })),
+    schema: lazySchema(() =>
+      z.object({
+        taskId: z.string().describe('The ID of the task to update'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'deleted']).optional(),
+        subject: z.string().optional(),
+        description: z.string().optional(),
+        activeForm: z.string().optional(),
+        owner: z.string().optional(),
+        metadata: z
+          .record(z.string(), jsonValueSchema)
+          .optional()
+          .describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
+        addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
+        addBlockedBy: z
+          .array(z.string())
+          .optional()
+          .describe('Task IDs that must complete before this one can start'),
+      }),
+    ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
     async *execute({ taskId, ...input }, context) {
       const sid = context?.sessionId ?? sessionId;
@@ -63,7 +70,7 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         };
       }
 
-      const task = await store.update(taskId, input as unknown as UpdateTaskInput);
+      const task = await store.update(taskId, input);
       if (!task) {
         return {
           status: 'error',

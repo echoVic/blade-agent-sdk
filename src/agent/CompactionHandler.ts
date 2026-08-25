@@ -6,14 +6,14 @@ import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { IChatService } from '../services/ChatServiceInterface.js';
+import type { ModelService } from '../model/service.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import {
   isExecutionLeaseFailure,
   runWithExecutionLeaseBoundary,
 } from '../session/events/DurableExecutionLeaseStore.js';
-import type { SessionId } from '../types/branded.js';
+import type { SessionId } from '../types/identifiers.js';
 import type { CompactingEvent } from './AgentEvent.js';
 import type { ConversationState } from './state/ConversationState.js';
 
@@ -30,7 +30,7 @@ export class CompactionHandler {
   private readonly logger: InternalLogger;
 
   constructor(
-    private getChatService: () => IChatService,
+    private getModelService: () => ModelService,
     private getContextManager: () => ContextManager | undefined,
     logger?: InternalLogger,
     private getProviderRegistry: () => ProviderRegistry | undefined = () => undefined,
@@ -42,18 +42,18 @@ export class CompactionHandler {
     convState: ConversationState,
     runtimeCtx: CompactionRuntimeContext,
     currentTurn: number,
-    actualPromptTokens?: number
+    actualPromptTokens?: number,
   ): AsyncGenerator<CompactingEvent, boolean> {
     if (actualPromptTokens === undefined) {
       this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩检查: 跳过（无历史 usage 数据）`);
       return false;
     }
 
-    const chatService = this.getChatService();
-    const chatConfig = chatService.getConfig();
-    const modelName = chatConfig.model;
-    const maxContextTokens = chatConfig.maxContextTokens ?? 128000;
-    const maxOutputTokens = chatConfig.maxOutputTokens ?? 8192;
+    const modelService = this.getModelService();
+    const modelConfig = modelService.getConfig();
+    const modelName = modelConfig.model;
+    const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
+    const maxOutputTokens = modelConfig.maxOutputTokens ?? 8192;
 
     const availableForInput = maxContextTokens - maxOutputTokens;
     const softThreshold = Math.floor(availableForInput * 0.6);
@@ -100,7 +100,9 @@ export class CompactionHandler {
 
     // Tier 3: Emergency — keep only system message + recent messages
     if (effectivePromptTokens >= emergencyThreshold) {
-      this.logger.warn(`[Agent] [轮次 ${currentTurn}] 紧急压缩触发 (${effectivePromptTokens} tokens >= 95%)`);
+      this.logger.warn(
+        `[Agent] [轮次 ${currentTurn}] 紧急压缩触发 (${effectivePromptTokens} tokens >= 95%)`,
+      );
       yield { type: 'compacting', isCompacting: true };
 
       const recentMessages = convState.getContextMessages().slice(-40);
@@ -124,14 +126,14 @@ export class CompactionHandler {
       try {
         const result = await CompactionService.compact(convState.getContextMessages(), {
           trigger: 'auto',
-          provider: chatConfig.provider,
-          providerId: chatConfig.providerId,
+          provider: modelConfig.provider,
+          providerId: modelConfig.providerId,
           providerRegistry: this.getProviderRegistry(),
           modelName,
           maxContextTokens,
-          apiKey: chatConfig.apiKey,
-          baseURL: chatConfig.baseUrl,
-          customHeaders: chatConfig.customHeaders,
+          apiKey: modelConfig.apiKey,
+          baseURL: modelConfig.baseUrl,
+          customHeaders: modelConfig.customHeaders,
           actualPreTokens: actualPromptTokens,
           projectDir: runtimeCtx.projectDir,
           signal: runtimeCtx.signal,
@@ -145,22 +147,21 @@ export class CompactionHandler {
           convState.replaceContent(result.compactedMessages);
 
           this.logger.debug(
-            `[Agent] [轮次 ${currentTurn}] 压缩完成: ${result.preTokens} → ${result.postTokens} tokens (-${((1 - result.postTokens / result.preTokens) * 100).toFixed(1)}%)`
+            `[Agent] [轮次 ${currentTurn}] 压缩完成: ${result.preTokens} → ${result.postTokens} tokens (-${((1 - result.postTokens / result.preTokens) * 100).toFixed(1)}%)`,
           );
         } else {
           convState.replaceContent(result.compactedMessages);
 
           this.logger.warn(
-            `[Agent] [轮次 ${currentTurn}] 压缩使用降级策略: ${result.preTokens} → ${result.postTokens} tokens`
+            `[Agent] [轮次 ${currentTurn}] 压缩使用降级策略: ${result.preTokens} → ${result.postTokens} tokens`,
           );
         }
 
         try {
           const contextMgr = this.getContextManager();
           if (contextMgr && runtimeCtx.sessionId) {
-            await runWithExecutionLeaseBoundary(
-              runtimeCtx,
-              () => contextMgr.saveCompaction(
+            await runWithExecutionLeaseBoundary(runtimeCtx, () =>
+              contextMgr.saveCompaction(
                 runtimeCtx.sessionId,
                 result.summary,
                 {
@@ -177,8 +178,8 @@ export class CompactionHandler {
         } catch (saveError) {
           if (
             runtimeCtx.signal?.aborted ||
-            isExecutionLeaseFailure(saveError)
-            || isHookProcessContainmentError(saveError)
+            isExecutionLeaseFailure(saveError) ||
+            isHookProcessContainmentError(saveError)
           ) {
             throw saveError;
           }
@@ -191,9 +192,9 @@ export class CompactionHandler {
       } catch (error) {
         if (
           runtimeCtx.signal?.aborted ||
-          isExecutionLeaseFailure(error)
-          || isHookProcessContainmentError(error)
-          || error instanceof ProviderRegistryError
+          isExecutionLeaseFailure(error) ||
+          isHookProcessContainmentError(error) ||
+          error instanceof ProviderRegistryError
         ) {
           throw error;
         }
@@ -209,7 +210,7 @@ export class CompactionHandler {
     if (softResult.truncatedCount > 0) {
       convState.replaceContent(softResult.messages);
       this.logger.debug(
-        `[Agent] [轮次 ${currentTurn}] 软压缩完成: 截断 ${softResult.truncatedCount} 条工具结果, 节省 ${softResult.savedChars} 字符`
+        `[Agent] [轮次 ${currentTurn}] 软压缩完成: 截断 ${softResult.truncatedCount} 条工具结果, 节省 ${softResult.savedChars} 字符`,
       );
     }
     return false;
@@ -241,15 +242,15 @@ export class CompactionHandler {
         workingMessages = microcompactResult.messages;
         const postMicrocompactTokens = TokenCounter.countTokens(
           workingMessages,
-          this.getChatService().getConfig().model,
+          this.getModelService().getConfig().model,
         );
         this.logger.debug(
           `[Agent] reactive microcompact: 替换 ${microcompactResult.replacedCount} 条, 估算 tokens → ${postMicrocompactTokens}`,
         );
 
-        const maxOutputTokens = this.getChatService().getConfig().maxOutputTokens ?? 8192;
+        const maxOutputTokens = this.getModelService().getConfig().maxOutputTokens ?? 8192;
         const availableForInput =
-          (this.getChatService().getConfig().maxContextTokens ?? 128000) - maxOutputTokens;
+          (this.getModelService().getConfig().maxContextTokens ?? 128000) - maxOutputTokens;
         if (postMicrocompactTokens < availableForInput) {
           convState.replaceContent(workingMessages);
           yield { type: 'compacting', isCompacting: false };
@@ -262,23 +263,23 @@ export class CompactionHandler {
       if (softResult.truncatedCount > 0) {
         workingMessages = softResult.messages;
         this.logger.debug(
-          `[Agent] 反应式软压缩: 截断 ${softResult.truncatedCount} 条, 节省 ${softResult.savedChars} 字符`
+          `[Agent] 反应式软压缩: 截断 ${softResult.truncatedCount} 条, 节省 ${softResult.savedChars} 字符`,
         );
       }
 
       // Step 2: LLM-based compaction
-      const chatService = this.getChatService();
-      const chatConfig = chatService.getConfig();
+      const modelService = this.getModelService();
+      const modelConfig = modelService.getConfig();
       const result = await CompactionService.compact(workingMessages, {
         trigger: 'auto',
-        provider: chatConfig.provider,
-        providerId: chatConfig.providerId,
+        provider: modelConfig.provider,
+        providerId: modelConfig.providerId,
         providerRegistry: this.getProviderRegistry(),
-        modelName: chatConfig.model,
-        maxContextTokens: chatConfig.maxContextTokens ?? 128000,
-        apiKey: chatConfig.apiKey,
-        baseURL: chatConfig.baseUrl,
-        customHeaders: chatConfig.customHeaders,
+        modelName: modelConfig.model,
+        maxContextTokens: modelConfig.maxContextTokens ?? 128000,
+        apiKey: modelConfig.apiKey,
+        baseURL: modelConfig.baseUrl,
+        customHeaders: modelConfig.customHeaders,
         projectDir: runtimeCtx.projectDir,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
@@ -293,9 +294,8 @@ export class CompactionHandler {
       try {
         const contextMgr = this.getContextManager();
         if (contextMgr && runtimeCtx.sessionId) {
-          await runWithExecutionLeaseBoundary(
-            runtimeCtx,
-            () => contextMgr.saveCompaction(
+          await runWithExecutionLeaseBoundary(runtimeCtx, () =>
+            contextMgr.saveCompaction(
               runtimeCtx.sessionId,
               result.summary,
               {
@@ -311,8 +311,8 @@ export class CompactionHandler {
       } catch (saveError) {
         if (
           runtimeCtx.signal?.aborted ||
-          isExecutionLeaseFailure(saveError)
-          || isHookProcessContainmentError(saveError)
+          isExecutionLeaseFailure(saveError) ||
+          isHookProcessContainmentError(saveError)
         ) {
           throw saveError;
         }
@@ -324,9 +324,9 @@ export class CompactionHandler {
     } catch (error) {
       if (
         runtimeCtx.signal?.aborted ||
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-        || error instanceof ProviderRegistryError
+        isExecutionLeaseFailure(error) ||
+        isHookProcessContainmentError(error) ||
+        error instanceof ProviderRegistryError
       ) {
         throw error;
       }

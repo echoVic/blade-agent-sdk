@@ -15,8 +15,8 @@ import {
   ToolAttemptId,
   ToolUseId,
   TurnId,
-} from '../../../types/branded.js';
-import type { JsonValue } from '../../../types/common.js';
+} from '../../../types/identifiers.js';
+import type { JsonValue } from '../../../types/json.js';
 import type { DurableEventStore } from '../DurableEventStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import {
@@ -149,11 +149,10 @@ class StartTurnBeforeRequestRolloverStore implements DurableEventStore {
     options?: DurableEventAppendOptions,
   ) {
     if (
-      !this.injected
-      && events.some(
+      !this.injected &&
+      events.some(
         (event) =>
-          event.type === DurableEventType.TURN_STARTED
-          && event.turnId === requestRolloverTurnId,
+          event.type === DurableEventType.TURN_STARTED && event.turnId === requestRolloverTurnId,
       )
     ) {
       this.injected = true;
@@ -197,8 +196,8 @@ class SettleModelBeforeReconciliationStore implements DurableEventStore {
     options?: DurableEventAppendOptions,
   ) {
     if (
-      !this.injected
-      && events.some((event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED)
+      !this.injected &&
+      events.some((event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED)
     ) {
       this.injected = true;
       await this.delegate.append(
@@ -792,8 +791,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
     expect(
       (await baseStore.read(sessionId)).events.some(
         (event) =>
-          event.type === DurableEventType.REQUEST_ACCEPTED
-          && event.requestId === rolloverRequestId,
+          event.type === DurableEventType.REQUEST_ACCEPTED && event.requestId === rolloverRequestId,
       ),
     ).toBe(false);
   });
@@ -1062,9 +1060,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       'reconciled',
     ]);
     expect(results.every((result) => result.recoveryPlan.action === 'resume_turn')).toBe(true);
-    expect(
-      first.getProjection().activeRequest?.activeTurn?.modelAttempts,
-    ).toEqual([
+    expect(first.getProjection().activeRequest?.activeTurn?.modelAttempts).toEqual([
       expect.objectContaining({
         modelAttemptId,
         modelIdentity: {
@@ -1266,11 +1262,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       eventType: DurableEventType.MODEL_REQUEST_ABORTED,
       status: 'aborted',
     },
-  ])('reconciles an unknown model outcome as $status', async ({
-    outcome,
-    eventType,
-    status,
-  }) => {
+  ])('reconciles an unknown model outcome as $status', async ({ outcome, eventType, status }) => {
     const store = createStore();
     const journal = await createJournal(store, { requestStarted: true });
     await journal.commit({
@@ -1310,9 +1302,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
         modelAttemptId,
       }),
     ]);
-    expect(
-      result.projection.activeRequest?.activeTurn?.modelAttempts[0],
-    ).toMatchObject({ status });
+    expect(result.projection.activeRequest?.activeTurn?.modelAttempts[0]).toMatchObject({ status });
     expect(result.recoveryPlan.action).toBe('resume_turn');
   });
 
@@ -1396,9 +1386,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
     ).rejects.toMatchObject({
       code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
     });
-    expect(
-      coordinator.getProjection().activeRequest?.activeTurn?.modelAttempts[0],
-    ).toMatchObject({
+    expect(coordinator.getProjection().activeRequest?.activeTurn?.modelAttempts[0]).toMatchObject({
       modelAttemptId,
       status: 'failed',
       error: { message: 'provider confirmed failure' },
@@ -1986,9 +1974,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
     const journal = await createJournal(store, { requestStarted: true });
     const oversizedError = 'model-error'.repeat(600);
     const attempts = Array.from({ length: 20 }, (_, index) => {
-      const attemptId = ModelAttemptId(
-        `bounded-model-attempt-${String(index).padStart(2, '0')}`,
-      );
+      const attemptId = ModelAttemptId(`bounded-model-attempt-${String(index).padStart(2, '0')}`);
       return [
         {
           type: DurableEventType.MODEL_REQUEST_STARTED,

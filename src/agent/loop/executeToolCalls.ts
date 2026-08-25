@@ -1,21 +1,21 @@
 import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../../logging/Logger.js';
+import type { ModelToolCall } from '../../model/message.js';
 import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
 import type { ToolExecutionPlan } from './planToolExecution.js';
 import type {
-    ToolExecutionContext,
-    ToolExecutionHooks,
-    ToolExecutionOutcome,
+  ToolExecutionContext,
+  ToolExecutionHooks,
+  ToolExecutionOutcome,
 } from './runToolCall.js';
 import { runToolCall } from './runToolCall.js';
-import type { FunctionToolCall } from './types.js';
 
 export type {
-    ToolExecutionContext,
-    ToolExecutionHooks,
-    ToolExecutionOutcome
+  ToolExecutionContext,
+  ToolExecutionHooks,
+  ToolExecutionOutcome,
 } from './runToolCall.js';
 
 interface ExecuteToolCallsInput {
@@ -46,11 +46,8 @@ export async function executeToolCalls(
   );
   const criticalFailure = settled.find(
     (result): result is PromiseRejectedResult =>
-      result.status === 'rejected'
-      && (
-        isHookProcessContainmentError(result.reason)
-        || isExecutionLeaseFailure(result.reason)
-      ),
+      result.status === 'rejected' &&
+      (isHookProcessContainmentError(result.reason) || isExecutionLeaseFailure(result.reason)),
   );
   if (criticalFailure) {
     throw criticalFailure.reason;
@@ -70,7 +67,7 @@ export async function executeToolCalls(
 }
 
 async function executeToolCall(
-  toolCall: FunctionToolCall,
+  toolCall: ModelToolCall,
   input: ExecuteToolCallsInput,
 ): Promise<ToolExecutionOutcome> {
   return runToolCall({

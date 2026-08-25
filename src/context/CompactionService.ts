@@ -4,22 +4,24 @@
  */
 
 import { nanoid } from 'nanoid';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { HookManager } from '../hooks/HookManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
-import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
-import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
-import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
+import type { ProviderType } from '../model/config.js';
+import type { ModelMessage } from '../model/message.js';
+import { createModelService } from '../services/createModelService.js';
+import { wrapModelServiceWithTimeouts } from '../services/ModelServiceTimeout.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
-import { SessionId } from '../types/branded.js';
-import { PermissionMode, type ProviderType } from '../types/common.js';
+import { PermissionMode } from '../types/constants.js';
+import { SessionId } from '../types/identifiers.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import {
-  microcompact,
   type MicrocompactOptions,
   type MicrocompactResult,
+  microcompact,
 } from './strategies/MicrocompactStrategy.js';
 import { TokenCounter } from './TokenCounter.js';
 
@@ -76,11 +78,11 @@ export interface CompactionResult {
   /** 包含的文件列表 */
   filesIncluded: string[];
   /** 压缩后的消息列表（用于发送给 LLM） */
-  compactedMessages: Message[];
+  compactedMessages: ModelMessage[];
   /** compact_boundary 消息（用于保存到 JSONL） */
-  boundaryMessage: Message;
+  boundaryMessage: ModelMessage;
   /** summary 消息（用于保存到 JSONL） */
-  summaryMessage: Message;
+  summaryMessage: ModelMessage;
   /** 错误信息（如果失败） */
   error?: string;
 }
@@ -101,7 +103,10 @@ const FALLBACK_RETAIN_PERCENT = 0.3;
  * @param retainPercent - 保留比例（0-1）
  * @returns 过滤后的保留消息
  */
-export function retainRecentMessages(messages: Message[], retainPercent: number): Message[] {
+export function retainRecentMessages(
+  messages: ModelMessage[],
+  retainPercent: number,
+): ModelMessage[] {
   const retainCount = Math.ceil(messages.length * retainPercent);
   const candidateMessages = messages.slice(-retainCount);
 
@@ -130,7 +135,7 @@ export function retainRecentMessages(messages: Message[], retainPercent: number)
  * @returns 压缩结果
  */
 export async function compact(
-  messages: Message[],
+  messages: ModelMessage[],
   options: CompactionOptions,
 ): Promise<CompactionResult> {
   options.signal?.throwIfAborted();
@@ -149,8 +154,8 @@ export async function compact(
     try {
       const hookManager = HookManager.getInstance();
 
-      const preCompactResult = await runFileHook(
-        () => hookManager.executePreCompactHooks(
+      const preCompactResult = await runFileHook(() =>
+        hookManager.executePreCompactHooks(
           {
             trigger: options.trigger,
             messages_before: messages.length,
@@ -185,8 +190,8 @@ export async function compact(
         console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
       }
 
-      const hookResult = await runFileHook(
-        () => hookManager.executeCompactionHooks(options.trigger, {
+      const hookResult = await runFileHook(() =>
+        hookManager.executeCompactionHooks(options.trigger, {
           projectDir,
           sessionId: options.sessionId || SessionId('unknown'),
           permissionMode: options.permissionMode || PermissionMode.DEFAULT,
@@ -220,9 +225,9 @@ export async function compact(
       }
     } catch (hookError) {
       if (
-        options.signal?.aborted
-        || isExecutionLeaseFailure(hookError)
-        || isHookProcessContainmentError(hookError)
+        options.signal?.aborted ||
+        isExecutionLeaseFailure(hookError) ||
+        isHookProcessContainmentError(hookError)
       ) {
         throw hookError;
       }
@@ -277,8 +282,8 @@ export async function compact(
         options.signal?.throwIfAborted();
         await options.assertExecutionLease?.();
         const postHookManager = HookManager.getInstance();
-        const postHookResult = await runFileHook(
-          () => postHookManager.executePostCompactHooks(
+        const postHookResult = await runFileHook(() =>
+          postHookManager.executePostCompactHooks(
             {
               trigger: options.trigger,
               messages_before: messages.length,
@@ -300,9 +305,9 @@ export async function compact(
         }
       } catch (hookError) {
         if (
-          options.signal?.aborted
-          || isExecutionLeaseFailure(hookError)
-          || isHookProcessContainmentError(hookError)
+          options.signal?.aborted ||
+          isExecutionLeaseFailure(hookError) ||
+          isHookProcessContainmentError(hookError)
         ) {
           throw hookError;
         }
@@ -323,9 +328,9 @@ export async function compact(
     };
   } catch (error) {
     if (
-      isExecutionLeaseFailure(error)
-      || isHookProcessContainmentError(error)
-      || error instanceof ProviderRegistryError
+      isExecutionLeaseFailure(error) ||
+      isHookProcessContainmentError(error) ||
+      error instanceof ProviderRegistryError
     ) {
       throw error;
     }
@@ -336,7 +341,7 @@ export async function compact(
 }
 
 export function microcompactMessages(
-  messages: Message[],
+  messages: ModelMessage[],
   options: MicrocompactOptions = {},
 ): MicrocompactResult {
   return microcompact(messages, options);
@@ -351,7 +356,7 @@ export function microcompactMessages(
  * @returns 总结内容
  */
 async function generateSummary(
-  messages: Message[],
+  messages: ModelMessage[],
   fileContents: FileContent[],
   options: CompactionOptions,
 ): Promise<string> {
@@ -360,15 +365,15 @@ async function generateSummary(
 
   console.log('[CompactionService] 使用压缩模型:', options.modelName);
 
-  const chatService = wrapChatServiceWithTimeouts(
-    await createChatServiceAsync(
+  const modelService = wrapModelServiceWithTimeouts(
+    await createModelService(
       {
         apiKey: options.apiKey || process.env.BLADE_API_KEY || '',
         baseUrl: baseURL,
         model: options.modelName,
         temperature: 0.3,
         maxOutputTokens: 8000,
-        timeout: 60000,
+        requestTimeoutMs: 60000,
         provider: options.provider || inferProvider(baseURL),
         providerId: options.providerId,
         customHeaders: options.customHeaders,
@@ -378,7 +383,10 @@ async function generateSummary(
     ),
   );
 
-  const response = await chatService.sideQuery([{ role: 'user', content: prompt }], options.signal);
+  const response = await modelService.sideQuery(
+    [{ role: 'user', content: prompt }],
+    options.signal,
+  );
 
   const content = response.content || '';
   const summaryMatch = content.match(/<summary>([\s\S]*?)<\/summary>/);
@@ -422,7 +430,7 @@ function inferProvider(baseURL?: string): ProviderType {
  * @param fileContents - 文件内容列表
  * @returns 压缩 prompt
  */
-function buildCompactionPrompt(messages: Message[], fileContents: FileContent[]): string {
+function buildCompactionPrompt(messages: ModelMessage[], fileContents: FileContent[]): string {
   const messagesText = messages
     .map((msg, i) => {
       const role = msg.role || 'unknown';
@@ -495,7 +503,7 @@ function createBoundaryMessage(
   parentId: string,
   trigger: 'auto' | 'manual',
   preTokens: number,
-): Message {
+): ModelMessage {
   return {
     id: nanoid(),
     role: 'system',
@@ -519,7 +527,7 @@ function createBoundaryMessage(
  * @param summary - 总结内容
  * @returns summary 消息
  */
-function createSummaryMessage(parentId: string, summary: string): Message {
+function createSummaryMessage(parentId: string, summary: string): ModelMessage {
   return {
     id: nanoid(),
     role: 'user',
@@ -541,7 +549,7 @@ function createSummaryMessage(parentId: string, summary: string): Message {
  * @returns 压缩结果
  */
 function fallbackCompact(
-  messages: Message[],
+  messages: ModelMessage[],
   options: CompactionOptions,
   preTokens: number,
   error: unknown,

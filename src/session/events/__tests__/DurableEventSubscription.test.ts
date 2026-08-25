@@ -11,7 +11,18 @@ import {
   InputId,
   RequestId,
   SessionId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
+import type { DurableEventOperationOptions, DurableEventStore } from '../DurableEventStore.js';
+import {
+  DURABLE_EVENT_CURSOR_VERSION,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionMessage,
+  durableEventCursor,
+  parseDurableEventCursor,
+} from '../DurableEventSubscription.js';
+import { DurableSessionJournal } from '../DurableSessionJournal.js';
+import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import type {
   DurableEventAppendOptions,
   DurableEventAppendResult,
@@ -19,20 +30,6 @@ import type {
   DurableEventPage,
   DurableEventReadOptions,
 } from '../types.js';
-import {
-  DURABLE_EVENT_CURSOR_VERSION,
-  durableEventCursor,
-  DurableEventSubscription,
-  DurableEventSubscriptionError,
-  type DurableEventSubscriptionMessage,
-  parseDurableEventCursor,
-} from '../DurableEventSubscription.js';
-import type {
-  DurableEventOperationOptions,
-  DurableEventStore,
-} from '../DurableEventStore.js';
-import { DurableSessionJournal } from '../DurableSessionJournal.js';
-import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DurableEventType } from '../types.js';
 
 const sessionId = SessionId('subscription-session');
@@ -714,20 +711,15 @@ describe('DurableEventSubscription', () => {
     const page = await delegate.read(sessionId);
     const oversizedStore: DurableEventStore = {
       append: (...args) => delegate.append(...args),
-      getHeadSequence: (requestedSessionId) =>
-        delegate.getHeadSequence(requestedSessionId),
+      getHeadSequence: (requestedSessionId) => delegate.getHeadSequence(requestedSessionId),
       async read() {
         return page;
       },
     };
-    const subscription = await DurableEventSubscription.open(
-      oversizedStore,
-      sessionId,
-      {
-        pageSize: 1,
-        follow: false,
-      },
-    );
+    const subscription = await DurableEventSubscription.open(oversizedStore, sessionId, {
+      pageSize: 1,
+      follow: false,
+    });
 
     await expect(subscription.next()).rejects.toMatchObject({
       code: 'DURABLE_EVENT_SUBSCRIPTION_INVALID_PAGE',

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { completeToolExecution, ToolKind } from '../../types/index.js';
+import { ToolKind } from '../../types/kind.js';
+import { completeToolExecution } from '../../types/result.js';
 import { ToolCatalog } from '../ToolCatalog.js';
 
 describe('ToolCatalog', () => {

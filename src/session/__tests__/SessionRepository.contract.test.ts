@@ -3,17 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
-import { InputId, RequestId, SessionId } from '../../types/branded.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import type { SessionPersistence } from '../SessionRepository.js';
 
 interface RepositoryFixture {
   readonly repository: SessionPersistence;
 }
 
-function sessionPersistenceContract(
-  name: string,
-  createFixture: () => RepositoryFixture,
-): void {
+function sessionPersistenceContract(name: string, createFixture: () => RepositoryFixture): void {
   describe(`${name} SessionPersistence conformance`, () => {
     it('uses one backend for append operations and read projections', async () => {
       const { repository } = createFixture();
@@ -21,11 +18,7 @@ function sessionPersistenceContract(
       await repository.initialize();
       await repository.createSession(sessionId);
       await repository.saveMessage(sessionId, 'user', 'hello');
-      const tool = await repository.saveToolUse(
-        sessionId,
-        'Search',
-        { query: 'blade' },
-      );
+      const tool = await repository.saveToolUse(sessionId, 'Search', { query: 'blade' });
       await repository.saveToolResult(
         sessionId,
         tool.toolCallId,
@@ -33,11 +26,11 @@ function sessionPersistenceContract(
         { matches: 1 },
         tool.messageId,
       );
-      await repository.saveCompaction(
-        sessionId,
-        'summary',
-        { trigger: 'manual', preTokens: 100, postTokens: 20 },
-      );
+      await repository.saveCompaction(sessionId, 'summary', {
+        trigger: 'manual',
+        preTokens: 100,
+        postTokens: 20,
+      });
 
       const state = await repository.loadState(sessionId);
       expect(state).toMatchObject({
@@ -50,9 +43,7 @@ function sessionPersistenceContract(
         'tool',
         'system',
       ]);
-      await expect(repository.loadMessages(sessionId)).resolves.toEqual(
-        state?.messages,
-      );
+      await expect(repository.loadMessages(sessionId)).resolves.toEqual(state?.messages);
       await expect(repository.forkState(sessionId)).resolves.toMatchObject({
         sessionId,
         messages: state?.messages,
@@ -75,12 +66,7 @@ function sessionPersistenceContract(
         acceptedAt: 1,
       });
       expect((await repository.loadState(sessionId))?.pendingInputs).toHaveLength(1);
-      await repository.saveAppliedInputMessage(
-        sessionId,
-        inputId,
-        RequestId('request-1'),
-        'later',
-      );
+      await repository.saveAppliedInputMessage(sessionId, inputId, RequestId('request-1'), 'later');
       expect((await repository.loadState(sessionId))?.pendingInputs).toEqual([]);
     });
 
@@ -100,7 +86,5 @@ function sessionPersistenceContract(
 }
 
 sessionPersistenceContract('JSONL', () => ({
-  repository: new PersistentStore(
-    mkdtempSync(join(tmpdir(), 'session-repository-contract-')),
-  ),
+  repository: new PersistentStore(mkdtempSync(join(tmpdir(), 'session-repository-contract-'))),
 }));

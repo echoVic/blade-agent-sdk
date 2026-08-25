@@ -1,7 +1,7 @@
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
+import type { ModelContent } from '../model/message.js';
 import { AttachmentCollector } from '../prompts/processors/AttachmentCollector.js';
 import type { Attachment } from '../prompts/processors/types.js';
-import type { ContentPart } from '../services/ChatServiceInterface.js';
 import type { UserMessageContent } from './types.js';
 
 export class AttachmentHandler {
@@ -10,17 +10,18 @@ export class AttachmentHandler {
 
   constructor(cwd: string, logger?: InternalLogger) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
-    this.attachmentCollector = new AttachmentCollector({
-      cwd,
-      maxFileSize: 1024 * 1024,
-      maxLines: 2000,
-      maxTokens: 32000,
-    }, this.logger.child(LogCategory.PROMPTS));
+    this.attachmentCollector = new AttachmentCollector(
+      {
+        cwd,
+        maxFileSize: 1024 * 1024,
+        maxLines: 2000,
+        maxTokens: 32000,
+      },
+      this.logger.child(LogCategory.PROMPTS),
+    );
   }
 
-  async processAtMentionsForContent(
-    content: UserMessageContent
-  ): Promise<UserMessageContent> {
+  async processAtMentionsForContent(content: UserMessageContent): Promise<UserMessageContent> {
     if (typeof content === 'string') {
       return this.processAtMentions(content);
     }
@@ -46,9 +47,7 @@ export class AttachmentHandler {
         return content;
       }
 
-      this.logger.debug(
-        `✅ Processed ${attachments.length} @ file mentions in multimodal message`
-      );
+      this.logger.debug(`✅ Processed ${attachments.length} @ file mentions in multimodal message`);
 
       const attachmentText = this.buildAttachmentText(attachments);
 
@@ -56,10 +55,7 @@ export class AttachmentHandler {
         return content;
       }
 
-      const result: ContentPart[] = [
-        ...content,
-        { type: 'text', text: attachmentText },
-      ];
+      const result: ModelContent[] = [...content, { type: 'text', text: attachmentText }];
 
       return result;
     } catch (error) {
@@ -81,14 +77,10 @@ export class AttachmentHandler {
         contextBlocks.push(
           `<file path="${att.path}"${lineInfo ? ` range="${lineInfo}"` : ''}>`,
           att.content,
-          '</file>'
+          '</file>',
         );
       } else if (att.type === 'directory') {
-        contextBlocks.push(
-          `<directory path="${att.path}">`,
-          att.content,
-          '</directory>'
-        );
+        contextBlocks.push(`<directory path="${att.path}">`, att.content, '</directory>');
       } else if (att.type === 'error') {
         errors.push(`- @${att.path}: ${att.error}`);
       }
@@ -141,14 +133,10 @@ export class AttachmentHandler {
         contextBlocks.push(
           `<file path="${att.path}"${lineInfo ? ` range="${lineInfo}"` : ''}>`,
           att.content,
-          '</file>'
+          '</file>',
         );
       } else if (att.type === 'directory') {
-        contextBlocks.push(
-          `<directory path="${att.path}">`,
-          att.content,
-          '</directory>'
-        );
+        contextBlocks.push(`<directory path="${att.path}">`, att.content, '</directory>');
       } else if (att.type === 'error') {
         errors.push(`- @${att.path}: ${att.error}`);
       }

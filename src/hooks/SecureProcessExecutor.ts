@@ -4,24 +4,18 @@
  * 安全地执行 Hook 子进程
  */
 
-import {
-  type ChildProcessWithoutNullStreams,
-  spawn,
-} from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import {
   shellProcessSpawnOptions,
   terminateProcessTree,
 } from '../tools/builtin/shell/processTree.js';
 import {
-  HookExitCode,
   type HookExecutionContext,
+  HookExitCode,
   type HookInput,
   type ProcessResult,
-} from './types/HookTypes.js';
-import {
-  HookProcessContainmentError,
-  WindowsProcessJob,
-} from './WindowsProcessJob.js';
+} from './types.js';
+import { HookProcessContainmentError, WindowsProcessJob } from './WindowsProcessJob.js';
 
 const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
 const WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
@@ -73,10 +67,7 @@ process.stdin.once('end', () => {
 });
 `;
 
-function toContainmentError(
-  message: string,
-  error: unknown,
-): HookProcessContainmentError {
+function toContainmentError(message: string, error: unknown): HookProcessContainmentError {
   return error instanceof HookProcessContainmentError
     ? error
     : new HookProcessContainmentError(message, { cause: error });
@@ -117,9 +108,7 @@ export class SecureProcessExecutor {
   private readonly MAX_STDERR_SIZE = 1 * 1024 * 1024; // 1MB
   private readonly MAX_INPUT_SIZE = 100 * 1024; // 100KB
 
-  constructor(
-    private readonly terminationGraceMs = DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS,
-  ) {
+  constructor(private readonly terminationGraceMs = DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS) {
     if (!Number.isSafeInteger(terminationGraceMs) || terminationGraceMs <= 0) {
       throw new TypeError('Hook process termination grace must be a positive safe integer');
     }
@@ -132,7 +121,7 @@ export class SecureProcessExecutor {
     command: string,
     input: HookInput,
     context: HookExecutionContext,
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<ProcessResult> {
     if (context.abortSignal?.aborted) {
       return this.createCancelledResult();
@@ -142,7 +131,7 @@ export class SecureProcessExecutor {
     const inputJson = JSON.stringify(input);
     if (inputJson.length > this.MAX_INPUT_SIZE) {
       throw new Error(
-        `Hook input too large: ${inputJson.length} bytes (max ${this.MAX_INPUT_SIZE})`
+        `Hook input too large: ${inputJson.length} bytes (max ${this.MAX_INPUT_SIZE})`,
       );
     }
 
@@ -150,9 +139,7 @@ export class SecureProcessExecutor {
     const env = this.createSafeEnv(input);
 
     // 3. 启动子进程
-    const windowsJob = process.platform === 'win32'
-      ? await WindowsProcessJob.create()
-      : undefined;
+    const windowsJob = process.platform === 'win32' ? await WindowsProcessJob.create() : undefined;
     if (context.abortSignal?.aborted) {
       windowsJob?.close();
       return this.createCancelledResult();
@@ -174,10 +161,9 @@ export class SecureProcessExecutor {
     } catch (error) {
       windowsJob?.close();
       throw windowsJob
-        ? new HookProcessContainmentError(
-            'Failed to spawn the contained Windows Hook process',
-            { cause: error },
-          )
+        ? new HookProcessContainmentError('Failed to spawn the contained Windows Hook process', {
+            cause: error,
+          })
         : error;
     }
     child.once('error', () => {
@@ -193,11 +179,7 @@ export class SecureProcessExecutor {
         windowsJob.assign(child.pid);
       } catch (error) {
         try {
-          await terminateProcessTree(
-            child.pid,
-            child,
-            this.terminationGraceMs,
-          );
+          await terminateProcessTree(child.pid, child, this.terminationGraceMs);
         } catch (cleanupError) {
           throw new HookProcessContainmentError(
             'Failed to contain or terminate the Windows Hook process',
@@ -206,15 +188,12 @@ export class SecureProcessExecutor {
         } finally {
           windowsJob.close();
         }
-        throw new HookProcessContainmentError(
-          'Failed to contain the Windows Hook process',
-          { cause: error },
-        );
+        throw new HookProcessContainmentError('Failed to contain the Windows Hook process', {
+          cause: error,
+        });
       }
     }
-    const processInput = windowsJob
-      ? JSON.stringify({ command, input: inputJson })
-      : inputJson;
+    const processInput = windowsJob ? JSON.stringify({ command, input: inputJson }) : inputJson;
 
     // 4. 流量控制
     const stdout = new StreamLimiter(this.MAX_STDOUT_SIZE);
@@ -234,11 +213,7 @@ export class SecureProcessExecutor {
     // 5. 等待完成、取消或超时
     return new Promise((resolve, reject) => {
       let settled = false;
-      let termination:
-        | 'abort'
-        | 'timeout'
-        | 'process-error'
-        | undefined;
+      let termination: 'abort' | 'timeout' | 'process-error' | undefined;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let abortHandler: (() => void) | null = null;
 
@@ -264,33 +239,23 @@ export class SecureProcessExecutor {
         cleanup();
         reject(error);
       };
-      const stop = (
-        reason: 'abort' | 'timeout' | 'process-error',
-        cause?: unknown,
-      ): void => {
+      const stop = (reason: 'abort' | 'timeout' | 'process-error', cause?: unknown): void => {
         if (settled || termination) {
           return;
         }
         termination = reason;
         cleanup();
         const processCleanup = windowsJob
-          ? windowsJob.terminateAndWait(
-              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
-            )
-          : terminateProcessTree(
-              child.pid,
-              child,
-              this.terminationGraceMs,
-            );
+          ? windowsJob.terminateAndWait(WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS)
+          : terminateProcessTree(child.pid, child, this.terminationGraceMs);
         void processCleanup.then(
           () => {
             if (reason === 'process-error') {
               rejectOnce(
                 windowsJob
-                  ? new HookProcessContainmentError(
-                      'The contained Windows Hook process failed',
-                      { cause },
-                    )
+                  ? new HookProcessContainmentError('The contained Windows Hook process failed', {
+                      cause,
+                    })
                   : cause,
               );
               return;
@@ -307,9 +272,7 @@ export class SecureProcessExecutor {
             );
           },
           (error) => {
-            rejectOnce(
-              toContainmentError('Failed to terminate the Hook process tree', error),
-            );
+            rejectOnce(toContainmentError('Failed to terminate the Hook process tree', error));
           },
         );
       };
@@ -318,27 +281,22 @@ export class SecureProcessExecutor {
         if (termination) return;
         cleanup();
         const processCleanup = windowsJob
-          ? windowsJob.terminateAndWait(
-              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
-            )
-          : terminateProcessTree(
-              child.pid,
-              child,
-              this.terminationGraceMs,
-            );
-        void processCleanup.then(() => {
-          if (termination) return;
-          resolveOnce({
-            stdout: stdout.getContent(),
-            stderr: stderr.getContent(),
-            exitCode: code ?? 1,
-            timedOut: false,
-          });
-        }, (error) => {
-          rejectOnce(
-            toContainmentError('Failed to reap the Hook process tree', error),
-          );
-        });
+          ? windowsJob.terminateAndWait(WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS)
+          : terminateProcessTree(child.pid, child, this.terminationGraceMs);
+        void processCleanup.then(
+          () => {
+            if (termination) return;
+            resolveOnce({
+              stdout: stdout.getContent(),
+              stderr: stderr.getContent(),
+              exitCode: code ?? 1,
+              timedOut: false,
+            });
+          },
+          (error) => {
+            rejectOnce(toContainmentError('Failed to reap the Hook process tree', error));
+          },
+        );
       });
 
       child.on('error', (error) => {
@@ -389,12 +347,12 @@ export class SecureProcessExecutor {
       BLADE_PROJECT_DIR: input.project_dir,
       BLADE_SESSION_ID: input.session_id,
       BLADE_HOOK_EVENT: input.hook_event_name,
-      BLADE_TOOL_NAME: ('tool_name' in input && typeof input.tool_name === 'string')
-        ? input.tool_name
-        : undefined,
-      BLADE_TOOL_USE_ID: ('tool_use_id' in input && typeof input.tool_use_id === 'string')
-        ? input.tool_use_id
-        : undefined,
+      BLADE_TOOL_NAME:
+        'tool_name' in input && typeof input.tool_name === 'string' ? input.tool_name : undefined,
+      BLADE_TOOL_USE_ID:
+        'tool_use_id' in input && typeof input.tool_use_id === 'string'
+          ? input.tool_use_id
+          : undefined,
 
       // 保留必要的系统变量
       PATH: process.env.PATH || '',

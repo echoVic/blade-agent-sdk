@@ -1,5 +1,6 @@
 import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import type { ModelToolCall } from '../../model/message.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import {
   type DurableExecutionFence,
@@ -8,63 +9,74 @@ import {
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/ExecutionTypes.js';
-import type { ToolEffect, ToolResult, ToolYield } from '../../tools/types/index.js';
-import { resolveToolBehaviorSafely, ToolErrorType, ToolSideEffect } from '../../tools/types/index.js';
+import type { ToolEffect } from '../../tools/types/effects.js';
+import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
+import { resolveToolBehaviorSafely, ToolSideEffect } from '../../tools/types/kind.js';
+import type { ToolResult, ToolYield } from '../../tools/types/result.js';
+import { ToolErrorType } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import { type ModelAttemptId, type SessionId, ToolUseId } from '../../types/branded.js';
-import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
+import {
+  type MessageId,
+  type ModelAttemptId,
+  type SessionId,
+  ToolUseId,
+} from '../../types/identifiers.js';
+import type { JsonObject } from '../../types/json.js';
+import type { BladeConfig } from '../config.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
-import { createInterruptAwareAbortSignal, resolveToolInterruptBehavior } from './toolInterruptBehavior.js';
-import type { FunctionToolCall } from './types.js';
+import {
+  createInterruptAwareAbortSignal,
+  resolveToolInterruptBehavior,
+} from './toolInterruptBehavior.js';
 
 export interface ToolExecutionOutcome {
-  toolCall: FunctionToolCall;
+  toolCall: ModelToolCall;
   result: ToolResult;
   effects: ToolEffect[];
-  toolUseUuid: string | null;
+  toolMessageId: MessageId | null;
 }
 
 export type ToolExecutionUpdate =
   | {
       type: 'tool_ready';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
     }
   | {
       type: 'tool_started';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       params: JsonObject;
-      toolUseUuid: string | null;
+      toolMessageId: MessageId | null;
     }
   | {
       type: 'tool_progress';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       progress: Extract<ToolYield, { kind: 'progress' }>;
     }
   | {
       type: 'tool_message';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       content: Extract<ToolYield, { kind: 'message' }>['content'];
     }
   | {
       type: 'tool_runtime_patch';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       patch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
     }
   | {
       type: 'tool_context_patch';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       patch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
     }
   | {
       type: 'tool_new_messages';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       messages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
     }
   | {
       type: 'tool_permission_updates';
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       updates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
     }
   | {
@@ -96,17 +108,17 @@ export interface ToolExecutionContext {
 
 export interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     params: JsonObject;
-  }) => Promise<string | null>;
-  onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
+  }) => Promise<MessageId | null>;
+  onToolReady?: (toolCall: ModelToolCall) => void | Promise<void>;
   onAfterToolExec?: (ctx: ToolExecutionOutcome) => void | Promise<void>;
-  onToolComplete?: (toolCall: FunctionToolCall, result: ToolResult) => void | Promise<void>;
+  onToolComplete?: (toolCall: ModelToolCall, result: ToolResult) => void | Promise<void>;
   onUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
 }
 
 export interface RunToolCallInput {
-  toolCall: FunctionToolCall;
+  toolCall: ModelToolCall;
   executionPipeline: ExecutionPipeline;
   executionContext: ToolExecutionContext;
   logger?: InternalLogger;
@@ -189,7 +201,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       interruptBehavior,
     });
 
-    const toolUseUuid =
+    const toolMessageId =
       (await input.hooks?.onBeforeToolExec?.({
         toolCall: input.toolCall,
         params,
@@ -198,7 +210,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       type: 'tool_started',
       toolCall: input.toolCall,
       params,
-      toolUseUuid,
+      toolMessageId,
     });
 
     let result: ToolResult | undefined;
@@ -250,10 +262,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
         try {
           await execution.return(undefined as never);
         } catch (error) {
-          if (
-            isExecutionLeaseFailure(error)
-            || isHookProcessContainmentError(error)
-          ) {
+          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
             closeFailure = error;
           }
         }
@@ -288,12 +297,9 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
         },
       };
     }
-    outcome = { toolCall: input.toolCall, result, effects, toolUseUuid };
+    outcome = { toolCall: input.toolCall, result, effects, toolMessageId };
   } catch (error) {
-    if (
-      isExecutionLeaseFailure(error)
-      || isHookProcessContainmentError(error)
-    ) {
+    if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
       throw error;
     }
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
@@ -317,7 +323,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
 }
 
 function buildFailedOutcome(
-  toolCall: FunctionToolCall,
+  toolCall: ModelToolCall,
   error: unknown,
   interruptBehavior: 'cancel' | 'block',
   steeringSignal: AbortSignal | undefined,
@@ -335,7 +341,7 @@ function buildFailedOutcome(
       },
     },
     effects: [],
-    toolUseUuid: null,
+    toolMessageId: null,
   };
 }
 
@@ -367,7 +373,7 @@ export async function emitToolExecutionUpdate(
 }
 
 function mapToolYieldToExecutionUpdate(
-  toolCall: FunctionToolCall,
+  toolCall: ModelToolCall,
   event: ToolYield,
 ): ToolExecutionUpdate {
   switch (event.kind) {
@@ -389,7 +395,7 @@ function mapToolYieldToExecutionUpdate(
 }
 
 function mapToolEffectToExecutionUpdate(
-  toolCall: FunctionToolCall,
+  toolCall: ModelToolCall,
   effect: ToolEffect,
 ): ToolExecutionUpdate {
   switch (effect.type) {

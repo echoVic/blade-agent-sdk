@@ -1,5 +1,5 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import { ToolUseId } from '../../types/branded.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { ToolUseId } from '../../types/identifiers.js';
 import { HookExecutionGuard } from '../HookExecutionGuard.js';
 
 describe('HookExecutionGuard', () => {

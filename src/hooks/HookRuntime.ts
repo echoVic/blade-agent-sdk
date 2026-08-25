@@ -1,18 +1,19 @@
 import { nanoid } from 'nanoid';
 import type { UserMessageContent } from '../agent/types.js';
 import { ConfigError } from '../errors/ConfigError.js';
-import type { RuntimeHookRegistration } from '../runtime/index.js';
-import type { ContentPart } from '../services/ChatServiceInterface.js';
-import { cloneContentPart } from '../services/messageUtils.js';
-import type { ToolResult } from '../tools/types/index.js';
-import { ToolUseId, type SessionId } from '../types/branded.js';
-import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
-import { HookEvent } from '../types/constants.js';
-import type { PermissionResult } from '../types/permissions.js';
-import type { HookCallback, HookInput } from '../session/types.js';
+import type { ModelContent } from '../model/message.js';
 import type { HookTraceCollector } from '../observability/index.js';
-import { HookManager } from './HookManager.js';
+import type { RuntimeHookRegistration } from '../runtime/index.js';
+import { cloneContentPart } from '../services/messageUtils.js';
+import type { HookCallback, HookInput } from '../session/types.js';
+import type { ToolResult } from '../tools/types/result.js';
+import type { PermissionMode } from '../types/constants.js';
+import { HookEvent } from '../types/constants.js';
+import { type SessionId, ToolUseId } from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
+import type { PermissionResult } from '../types/permissions.js';
 import { HookBus } from './HookBus.js';
+import { HookManager } from './HookManager.js';
 import { isHookProcessContainmentError } from './WindowsProcessJob.js';
 
 interface HookRuntimeOptions {
@@ -29,11 +30,7 @@ export const DEFAULT_INLINE_HOOK_TIMEOUT_MS = 600_000;
 export const DEFAULT_SESSION_END_HOOK_TIMEOUT_MS = 3_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-function resolveHookTimeoutMs(
-  value: number | undefined,
-  fallback: number,
-  name: string,
-): number {
+function resolveHookTimeoutMs(value: number | undefined, fallback: number, name: string): number {
   const resolved = value ?? fallback;
   if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > MAX_TIMER_DELAY_MS) {
     throw new ConfigError(
@@ -83,10 +80,13 @@ export class HookRuntime {
   private sessionEndCallbacksAttempted = false;
   private terminalContainmentFailure: unknown;
   private traceCollector?: HookTraceCollector;
-  private readonly runtimeHookRegistrations = new Map<string, {
-    event: HookEvent;
-    callback: HookCallback;
-  }>();
+  private readonly runtimeHookRegistrations = new Map<
+    string,
+    {
+      event: HookEvent;
+      callback: HookCallback;
+    }
+  >();
 
   constructor(private readonly options: HookRuntimeOptions) {
     this.callbacks = Object.fromEntries(
@@ -165,7 +165,9 @@ export class HookRuntime {
 
       const bucket = this.callbacks[registration.event];
       if (bucket) {
-        this.callbacks[registration.event] = bucket.filter((hook) => hook !== registration.callback);
+        this.callbacks[registration.event] = bucket.filter(
+          (hook) => hook !== registration.callback,
+        );
       }
       this.runtimeHookRegistrations.delete(registrationId);
     }
@@ -182,7 +184,7 @@ export class HookRuntime {
   ): Promise<PreToolUseRuntimeResult> {
     this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
+    const toolUseId = options.toolUseId ?? ToolUseId(`tool_${nanoid()}`);
     let nextInput = { ...input };
 
     if (this.bus.has(HookEvent.PreToolUse)) {
@@ -216,19 +218,13 @@ export class HookRuntime {
       return { toolUseId, updatedInput: nextInput };
     }
 
-    const managerResult = await this.runFileHooks(
-      options.abortSignal,
-      () => this.hookManager.executePreToolHooks(
-        toolName,
-        toolUseId,
-        nextInput,
-        {
-          projectDir,
-          sessionId: this.options.sessionId,
-          permissionMode: options.permissionMode ?? this.options.permissionMode,
-          abortSignal: options.abortSignal,
-        },
-      ),
+    const managerResult = await this.runFileHooks(options.abortSignal, () =>
+      this.hookManager.executePreToolHooks(toolName, toolUseId, nextInput, {
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: options.permissionMode ?? this.options.permissionMode,
+        abortSignal: options.abortSignal,
+      }),
     );
 
     if (managerResult.modifiedInput) {
@@ -269,25 +265,18 @@ export class HookRuntime {
   ): Promise<PostToolUseRuntimeResult> {
     this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
+    const toolUseId = options.toolUseId ?? ToolUseId(`tool_${nanoid()}`);
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
     if (projectDir) {
-      const managerResult = await this.runFileHooks(
-        options.abortSignal,
-        () => this.hookManager.executePostToolHooks(
-          toolName,
-          toolUseId,
-          input,
-          nextResult,
-          {
-            projectDir,
-            sessionId: this.options.sessionId,
-            permissionMode: options.permissionMode ?? this.options.permissionMode,
-            abortSignal: options.abortSignal,
-          },
-        ),
+      const managerResult = await this.runFileHooks(options.abortSignal, () =>
+        this.hookManager.executePostToolHooks(toolName, toolUseId, input, nextResult, {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: options.permissionMode ?? this.options.permissionMode,
+          abortSignal: options.abortSignal,
+        }),
       );
 
       nextResult = this.applyManagerPostToolResult(nextResult, managerResult);
@@ -318,14 +307,13 @@ export class HookRuntime {
   ): Promise<PostToolUseRuntimeResult> {
     this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
+    const toolUseId = options.toolUseId ?? ToolUseId(`tool_${nanoid()}`);
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
     if (projectDir) {
-      const managerResult = await this.runFileHooks(
-        options.abortSignal,
-        () => this.hookManager.executePostToolUseFailureHooks(
+      const managerResult = await this.runFileHooks(options.abortSignal, () =>
+        this.hookManager.executePostToolUseFailureHooks(
           toolName,
           toolUseId,
           input,
@@ -413,9 +401,8 @@ export class HookRuntime {
       return { updatedInput: nextInput };
     }
 
-    const managerResult = await this.runFileHooks(
-      options.abortSignal,
-      () => this.hookManager.executePermissionRequestHooks(
+    const managerResult = await this.runFileHooks(options.abortSignal, () =>
+      this.hookManager.executePermissionRequestHooks(
         toolName,
         ToolUseId(`permission_${toolName}_${Date.now()}`),
         nextInput,
@@ -490,19 +477,15 @@ export class HookRuntime {
     }
 
     const imageMeta = this.getImageMetadata(nextMessage);
-    const managerResult = await this.runFileHooks(
-      options.abortSignal,
-      () => this.hookManager.executeUserPromptSubmitHooks(
-        this.getTextContent(nextMessage),
-        {
-          projectDir,
-          sessionId: this.options.sessionId,
-          permissionMode: this.options.permissionMode,
-          hasImages: imageMeta.hasImages,
-          imageCount: imageMeta.imageCount,
-          abortSignal: options.abortSignal,
-        },
-      ),
+    const managerResult = await this.runFileHooks(options.abortSignal, () =>
+      this.hookManager.executeUserPromptSubmitHooks(this.getTextContent(nextMessage), {
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: this.options.permissionMode,
+        hasImages: imageMeta.hasImages,
+        imageCount: imageMeta.imageCount,
+        abortSignal: options.abortSignal,
+      }),
     );
 
     if (!managerResult.proceed) {
@@ -520,9 +503,11 @@ export class HookRuntime {
     return nextMessage;
   }
 
-  async runSessionStart(
-    payload: { isResume: boolean; resumeSessionId?: string; abortSignal?: AbortSignal },
-  ): Promise<void> {
+  async runSessionStart(payload: {
+    isResume: boolean;
+    resumeSessionId?: string;
+    abortSignal?: AbortSignal;
+  }): Promise<void> {
     this.throwIfTerminalContainmentFailed();
     await this.runCallbackGroup(HookEvent.SessionStart, payload, payload.abortSignal);
 
@@ -531,9 +516,8 @@ export class HookRuntime {
       return;
     }
 
-    const result = await this.runFileHooks(
-      payload.abortSignal,
-      () => this.hookManager.executeSessionStartHooks({
+    const result = await this.runFileHooks(payload.abortSignal, () =>
+      this.hookManager.executeSessionStartHooks({
         projectDir,
         sessionId: this.options.sessionId,
         permissionMode: this.options.permissionMode,
@@ -547,16 +531,14 @@ export class HookRuntime {
     }
   }
 
-  async runTaskCompleted(
-    payload: {
-      taskId: string;
-      taskDescription: string;
-      resultSummary?: string;
-      success: boolean;
-      abortSignal?: AbortSignal;
-      [key: string]: unknown;
-    },
-  ): Promise<void> {
+  async runTaskCompleted(payload: {
+    taskId: string;
+    taskDescription: string;
+    resultSummary?: string;
+    success: boolean;
+    abortSignal?: AbortSignal;
+    [key: string]: unknown;
+  }): Promise<void> {
     this.throwIfTerminalContainmentFailed();
     await this.runCallbackGroup(HookEvent.TaskCompleted, payload, payload.abortSignal);
 
@@ -565,9 +547,8 @@ export class HookRuntime {
       return;
     }
 
-    const result = await this.runFileHooks(
-      payload.abortSignal,
-      () => this.hookManager.executeTaskCompletedHooks(payload.taskId, {
+    const result = await this.runFileHooks(payload.abortSignal, () =>
+      this.hookManager.executeTaskCompletedHooks(payload.taskId, {
         projectDir,
         sessionId: this.options.sessionId,
         permissionMode: this.options.permissionMode,
@@ -582,21 +563,19 @@ export class HookRuntime {
     }
   }
 
-  async runSessionEnd(
-    payload: {
-      reason:
-        | 'error'
-        | 'other'
-        | 'user_exit'
-        | 'max_turns'
-        | 'idle_timeout'
-        | 'ctrl_c'
-        | 'esc'
-        | 'clear'
-        | 'logout';
-      abortSignal?: AbortSignal;
-    },
-  ): Promise<void> {
+  async runSessionEnd(payload: {
+    reason:
+      | 'error'
+      | 'other'
+      | 'user_exit'
+      | 'max_turns'
+      | 'idle_timeout'
+      | 'ctrl_c'
+      | 'esc'
+      | 'clear'
+      | 'logout';
+    abortSignal?: AbortSignal;
+  }): Promise<void> {
     this.throwIfTerminalContainmentFailed();
     payload.abortSignal?.throwIfAborted();
     if (!this.sessionEndCallbacksAttempted) {
@@ -615,9 +594,8 @@ export class HookRuntime {
       return;
     }
 
-    await this.runFileHooks(
-      payload.abortSignal,
-      () => this.hookManager.executeSessionEndHooks(payload.reason, {
+    await this.runFileHooks(payload.abortSignal, () =>
+      this.hookManager.executeSessionEndHooks(payload.reason, {
         projectDir,
         sessionId: this.options.sessionId,
         permissionMode: this.options.permissionMode,
@@ -626,12 +604,10 @@ export class HookRuntime {
     );
   }
 
-  async executeStopCheck(
-    payload: {
-      reason: string;
-      abortSignal?: AbortSignal;
-    },
-  ): Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }> {
+  async executeStopCheck(payload: {
+    reason: string;
+    abortSignal?: AbortSignal;
+  }): Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }> {
     this.throwIfTerminalContainmentFailed();
     payload.abortSignal?.throwIfAborted();
     const projectDir = this.options.resolveProjectDir();
@@ -639,9 +615,8 @@ export class HookRuntime {
       return { shouldStop: true };
     }
 
-    return this.runFileHooks(
-      payload.abortSignal,
-      () => this.hookManager.executeStopHooks({
+    return this.runFileHooks(payload.abortSignal, () =>
+      this.hookManager.executeStopHooks({
         projectDir,
         sessionId: this.options.sessionId,
         permissionMode: this.options.permissionMode,
@@ -688,10 +663,7 @@ export class HookRuntime {
       abortSignal?.throwIfAborted();
       return result;
     } catch (error) {
-      if (
-        this.terminalContainmentFailure === undefined
-        && isHookProcessContainmentError(error)
-      ) {
+      if (this.terminalContainmentFailure === undefined && isHookProcessContainmentError(error)) {
         this.terminalContainmentFailure = error;
       }
       this.throwIfTerminalContainmentFailed();
@@ -705,11 +677,14 @@ export class HookRuntime {
     }
   }
 
-  private applyManagerPostToolResult(result: ToolResult, hookResult: {
-    additionalContext?: string;
-    modifiedOutput?: JsonValue;
-    warning?: string;
-  }): ToolResult {
+  private applyManagerPostToolResult(
+    result: ToolResult,
+    hookResult: {
+      additionalContext?: string;
+      modifiedOutput?: JsonValue;
+      warning?: string;
+    },
+  ): ToolResult {
     let nextResult = result;
 
     if (hookResult.warning) {
@@ -755,9 +730,7 @@ export class HookRuntime {
         toolName,
         toolInput: input,
         toolOutput: nextOutput,
-        error: result.status === 'success'
-          ? undefined
-          : new Error(result.error.message),
+        error: result.status === 'success' ? undefined : new Error(result.error.message),
       }),
       abortSignal,
     );
@@ -833,7 +806,7 @@ export class HookRuntime {
     }
 
     return message
-      .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+      .filter((part): part is Extract<ModelContent, { type: 'text' }> => part.type === 'text')
       .map((part) => part.text)
       .join('\n');
   }
@@ -844,11 +817,13 @@ export class HookRuntime {
     }
 
     const imageParts = message
-      .filter((part): part is Extract<ContentPart, { type: 'image_url' }> => part.type === 'image_url')
+      .filter(
+        (part): part is Extract<ModelContent, { type: 'image_url' }> => part.type === 'image_url',
+      )
       .map(cloneContentPart);
 
     return [
-      ...(replacement === '' ? [] : [{ type: 'text', text: replacement } satisfies ContentPart]),
+      ...(replacement === '' ? [] : [{ type: 'text', text: replacement } satisfies ModelContent]),
       ...imageParts,
     ];
   }
@@ -869,7 +844,10 @@ export class HookRuntime {
     return message.filter((part) => part.type === 'image_url').length;
   }
 
-  private getImageMetadata(message: UserMessageContent): { hasImages: boolean; imageCount: number } {
+  private getImageMetadata(message: UserMessageContent): {
+    hasImages: boolean;
+    imageCount: number;
+  } {
     const imageCount = this.getImageCount(message);
     return {
       hasImages: imageCount > 0,
@@ -884,12 +862,9 @@ export class HookRuntime {
     if (hook.event === HookEvent.UserPromptSubmit && hook.type === 'append_prompt' && hook.value) {
       const hookValue = hook.value;
       return async (input) => {
-        const basePrompt = typeof input.userPrompt === 'string'
-          ? input.userPrompt
-          : '';
-        const modifiedPrompt = basePrompt.trim() === ''
-          ? hookValue
-          : `${basePrompt}\n\n${hookValue}`;
+        const basePrompt = typeof input.userPrompt === 'string' ? input.userPrompt : '';
+        const modifiedPrompt =
+          basePrompt.trim() === '' ? hookValue : `${basePrompt}\n\n${hookValue}`;
 
         if (hook.once) {
           this.unregisterRuntimeHooks([registrationId]);

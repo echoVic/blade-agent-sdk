@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { JsonObject } from '../../../types/common.js';
+import type { JsonObject } from '../../../types/json.js';
 
 vi.mock('nanoid', () => ({
   nanoid: () => 'generated-subagent-id',
@@ -48,9 +48,7 @@ describe('repairToolCallParams', () => {
 
   it('parses todos when they are encoded as a JSON string', async () => {
     const params: JsonObject = {
-      todos: JSON.stringify([
-        { id: 'todo-1', content: 'write tests', status: 'in_progress' },
-      ]),
+      todos: JSON.stringify([{ id: 'todo-1', content: 'write tests', status: 'in_progress' }]),
     };
 
     await repairToolCallParams(
@@ -65,8 +63,6 @@ describe('repairToolCallParams', () => {
       params,
     );
 
-    expect(params.todos).toEqual([
-      { id: 'todo-1', content: 'write tests', status: 'in_progress' },
-    ]);
+    expect(params.todos).toEqual([{ id: 'todo-1', content: 'write tests', status: 'in_progress' }]);
   });
 });

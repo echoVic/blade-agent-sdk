@@ -8,11 +8,13 @@
 
 import { z } from 'zod';
 import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
-import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, ToolResult } from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
-import { AgentId } from '../../../types/branded.js';
+import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { createTool } from '../../core/createTool.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { ToolResult } from '../../types/result.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
@@ -30,14 +32,16 @@ export const taskOutputTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => z.object({
-    task_id: z.string().min(1).describe('The task ID to get output from'),
-    block: ToolSchemas.flag({
-      defaultValue: true,
-      description: 'Whether to wait for completion',
+  schema: lazySchema(() =>
+    z.object({
+      task_id: z.string().min(1).describe('The task ID to get output from'),
+      block: ToolSchemas.flag({
+        defaultValue: true,
+        description: 'Whether to wait for completion',
+      }),
+      timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
     }),
-    timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
-  })),
+  ),
 
   description: {
     short: 'Retrieves output from a running or completed task',
@@ -122,7 +126,7 @@ export const taskOutputTool = createTool({
 async function handleShellOutput(
   taskId: string,
   block: boolean,
-  timeout: number
+  timeout: number,
 ): Promise<ToolResult> {
   const manager = BackgroundShellManager.getInstance();
 
@@ -173,9 +177,7 @@ async function handleShellOutput(
     exit_code: snapshot.exitCode,
     signal: snapshot.signal,
     started_at: new Date(snapshot.startedAt).toISOString(),
-    finished_at: snapshot.endedAt
-      ? new Date(snapshot.endedAt).toISOString()
-      : undefined,
+    finished_at: snapshot.endedAt ? new Date(snapshot.endedAt).toISOString() : undefined,
     stdout: snapshot.stdout,
     stderr: snapshot.stderr,
   };
@@ -199,7 +201,6 @@ async function handleAgentOutput(
   timeout: number,
   manager: BackgroundAgentManager,
 ): Promise<ToolResult> {
-
   // 获取会话信息
   let session = manager.getAgent(taskId);
   if (!session) {
@@ -242,9 +243,7 @@ async function handleAgentOutput(
     description: session.description,
     created_at: new Date(session.createdAt).toISOString(),
     last_active_at: new Date(session.lastActiveAt).toISOString(),
-    completed_at: session.completedAt
-      ? new Date(session.completedAt).toISOString()
-      : undefined,
+    completed_at: session.completedAt ? new Date(session.completedAt).toISOString() : undefined,
     result: session.result,
     stats: session.stats,
     output_file: session.outputFile,

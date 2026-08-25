@@ -3,18 +3,13 @@ import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { composeMiddleware } from '../../middleware/composeMiddleware.js';
-import type {
-  ToolMiddleware,
-  ToolMiddlewareRequest,
-} from '../../middleware/ToolMiddleware.js';
+import type { ToolMiddleware, ToolMiddlewareRequest } from '../../middleware/ToolMiddleware.js';
 import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import {
-  type PermissionRequestId,
-  SessionId,
-  ToolUseId,
-} from '../../types/branded.js';
-import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
+import { PermissionMode } from '../../types/constants.js';
+import { type PermissionRequestId, SessionId, ToolUseId } from '../../types/identifiers.js';
+import type { JsonObject } from '../../types/json.js';
+import type { PermissionsConfig } from '../../types/permissions.js';
 import {
   type CanUseTool,
   type PermissionResult as CanUseToolResult,
@@ -26,34 +21,26 @@ import {
   type PermissionHandlerRequest,
   type PermissionUpdate,
 } from '../../types/permissions.js';
-import {
-  awaitWithAbortSignal,
-  getAbortSignalReason,
-} from '../../utils/abortPromise.js';
+import { awaitWithAbortSignal, getAbortSignalReason } from '../../utils/abortPromise.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
+import { normalizePermissionEffects } from '../types/effects.js';
 import type {
   ConfirmationDetails,
   ExecutionContext,
   ExecutionHistoryEntry,
-  ToolExecution,
-  ToolResult,
-  ToolYield,
-} from '../types/index.js';
-import { normalizePermissionEffects } from '../types/index.js';
-import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
+} from '../types/execution.js';
 import {
   isReadOnlyKind,
   resolveToolBehaviorSafely,
   type ToolBehavior,
   ToolKind,
   ToolSideEffect,
-} from '../types/ToolKind.js';
-import {
-  ToolErrorType,
-  validationErrorToToolResult,
-} from '../types/ToolResult.js';
+} from '../types/kind.js';
+import type { ToolExecution, ToolResult, ToolYield } from '../types/result.js';
+import { ToolErrorType, validationErrorToToolResult } from '../types/result.js';
+import type { Tool, ToolInvocation } from '../types/tool.js';
 import {
   type ConcurrencyLease,
   type ConcurrencyLimits,
@@ -97,7 +84,7 @@ interface PipelineExecutionState {
   params: JsonObject;
   context: ExecutionContext;
   result?: ToolResult;
-  invocation?: ToolInvocation<JsonObject>;
+  invocation?: ToolInvocation;
   resolvedBehavior?: ToolBehavior;
   permissionCheckResult?: { reason?: string };
   affectedPaths: string[];
@@ -151,7 +138,7 @@ export class ExecutionPipeline {
 
   constructor(
     private registry: ToolRegistry,
-    config: ExecutionPipelineConfig = {}
+    config: ExecutionPipelineConfig = {},
   ) {
     this.maxHistorySize = config.maxHistorySize || 1000;
     this.toolTimeoutMs = resolveToolTimeoutMs(config.toolTimeoutMs);
@@ -178,9 +165,9 @@ export class ExecutionPipeline {
     this.permissionHandlers = [
       ...(config.permissionHandler
         ? [config.permissionHandler]
-        : (config.canUseTool
+        : config.canUseTool
           ? [createPermissionHandlerFromCanUseTool(config.canUseTool)]
-          : [])),
+          : []),
       createModePermissionHandler(this.defaultPermissionMode),
     ];
   }
@@ -213,11 +200,7 @@ export class ExecutionPipeline {
   /**
    * 执行工具
    */
-  async *execute(
-    toolName: string,
-    params: JsonObject,
-    context: ExecutionContext
-  ): ToolExecution {
+  async *execute(toolName: string, params: JsonObject, context: ExecutionContext): ToolExecution {
     this.throwIfTerminalCleanupFailed();
     if (this.hasPendingCleanup()) {
       return this.createPendingCleanupResult();
@@ -246,9 +229,7 @@ export class ExecutionPipeline {
     let result: ToolResult | undefined;
     let completed = false;
 
-    const captureRequest = (
-      request: ToolMiddlewareRequest,
-    ): ToolMiddlewareRequest => {
+    const captureRequest = (request: ToolMiddlewareRequest): ToolMiddlewareRequest => {
       if (request.toolName !== toolName) {
         throw new Error('Tool middleware cannot change the tool name');
       }
@@ -264,9 +245,7 @@ export class ExecutionPipeline {
         effectiveBehavior &&
         initialBehavior.interruptBehavior !== effectiveBehavior.interruptBehavior
       ) {
-        throw new Error(
-          'Tool middleware cannot change the tool interrupt behavior',
-        );
+        throw new Error('Tool middleware cannot change the tool interrupt behavior');
       }
       effectiveRequest = Object.freeze({
         toolName: request.toolName,
@@ -278,10 +257,7 @@ export class ExecutionPipeline {
     const guardedMiddleware = this.middleware.map<ToolMiddleware>(
       (middleware) => (request, next) => {
         const capturedRequest = captureRequest(request);
-        return middleware(
-          capturedRequest,
-          (nextRequest = capturedRequest) => next(nextRequest),
-        );
+        return middleware(capturedRequest, (nextRequest = capturedRequest) => next(nextRequest));
       },
     );
     const execute = composeMiddleware(
@@ -314,9 +290,7 @@ export class ExecutionPipeline {
         result = this.createAbortedResult(
           isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
           {
-            errorType: isInterrupt
-              ? ToolErrorType.INTERRUPTED
-              : ToolErrorType.EXECUTION_ERROR,
+            errorType: isInterrupt ? ToolErrorType.INTERRUPTED : ToolErrorType.EXECUTION_ERROR,
           },
         );
       } else {
@@ -332,8 +306,8 @@ export class ExecutionPipeline {
             result = yield* delegatedExecution;
           }
           if (
-            coreResult?.status === 'error'
-            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+            coreResult?.status === 'error' &&
+            coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
           ) {
             result = this.preserveTimeoutFailure(
               coreResult,
@@ -363,9 +337,9 @@ export class ExecutionPipeline {
             throw protectedContext.signal.reason;
           }
           if (
-            coreCompleted
-            && coreResult?.status === 'error'
-            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+            coreCompleted &&
+            coreResult?.status === 'error' &&
+            coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
           ) {
             this.logger.warn(
               `Tool middleware failed after ${toolName} timed out; preserving the core timeout`,
@@ -376,9 +350,7 @@ export class ExecutionPipeline {
             result = this.createAbortedResult(
               isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
               {
-                errorType: isInterrupt
-                  ? ToolErrorType.INTERRUPTED
-                  : ToolErrorType.EXECUTION_ERROR,
+                errorType: isInterrupt ? ToolErrorType.INTERRUPTED : ToolErrorType.EXECUTION_ERROR,
               },
             );
           } else {
@@ -396,18 +368,14 @@ export class ExecutionPipeline {
           result = this.createAbortedResult(
             isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
             {
-              errorType: isInterrupt
-                ? ToolErrorType.INTERRUPTED
-                : ToolErrorType.EXECUTION_ERROR,
+              errorType: isInterrupt ? ToolErrorType.INTERRUPTED : ToolErrorType.EXECUTION_ERROR,
             },
           );
         }
       }
       if (!coreStarted && result.status === 'success') {
         effectiveRequest = captureRequest(effectiveRequest);
-        await this.recordMiddlewareShortCircuit(
-          effectiveRequest,
-        );
+        await this.recordMiddlewareShortCircuit(effectiveRequest);
       }
       this.throwIfTerminalCleanupFailed();
       await protectedContext.assertExecutionLease?.();
@@ -431,9 +399,7 @@ export class ExecutionPipeline {
     }
   }
 
-  private async recordMiddlewareShortCircuit(
-    request: ToolMiddlewareRequest,
-  ): Promise<void> {
+  private async recordMiddlewareShortCircuit(request: ToolMiddlewareRequest): Promise<void> {
     const tool = this.registry.get(request.toolName);
     const sideEffect =
       resolveToolBehaviorSafely(tool, request.input)?.sideEffect ??
@@ -465,10 +431,7 @@ export class ExecutionPipeline {
     }
   }
 
-  private async *executeCore(
-    request: ToolMiddlewareRequest,
-    executionId: string,
-  ): ToolExecution {
+  private async *executeCore(request: ToolMiddlewareRequest, executionId: string): ToolExecution {
     const tool = this.registry.get(request.toolName);
     if (!tool) {
       return await this.applyPostExecutionHooks(
@@ -509,10 +472,7 @@ export class ExecutionPipeline {
     let fileLease: FileLockLease | undefined;
 
     try {
-      concurrencyLease = await this.scheduler.acquire(
-        toolKind,
-        state.context.signal,
-      );
+      concurrencyLease = await this.scheduler.acquire(toolKind, state.context.signal);
       this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
@@ -549,9 +509,7 @@ export class ExecutionPipeline {
         return this.createAbortedResult(
           isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
           {
-            errorType: isInterrupt
-              ? ToolErrorType.INTERRUPTED
-              : ToolErrorType.EXECUTION_ERROR,
+            errorType: isInterrupt ? ToolErrorType.INTERRUPTED : ToolErrorType.EXECUTION_ERROR,
           },
         );
       }
@@ -598,8 +556,8 @@ export class ExecutionPipeline {
 
       const normalizedResult = await this.normalizeExecutionResult(state);
       const isTimeout =
-        normalizedResult.status === 'error'
-        && normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
+        normalizedResult.status === 'error' &&
+        normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
       let result: ToolResult;
       try {
         result = await this.applyPostExecutionHooks(
@@ -639,12 +597,8 @@ export class ExecutionPipeline {
         throw error;
       }
       const errorMsg = getErrorMessage(error);
-      const isTimeout =
-        errorMsg.includes('timeout') ||
-        getErrorName(error) === 'TimeoutError';
-      const isInterrupt =
-        state.interrupted
-        || isSteeringInterruptSignal(state.context.signal);
+      const isTimeout = errorMsg.includes('timeout') || getErrorName(error) === 'TimeoutError';
+      const isInterrupt = state.interrupted || isSteeringInterruptSignal(state.context.signal);
 
       const originalErrorResult: ToolResult = {
         status: 'error',
@@ -682,10 +636,7 @@ export class ExecutionPipeline {
           throw hookError;
         }
         // Hook 执行失败不应阻止错误处理
-        console.warn(
-          '[ExecutionPipeline] PostToolUseFailure hook execution failed:',
-          hookError
-        );
+        console.warn('[ExecutionPipeline] PostToolUseFailure hook execution failed:', hookError);
       }
 
       return errorResult;
@@ -742,8 +693,7 @@ export class ExecutionPipeline {
       stats.toolUsage.set(entry.toolName, currentCount + 1);
     }
 
-    stats.averageDuration =
-      stats.totalExecutions > 0 ? totalDuration / stats.totalExecutions : 0;
+    stats.averageDuration = stats.totalExecutions > 0 ? totalDuration / stats.totalExecutions : 0;
 
     return stats;
   }
@@ -801,9 +751,7 @@ export class ExecutionPipeline {
           )
         : undefined;
       const toolPermissionUpdatedInput =
-        toolPermissionResult?.behavior === 'allow'
-          ? toolPermissionResult.updatedInput
-          : undefined;
+        toolPermissionResult?.behavior === 'allow' ? toolPermissionResult.updatedInput : undefined;
 
       if (toolPermissionUpdatedInput) {
         Object.assign(state.params, toolPermissionUpdatedInput);
@@ -831,15 +779,12 @@ export class ExecutionPipeline {
       );
 
       let checkResult = await this.awaitPermissionCallback(
-        () => this.permissionRuleHandler(
-          this.buildPermissionRequest(state, state.affectedPaths),
-        ),
+        () => this.permissionRuleHandler(this.buildPermissionRequest(state, state.affectedPaths)),
         state.context.signal,
       );
 
       const hasRememberedApproval = Boolean(
-        state.permissionSignature
-        && this.sessionApprovals.has(state.permissionSignature),
+        state.permissionSignature && this.sessionApprovals.has(state.permissionSignature),
       );
 
       if (hasRememberedApproval) {
@@ -860,7 +805,8 @@ export class ExecutionPipeline {
       switch (checkResult.behavior) {
         case 'deny':
           state.result = this.createAbortedResult(
-            checkResult.message || `Tool invocation "${state.tool.name}" was denied by permission rules`,
+            checkResult.message ||
+              `Tool invocation "${state.tool.name}" was denied by permission rules`,
           );
           return;
         case 'ask':
@@ -876,9 +822,7 @@ export class ExecutionPipeline {
       }
 
       const pathSafetyResult = await this.awaitPermissionCallback(
-        () => this.pathSafetyHandler(
-          this.buildPermissionRequest(state, state.affectedPaths),
-        ),
+        () => this.pathSafetyHandler(this.buildPermissionRequest(state, state.affectedPaths)),
         state.context.signal,
       );
       await this.handlePermissionHandlerResult(pathSafetyResult, state);
@@ -886,10 +830,7 @@ export class ExecutionPipeline {
         return;
       }
     } catch (error) {
-      if (
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-      ) {
+      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
         throw error;
       }
       if (state.context.signal?.aborted) {
@@ -935,9 +876,7 @@ export class ExecutionPipeline {
     state: PipelineExecutionState,
   ): AsyncGenerator<ToolYield, void, void> {
     if (!state.invocation) {
-      state.result = this.createAbortedResult(
-        'Pre-execution stage failed; cannot run tool',
-      );
+      state.result = this.createAbortedResult('Pre-execution stage failed; cannot run tool');
       return;
     }
     if (this.hasPendingCleanup()) {
@@ -964,13 +903,10 @@ export class ExecutionPipeline {
     let timedOut = false;
     const timeoutController = new AbortController();
     const timeoutError = this.createTimeoutError(state.toolName);
-    const timeout = setTimeout(
-      () => {
-        timedOut = true;
-        timeoutController.abort(timeoutError);
-      },
-      this.toolTimeoutMs,
-    );
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      timeoutController.abort(timeoutError);
+    }, this.toolTimeoutMs);
     const executionSignal = state.context.signal
       ? AbortSignal.any([state.context.signal, timeoutController.signal])
       : timeoutController.signal;
@@ -981,26 +917,16 @@ export class ExecutionPipeline {
 
     try {
       while (true) {
-        const step = await this.nextExecutionStep(
-          execution,
-          executionSignal,
-          (error) => {
-            if (
-              isExecutionLeaseFailure(error)
-              || isHookProcessContainmentError(error)
-            ) {
-              lateCriticalFailure ??= error;
-              this.rememberTerminalCleanupFailure(error);
-            }
-          },
-        );
+        const step = await this.nextExecutionStep(execution, executionSignal, (error) => {
+          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+            lateCriticalFailure ??= error;
+            this.rememberTerminalCleanupFailure(error);
+          }
+        });
         timeoutController.signal.throwIfAborted();
         if (step.done) {
           state.result = step.value;
-          if (
-            state.result.status === 'error'
-            && isSteeringInterruptSignal(executionSignal)
-          ) {
+          if (state.result.status === 'error' && isSteeringInterruptSignal(executionSignal)) {
             state.interrupted = true;
             state.result = {
               ...state.result,
@@ -1016,20 +942,13 @@ export class ExecutionPipeline {
         yield step.value;
       }
     } catch (error) {
-      if (
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-      ) {
+      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
         throw error;
       }
-      timedOut =
-        timeoutController.signal.aborted
-        || getErrorName(error) === 'TimeoutError';
+      timedOut = timeoutController.signal.aborted || getErrorName(error) === 'TimeoutError';
       state.interrupted = !timedOut && isSteeringInterruptSignal(executionSignal);
       state.result = this.createExecutionFailureResult(
-        timedOut
-          ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
-          : getErrorMessage(error),
+        timedOut ? `Tool execution timeout after ${this.toolTimeoutMs}ms` : getErrorMessage(error),
         timedOut
           ? ToolErrorType.TIMEOUT_ERROR
           : state.interrupted
@@ -1045,10 +964,7 @@ export class ExecutionPipeline {
         const closing = Promise.resolve(execution.return(undefined as never)).then(
           () => undefined,
           (error) => {
-            if (
-              isExecutionLeaseFailure(error)
-              || isHookProcessContainmentError(error)
-            ) {
+            if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
               lateCriticalFailure ??= error;
               this.rememberTerminalCleanupFailure(error);
               throw error;
@@ -1110,9 +1026,7 @@ export class ExecutionPipeline {
     });
   }
 
-  private async waitForExecutionClose(
-    closing: PromiseLike<unknown>,
-  ): Promise<void> {
+  private async waitForExecutionClose(closing: PromiseLike<unknown>): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const finish = (): void => {
@@ -1171,10 +1085,7 @@ export class ExecutionPipeline {
       signal.throwIfAborted();
       return result;
     } catch (error) {
-      if (
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-      ) {
+      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
         throw error;
       }
       if (signal.aborted) {
@@ -1186,11 +1097,8 @@ export class ExecutionPipeline {
 
   private rememberTerminalCleanupFailure(error: unknown): void {
     if (
-      this.terminalCleanupFailure === undefined
-      && (
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-      )
+      this.terminalCleanupFailure === undefined &&
+      (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error))
     ) {
       this.terminalCleanupFailure = error;
     }
@@ -1216,15 +1124,11 @@ export class ExecutionPipeline {
       return;
     }
 
-    const hookResult = await this.hookRuntime.applyPreToolUse(
-      state.toolName,
-      state.params,
-      {
-        toolUseId: state.hookToolUseId ?? ToolUseId(`tool_use_${executionId}`),
-        permissionMode: state.context.permissionMode,
-        abortSignal: state.context.signal,
-      },
-    );
+    const hookResult = await this.hookRuntime.applyPreToolUse(state.toolName, state.params, {
+      toolUseId: state.hookToolUseId ?? ToolUseId(`tool_use_${executionId}`),
+      permissionMode: state.context.permissionMode,
+      abortSignal: state.context.signal,
+    });
 
     state.hookToolUseId = hookResult.toolUseId;
     Object.assign(state.params, hookResult.updatedInput);
@@ -1267,20 +1171,21 @@ export class ExecutionPipeline {
     }
 
     const toolUseId = ToolUseId(`tool_use_${executionId}`);
-    const hookResult = result.status === 'success'
-      ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
-          toolUseId,
-          permissionMode: context.permissionMode,
-          abortSignal: context.signal,
-        })
-      : await this.hookRuntime.applyPostToolUseFailure(toolName, params, result, {
-          toolUseId,
-          permissionMode: context.permissionMode,
-          errorType: result.error?.type,
-          isInterrupt: options.isInterrupt ?? false,
-          isTimeout: options.isTimeout ?? false,
-          abortSignal: context.signal,
-        });
+    const hookResult =
+      result.status === 'success'
+        ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
+            toolUseId,
+            permissionMode: context.permissionMode,
+            abortSignal: context.signal,
+          })
+        : await this.hookRuntime.applyPostToolUseFailure(toolName, params, result, {
+            toolUseId,
+            permissionMode: context.permissionMode,
+            errorType: result.error?.type,
+            isInterrupt: options.isInterrupt ?? false,
+            isTimeout: options.isTimeout ?? false,
+            abortSignal: context.signal,
+          });
 
     if (hookResult.action === 'abort') {
       return this.createHookFailureResult(
@@ -1292,12 +1197,13 @@ export class ExecutionPipeline {
   }
 
   private rebuildInvocationState(state: PipelineExecutionState): void {
-    state.invocation = state.tool.build(state.params);
-    state.resolvedBehavior = resolveToolBehaviorSafely(state.tool, state.invocation.params);
-    state.affectedPaths = state.invocation.getAffectedPaths() || [];
+    const invocation = state.tool.build(state.params);
+    state.invocation = invocation;
+    state.resolvedBehavior = resolveToolBehaviorSafely(state.tool, invocation.params);
+    state.affectedPaths = invocation.getAffectedPaths() || [];
     state.permissionSignature = buildPermissionSignature(
       state.tool.name,
-      toParamsRecord(state.invocation.params, state.params),
+      toParamsRecord(invocation.params, state.params),
       state.tool,
     );
   }
@@ -1316,8 +1222,7 @@ export class ExecutionPipeline {
       signal: state.context.signal || new AbortController().signal,
       permissionMode: state.context.permissionMode || this.defaultPermissionMode,
       sessionApproved: Boolean(
-        state.permissionSignature
-        && this.sessionApprovals.has(state.permissionSignature),
+        state.permissionSignature && this.sessionApprovals.has(state.permissionSignature),
       ),
       affectedPaths,
       toolKind,
@@ -1354,10 +1259,11 @@ export class ExecutionPipeline {
             request.toolMeta = {
               sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
               isReadOnly:
-                state.resolvedBehavior?.isReadOnly
-                ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
-              isConcurrencySafe: state.resolvedBehavior?.isConcurrencySafe
-                ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
+                state.resolvedBehavior?.isReadOnly ??
+                isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
+              isConcurrencySafe:
+                state.resolvedBehavior?.isConcurrencySafe ??
+                isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
               isDestructive: state.resolvedBehavior?.isDestructive ?? false,
               signature: state.permissionSignature,
               description: state.invocation?.getDescription(),
@@ -1466,11 +1372,10 @@ export class ExecutionPipeline {
 
       const confirmationHandler = state.context.confirmationHandler;
       if (confirmationHandler) {
-        permissionRequestId =
-          await state.context.toolInvocationLifecycle?.onPermissionRequested?.(
-            confirmationDetails,
-            structuredClone(state.params),
-          );
+        permissionRequestId = await state.context.toolInvocationLifecycle?.onPermissionRequested?.(
+          confirmationDetails,
+          structuredClone(state.params),
+        );
         this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
         const response = await this.awaitPermissionCallback(
           () =>
@@ -1480,7 +1385,9 @@ export class ExecutionPipeline {
             }),
           state.context.signal,
         );
-        this.logger.info(`[ExecutionPipeline] Confirmation response: approved=${response.approved}`);
+        this.logger.info(
+          `[ExecutionPipeline] Confirmation response: approved=${response.approved}`,
+        );
         if (permissionRequestId) {
           resolutionAttempted = true;
           await state.context.toolInvocationLifecycle?.onPermissionResolved?.({
@@ -1493,11 +1400,7 @@ export class ExecutionPipeline {
         if (!response.approved) {
           const reason = response.reason || 'User rejected';
           if (this.denialTracker && state.permissionSignature) {
-            this.denialTracker.record(
-              state.permissionSignature,
-              state.tool.name,
-              reason,
-            );
+            this.denialTracker.record(state.permissionSignature, state.tool.name, reason);
           }
           state.result = this.createAbortedResult(`User rejected execution: ${reason}`, {
             shouldExitLoop: true,
@@ -1530,10 +1433,7 @@ export class ExecutionPipeline {
           );
         }
       }
-      if (
-        isExecutionLeaseFailure(failure)
-        || isHookProcessContainmentError(failure)
-      ) {
+      if (isExecutionLeaseFailure(failure) || isHookProcessContainmentError(failure)) {
         throw failure;
       }
       if (state.context.signal?.aborted) {
@@ -1578,12 +1478,9 @@ export class ExecutionPipeline {
     source: string,
   ): ToolResult {
     if (
-      original.status !== 'error'
-      || original.error.type !== ToolErrorType.TIMEOUT_ERROR
-      || (
-        transformed.status === 'error'
-        && transformed.error.type === ToolErrorType.TIMEOUT_ERROR
-      )
+      original.status !== 'error' ||
+      original.error.type !== ToolErrorType.TIMEOUT_ERROR ||
+      (transformed.status === 'error' && transformed.error.type === ToolErrorType.TIMEOUT_ERROR)
     ) {
       return transformed;
     }
@@ -1633,8 +1530,7 @@ export class ExecutionPipeline {
       result.metadata = {};
     }
 
-    const maxResultSizeChars =
-      state.tool.maxResultSizeChars ?? Number.POSITIVE_INFINITY;
+    const maxResultSizeChars = state.tool.maxResultSizeChars ?? Number.POSITIVE_INFINITY;
     if (Number.isFinite(maxResultSizeChars) && maxResultSizeChars >= 0) {
       const modelContentLength = typeof result.model === 'string' ? result.model.length : undefined;
       const exceedsLimit =
@@ -1685,10 +1581,7 @@ export class ExecutionPipeline {
     return result;
   }
 
-  private generatePreviewForTool(
-    toolName: string,
-    params: JsonObject,
-  ): string | undefined {
+  private generatePreviewForTool(toolName: string, params: JsonObject): string | undefined {
     switch (toolName) {
       case 'Edit': {
         const oldString = getString(params, 'old_string');
@@ -1784,7 +1677,6 @@ export class ExecutionPipeline {
       originalLength: value.length,
     };
   }
-
 }
 
 /**
@@ -1823,9 +1715,7 @@ export interface ExecutionStats {
   recentExecutions: ExecutionHistoryEntry[];
 }
 
-function combineConfirmationReasons(
-  entries: ConfirmationReasonEntry[],
-): string | undefined {
+function combineConfirmationReasons(entries: ConfirmationReasonEntry[]): string | undefined {
   if (entries.length === 0) return undefined;
   const rank: Record<ConfirmationReasonSource, number> = {
     tool: 0,
@@ -1867,19 +1757,21 @@ function getConfirmationReason(state: PipelineExecutionState): string | undefine
 
 function defaultReasonMessage(source: ConfirmationReasonSource): string {
   switch (source) {
-    case 'tool': return 'Tool-specific confirmation required';
-    case 'rule': return 'User confirmation required';
-    case 'path': return 'Path safety confirmation required';
-    case 'hook': return 'Hook requires confirmation';
-    case 'handler': return 'User confirmation required';
+    case 'tool':
+      return 'Tool-specific confirmation required';
+    case 'rule':
+      return 'User confirmation required';
+    case 'path':
+      return 'Path safety confirmation required';
+    case 'hook':
+      return 'Hook requires confirmation';
+    case 'handler':
+      return 'User confirmation required';
   }
 }
 
-function toParamsRecord(
-  params: unknown,
-  fallback: JsonObject,
-): JsonObject {
+function toParamsRecord(params: unknown, fallback: JsonObject): JsonObject {
   return params && typeof params === 'object' && !Array.isArray(params)
-    ? params as JsonObject
+    ? (params as JsonObject)
     : fallback;
 }

@@ -1,9 +1,9 @@
-import type { Message } from '../services/ChatServiceInterface.js';
-import type { InputId, RequestId } from '../types/branded.js';
+import type { ModelMessage } from '../model/message.js';
+import type { InputId, RequestId } from '../types/identifiers.js';
 
 export interface AgentSteeringInput {
   inputId: InputId;
-  content: Message['content'];
+  content: ModelMessage['content'];
   priority: 'now' | 'next';
   acceptedAt: number;
 }

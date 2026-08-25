@@ -1,7 +1,15 @@
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
+import type { McpServerConfig } from '../mcp/config.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
+import type {
+  ModelProviderOptions,
+  OutputFormat,
+  ProviderConnectionConfig,
+} from '../model/config.js';
+import type { ModelMessage } from '../model/message.js';
+import type { TokenUsage } from '../model/usage.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type {
   ContextSnapshot,
@@ -9,63 +17,42 @@ import type {
   RuntimeContextPatch,
   RuntimePatch,
 } from '../runtime/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
-  ConfirmationHandler,
-  ExecutionContext,
-  Tool,
-  ToolDefinition,
   ToolDisplayContent,
-  ToolInvocation,
   ToolMessage,
   ToolModelContent,
   ToolProgress,
-  ToolResult,
-} from '../tools/types/index.js';
-import type { EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
+} from '../tools/types/result.js';
+import type { Tool, ToolDefinition } from '../tools/types/tool.js';
+import type { HookEvent, PermissionMode, SessionStreamEventType } from '../types/constants.js';
 import type {
-  BuiltinProviderType,
-  JsonObject,
-  JsonValue,
-  McpServerConfig,
-  OutputFormat,
-  PermissionMode,
-  ProviderType,
-  SandboxSettings,
-  TokenUsage,
-} from '../types/common.js';
-import type { HookEvent, StreamMessageType } from '../types/constants.js';
+  EventSequence,
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+  ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
-import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
-import type { DurableExecutionLease as DurableExecutionLeaseSnapshot } from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableEventSubscription,
   DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
+import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
+import type { DurableExecutionLease as DurableExecutionLeaseSnapshot } from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
-import type {
-  SessionEventStore,
-  SessionRepository,
-} from './SessionRepository.js';
-
-export type {
-  AgentMiddlewareConfig,
-  AgentPlugin,
-  BuiltinProviderType,
-  ExecutionContext,
-  ProviderType,
-  TokenUsage,
-  ToolDefinition,
-  ToolResult,
-};
+import type { SessionEventStore, SessionRepository } from './SessionRepository.js';
 
 export const InputPriority = {
   NOW: 'now',
@@ -101,24 +88,8 @@ export interface PendingSessionInput {
   acceptedAt: number;
 }
 
-export interface ProviderConfig {
-  /** Logical provider ID. Defaults to `type`. */
-  id?: string;
-  type: ProviderType;
-  apiKey?: string;
-  baseUrl?: string;
-  headers?: Record<string, string>;
-  organization?: string;
-  apiVersion?: string;
-  projectId?: string;
-  /** Maximum wall-clock wait for a non-streaming model operation. */
-  requestTimeoutMs?: number;
-  /** Maximum wait between model stream chunks. */
-  streamIdleTimeoutMs?: number;
-}
-
-export interface ToolCallRecord {
-  id: string;
+export interface ToolExecutionRecord {
+  id: ToolUseId;
   name: string;
   input: JsonValue;
   output: ToolModelContent;
@@ -128,13 +99,13 @@ export interface ToolCallRecord {
 
 export interface PromptResult {
   result: string;
-  toolCalls: ToolCallRecord[];
+  toolCalls: ToolExecutionRecord[];
   usage: TokenUsage;
   duration: number;
   turnsCount: number;
 }
 
-export type StreamMessage =
+export type SessionStreamEvent =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
   | {
@@ -154,52 +125,52 @@ export type StreamMessage =
     }
   | { type: 'content'; delta: string; sessionId: SessionId }
   | { type: 'thinking'; delta: string; sessionId: SessionId }
-  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
+  | { type: 'tool_use'; id: ToolUseId; name: string; input: JsonValue; sessionId: SessionId }
   | {
       type: 'tool_progress';
-      id: string;
+      id: ToolUseId;
       name: string;
       progress: ToolProgress;
       sessionId: SessionId;
     }
   | {
       type: 'tool_message';
-      id: string;
+      id: ToolUseId;
       name: string;
       content: ToolMessage['content'];
       sessionId: SessionId;
     }
   | {
       type: 'tool_runtime_patch';
-      id: string;
+      id: ToolUseId;
       name: string;
       patch: RuntimePatch;
       sessionId: SessionId;
     }
   | {
       type: 'tool_context_patch';
-      id: string;
+      id: ToolUseId;
       name: string;
       patch: RuntimeContextPatch;
       sessionId: SessionId;
     }
   | {
       type: 'tool_new_messages';
-      id: string;
+      id: ToolUseId;
       name: string;
-      messages: Message[];
+      messages: ModelMessage[];
       sessionId: SessionId;
     }
   | {
       type: 'tool_permission_updates';
-      id: string;
+      id: ToolUseId;
       name: string;
       updates: PermissionUpdate[];
       sessionId: SessionId;
     }
   | {
       type: 'tool_result';
-      id: string;
+      id: ToolUseId;
       name: string;
       output: ToolModelContent;
       display?: ToolDisplayContent;
@@ -216,7 +187,9 @@ export type StreamMessage =
     }
   | { type: 'error'; message: string; code?: string; sessionId: SessionId };
 
-type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
+type _AssertStreamMessageComplete = Assert<
+  IsEqual<SessionStreamEvent['type'], SessionStreamEventType>
+>;
 
 export interface HookInput {
   event: HookEvent;
@@ -254,7 +227,7 @@ export type SessionHookEvent =
   | typeof HookEvent.TaskCompleted;
 
 export interface SubagentInfo {
-  parentSessionId: string;
+  parentSessionId: SessionId;
   subagentType: string;
   depth: number;
 }
@@ -267,23 +240,17 @@ export interface AgentDefinition {
   model?: string;
 }
 
-// Existential Tool shape for heterogeneous arrays. The concrete parameter type
-// remains enforced where each Tool is created.
-type ErasedTool = Omit<Tool<never>, 'build'> & {
-  build(params: never): ToolInvocation<unknown>;
-};
-
-export type SessionTool = ToolDefinition<never> | ErasedTool;
+export type SessionTool = ToolDefinition<never> | Tool;
 
 export interface SessionOptions {
-  provider: ProviderConfig;
+  provider: ProviderConnectionConfig;
   /** Instance-scoped custom provider adapters. */
   providerRegistry?: ProviderRegistry;
   model: string;
   temperature?: number;
   maxOutputTokens?: number;
   maxContextTokens?: number;
-  providerOptions?: JsonObject;
+  providerOptions?: ModelProviderOptions;
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
   tokenBudget?: TokenBudgetConfig;
@@ -375,12 +342,12 @@ export interface McpToolInfo {
 }
 
 export interface ForkSessionOptions {
-  messageId?: string;
+  messageId?: MessageId;
 }
 
 export interface ForkSessionResult {
   sessionId: SessionId;
-  parentSessionId: string;
+  parentSessionId: SessionId;
   messageCount: number;
   forkedAt?: string;
 }
@@ -393,14 +360,14 @@ export interface SessionHandoffResult {
 
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
-  readonly messages: Message[];
+  readonly messages: ModelMessage[];
   readonly isClosed: boolean;
 
   send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission>;
   getPendingInputs(): readonly PendingSessionInput[];
   cancelInput(inputId: InputId): Promise<boolean>;
 
-  stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
+  stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>;
 
   /** Close after active cleanup and durable finalization when durableEventStore is configured. */
   close(): Promise<void>;

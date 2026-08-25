@@ -2,8 +2,8 @@ import { z } from 'zod';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryWriteSchema = z.discriminatedUnion('operation', [

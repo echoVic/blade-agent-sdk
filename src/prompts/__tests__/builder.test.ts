@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PermissionMode } from '../../types/common.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { PermissionMode } from '../../types/constants.js';
 import { buildSystemPrompt } from '../builder.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from '../default.js';
 
@@ -36,7 +36,7 @@ describe('buildSystemPrompt', () => {
     expect(result.prompt).toContain('# Environment Context');
     expect(result.prompt).toContain('BASE PROMPT\n\n---\n\nAPPEND PROMPT');
     expect(result.prompt.indexOf('# Environment Context')).toBeLessThan(
-      result.prompt.indexOf('BASE PROMPT')
+      result.prompt.indexOf('BASE PROMPT'),
     );
   });
 

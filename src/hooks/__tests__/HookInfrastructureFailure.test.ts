@@ -2,13 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ToolUseId, SessionId } from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
+import { PermissionMode } from '../../types/constants.js';
+import { SessionId, ToolUseId } from '../../types/identifiers.js';
 import { DEFAULT_HOOK_CONFIG } from '../HookConfig.js';
 import { HookExecutor } from '../HookExecutor.js';
 import { HookManager } from '../HookManager.js';
 import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
-import { HookType } from '../types/HookTypes.js';
+import { HookType } from '../types.js';
 import {
   HookProcessContainmentError,
   isHookProcessContainmentError,
@@ -28,16 +28,12 @@ function createWindowsJob(bindings: Record<string, unknown>): WindowsProcessJob 
 afterEach(async () => {
   vi.restoreAllMocks();
   HookManager.getInstance().loadConfig(DEFAULT_HOOK_CONFIG);
-  await Promise.all(roots.splice(0).map((root) =>
-    rm(root, { recursive: true, force: true })
-  ));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe('Hook infrastructure failures', () => {
   it('recognizes containment failures through aggregate and cause wrappers', () => {
-    const containmentError = new HookProcessContainmentError(
-      'Windows Job Object cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Windows Job Object cleanup failed');
     const aggregate = new AggregateError([
       new Error('durable settlement failed'),
       new Error('wrapped', { cause: containmentError }),
@@ -116,26 +112,25 @@ describe('Hook infrastructure failures', () => {
     const root = await mkdtemp(join(tmpdir(), 'hook-config-reload-'));
     roots.push(root);
     const configPath = join(root, 'settings.json');
-    await writeFile(configPath, JSON.stringify({
-      hooks: { enabled: true },
-    }));
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        hooks: { enabled: true },
+      }),
+    );
     const containmentError = new HookProcessContainmentError(
       'Windows Job Object support is unavailable',
     );
     const manager = HookManager.getInstance();
-    vi.spyOn(manager, 'executeConfigChangeHooks')
-      .mockRejectedValueOnce(containmentError);
+    vi.spyOn(manager, 'executeConfigChangeHooks').mockRejectedValueOnce(containmentError);
 
-    await expect(manager.reloadConfig(configPath)).rejects.toBe(
-      containmentError,
-    );
+    await expect(manager.reloadConfig(configPath)).rejects.toBe(containmentError);
   });
 
   it('stops scheduling concurrent Hooks after a containment failure', async () => {
-    const containmentError = new HookProcessContainmentError(
-      'Windows Job Object cleanup failed',
-    );
-    const execute = vi.spyOn(SecureProcessExecutor.prototype, 'execute')
+    const containmentError = new HookProcessContainmentError('Windows Job Object cleanup failed');
+    const execute = vi
+      .spyOn(SecureProcessExecutor.prototype, 'execute')
       .mockRejectedValueOnce(containmentError)
       .mockResolvedValue({
         stdout: '',
@@ -145,48 +140,46 @@ describe('Hook infrastructure failures', () => {
       });
     const executor = new HookExecutor();
 
-    await expect(executor.executePostToolHooks(
-      [
-        { type: HookType.Command, command: 'first' },
-        { type: HookType.Command, command: 'second' },
-      ],
-      {
-        hook_event_name: 'PostToolUse',
-        hook_execution_id: 'containment-concurrency',
-        timestamp: new Date().toISOString(),
-        project_dir: process.cwd(),
-        session_id: 'containment-concurrency',
-        permission_mode: PermissionMode.DEFAULT,
-        tool_name: 'Bash',
-        tool_use_id: 'containment-concurrency',
-        tool_input: {},
-        tool_response: {
-          status: 'success',
-          model: 'ok',
+    await expect(
+      executor.executePostToolHooks(
+        [
+          { type: HookType.Command, command: 'first' },
+          { type: HookType.Command, command: 'second' },
+        ],
+        {
+          hook_event_name: 'PostToolUse',
+          hook_execution_id: 'containment-concurrency',
+          timestamp: new Date().toISOString(),
+          project_dir: process.cwd(),
+          session_id: 'containment-concurrency',
+          permission_mode: PermissionMode.DEFAULT,
+          tool_name: 'Bash',
+          tool_use_id: 'containment-concurrency',
+          tool_input: {},
+          tool_response: {
+            status: 'success',
+            model: 'ok',
+          },
         },
-      },
-      {
-        projectDir: process.cwd(),
-        sessionId: SessionId('containment-concurrency'),
-        permissionMode: PermissionMode.DEFAULT,
-        config: {
-          ...DEFAULT_HOOK_CONFIG,
-          enabled: true,
-          maxConcurrentHooks: 1,
+        {
+          projectDir: process.cwd(),
+          sessionId: SessionId('containment-concurrency'),
+          permissionMode: PermissionMode.DEFAULT,
+          config: {
+            ...DEFAULT_HOOK_CONFIG,
+            enabled: true,
+            maxConcurrentHooks: 1,
+          },
         },
-      },
-    )).rejects.toBe(containmentError);
+      ),
+    ).rejects.toBe(containmentError);
     expect(execute).toHaveBeenCalledOnce();
   });
 
   it('bounds Windows Job termination and closes the kill-on-close handle', async () => {
     const closeHandle = vi.fn(() => 1);
     const job = createWindowsJob({
-      queryInformationJobObject: vi.fn((
-        _job,
-        _informationClass,
-        information: Buffer,
-      ) => {
+      queryInformationJobObject: vi.fn((_job, _informationClass, information: Buffer) => {
         information.writeUInt32LE(1, 40);
         return 1;
       }),
@@ -210,8 +203,6 @@ describe('Hook infrastructure failures', () => {
       getLastError: vi.fn(() => 6),
     });
 
-    expect(() => job.assign(42_424)).toThrow(
-      'Failed to close the Windows Hook process handle',
-    );
+    expect(() => job.assign(42_424)).toThrow('Failed to close the Windows Hook process handle');
   });
 });

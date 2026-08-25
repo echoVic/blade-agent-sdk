@@ -5,7 +5,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { ExecutionId } from '../../types/branded.js';
+import { ExecutionId } from '../../types/identifiers.js';
 import {
   EphemeralCredentialBroker,
   type CredentialIssuer,

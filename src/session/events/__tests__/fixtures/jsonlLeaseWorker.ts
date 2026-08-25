@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { writeSync } from 'node:fs';
-import { ExecutionLeaseId, SessionId, WorkerId } from '../../../../types/branded.js';
+import { ExecutionLeaseId, SessionId, WorkerId } from '../../../../types/identifiers.js';
 import { JsonlDurableEventStore } from '../../JsonlDurableEventStore.js';
 
 const [storageRoot, rawSessionId, workerId, leaseId, rawTtlMs = '30000'] = process.argv.slice(2);

@@ -1,23 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
-import { collectToolExecution } from '../../../types/ToolResult.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { collectToolExecution } from '../../../types/result.js';
 import { askUserQuestionTool } from '../askUserQuestion.js';
 
 describe('AskUserQuestion Tool', () => {
   const createMockContext = (
-    confirmationHandler?: ExecutionContext['confirmationHandler']
+    confirmationHandler?: ExecutionContext['confirmationHandler'],
   ): Partial<ExecutionContext> => ({
     confirmationHandler,
   });
 
   const executeWithContext = async (
     params: Parameters<typeof askUserQuestionTool.build>[0],
-    context: Partial<ExecutionContext>
+    context: Partial<ExecutionContext>,
   ) => {
     const invocation = askUserQuestionTool.build(params);
-    return collectToolExecution(
-      invocation.execute(new AbortController().signal, context),
-    );
+    return collectToolExecution(invocation.execute(new AbortController().signal, context));
   };
 
   describe('basic properties', () => {
@@ -54,7 +52,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('error');
@@ -81,7 +79,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('success');
@@ -95,7 +93,7 @@ describe('AskUserQuestion Tool', () => {
           Promise.resolve({
             approved: true,
             answers: { Framework: 'React' },
-          })
+          }),
         ),
       };
       const context = createMockContext(mockHandler);
@@ -114,7 +112,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('success');
@@ -128,7 +126,7 @@ describe('AskUserQuestion Tool', () => {
           Promise.resolve({
             approved: true,
             answers: { Features: ['TypeScript', 'ESLint'] },
-          })
+          }),
         ),
       };
       const context = createMockContext(mockHandler);
@@ -148,7 +146,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('success');
@@ -161,7 +159,7 @@ describe('AskUserQuestion Tool', () => {
           Promise.resolve({
             approved: true,
             answers: {},
-          })
+          }),
         ),
       };
       const context = createMockContext(mockHandler);
@@ -180,7 +178,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('success');
@@ -208,7 +206,7 @@ describe('AskUserQuestion Tool', () => {
             },
           ],
         },
-        context
+        context,
       );
 
       expect(result.status).toBe('error');
@@ -222,7 +220,7 @@ describe('AskUserQuestion Tool', () => {
           Promise.resolve({
             approved: true,
             answers: { Framework: 'React' },
-          })
+          }),
         ),
       };
       const controller = new AbortController();
@@ -250,7 +248,7 @@ describe('AskUserQuestion Tool', () => {
           type: 'askUserQuestion',
           abortSignal: controller.signal,
           questions,
-        })
+        }),
       );
     });
   });

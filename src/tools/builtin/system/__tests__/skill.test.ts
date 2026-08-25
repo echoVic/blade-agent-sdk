@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SkillRegistry } from '../../../../skills/SkillRegistry.js';
-import { SessionId } from '../../../../types/branded.js';
-import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
-import { collectToolExecution, type ToolYield } from '../../../types/ToolResult.js';
+import { SessionId } from '../../../../types/identifiers.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { collectToolExecution, type ToolYield } from '../../../types/result.js';
 import { skillTool } from '../skill.js';
 
 async function createProjectSkill(
@@ -47,7 +47,10 @@ describe('Skill tool', () => {
   });
 
   it('rejects explicit activation when path conditions are not satisfied', async () => {
-    await createProjectSkill(projectRoot, 'src-only', `---
+    await createProjectSkill(
+      projectRoot,
+      'src-only',
+      `---
 name: src-only
 description: Only for source files
 paths:
@@ -55,7 +58,8 @@ paths:
 ---
 
 Focus on source files.
-`);
+`,
+    );
 
     const registry = SkillRegistry.getInstance({
       cwd: projectRoot,
@@ -82,7 +86,10 @@ Focus on source files.
   });
 
   it('allows explicit activation when args satisfy path conditions', async () => {
-    await createProjectSkill(projectRoot, 'src-only', `---
+    await createProjectSkill(
+      projectRoot,
+      'src-only',
+      `---
 name: src-only
 description: Only for source files
 paths:
@@ -90,7 +97,8 @@ paths:
 ---
 
 Focus on source files.
-`);
+`,
+    );
 
     const registry = SkillRegistry.getInstance({
       cwd: projectRoot,
@@ -109,17 +117,17 @@ Focus on source files.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const { result } = await executeSkill(
-      { skill: 'src-only', args: 'src/index.ts' },
-      context,
-    );
+    const { result } = await executeSkill({ skill: 'src-only', args: 'src/index.ts' }, context);
 
     expect(result.status).toBe('success');
     expect(String(result.model)).toContain('Focus on source files.');
   });
 
   it('returns skill activation as a runtimePatch effect', async () => {
-    await createProjectSkill(projectRoot, 'reviewer', `---
+    await createProjectSkill(
+      projectRoot,
+      'reviewer',
+      `---
 name: reviewer
 description: Review code carefully
 allowed-tools:
@@ -129,7 +137,8 @@ scope: turn
 ---
 
 Review code carefully.
-`);
+`,
+    );
 
     const registry = SkillRegistry.getInstance({
       cwd: projectRoot,
@@ -148,10 +157,7 @@ Review code carefully.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const { result, events } = await executeSkill(
-      { skill: 'reviewer' },
-      context,
-    );
+    const { result, events } = await executeSkill({ skill: 'reviewer' }, context);
 
     expect(result.status).toBe('success');
     expect(events).toEqual([

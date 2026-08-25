@@ -5,12 +5,12 @@
  * 可选磁盘持久化：当 configDir 提供时，任务写入 <configDir>/tasks/<sessionId>.json
  */
 
-import { nanoid } from 'nanoid';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import { nanoid } from 'nanoid';
 
-import type { SessionId } from '../../../types/branded.js';
-import type { JsonObject } from '../../../types/common.js';
+import type { SessionId } from '../../../types/identifiers.js';
+import type { JsonObject } from '../../../types/json.js';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
 
@@ -55,12 +55,11 @@ export class TaskStore {
   private tasks = new Map<string, Task>();
   private readonly persistPath: string | undefined;
 
-  private constructor(readonly sessionId: SessionId,
+  private constructor(
+    readonly sessionId: SessionId,
     configDir?: string,
   ) {
-    this.persistPath = configDir
-      ? path.join(configDir, 'tasks', `${sessionId}.json`)
-      : undefined;
+    this.persistPath = configDir ? path.join(configDir, 'tasks', `${sessionId}.json`) : undefined;
   }
 
   static getInstance(sessionId: SessionId, configDir?: string): TaskStore {

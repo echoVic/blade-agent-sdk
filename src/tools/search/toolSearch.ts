@@ -1,4 +1,4 @@
-import type { Tool } from '../types/index.js';
+import type { Tool } from '../types/tool.js';
 
 /**
  * Normalize a search query or field value for comparison.
@@ -13,11 +13,12 @@ export function normalizeSearchText(value: string): string {
  */
 export function scoreToolSearchMatch(tool: Tool, normalizedQuery: string): number {
   const aliases = tool.aliases ?? [];
-  const longDescription = typeof tool.description === 'string'
-    ? tool.description
-    : [tool.description.short, tool.description.long, tool.exposure.discoveryHint]
-      .filter(Boolean)
-      .join(' ');
+  const longDescription =
+    typeof tool.description === 'string'
+      ? tool.description
+      : [tool.description.short, tool.description.long, tool.exposure.discoveryHint]
+          .filter(Boolean)
+          .join(' ');
 
   const fields: [string, number][] = [
     [tool.name, 120],
@@ -40,7 +41,11 @@ export function scoreToolSearchMatch(tool: Tool, normalizedQuery: string): numbe
   return bestScore;
 }
 
-function scoreFieldMatch(field: string | undefined, normalizedQuery: string, baseScore: number): number {
+function scoreFieldMatch(
+  field: string | undefined,
+  normalizedQuery: string,
+  baseScore: number,
+): number {
   if (!field) {
     return 0;
   }
@@ -85,6 +90,8 @@ export function searchTools(tools: Tool[], query: string): Tool[] {
       score: scoreToolSearchMatch(tool, normalizedQuery),
     }))
     .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name))
+    .sort(
+      (left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name),
+    )
     .map(({ tool }) => tool);
 }

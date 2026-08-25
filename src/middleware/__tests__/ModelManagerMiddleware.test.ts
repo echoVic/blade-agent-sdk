@@ -1,19 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatConfig, IChatService } from '../../services/ChatServiceInterface.js';
-import type { BladeConfig } from '../../types/common.js';
+import type { BladeConfig } from '../../agent/config.js';
+import type { ModelServiceConfig } from '../../model/config.js';
+import type { ModelService } from '../../model/service.js';
 import type { ModelMiddleware } from '../ModelMiddleware.js';
 
-const { createChatServiceAsync } = vi.hoisted(() => ({
-  createChatServiceAsync: vi.fn(),
+const { createModelService } = vi.hoisted(() => ({
+  createModelService: vi.fn(),
 }));
 
-vi.mock('../../services/ChatServiceInterface.js', () => ({
-  createChatServiceAsync,
+vi.mock('../../services/createModelService.js', () => ({
+  createModelService,
 }));
 
 const { ModelManager } = await import('../../agent/ModelManager.js');
 
-function createService(config: ChatConfig): IChatService {
+function createService(config: ModelServiceConfig): ModelService {
   let currentConfig = config;
   return {
     async chat() {
@@ -40,7 +41,9 @@ describe('ModelManager middleware integration', () => {
   });
 
   it('reapplies model middleware when switching provider services', async () => {
-    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
+    createModelService.mockImplementation(async (config: ModelServiceConfig) =>
+      createService(config),
+    );
     const observedModels: string[] = [];
     const middleware: ModelMiddleware = {
       async wrapChat(request, next) {
@@ -75,12 +78,12 @@ describe('ModelManager middleware integration', () => {
     ]);
 
     await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
-    await expect(manager.getChatService().chat([])).resolves.toEqual({
+    await expect(manager.getModelService().chat([])).resolves.toEqual({
       content: 'model-a:wrapped',
     });
 
     await manager.switchModelIfNeeded('second');
-    await expect(manager.getChatService().chat([])).resolves.toEqual({
+    await expect(manager.getModelService().chat([])).resolves.toEqual({
       content: 'model-b:wrapped',
     });
     expect(observedModels).toEqual(['model-a', 'model-b']);
@@ -88,7 +91,9 @@ describe('ModelManager middleware integration', () => {
 
   it('applies request timeouts outside model middleware', async () => {
     vi.useFakeTimers();
-    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
+    createModelService.mockImplementation(async (config: ModelServiceConfig) =>
+      createService(config),
+    );
     const config: BladeConfig = {
       currentModelId: 'default',
       models: [
@@ -111,7 +116,7 @@ describe('ModelManager middleware integration', () => {
       },
     ]);
     await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
-    const result = manager.getChatService().chat([]);
+    const result = manager.getModelService().chat([]);
     const rejection = expect(result).rejects.toMatchObject({
       code: 'MODEL_REQUEST_TIMEOUT',
       timeoutMs: 25,

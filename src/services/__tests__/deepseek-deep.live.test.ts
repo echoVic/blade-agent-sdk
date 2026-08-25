@@ -19,8 +19,8 @@
  */
 import type { JSONSchema7 } from 'json-schema';
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../ChatServiceInterface.js';
-import { createChatServiceAsync } from '../ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
+import { createModelService } from '../createModelService.js';
 import {
   calculateDeepSeekCost,
   createDeepSeekLongContextChunks,
@@ -46,99 +46,115 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
   const timeout = 60_000;
 
   describe('基本聊天能力', () => {
-    it('非流式基本问答', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 128,
-        temperature: 0,
-      });
+    it(
+      '非流式基本问答',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 128,
+          temperature: 0,
+        });
 
-      const response = await service.chat([
-        { role: 'user', content: '请回复这 4 个字：测试成功' },
-      ]);
+        const response = await service.chat([
+          { role: 'user', content: '请回复这 4 个字：测试成功' },
+        ]);
 
-      expect(response.content).toContain('测试成功');
-      const { usage } = response;
-      expect(usage).toBeDefined();
-      if (!usage) throw new Error('Expected usage to be returned');
-      expect(usage.promptTokens).toBeGreaterThan(0);
-      expect(usage.completionTokens).toBeGreaterThan(0);
-      expect(usage.totalTokens).toBeGreaterThan(0);
-    }, timeout);
+        expect(response.content).toContain('测试成功');
+        const { usage } = response;
+        expect(usage).toBeDefined();
+        if (!usage) throw new Error('Expected usage to be returned');
+        expect(usage.promptTokens).toBeGreaterThan(0);
+        expect(usage.completionTokens).toBeGreaterThan(0);
+        expect(usage.totalTokens).toBeGreaterThan(0);
+      },
+      timeout,
+    );
 
-    it('流式响应完整接收', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 128,
-        temperature: 0,
-      });
+    it(
+      '流式响应完整接收',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 128,
+          temperature: 0,
+        });
 
-      let content = '';
-      let chunkCount = 0;
-      let finalUsage: { totalTokens: number } | undefined;
+        let content = '';
+        let chunkCount = 0;
+        let finalUsage: { totalTokens: number } | undefined;
 
-      for await (const chunk of service.streamChat([
-        { role: 'user', content: '从 1 数到 5，用逗号分隔' },
-      ])) {
-        if (chunk.content) {
-          content += chunk.content;
-          chunkCount += 1;
+        for await (const chunk of service.streamChat([
+          { role: 'user', content: '从 1 数到 5，用逗号分隔' },
+        ])) {
+          if (chunk.content) {
+            content += chunk.content;
+            chunkCount += 1;
+          }
+          if (chunk.usage) {
+            finalUsage = chunk.usage;
+          }
         }
-        if (chunk.usage) {
-          finalUsage = chunk.usage;
-        }
-      }
 
-      expect(content).toMatch(/1.*2.*3.*4.*5/);
-      expect(chunkCount).toBeGreaterThan(1); // 确认是多 chunk 流式
-      expect(finalUsage).toBeDefined();
-      if (!finalUsage) throw new Error('Expected final usage to be returned');
-      expect(finalUsage.totalTokens).toBeGreaterThan(0);
-    }, timeout);
+        expect(content).toMatch(/1.*2.*3.*4.*5/);
+        expect(chunkCount).toBeGreaterThan(1); // 确认是多 chunk 流式
+        expect(finalUsage).toBeDefined();
+        if (!finalUsage) throw new Error('Expected final usage to be returned');
+        expect(finalUsage.totalTokens).toBeGreaterThan(0);
+      },
+      timeout,
+    );
 
-    it('处理中文特殊字符和 emoji', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 64,
-        temperature: 0,
-      });
+    it(
+      '处理中文特殊字符和 emoji',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 64,
+          temperature: 0,
+        });
 
-      const response = await service.chat([
-        { role: 'user', content: '重复一遍这段文字（不要加任何解释）：你好🌍！α≠β∑∞' },
-      ]);
+        const response = await service.chat([
+          { role: 'user', content: '重复一遍这段文字（不要加任何解释）：你好🌍！α≠β∑∞' },
+        ]);
 
-      expect(response.content).toContain('你好');
-      // 至少包含部分特殊字符
-      expect(response.content).toMatch(/[🌍αβ∑∞]/u);
-    }, timeout);
+        expect(response.content).toContain('你好');
+        // 至少包含部分特殊字符
+        expect(response.content).toMatch(/[🌍αβ∑∞]/u);
+      },
+      timeout,
+    );
 
-    it('多轮对话上下文保持', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 512, // V4 Pro 默认启用 thinking，需要更大的 output budget
-        temperature: 0,
-      });
+    it(
+      '多轮对话上下文保持',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 512, // V4 Pro 默认启用 thinking，需要更大的 output budget
+          temperature: 0,
+        });
 
-      const response = await service.chat([
-        { role: 'user', content: '我的名字叫小明' },
-        { role: 'assistant', content: '你好小明！' },
-        { role: 'user', content: '我叫什么名字？' },
-      ]);
+        const response = await service.chat([
+          { role: 'user', content: '我的名字叫小明' },
+          { role: 'assistant', content: '你好小明！' },
+          { role: 'user', content: '我叫什么名字？' },
+        ]);
 
-      expect(response.content).toContain('小明');
-    }, timeout);
+        expect(response.content).toContain('小明');
+      },
+      timeout,
+    );
   });
 
   describe('Function Calling', () => {
@@ -169,350 +185,400 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
       },
     } satisfies { name: string; description: string; parameters: JSONSchema7 };
 
-    it('单工具调用，参数正确解析', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 256,
-        temperature: 0,
-      });
+    it(
+      '单工具调用，参数正确解析',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 256,
+          temperature: 0,
+        });
 
-      const response = await service.chat(
-        [{ role: 'user', content: '查询北京的天气，使用摄氏度' }],
-        [weatherTool],
-      );
+        const response = await service.chat(
+          [{ role: 'user', content: '查询北京的天气，使用摄氏度' }],
+          [weatherTool],
+        );
 
-      const toolCalls = response.toolCalls ?? [];
-      expect(toolCalls.length).toBeGreaterThanOrEqual(1);
+        const toolCalls = response.toolCalls ?? [];
+        expect(toolCalls.length).toBeGreaterThanOrEqual(1);
 
-      const call = toolCalls[0];
-      expect(call).toBeDefined();
-      if (!call) throw new Error('Expected a weather tool call');
-      expect(call.type).toBe('function');
-      expect(call.function.name).toBe('get_weather');
+        const call = toolCalls[0];
+        expect(call).toBeDefined();
+        if (!call) throw new Error('Expected a weather tool call');
+        expect(call.type).toBe('function');
+        expect(call.function.name).toBe('get_weather');
 
-      const args = JSON.parse(call.function.arguments);
-      expect(args.city).toMatch(/北京|Beijing/i);
-      expect(args.unit).toBe('celsius');
-    }, timeout);
+        const args = JSON.parse(call.function.arguments);
+        expect(args.city).toMatch(/北京|Beijing/i);
+        expect(args.unit).toBe('celsius');
+      },
+      timeout,
+    );
 
-    it('多工具可用，模型选择正确工具', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 256,
-        temperature: 0,
-      });
+    it(
+      '多工具可用，模型选择正确工具',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 256,
+          temperature: 0,
+        });
 
-      const response = await service.chat(
-        [{ role: 'user', content: '计算 123 * 456' }],
-        [weatherTool, calculatorTool],
-      );
+        const response = await service.chat(
+          [{ role: 'user', content: '计算 123 * 456' }],
+          [weatherTool, calculatorTool],
+        );
 
-      const toolCalls = response.toolCalls ?? [];
-      expect(toolCalls.length).toBeGreaterThanOrEqual(1);
+        const toolCalls = response.toolCalls ?? [];
+        expect(toolCalls.length).toBeGreaterThanOrEqual(1);
 
-      const call = toolCalls[0];
-      expect(call).toBeDefined();
-      if (!call) throw new Error('Expected a calculator tool call');
-      expect(call.function.name).toBe('calculate');
-      const args = JSON.parse(call.function.arguments);
-      expect(args.expression).toMatch(/123.*456/);
-    }, timeout);
+        const call = toolCalls[0];
+        expect(call).toBeDefined();
+        if (!call) throw new Error('Expected a calculator tool call');
+        expect(call.function.name).toBe('calculate');
+        const args = JSON.parse(call.function.arguments);
+        expect(args.expression).toMatch(/123.*456/);
+      },
+      timeout,
+    );
 
-    it('流式 Function Calling', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 256,
-        temperature: 0,
-      });
+    it(
+      '流式 Function Calling',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 256,
+          temperature: 0,
+        });
 
-      const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
-      for await (const chunk of service.streamChat(
-        [{ role: 'user', content: '查询上海天气，用华氏度' }],
-        [weatherTool],
-      )) {
-        if (chunk.toolCalls) {
-          for (const tc of chunk.toolCalls) {
-            toolCalls.push(tc);
+        const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> =
+          [];
+        for await (const chunk of service.streamChat(
+          [{ role: 'user', content: '查询上海天气，用华氏度' }],
+          [weatherTool],
+        )) {
+          if (chunk.toolCalls) {
+            for (const tc of chunk.toolCalls) {
+              toolCalls.push(tc);
+            }
           }
         }
-      }
 
-      // 流式 toolCalls 应至少出现一次
-      expect(toolCalls.length).toBeGreaterThan(0);
-      // 最终应能拼出完整 tool call
-      const lastCall = toolCalls[toolCalls.length - 1];
-      expect(lastCall.function?.name || '').toContain('get_weather');
-    }, timeout);
+        // 流式 toolCalls 应至少出现一次
+        expect(toolCalls.length).toBeGreaterThan(0);
+        // 最终应能拼出完整 tool call
+        const lastCall = toolCalls[toolCalls.length - 1];
+        expect(lastCall.function?.name || '').toContain('get_weather');
+      },
+      timeout,
+    );
 
-    it('多轮 Tool Result 回传', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 256,
-        temperature: 0,
-      });
+    it(
+      '多轮 Tool Result 回传',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 256,
+          temperature: 0,
+        });
 
-      // 先获取 tool call
-      const firstResponse = await service.chat(
-        [{ role: 'user', content: '查询北京天气' }],
-        [weatherTool],
-      );
+        // 先获取 tool call
+        const firstResponse = await service.chat(
+          [{ role: 'user', content: '查询北京天气' }],
+          [weatherTool],
+        );
 
-      const firstToolCalls = firstResponse.toolCalls ?? [];
-      expect(firstToolCalls.length).toBeGreaterThanOrEqual(1);
-      const toolCall = firstToolCalls[0];
-      expect(toolCall).toBeDefined();
-      if (!toolCall) throw new Error('Expected a tool call before returning tool result');
+        const firstToolCalls = firstResponse.toolCalls ?? [];
+        expect(firstToolCalls.length).toBeGreaterThanOrEqual(1);
+        const toolCall = firstToolCalls[0];
+        expect(toolCall).toBeDefined();
+        if (!toolCall) throw new Error('Expected a tool call before returning tool result');
 
-      // 回传 tool result 让模型生成最终回答
-      const messages: Message[] = [
-        { role: 'user', content: '查询北京天气' },
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [toolCall],
-        },
-        {
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          name: toolCall.function.name,
-          content: JSON.stringify({ city: '北京', temperature: 25, unit: 'celsius', condition: '晴' }),
-        },
-      ];
+        // 回传 tool result 让模型生成最终回答
+        const messages: ModelMessage[] = [
+          { role: 'user', content: '查询北京天气' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [toolCall],
+          },
+          {
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolCall.function.name,
+            content: JSON.stringify({
+              city: '北京',
+              temperature: 25,
+              unit: 'celsius',
+              condition: '晴',
+            }),
+          },
+        ];
 
-      const secondResponse = await service.chat(messages, [weatherTool]);
+        const secondResponse = await service.chat(messages, [weatherTool]);
 
-      // 模型应基于工具返回生成自然语言回答
-      expect(secondResponse.content.length).toBeGreaterThan(0);
-      expect(secondResponse.content).toMatch(/25|北京|晴/);
-      // 不应再次调用工具
-      expect(secondResponse.toolCalls?.length ?? 0).toBe(0);
-    }, timeout);
+        // 模型应基于工具返回生成自然语言回答
+        expect(secondResponse.content.length).toBeGreaterThan(0);
+        expect(secondResponse.content).toMatch(/25|北京|晴/);
+        // 不应再次调用工具
+        expect(secondResponse.toolCalls?.length ?? 0).toBe(0);
+      },
+      timeout,
+    );
   });
 
   describe('Usage 和成本', () => {
-    it('非流式返回完整 usage 信息', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 64,
-        temperature: 0,
-      });
+    it(
+      '非流式返回完整 usage 信息',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 64,
+          temperature: 0,
+        });
 
-      const response = await service.chat([
-        { role: 'user', content: 'say hello' },
-      ]);
+        const response = await service.chat([{ role: 'user', content: 'say hello' }]);
 
-      const { usage } = response;
-      expect(usage).toBeDefined();
-      if (!usage) throw new Error('Expected usage to be returned');
-      expect(usage.promptTokens).toBeGreaterThan(0);
-      expect(usage.completionTokens).toBeGreaterThan(0);
-      expect(usage.totalTokens).toBe(usage.promptTokens + usage.completionTokens);
+        const { usage } = response;
+        expect(usage).toBeDefined();
+        if (!usage) throw new Error('Expected usage to be returned');
+        expect(usage.promptTokens).toBeGreaterThan(0);
+        expect(usage.completionTokens).toBeGreaterThan(0);
+        expect(usage.totalTokens).toBe(usage.promptTokens + usage.completionTokens);
 
-      // DeepSeek 返回 cache 信息
-      // 注意：首次请求可能没有 cacheReadInputTokens
-      expect(typeof usage.promptTokens).toBe('number');
-    }, timeout);
+        // DeepSeek 返回 cache 信息
+        // 注意：首次请求可能没有 cacheReadInputTokens
+        expect(typeof usage.promptTokens).toBe('number');
+      },
+      timeout,
+    );
 
-    it('CostTracker 正确累计', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 32,
-        temperature: 0,
-      });
+    it(
+      'CostTracker 正确累计',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 32,
+          temperature: 0,
+        });
 
-      const tracker = new DeepSeekCostTracker(model);
+        const tracker = new DeepSeekCostTracker(model);
 
-      const r1 = await service.chat([{ role: 'user', content: 'hi' }]);
-      if (r1.usage) tracker.recordUsage(r1.usage);
+        const r1 = await service.chat([{ role: 'user', content: 'hi' }]);
+        if (r1.usage) tracker.recordUsage(r1.usage);
 
-      const r2 = await service.chat([{ role: 'user', content: 'hello' }]);
-      if (r2.usage) tracker.recordUsage(r2.usage);
+        const r2 = await service.chat([{ role: 'user', content: 'hello' }]);
+        if (r2.usage) tracker.recordUsage(r2.usage);
 
-      const snapshot = tracker.getSnapshot();
-      expect(snapshot.requestCount).toBe(2);
-      expect(snapshot.totalTokens).toBeGreaterThan(0);
-      expect(snapshot.totalCost).toBeGreaterThan(0);
-      expect(snapshot.currency).toBe('USD');
-    }, timeout);
+        const snapshot = tracker.getSnapshot();
+        expect(snapshot.requestCount).toBe(2);
+        expect(snapshot.totalTokens).toBeGreaterThan(0);
+        expect(snapshot.totalCost).toBeGreaterThan(0);
+        expect(snapshot.currency).toBe('USD');
+      },
+      timeout,
+    );
   });
 
   describe('AbortSignal', () => {
-    it('请求中途取消应抛出错误', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-      });
+    it(
+      '请求中途取消应抛出错误',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 2048,
+          temperature: 0.7,
+        });
 
-      const controller = new AbortController();
+        const controller = new AbortController();
 
-      // 立刻取消
-      setTimeout(() => controller.abort(), 50);
+        // 立刻取消
+        setTimeout(() => controller.abort(), 50);
 
-      await expect(
-        service.chat(
-          [{ role: 'user', content: '写一篇 1000 字的文章' }],
-          undefined,
-          controller.signal,
-        ),
-      ).rejects.toThrow();
-    }, timeout);
+        await expect(
+          service.chat(
+            [{ role: 'user', content: '写一篇 1000 字的文章' }],
+            undefined,
+            controller.signal,
+          ),
+        ).rejects.toThrow();
+      },
+      timeout,
+    );
 
-    it('流式请求中途取消', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-      });
+    it(
+      '流式请求中途取消',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 2048,
+          temperature: 0.7,
+        });
 
-      const controller = new AbortController();
-      let chunkCount = 0;
-      let aborted = false;
+        const controller = new AbortController();
+        let chunkCount = 0;
+        let aborted = false;
 
-      try {
-        for await (const _chunk of service.streamChat(
-          [{ role: 'user', content: '从 1 数到 10000' }],
-          undefined,
-          controller.signal,
-        )) {
-          chunkCount += 1;
-          if (chunkCount >= 3) {
-            controller.abort();
+        try {
+          for await (const _chunk of service.streamChat(
+            [{ role: 'user', content: '从 1 数到 10000' }],
+            undefined,
+            controller.signal,
+          )) {
+            chunkCount += 1;
+            if (chunkCount >= 3) {
+              controller.abort();
+            }
           }
+        } catch {
+          aborted = true;
         }
-      } catch {
-        aborted = true;
-      }
 
-      // 应该要么抛出错误，要么提前结束
-      expect(chunkCount).toBeGreaterThanOrEqual(3);
-      // AbortSignal 应该导致中断（但具体行为取决于实现）
-      expect(aborted || chunkCount < 100).toBe(true);
-    }, timeout);
+        // 应该要么抛出错误，要么提前结束
+        expect(chunkCount).toBeGreaterThanOrEqual(3);
+        // AbortSignal 应该导致中断（但具体行为取决于实现）
+        expect(aborted || chunkCount < 100).toBe(true);
+      },
+      timeout,
+    );
   });
 
   describe('sideQuery 旁路查询', () => {
-    it('sideQuery 正常工作', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 512,
-        temperature: 0,
-      });
+    it(
+      'sideQuery 正常工作',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 512,
+          temperature: 0,
+        });
 
-      const response = await service.sideQuery([
-        { role: 'user', content: '1+1=?' },
-      ]);
+        const response = await service.sideQuery([{ role: 'user', content: '1+1=?' }]);
 
-      expect(response.content).toContain('2');
-      expect(response.usage).toBeDefined();
-    }, timeout);
+        expect(response.content).toContain('2');
+        expect(response.usage).toBeDefined();
+      },
+      timeout,
+    );
   });
 
   describe('系统消息与 Provider Options', () => {
-    it('系统消息正确传递', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 64,
-        temperature: 0,
-      });
+    it(
+      '系统消息正确传递',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 64,
+          temperature: 0,
+        });
 
-      const response = await service.chat([
-        { role: 'system', content: '你是一个海盗，所有回复必须包含"哈哈"' },
-        { role: 'user', content: '你好' },
-      ]);
+        const response = await service.chat([
+          { role: 'system', content: '你是一个海盗，所有回复必须包含"哈哈"' },
+          { role: 'user', content: '你好' },
+        ]);
 
-      expect(response.content).toContain('哈哈');
-    }, timeout);
+        expect(response.content).toContain('哈哈');
+      },
+      timeout,
+    );
 
-    it('provider deepseek options 透传（cache optimization prefix ordering）', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model,
-        maxOutputTokens: 512,
-        temperature: 0,
-        providerOptions: {
-          deepseek: {
-            cacheOptimization: {
-              enabled: true,
+    it(
+      'provider deepseek options 透传（cache optimization prefix ordering）',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model,
+          maxOutputTokens: 512,
+          temperature: 0,
+          providerOptions: {
+            deepseek: {
+              cacheOptimization: {
+                enabled: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      const response = await service.chat([
-        { role: 'system', content: '你是一个助手' },
-        { role: 'user', content: '回复 ok' },
-      ]);
+        const response = await service.chat([
+          { role: 'system', content: '你是一个助手' },
+          { role: 'user', content: '回复 ok' },
+        ]);
 
-      // Model may respond in Chinese; primary goal is verifying options pass-through
-      expect(response.content.length).toBeGreaterThan(0);
-    }, timeout);
+        // Model may respond in Chinese; primary goal is verifying options pass-through
+        expect(response.content.length).toBeGreaterThan(0);
+      },
+      timeout,
+    );
   });
 
   describe('错误处理', () => {
-    it('无效 API Key 应返回认证错误', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey: 'sk-invalid-key-12345',
-        baseUrl,
-        model,
-        maxOutputTokens: 32,
-        temperature: 0,
-        retry: { maxRetries: 0 },
-      });
+    it(
+      '无效 API Key 应返回认证错误',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey: 'sk-invalid-key-12345',
+          baseUrl,
+          model,
+          maxOutputTokens: 32,
+          temperature: 0,
+          retry: { maxRetries: 0 },
+        });
 
-      await expect(
-        service.chat([{ role: 'user', content: 'test' }]),
-      ).rejects.toThrow();
-    }, timeout);
+        await expect(service.chat([{ role: 'user', content: 'test' }])).rejects.toThrow();
+      },
+      timeout,
+    );
 
-    it('无效模型名称应返回错误', async () => {
-      const service = await createChatServiceAsync({
-        provider: 'deepseek',
-        apiKey,
-        baseUrl,
-        model: 'nonexistent-model-xyz',
-        maxOutputTokens: 32,
-        temperature: 0,
-        retry: { maxRetries: 0 },
-      });
+    it(
+      '无效模型名称应返回错误',
+      async () => {
+        const service = await createModelService({
+          provider: 'deepseek',
+          apiKey,
+          baseUrl,
+          model: 'nonexistent-model-xyz',
+          maxOutputTokens: 32,
+          temperature: 0,
+          retry: { maxRetries: 0 },
+        });
 
-      await expect(
-        service.chat([{ role: 'user', content: 'test' }]),
-      ).rejects.toThrow();
-    }, timeout);
+        await expect(service.chat([{ role: 'user', content: 'test' }])).rejects.toThrow();
+      },
+      timeout,
+    );
   });
 });
 
@@ -690,10 +756,7 @@ describe('DeepSeek 离线逻辑测试', () => {
         type: 'object',
         properties: {
           value: {
-            oneOf: [
-              { type: 'string' },
-              { type: 'number' },
-            ],
+            oneOf: [{ type: 'string' }, { type: 'number' }],
           },
         },
       });
@@ -716,7 +779,9 @@ describe('DeepSeek 离线逻辑测试', () => {
         },
       });
 
-      const nested = (schema.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>).nested;
+      const nested = (
+        schema.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>
+      ).nested;
       const nestedField = nested.properties.field;
       expect(nestedField.minLength).toBeUndefined();
     });
@@ -724,7 +789,7 @@ describe('DeepSeek 离线逻辑测试', () => {
 
   describe('缓存优化 prefix 排序', () => {
     it('稳定消息前置', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         { role: 'system', content: 'system prompt' },
         { role: 'user', content: 'volatile user message' },
         { role: 'user', content: 'stable message', metadata: { deepseekCache: 'stable' } },
@@ -744,7 +809,7 @@ describe('DeepSeek 离线逻辑测试', () => {
     });
 
     it('没有 stable 消息时保持原序', () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         { role: 'user', content: 'a' },
         { role: 'user', content: 'b' },
       ];
@@ -756,13 +821,16 @@ describe('DeepSeek 离线逻辑测试', () => {
 
   describe('成本计算', () => {
     it('calculateDeepSeekCost 正确计算', () => {
-      const cost = calculateDeepSeekCost({
-        promptTokens: 1000,
-        completionTokens: 500,
-        totalTokens: 1500,
-        cacheReadInputTokens: 200,
-        cacheMissInputTokens: 800,
-      }, 'deepseek-v4-pro');
+      const cost = calculateDeepSeekCost(
+        {
+          promptTokens: 1000,
+          completionTokens: 500,
+          totalTokens: 1500,
+          cacheReadInputTokens: 200,
+          cacheMissInputTokens: 800,
+        },
+        'deepseek-v4-pro',
+      );
 
       expect(cost).toBeDefined();
       if (!cost) throw new Error('Expected known DeepSeek model cost');
@@ -774,11 +842,14 @@ describe('DeepSeek 离线逻辑测试', () => {
     });
 
     it('未知模型返回 undefined', () => {
-      const cost = calculateDeepSeekCost({
-        promptTokens: 100,
-        completionTokens: 50,
-        totalTokens: 150,
-      }, 'unknown-model-xyz');
+      const cost = calculateDeepSeekCost(
+        {
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
+        },
+        'unknown-model-xyz',
+      );
 
       expect(cost).toBeUndefined();
     });
@@ -854,16 +925,18 @@ describe('DeepSeek 离线逻辑测试', () => {
   describe('prepareDeepSeekTools', () => {
     it('strict 模式添加 strict 标记并 sanitize', () => {
       const tools = prepareDeepSeekTools(
-        [{
-          name: 'test_tool',
-          description: 'test',
-          parameters: {
-            type: 'object',
-            properties: {
-              x: { type: 'string', minLength: 1 },
+        [
+          {
+            name: 'test_tool',
+            description: 'test',
+            parameters: {
+              type: 'object',
+              properties: {
+                x: { type: 'string', minLength: 1 },
+              },
             },
           },
-        }],
+        ],
         { strictTools: true },
       );
 
@@ -880,16 +953,18 @@ describe('DeepSeek 离线逻辑测试', () => {
 
     it('非 strict 模式不修改 schema', () => {
       const tools = prepareDeepSeekTools(
-        [{
-          name: 'test_tool',
-          description: 'test',
-          parameters: {
-            type: 'object',
-            properties: {
-              x: { type: 'string', minLength: 1 },
+        [
+          {
+            name: 'test_tool',
+            description: 'test',
+            parameters: {
+              type: 'object',
+              properties: {
+                x: { type: 'string', minLength: 1 },
+              },
             },
           },
-        }],
+        ],
         { strictTools: false },
       );
 

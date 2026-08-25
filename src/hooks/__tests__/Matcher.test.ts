@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Matcher } from '../Matcher.js';
-import type { MatchContext, MatcherConfig } from '../types/HookTypes.js';
+import type { MatchContext, MatcherConfig } from '../types.js';
 
 describe('Matcher', () => {
   const matcher = new Matcher();
@@ -58,41 +58,25 @@ describe('Matcher', () => {
   describe('tool with parameter pattern', () => {
     it('should match Bash with command pattern', () => {
       const config: MatcherConfig = { tools: 'Bash(npm test*)' };
-      expect(
-        matcher.matches(config, { toolName: 'Bash', command: 'npm test' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Bash', command: 'npm test:unit' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Bash', command: 'npm install' })
-      ).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Bash', command: 'npm test' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Bash', command: 'npm test:unit' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Bash', command: 'npm install' })).toBe(false);
     });
 
     it('should match Read with file pattern', () => {
       const config: MatcherConfig = { tools: 'Read(*.ts)' };
-      expect(
-        matcher.matches(config, { toolName: 'Read', filePath: 'index.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Read', filePath: 'src/main.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Read', filePath: 'index.js' })
-      ).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Read', filePath: 'index.ts' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Read', filePath: 'src/main.ts' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Read', filePath: 'index.js' })).toBe(false);
     });
 
     it('should match Edit|Write with path pattern', () => {
       const config: MatcherConfig = { tools: 'Edit|Write(src/**)' };
-      expect(
-        matcher.matches(config, { toolName: 'Edit', filePath: 'src/index.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Write', filePath: 'src/utils/helper.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Edit', filePath: 'test/index.ts' })
-      ).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Edit', filePath: 'src/index.ts' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Write', filePath: 'src/utils/helper.ts' })).toBe(
+        true,
+      );
+      expect(matcher.matches(config, { toolName: 'Edit', filePath: 'test/index.ts' })).toBe(false);
     });
   });
 
@@ -140,15 +124,9 @@ describe('Matcher', () => {
         tools: 'Bash',
         commands: 'npm *',
       };
-      expect(
-        matcher.matches(config, { toolName: 'Bash', command: 'npm test' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Bash', command: 'yarn test' })
-      ).toBe(false);
-      expect(
-        matcher.matches(config, { toolName: 'Read', command: 'npm test' })
-      ).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Bash', command: 'npm test' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Bash', command: 'yarn test' })).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Read', command: 'npm test' })).toBe(false);
     });
 
     it('should match tool and path together', () => {
@@ -156,18 +134,12 @@ describe('Matcher', () => {
         tools: 'Edit|Write',
         paths: 'src/**/*.ts',
       };
-      expect(
-        matcher.matches(config, { toolName: 'Edit', filePath: 'src/index.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Write', filePath: 'src/utils/helper.ts' })
-      ).toBe(true);
-      expect(
-        matcher.matches(config, { toolName: 'Edit', filePath: 'test/index.ts' })
-      ).toBe(false);
-      expect(
-        matcher.matches(config, { toolName: 'Read', filePath: 'src/index.ts' })
-      ).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Edit', filePath: 'src/index.ts' })).toBe(true);
+      expect(matcher.matches(config, { toolName: 'Write', filePath: 'src/utils/helper.ts' })).toBe(
+        true,
+      );
+      expect(matcher.matches(config, { toolName: 'Edit', filePath: 'test/index.ts' })).toBe(false);
+      expect(matcher.matches(config, { toolName: 'Read', filePath: 'src/index.ts' })).toBe(false);
     });
   });
 });

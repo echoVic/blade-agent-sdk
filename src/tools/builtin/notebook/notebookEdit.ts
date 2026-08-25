@@ -1,9 +1,9 @@
 import * as fs from 'node:fs/promises';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
 
 /**
  * NotebookEdit tool
@@ -15,33 +15,33 @@ export const notebookEditTool = createTool({
   kind: ToolKind.Write,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => z.object({
-    notebook_path: z
-      .string()
-      .describe(
-        'The absolute path to the Jupyter notebook file to edit (must be absolute, not relative)'
-      ),
-    cell_id: z
-      .string()
-      .optional()
-      .describe(
-        'The ID of the cell to edit. When inserting a new cell, the new cell will be inserted after the cell with this ID, or at the beginning if not specified.'
-      ),
-    new_source: z.string().describe('The new source for the cell'),
-    cell_type: z
-      .enum(['code', 'markdown'])
-      .optional()
-      .describe(
-        'The type of the cell (code or markdown). If not specified, it defaults to the current cell type. If using edit_mode=insert, this is required.'
-      ),
-    edit_mode: z
-      .enum(['replace', 'insert', 'delete'])
-      .optional()
-      .default('replace')
-      .describe(
-        'The type of edit to make (replace, insert, delete). Defaults to replace.'
-      ),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      notebook_path: z
+        .string()
+        .describe(
+          'The absolute path to the Jupyter notebook file to edit (must be absolute, not relative)',
+        ),
+      cell_id: z
+        .string()
+        .optional()
+        .describe(
+          'The ID of the cell to edit. When inserting a new cell, the new cell will be inserted after the cell with this ID, or at the beginning if not specified.',
+        ),
+      new_source: z.string().describe('The new source for the cell'),
+      cell_type: z
+        .enum(['code', 'markdown'])
+        .optional()
+        .describe(
+          'The type of the cell (code or markdown). If not specified, it defaults to the current cell type. If using edit_mode=insert, this is required.',
+        ),
+      edit_mode: z
+        .enum(['replace', 'insert', 'delete'])
+        .optional()
+        .default('replace')
+        .describe('The type of edit to make (replace, insert, delete). Defaults to replace.'),
+    }),
+  ),
 
   resolveBehavior: ({ edit_mode }) => ({
     kind: ToolKind.Write,
@@ -58,13 +58,7 @@ export const notebookEditTool = createTool({
   },
 
   async *execute(params, _context) {
-    const {
-      notebook_path,
-      cell_id,
-      new_source,
-      cell_type,
-      edit_mode = 'replace',
-    } = params;
+    const { notebook_path, cell_id, new_source, cell_type, edit_mode = 'replace' } = params;
 
     try {
       // Read notebook file
@@ -88,9 +82,7 @@ export const notebookEditTool = createTool({
       // Find cell by ID or use index
       let cellIndex = -1;
       if (cell_id) {
-        cellIndex = notebook.cells.findIndex(
-          (cell: { id?: string }) => cell.id === cell_id
-        );
+        cellIndex = notebook.cells.findIndex((cell: { id?: string }) => cell.id === cell_id);
         if (cellIndex === -1 && edit_mode !== 'insert') {
           return {
             status: 'error',
@@ -181,11 +173,7 @@ export const notebookEditTool = createTool({
       await fs.writeFile(notebook_path, JSON.stringify(notebook, null, 2));
 
       const actionMsg =
-        edit_mode === 'replace'
-          ? 'replaced'
-          : edit_mode === 'insert'
-            ? 'inserted'
-            : 'deleted';
+        edit_mode === 'replace' ? 'replaced' : edit_mode === 'insert' ? 'inserted' : 'deleted';
 
       return {
         status: 'success',

@@ -1,34 +1,32 @@
 import type { JSONSchema7 } from 'json-schema';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type {
-    ChatResponse,
-    IChatService,
-    Message,
-    StreamToolCall,
-} from '../services/ChatServiceInterface.js';
+import type { ModelMessage, ModelStreamToolCall, ModelToolCall } from '../model/message.js';
+import type { ModelResponse, ModelService } from '../model/service.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolEffect, ToolResult } from '../tools/types/index.js';
-import { ToolErrorType } from '../tools/types/index.js';
+import type { ToolEffect } from '../tools/types/effects.js';
+import type { ToolResult } from '../tools/types/result.js';
+import { ToolErrorType } from '../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../types/abort.js';
-import { type JsonObject, PermissionMode } from '../types/common.js';
+import { PermissionMode } from '../types/constants.js';
+import type { MessageId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import {
-    emitToolExecutionUpdate,
-    runToolCall,
-    type ToolExecutionContext,
-    type ToolExecutionUpdate,
+  emitToolExecutionUpdate,
+  runToolCall,
+  type ToolExecutionContext,
+  type ToolExecutionUpdate,
 } from './loop/runToolCall.js';
 import { streamChatResponse } from './loop/streamChatResponse.js';
-import type { FunctionToolCall } from './loop/types.js';
 
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     params: JsonObject;
-  }) => Promise<string | null>;
+  }) => Promise<MessageId | null>;
 }
 
 export interface StreamingToolExecutorConfig {
@@ -41,23 +39,20 @@ export interface StreamingToolExecutorConfig {
   hooks?: ToolExecutionHooks;
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
-  onModelResponse?: (response: ChatResponse) => void | Promise<void>;
+  onModelResponse?: (response: ModelResponse) => void | Promise<void>;
   onStreamEnd?: () => void | Promise<void>;
   onToolExecutionUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
-  onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
-  onToolComplete?: (
-    toolCall: FunctionToolCall,
-    result: ToolResult,
-  ) => void | Promise<void>;
+  onToolReady?: (toolCall: ModelToolCall) => void | Promise<void>;
+  onToolComplete?: (toolCall: ModelToolCall, result: ToolResult) => void | Promise<void>;
   onAfterToolExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     result: ToolResult;
     effects: ToolEffect[];
-    toolUseUuid: string | null;
+    toolMessageId: MessageId | null;
   }) => void | Promise<void>;
   onAfterToolExecEpochDiscard?: (ctx: {
-    toolCall: FunctionToolCall;
-    toolUseUuid: string | null;
+    toolCall: ModelToolCall;
+    toolMessageId: MessageId | null;
     reason: string;
   }) => Promise<void>;
 }
@@ -75,7 +70,7 @@ export class StreamingToolExecutor {
   private readonly logger: InternalLogger;
 
   constructor(
-    private readonly getChatService: () => IChatService,
+    private readonly getModelService: () => ModelService,
     logger?: InternalLogger,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
@@ -86,29 +81,29 @@ export class StreamingToolExecutor {
   }
 
   async collectAndExecute(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
     epoch?: ExecutionEpoch,
   ): Promise<{
-    chatResponse: ChatResponse;
+    chatResponse: ModelResponse;
     executionResults: ToolExecutionOutcome[];
   }> {
-    const chatService = this.getChatService();
+    const modelService = this.getModelService();
     const batchController = new AbortController();
     const toolCallAccumulator = new Map<number, ToolCallAccumulatorEntry>();
     const executionResults: Array<ToolExecutionOutcome | undefined> = [];
     const inFlightExecutions = new Map<number, Promise<void>>();
     let fullContent = '';
     let fullReasoningContent = '';
-    let streamUsage: ChatResponse['usage'];
+    let streamUsage: ModelResponse['usage'];
     let chunkCount = 0;
     let hasDispatchedTools = false;
     const shouldExecuteSerially = executionConfig.permissionMode === PermissionMode.PLAN;
 
     try {
-      const stream = chatService.streamChat(messages, tools, signal);
+      const stream = modelService.streamChat(messages, tools, signal);
 
       for await (const chunk of stream) {
         chunkCount += 1;
@@ -141,16 +136,17 @@ export class StreamingToolExecutor {
           }
 
           if (!shouldExecuteSerially) {
-            hasDispatchedTools = (await this.dispatchReadyToolCalls({
-              accumulator: toolCallAccumulator,
-              executionResults,
-              inFlightExecutions,
-              signal,
-              batchController,
-              executionConfig,
-              forcePending: false,
-              epoch,
-            })) || hasDispatchedTools;
+            hasDispatchedTools =
+              (await this.dispatchReadyToolCalls({
+                accumulator: toolCallAccumulator,
+                executionResults,
+                inFlightExecutions,
+                signal,
+                batchController,
+                executionConfig,
+                forcePending: false,
+                epoch,
+              })) || hasDispatchedTools;
           }
         }
 
@@ -169,7 +165,7 @@ export class StreamingToolExecutor {
         return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
       }
 
-      const chatResponse: ChatResponse = {
+      const chatResponse: ModelResponse = {
         content: fullContent,
         reasoningContent: fullReasoningContent || undefined,
         toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
@@ -181,41 +177,44 @@ export class StreamingToolExecutor {
       }
 
       if (shouldExecuteSerially) {
-        hasDispatchedTools = (await this.dispatchReadyToolCalls({
-          accumulator: toolCallAccumulator,
-          executionResults,
-          inFlightExecutions,
-          signal,
-          batchController,
-          executionConfig,
-          forcePending: true,
-          serial: true,
-          epoch,
-        })) || hasDispatchedTools;
+        hasDispatchedTools =
+          (await this.dispatchReadyToolCalls({
+            accumulator: toolCallAccumulator,
+            executionResults,
+            inFlightExecutions,
+            signal,
+            batchController,
+            executionConfig,
+            forcePending: true,
+            serial: true,
+            epoch,
+          })) || hasDispatchedTools;
       } else {
-        hasDispatchedTools = (await this.dispatchReadyToolCalls({
-          accumulator: toolCallAccumulator,
-          executionResults,
-          inFlightExecutions,
-          signal,
-          batchController,
-          executionConfig,
-          forcePending: false,
-          epoch,
-        })) || hasDispatchedTools;
+        hasDispatchedTools =
+          (await this.dispatchReadyToolCalls({
+            accumulator: toolCallAccumulator,
+            executionResults,
+            inFlightExecutions,
+            signal,
+            batchController,
+            executionConfig,
+            forcePending: false,
+            epoch,
+          })) || hasDispatchedTools;
 
         await Promise.all(inFlightExecutions.values());
 
-        hasDispatchedTools = (await this.dispatchReadyToolCalls({
-          accumulator: toolCallAccumulator,
-          executionResults,
-          inFlightExecutions,
-          signal,
-          batchController,
-          executionConfig,
-          forcePending: true,
-          epoch,
-        })) || hasDispatchedTools;
+        hasDispatchedTools =
+          (await this.dispatchReadyToolCalls({
+            accumulator: toolCallAccumulator,
+            executionResults,
+            inFlightExecutions,
+            signal,
+            batchController,
+            executionConfig,
+            forcePending: true,
+            epoch,
+          })) || hasDispatchedTools;
 
         await Promise.all(inFlightExecutions.values());
       }
@@ -275,14 +274,11 @@ export class StreamingToolExecutor {
     }
   }
 
-  private async settleInFlightExecutions(
-    executions: Iterable<Promise<void>>,
-  ): Promise<void> {
+  private async settleInFlightExecutions(executions: Iterable<Promise<void>>): Promise<void> {
     const settled = await Promise.allSettled(Array.from(executions));
     const containmentFailure = settled.find(
       (result): result is PromiseRejectedResult =>
-        result.status === 'rejected'
-        && isHookProcessContainmentError(result.reason),
+        result.status === 'rejected' && isHookProcessContainmentError(result.reason),
     );
     if (containmentFailure) {
       throw containmentFailure.reason;
@@ -307,17 +303,17 @@ export class StreamingToolExecutor {
   }
 
   private async collectWithFallback(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
     epoch?: ExecutionEpoch,
   ): Promise<{
-    chatResponse: ChatResponse;
+    chatResponse: ModelResponse;
     executionResults: ToolExecutionOutcome[];
   }> {
-    const stream = streamChatResponse(this.getChatService, messages, tools, signal, this.logger);
-    let chatResponse: ChatResponse | undefined;
+    const stream = streamChatResponse(this.getModelService, messages, tools, signal, this.logger);
+    let chatResponse: ModelResponse | undefined;
     let streamCompleted = false;
     try {
       while (true) {
@@ -348,12 +344,9 @@ export class StreamingToolExecutor {
     }
 
     const functionToolCalls = (chatResponse?.toolCalls ?? []).filter(
-      (toolCall): toolCall is FunctionToolCall => toolCall.type === 'function',
+      (toolCall): toolCall is ModelToolCall => toolCall.type === 'function',
     );
-    const executionPlan = planToolExecution(
-      functionToolCalls,
-      executionConfig.permissionMode,
-    );
+    const executionPlan = planToolExecution(functionToolCalls, executionConfig.permissionMode);
 
     if (signal?.aborted || !this.isEpochActive(epoch)) {
       // steering 中断（stepSignal 触发但请求本身未 abort）时，chatResponse 仍可能
@@ -361,11 +354,7 @@ export class StreamingToolExecutor {
       // 工具调用却没有对应结果”而抛错。为每个已规划的工具调用补一个合成的
       // INTERRUPTED 结果，保持 tool_call/tool_result 配对完整。
       const interruptedResults = isSteeringInterruptSignal(signal)
-        ? await this.synthesizeInterruptedResults(
-            executionPlan.calls,
-            executionConfig,
-            epoch,
-          )
+        ? await this.synthesizeInterruptedResults(executionPlan.calls, executionConfig, epoch)
         : [];
       return {
         chatResponse: chatResponse ?? { content: '', toolCalls: undefined, usage: undefined },
@@ -379,7 +368,7 @@ export class StreamingToolExecutor {
     const executionResults: Array<ToolExecutionOutcome | undefined> = [];
     const allCalls = executionPlan.calls;
 
-    const executeOne = (index: number, toolCall: FunctionToolCall) =>
+    const executeOne = (index: number, toolCall: ModelToolCall) =>
       this.executeToolCall({
         index,
         toolCall,
@@ -396,9 +385,7 @@ export class StreamingToolExecutor {
         await executeOne(i, allCalls[i]);
       }
     } else {
-      await Promise.all(
-        allCalls.map((toolCall, index) => executeOne(index, toolCall)),
-      );
+      await Promise.all(allCalls.map((toolCall, index) => executeOne(index, toolCall)));
     }
 
     if (!chatResponse) {
@@ -407,9 +394,7 @@ export class StreamingToolExecutor {
 
     return {
       chatResponse,
-      executionResults: executionResults.filter(
-        (r): r is ToolExecutionOutcome => r !== undefined,
-      ),
+      executionResults: executionResults.filter((r): r is ToolExecutionOutcome => r !== undefined),
     };
   }
 
@@ -449,17 +434,25 @@ export class StreamingToolExecutor {
           toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
           result: this.buildCascadeAbortResult(),
           effects: [],
-          toolUseUuid: null,
+          toolMessageId: null,
         };
         input.executionResults[index] = outcome;
-        await this.emitToolExecutionUpdate(input.executionConfig, {
-          type: 'tool_result',
-          outcome,
-        }, input.epoch);
-        await this.emitToolExecutionUpdate(input.executionConfig, {
-          type: 'tool_completed',
-          outcome,
-        }, input.epoch);
+        await this.emitToolExecutionUpdate(
+          input.executionConfig,
+          {
+            type: 'tool_result',
+            outcome,
+          },
+          input.epoch,
+        );
+        await this.emitToolExecutionUpdate(
+          input.executionConfig,
+          {
+            type: 'tool_completed',
+            outcome,
+          },
+          input.epoch,
+        );
         continue;
       }
 
@@ -494,7 +487,7 @@ export class StreamingToolExecutor {
 
   private async executeToolCall(input: {
     index: number;
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     signal: AbortSignal | undefined;
     batchController: AbortController;
     executionConfig: StreamingToolExecutorConfig;
@@ -513,17 +506,25 @@ export class StreamingToolExecutor {
         toolCall: input.toolCall,
         result: this.buildCascadeAbortResult(),
         effects: [],
-        toolUseUuid: null,
+        toolMessageId: null,
       };
       input.executionResults[input.index] = outcome;
-      await this.emitToolExecutionUpdate(input.executionConfig, {
-        type: 'tool_result',
-        outcome,
-      }, input.epoch);
-      await this.emitToolExecutionUpdate(input.executionConfig, {
-        type: 'tool_completed',
-        outcome,
-      }, input.epoch);
+      await this.emitToolExecutionUpdate(
+        input.executionConfig,
+        {
+          type: 'tool_result',
+          outcome,
+        },
+        input.epoch,
+      );
+      await this.emitToolExecutionUpdate(
+        input.executionConfig,
+        {
+          type: 'tool_completed',
+          outcome,
+        },
+        input.epoch,
+      );
       return;
     }
 
@@ -542,14 +543,14 @@ export class StreamingToolExecutor {
           this.emitToolExecutionUpdate(input.executionConfig, update, input.epoch),
       },
     });
-    const { result, effects, toolUseUuid } = outcome;
+    const { result, effects, toolMessageId } = outcome;
 
     // Epoch guard: 工具执行完后检查 epoch 是否仍有效
     if (!this.isEpochActive(input.epoch)) {
       // 不写真实结果，补写合成 error 闭合持久化链路
       await input.executionConfig.onAfterToolExecEpochDiscard?.({
         toolCall: input.toolCall,
-        toolUseUuid,
+        toolMessageId,
         reason: 'Discarded: execution epoch invalidated',
       });
       return;
@@ -568,13 +569,13 @@ export class StreamingToolExecutor {
       toolCall: input.toolCall,
       result,
       effects,
-      toolUseUuid,
+      toolMessageId,
     };
   }
 
   private accumulateToolCall(
     accumulator: Map<number, ToolCallAccumulatorEntry>,
-    chunk: StreamToolCall,
+    chunk: ModelStreamToolCall,
   ): void {
     const toolCallChunk = chunk as {
       index?: number;
@@ -612,7 +613,7 @@ export class StreamingToolExecutor {
 
   private buildFinalToolCalls(
     accumulator: Map<number, ToolCallAccumulatorEntry>,
-  ): ChatResponse['toolCalls'] | undefined {
+  ): ModelResponse['toolCalls'] | undefined {
     const toolCalls = Array.from(accumulator.entries())
       .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
       .map(([, toolCall]) => toolCall)
@@ -629,11 +630,7 @@ export class StreamingToolExecutor {
     return toolCalls.length > 0 ? toolCalls : undefined;
   }
 
-  private toFunctionToolCall(
-    id: string,
-    name: string,
-    argumentsText: string,
-  ): FunctionToolCall {
+  private toFunctionToolCall(id: string, name: string, argumentsText: string): ModelToolCall {
     return {
       id,
       type: 'function',
@@ -665,11 +662,7 @@ export class StreamingToolExecutor {
       ([leftIndex], [rightIndex]) => leftIndex - rightIndex,
     );
     for (const [index, entry] of entries) {
-      if (
-        executionResults[index]
-        || !entry.id
-        || !entry.name
-      ) {
+      if (executionResults[index] || !entry.id || !entry.name) {
         continue;
       }
       const outcome: ToolExecutionOutcome = {
@@ -687,23 +680,35 @@ export class StreamingToolExecutor {
           },
         },
         effects: [],
-        toolUseUuid: null,
+        toolMessageId: null,
       };
       executionResults[index] = outcome;
       if (!entry.dispatched) {
-        await this.emitToolExecutionUpdate(executionConfig, {
-          type: 'tool_ready',
-          toolCall: outcome.toolCall,
-        }, epoch);
+        await this.emitToolExecutionUpdate(
+          executionConfig,
+          {
+            type: 'tool_ready',
+            toolCall: outcome.toolCall,
+          },
+          epoch,
+        );
       }
-      await this.emitToolExecutionUpdate(executionConfig, {
-        type: 'tool_result',
-        outcome,
-      }, epoch);
-      await this.emitToolExecutionUpdate(executionConfig, {
-        type: 'tool_completed',
-        outcome,
-      }, epoch);
+      await this.emitToolExecutionUpdate(
+        executionConfig,
+        {
+          type: 'tool_result',
+          outcome,
+        },
+        epoch,
+      );
+      await this.emitToolExecutionUpdate(
+        executionConfig,
+        {
+          type: 'tool_completed',
+          outcome,
+        },
+        epoch,
+      );
     }
   }
 
@@ -713,7 +718,7 @@ export class StreamingToolExecutor {
    * 时的 tool_call/tool_result 配对与主流式路径保持一致。
    */
   private async synthesizeInterruptedResults(
-    calls: readonly FunctionToolCall[],
+    calls: readonly ModelToolCall[],
     executionConfig: StreamingToolExecutorConfig,
     epoch?: ExecutionEpoch,
   ): Promise<ToolExecutionOutcome[]> {
@@ -730,21 +735,33 @@ export class StreamingToolExecutor {
           },
         },
         effects: [],
-        toolUseUuid: null,
+        toolMessageId: null,
       };
       outcomes.push(outcome);
-      await this.emitToolExecutionUpdate(executionConfig, {
-        type: 'tool_ready',
-        toolCall: outcome.toolCall,
-      }, epoch);
-      await this.emitToolExecutionUpdate(executionConfig, {
-        type: 'tool_result',
-        outcome,
-      }, epoch);
-      await this.emitToolExecutionUpdate(executionConfig, {
-        type: 'tool_completed',
-        outcome,
-      }, epoch);
+      await this.emitToolExecutionUpdate(
+        executionConfig,
+        {
+          type: 'tool_ready',
+          toolCall: outcome.toolCall,
+        },
+        epoch,
+      );
+      await this.emitToolExecutionUpdate(
+        executionConfig,
+        {
+          type: 'tool_result',
+          outcome,
+        },
+        epoch,
+      );
+      await this.emitToolExecutionUpdate(
+        executionConfig,
+        {
+          type: 'tool_completed',
+          outcome,
+        },
+        epoch,
+      );
     }
     return outcomes;
   }

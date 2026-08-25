@@ -1,21 +1,16 @@
+import type { ModelService, ModelToolDefinition } from '../../model/service.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
-import type { IChatService } from '../../services/ChatServiceInterface.js';
-import type { PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
 import type { ConversationState } from './ConversationState.js';
-import type {
-  LoopExecutionContext,
-  LoopSkillState,
-  LlmToolDefinition,
-  TurnState,
-} from './TurnState.js';
+import type { LoopExecutionContext, LoopSkillState, TurnState } from './TurnState.js';
 
 interface LoopStateOptions {
   conversationState: ConversationState;
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;
   baseContextSnapshot?: ContextSnapshot;
-  resolveTools: () => LlmToolDefinition[];
-  resolveChatService: () => IChatService;
+  resolveTools: () => ModelToolDefinition[];
+  resolveModelService: () => ModelService;
   resolveMaxContextTokens: () => number;
   initialActiveSkill?: LoopSkillState;
 }
@@ -26,8 +21,8 @@ export class LoopState {
   readonly executionContext: LoopExecutionContext;
   private readonly baseContextSnapshot?: ContextSnapshot;
 
-  private readonly resolveToolsFn: () => LlmToolDefinition[];
-  private readonly resolveChatServiceFn: () => IChatService;
+  private readonly resolveToolsFn: () => ModelToolDefinition[];
+  private readonly resolveModelServiceFn: () => ModelService;
   private readonly resolveMaxContextTokensFn: () => number;
   private activeSkill?: LoopSkillState;
 
@@ -37,7 +32,7 @@ export class LoopState {
     this.executionContext = options.executionContext;
     this.baseContextSnapshot = options.baseContextSnapshot;
     this.resolveToolsFn = options.resolveTools;
-    this.resolveChatServiceFn = options.resolveChatService;
+    this.resolveModelServiceFn = options.resolveModelService;
     this.resolveMaxContextTokensFn = options.resolveMaxContextTokens;
     this.activeSkill = options.initialActiveSkill;
   }
@@ -47,7 +42,7 @@ export class LoopState {
       turn,
       messages: this.conversationState.toArray(),
       tools: this.resolveToolsFn(),
-      chatService: this.resolveChatServiceFn(),
+      modelService: this.resolveModelServiceFn(),
       maxContextTokens: this.resolveMaxContextTokensFn(),
       permissionMode: this.permissionMode,
       executionContext: this.executionContext,
@@ -55,12 +50,12 @@ export class LoopState {
     };
   }
 
-  getTools(): LlmToolDefinition[] {
+  getTools(): ModelToolDefinition[] {
     return this.resolveToolsFn();
   }
 
-  getChatService(): IChatService {
-    return this.resolveChatServiceFn();
+  getModelService(): ModelService {
+    return this.resolveModelServiceFn();
   }
 
   getMaxContextTokens(): number {

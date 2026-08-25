@@ -5,7 +5,7 @@
  * 当前支持：Exa (MCP)、DuckDuckGo、SearXNG（多实例）
  */
 
-import type { JsonObject, JsonValue } from '../../../types/common.js';
+import type { JsonObject, JsonValue } from '../../../types/json.js';
 import { getErrorName } from '../../../utils/errorUtils.js';
 import type { WebSearchResult } from './webSearch.js';
 
@@ -392,24 +392,18 @@ function createExaProvider(): SearchProvider {
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        EXA_MCP_CONFIG.TIMEOUT
-      );
+      const timeoutId = setTimeout(() => controller.abort(), EXA_MCP_CONFIG.TIMEOUT);
 
       try {
-        const response = await fetch(
-          `${EXA_MCP_CONFIG.BASE_URL}${EXA_MCP_CONFIG.ENDPOINT}`,
-          {
-            method: 'POST',
-            headers: {
-              accept: 'application/json, text/event-stream',
-              'content-type': 'application/json',
-            },
-            body: JSON.stringify(searchRequest),
-            signal: controller.signal,
-          }
-        );
+        const response = await fetch(`${EXA_MCP_CONFIG.BASE_URL}${EXA_MCP_CONFIG.ENDPOINT}`, {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(searchRequest),
+          signal: controller.signal,
+        });
 
         clearTimeout(timeoutId);
 
@@ -424,10 +418,7 @@ function createExaProvider(): SearchProvider {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data: McpSearchResponse = JSON.parse(line.substring(6));
-            if (
-              data.result?.content &&
-              data.result.content.length > 0
-            ) {
+            if (data.result?.content && data.result.content.length > 0) {
               return parseExaMcpResponse(data.result.content[0].text);
             }
           }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InputId, RequestId } from '../../types/branded.js';
+import { InputId, RequestId } from '../../types/identifiers.js';
 import { ActiveRequestController } from '../ActiveRequestController.js';
 
 describe('ActiveRequestController', () => {
@@ -33,10 +33,7 @@ describe('ActiveRequestController', () => {
 
   it('links and cleans up an external abort signal', () => {
     const external = new AbortController();
-    const controller = new ActiveRequestController(
-      RequestId('request-1'),
-      external.signal,
-    );
+    const controller = new ActiveRequestController(RequestId('request-1'), external.signal);
 
     external.abort('upstream');
 

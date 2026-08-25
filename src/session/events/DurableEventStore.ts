@@ -1,5 +1,5 @@
 import { SdkError } from '../../errors/SdkError.js';
-import type { EventSequence, SessionId } from '../../types/branded.js';
+import type { EventSequence, SessionId } from '../../types/identifiers.js';
 import type {
   DurableEventAppendOptions,
   DurableEventAppendResult,

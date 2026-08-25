@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
-import { join } from 'node:path';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { MessageId, SessionId } from '../../../../types/branded.js';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { MessageId, SessionId } from '../../../../types/identifiers.js';
 import { SnapshotManager } from '../SnapshotManager.js';
 
 const tempDirs: string[] = [];
@@ -64,7 +64,7 @@ describe('SnapshotManager', () => {
       storageRoot,
       'file-history',
       'session-files',
-      `${metadata.backupFileName}@v${metadata.version}`
+      `${metadata.backupFileName}@v${metadata.version}`,
     );
 
     expect(await pathExists(snapshotPath)).toBe(true);

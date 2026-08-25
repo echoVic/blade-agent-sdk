@@ -8,26 +8,18 @@ import { generateText, jsonSchema, type LanguageModel, Output, streamText } from
 import type { JSONSchema7 } from 'json-schema';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { JsonObject, JsonValue, OutputFormat } from '../types/common.js';
+import type { ModelServiceConfig, OutputFormat } from '../model/config.js';
+import { resolveModelIdentity } from '../model/identity.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import type { ModelRetryConfig, ModelRetryEvent } from '../model/retry.js';
 import type {
-  ChatConfig,
-  ChatResponse,
-  ContentPart,
-  IChatService,
-  Message,
-  SideQueryOptions,
-  StreamChunk,
-  ToolCall,
-  UsageInfo,
-} from './ChatServiceInterface.js';
-import { resolveModelIdentity } from './ModelIdentity.js';
-import {
-  DEFAULT_RETRY_CONFIG,
-  type RetryConfig,
-  type RetryContext,
-  type RetryEvent,
-  withRetry,
-} from './RetryPolicy.js';
+  ModelResponse,
+  ModelService,
+  ModelSideQueryOptions,
+  ModelStreamChunk,
+} from '../model/service.js';
+import type { ModelUsage } from '../model/usage.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import {
   buildDeepSeekProviderOptions,
   mergeDeepSeekUsage,
@@ -38,8 +30,9 @@ import {
   shouldOmitDeepSeekSamplingOptions,
   shouldUseDeepSeekBetaBaseUrl,
 } from './deepseek.js';
+import { DEFAULT_RETRY_CONFIG, type RetryContext, withRetry } from './RetryPolicy.js';
 
-function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
+function filterOrphanToolMessages(messages: readonly ModelMessage[]): ModelMessage[] {
   const availableToolCallIds = new Set<string>();
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.tool_calls) {
@@ -57,7 +50,7 @@ function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
   });
 }
 
-function filterDeepSeekToolContext(messages: readonly Message[]): Message[] {
+function filterDeepSeekToolContext(messages: readonly ModelMessage[]): ModelMessage[] {
   const toolResultIds = new Set<string>();
   for (const msg of messages) {
     if (msg.role === 'tool' && msg.tool_call_id) {
@@ -92,7 +85,7 @@ function filterDeepSeekToolContext(messages: readonly Message[]): Message[] {
   });
 }
 
-function getTextContent(content: string | ContentPart[]): string {
+function getTextContent(content: string | ModelContent[]): string {
   if (typeof content === 'string') return content;
   return content
     .filter((p) => p.type === 'text')
@@ -111,8 +104,25 @@ type AITextPart = {
 type AIMessage =
   | { role: 'system'; content: string; providerOptions?: AIProviderOptions }
   | { role: 'user'; content: string | Array<AITextPart | { type: 'image'; image: string }> }
-  | { role: 'assistant'; content: string | Array<{ type: 'reasoning'; text: string } | { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }> }
-  | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; output: { type: 'text'; value: string } }> };
+  | {
+      role: 'assistant';
+      content:
+        | string
+        | Array<
+            | { type: 'reasoning'; text: string }
+            | { type: 'text'; text: string }
+            | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+          >;
+    }
+  | {
+      role: 'tool';
+      content: Array<{
+        type: 'tool-result';
+        toolCallId: string;
+        toolName: string;
+        output: { type: 'text'; value: string };
+      }>;
+    };
 
 type AITool = {
   description?: string;
@@ -165,15 +175,11 @@ function parseDataUrl(url: string): { data: string; mediaType?: string } | undef
   };
 }
 
-function safeJsonParse(
-  str: string,
-  logger: InternalLogger,
-  fallback: JsonValue = {},
-): JsonValue {
+function safeJsonParse(str: string, logger: InternalLogger, fallback: JsonValue = {}): JsonValue {
   try {
     return JSON.parse(str) as JsonValue;
   } catch {
-    logger.warn('⚠️ [VercelAIChatService] Failed to parse JSON, using fallback', { str });
+    logger.warn('⚠️ [VercelAIModelService] Failed to parse JSON, using fallback', { str });
     return fallback;
   }
 }
@@ -183,7 +189,7 @@ function getStreamTextDelta(part: unknown): string | undefined {
   return chunk.text ?? chunk.textDelta ?? chunk.delta;
 }
 
-function getDeepSeekStreamToolCall(part: unknown, index: number): ToolCall {
+function getDeepSeekStreamToolCall(part: unknown, index: number): ModelToolCall {
   const raw = part as RawToolCall;
   return {
     id: raw.toolCallId ?? raw.tool_call_id ?? raw.id ?? `call_${index}`,
@@ -211,32 +217,32 @@ function stringifyToolArgumentsValue(value: unknown): string {
 }
 
 /**
- * 消费 withRetry AsyncGenerator，收集 RetryEvent 并返回结果
+ * 消费 withRetry AsyncGenerator，收集 ModelRetryEvent 并返回结果
  */
 async function consumeRetryGenerator<T>(
-  gen: AsyncGenerator<RetryEvent, T>,
+  gen: AsyncGenerator<ModelRetryEvent, T>,
   logger: InternalLogger,
 ): Promise<T> {
   while (true) {
     const { value, done } = await gen.next();
     if (done) return value;
-    // RetryEvent — log it
-    const event = value as RetryEvent;
+    // ModelRetryEvent — log it
+    const event = value as ModelRetryEvent;
     logger.warn(
       `🔄 [RetryPolicy] Attempt ${event.attempt}/${event.maxRetries}, ` +
-      `delay ${event.delayMs}ms, error: ${event.error.status ?? 'unknown'} ${event.error.message}`,
+        `delay ${event.delayMs}ms, error: ${event.error.status ?? 'unknown'} ${event.error.message}`,
     );
   }
 }
 
-export class VercelAIChatService implements IChatService {
+export class VercelAIModelService implements ModelService {
   private model!: LanguageModel;
-  private config: ChatConfig;
+  private config: ModelServiceConfig;
   private initialized: Promise<void>;
   private readonly logger: InternalLogger;
-  private retryConfig: RetryConfig;
+  private retryConfig: ModelRetryConfig;
 
-  constructor(config: ChatConfig, logger: InternalLogger = NOOP_LOGGER) {
+  constructor(config: ModelServiceConfig, logger: InternalLogger = NOOP_LOGGER) {
     this.config = config;
     this.logger = logger.child(LogCategory.CHAT);
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...config.retry, currentModel: config.model };
@@ -247,16 +253,16 @@ export class VercelAIChatService implements IChatService {
     await this.initialized;
   }
 
-  private async initModel(config: ChatConfig): Promise<void> {
+  private async initModel(config: ModelServiceConfig): Promise<void> {
     this.model = await this.createModel(config);
-    this.logger.debug('🚀 [VercelAIChatService] Initialized', {
+    this.logger.debug('🚀 [VercelAIModelService] Initialized', {
       provider: config.provider,
       model: config.model,
       providerId: config.providerId,
     });
   }
 
-  private async createModel(config: ChatConfig): Promise<LanguageModel> {
+  private async createModel(config: ModelServiceConfig): Promise<LanguageModel> {
     const { provider, apiKey, baseUrl, model, customHeaders, providerId, apiVersion } = config;
 
     switch (provider) {
@@ -372,10 +378,13 @@ export class VercelAIChatService implements IChatService {
   }
 
   private isGeminiOfficialUrl(baseUrl: string): boolean {
-    return baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('aiplatform.googleapis.com');
+    return (
+      baseUrl.includes('generativelanguage.googleapis.com') ||
+      baseUrl.includes('aiplatform.googleapis.com')
+    );
   }
 
-  private convertMessages(messages: readonly Message[]): AIMessage[] {
+  private convertMessages(messages: readonly ModelMessage[]): AIMessage[] {
     const result: AIMessage[] = [];
     const isDeepSeek = this.isDeepSeekProvider();
     const targetModel = resolveModelIdentity(this.config);
@@ -424,12 +433,12 @@ export class VercelAIChatService implements IChatService {
         }
       } else if (msg.role === 'assistant') {
         const isSameModel =
-          msg.modelIdentity?.provider === targetModel.provider
-          && msg.modelIdentity.api === targetModel.api
-          && msg.modelIdentity.model === targetModel.model;
+          msg.modelIdentity?.provider === targetModel.provider &&
+          msg.modelIdentity.api === targetModel.api &&
+          msg.modelIdentity.model === targetModel.model;
         if (msg.tool_calls && msg.tool_calls.length > 0) {
           const content: Array<
-            { type: 'reasoning'; text: string }
+            | { type: 'reasoning'; text: string }
             | { type: 'text'; text: string }
             | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
           > = [];
@@ -497,7 +506,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private convertTools(
-    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ): Record<string, AITool> | undefined {
     if (!tools || tools.length === 0) return undefined;
 
@@ -516,9 +525,7 @@ export class VercelAIChatService implements IChatService {
     return result;
   }
 
-  private convertToolCalls(
-    toolCalls: RawToolCall[]
-  ): ToolCall[] {
+  private convertToolCalls(toolCalls: RawToolCall[]): ModelToolCall[] {
     return toolCalls.map((tc, index) => ({
       id: tc.toolCallId ?? tc.tool_call_id ?? tc.id ?? `call_${index}`,
       type: 'function' as const,
@@ -579,8 +586,8 @@ export class VercelAIChatService implements IChatService {
         promptCacheHitTokens?: number;
         promptCacheMissTokens?: number;
       };
-    }
-  ): UsageInfo | undefined {
+    },
+  ): ModelUsage | undefined {
     if (!usage) return undefined;
     if (providerMetadata?.deepseek || this.config.provider === 'deepseek') {
       return mergeDeepSeekUsage(usage, providerMetadata);
@@ -588,7 +595,7 @@ export class VercelAIChatService implements IChatService {
 
     const prompt = usage.promptTokens ?? 0;
     const completion = usage.completionTokens ?? 0;
-    const result: UsageInfo = {
+    const result: ModelUsage = {
       promptTokens: prompt,
       completionTokens: completion,
       totalTokens: usage.totalTokens ?? prompt + completion,
@@ -642,11 +649,14 @@ export class VercelAIChatService implements IChatService {
   }
 
   private prepareRequest(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
     const optimizedMessages = this.isDeepSeekProvider()
-      ? optimizeDeepSeekCachePrefix(messages, this.config.providerOptions?.deepseek?.cacheOptimization)
+      ? optimizeDeepSeekCachePrefix(
+          messages,
+          this.config.providerOptions?.deepseek?.cacheOptimization,
+        )
       : messages;
     const filteredMessages = this.isDeepSeekProvider()
       ? filterDeepSeekToolContext(optimizedMessages)
@@ -660,15 +670,15 @@ export class VercelAIChatService implements IChatService {
   private extractToolCalls(result: RawToolCallResult): RawToolCall[] | undefined {
     if (result.toolCalls && result.toolCalls.length > 0) return result.toolCalls;
     if (result.tool_calls && result.tool_calls.length > 0) return result.tool_calls;
-    if (result.message?.toolCalls && result.message.toolCalls.length > 0) return result.message.toolCalls;
-    if (result.message?.tool_calls && result.message.tool_calls.length > 0) return result.message.tool_calls;
-    const choiceToolCalls = result.choices?.flatMap((choice) =>
-      choice.message?.toolCalls ?? choice.message?.tool_calls ?? [],
+    if (result.message?.toolCalls && result.message.toolCalls.length > 0)
+      return result.message.toolCalls;
+    if (result.message?.tool_calls && result.message.tool_calls.length > 0)
+      return result.message.tool_calls;
+    const choiceToolCalls = result.choices?.flatMap(
+      (choice) => choice.message?.toolCalls ?? choice.message?.tool_calls ?? [],
     );
     if (choiceToolCalls && choiceToolCalls.length > 0) return choiceToolCalls;
-    const stepToolCalls = result.steps?.flatMap((step) =>
-      step.toolCalls ?? step.tool_calls ?? [],
-    );
+    const stepToolCalls = result.steps?.flatMap((step) => step.toolCalls ?? step.tool_calls ?? []);
     return stepToolCalls && stepToolCalls.length > 0 ? stepToolCalls : undefined;
   }
 
@@ -704,12 +714,10 @@ export class VercelAIChatService implements IChatService {
       anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
       deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
     };
-  }): ChatResponse {
+  }): ModelResponse {
     const rawToolCalls = this.extractToolCalls(result);
     const toolCalls =
-      rawToolCalls && rawToolCalls.length > 0
-        ? this.convertToolCalls(rawToolCalls)
-        : undefined;
+      rawToolCalls && rawToolCalls.length > 0 ? this.convertToolCalls(rawToolCalls) : undefined;
 
     const reasoningText = Array.isArray(result.reasoning)
       ? result.reasoning.map((r) => r.text).join('')
@@ -724,30 +732,27 @@ export class VercelAIChatService implements IChatService {
         result.providerMetadata as {
           anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
           deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
-        }
+        },
       ),
     };
   }
 
   async chat(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
-    signal?: AbortSignal
-  ): Promise<ChatResponse> {
-    return consumeRetryGenerator(
-      this.chatWithRetryEvents(messages, tools, signal),
-      this.logger,
-    );
+    signal?: AbortSignal,
+  ): Promise<ModelResponse> {
+    return consumeRetryGenerator(this.chatWithRetryEvents(messages, tools, signal), this.logger);
   }
 
   async sideQuery(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     signal?: AbortSignal,
-    options?: SideQueryOptions,
-  ): Promise<ChatResponse> {
+    options?: ModelSideQueryOptions,
+  ): Promise<ModelResponse> {
     await this.initialized;
     const startTime = Date.now();
-    this.logger.debug('🚀 [VercelAIChatService] Starting side query request');
+    this.logger.debug('🚀 [VercelAIModelService] Starting side query request');
 
     const { coreMessages, experimentalOutput } = this.prepareRequest(messages);
     const retryConfig = {
@@ -761,10 +766,11 @@ export class VercelAIChatService implements IChatService {
           generateText({
             model: this.model,
             messages: coreMessages as never,
-            maxOutputTokens: ctx.maxTokensOverride
-              ?? options?.maxOutputTokens
-              ?? this.config.maxOutputTokens,
-            temperature: this.getTemperatureOverride(options?.temperature ?? this.config.temperature ?? 0),
+            maxOutputTokens:
+              ctx.maxTokensOverride ?? options?.maxOutputTokens ?? this.config.maxOutputTokens,
+            temperature: this.getTemperatureOverride(
+              options?.temperature ?? this.config.temperature ?? 0,
+            ),
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
@@ -776,11 +782,15 @@ export class VercelAIChatService implements IChatService {
       const result = await consumeRetryGenerator(gen, this.logger);
 
       const duration = Date.now() - startTime;
-      this.logger.debug('📥 [VercelAIChatService] Side query response received in', duration, 'ms');
+      this.logger.debug(
+        '📥 [VercelAIModelService] Side query response received in',
+        duration,
+        'ms',
+      );
       return this.buildChatResponse(result);
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('❌ [VercelAIChatService] Side query failed after', duration, 'ms');
+      this.logger.error('❌ [VercelAIModelService] Side query failed after', duration, 'ms');
       throw error;
     }
   }
@@ -788,17 +798,17 @@ export class VercelAIChatService implements IChatService {
   /**
    * chat 的 AsyncGenerator 版本 — 暴露 retry 事件
    *
-   * yield: RetryEvent（重试过程中的事件）
-   * return: ChatResponse
+   * yield: ModelRetryEvent（重试过程中的事件）
+   * return: ModelResponse
    */
   async *chatWithRetryEvents(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
-    signal?: AbortSignal
-  ): AsyncGenerator<RetryEvent, ChatResponse> {
+    signal?: AbortSignal,
+  ): AsyncGenerator<ModelRetryEvent, ModelResponse> {
     await this.initialized;
     const startTime = Date.now();
-    this.logger.debug('🚀 [VercelAIChatService] Starting chat request (with retry events)');
+    this.logger.debug('🚀 [VercelAIModelService] Starting chat request (with retry events)');
 
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
@@ -824,26 +834,26 @@ export class VercelAIChatService implements IChatService {
         const { value, done } = await gen.next();
         if (done) {
           const duration = Date.now() - startTime;
-          this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
+          this.logger.debug('📥 [VercelAIModelService] Response received in', duration, 'ms');
           return this.buildChatResponse(value);
         }
         yield value;
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
+      this.logger.error('❌ [VercelAIModelService] Chat failed after', duration, 'ms');
       throw error;
     }
   }
 
   async *streamChat(
-    messages: readonly Message[],
+    messages: readonly ModelMessage[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
-    signal?: AbortSignal
-  ): AsyncGenerator<StreamChunk, void, unknown> {
+    signal?: AbortSignal,
+  ): AsyncGenerator<ModelStreamChunk, void, unknown> {
     await this.initialized;
     const startTime = Date.now();
-    this.logger.debug('🚀 [VercelAIChatService] Starting stream request');
+    this.logger.debug('🚀 [VercelAIModelService] Starting stream request');
 
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
@@ -868,7 +878,7 @@ export class VercelAIChatService implements IChatService {
 
       const result = await consumeRetryGenerator(gen, this.logger);
 
-      this.logger.debug('📥 [VercelAIChatService] Stream started');
+      this.logger.debug('📥 [VercelAIModelService] Stream started');
 
       let toolCallIndex = 0;
       for await (const part of result.fullStream) {
@@ -906,10 +916,22 @@ export class VercelAIChatService implements IChatService {
             yield {
               finishReason: (part as { finishReason?: string }).finishReason,
               usage: this.convertUsage(
-                (part as {
-                  totalUsage?: Parameters<VercelAIChatService['convertUsage']>[0];
-                }).totalUsage,
-                (part as { providerMetadata?: { anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number }; deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number } } }).providerMetadata
+                (
+                  part as {
+                    totalUsage?: Parameters<VercelAIModelService['convertUsage']>[0];
+                  }
+                ).totalUsage,
+                (
+                  part as {
+                    providerMetadata?: {
+                      anthropic?: {
+                        cacheCreationInputTokens?: number;
+                        cacheReadInputTokens?: number;
+                      };
+                      deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
+                    };
+                  }
+                ).providerMetadata,
               ),
             };
             break;
@@ -917,23 +939,23 @@ export class VercelAIChatService implements IChatService {
       }
 
       const duration = Date.now() - startTime;
-      this.logger.debug('✅ [VercelAIChatService] Stream completed in', duration, 'ms');
+      this.logger.debug('✅ [VercelAIModelService] Stream completed in', duration, 'ms');
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('❌ [VercelAIChatService] Stream failed after', duration, 'ms');
+      this.logger.error('❌ [VercelAIModelService] Stream failed after', duration, 'ms');
       throw error;
     }
   }
 
-  getConfig(): ChatConfig {
+  getConfig(): ModelServiceConfig {
     return { ...this.config };
   }
 
-  updateConfig(newConfig: Partial<ChatConfig>): void {
-    this.logger.debug('🔄 [VercelAIChatService] Updating configuration');
+  updateConfig(newConfig: Partial<ModelServiceConfig>): void {
+    this.logger.debug('🔄 [VercelAIModelService] Updating configuration');
     this.config = { ...this.config, ...newConfig };
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     this.initialized = this.initModel(this.config);
-    this.logger.debug('✅ [VercelAIChatService] Configuration updated');
+    this.logger.debug('✅ [VercelAIModelService] Configuration updated');
   }
 }

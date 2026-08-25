@@ -13,42 +13,31 @@
 
 import type { ContextManager } from '../context/ContextManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
-import {
-    type InternalLogger,
-    LogCategory,
-    NOOP_LOGGER,
-} from '../logging/Logger.js';
+import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
+import type { McpServerConfig } from '../mcp/config.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import type { ToolMiddleware } from '../middleware/ToolMiddleware.js';
+import type { ModelMessage } from '../model/message.js';
+import type { ModelService } from '../model/service.js';
 import { buildSystemPrompt } from '../prompts/index.js';
-import {
-    getContextCwd,
-    type RuntimeContext,
-} from '../runtime/index.js';
-import type {
-    IChatService,
-    Message,
-} from '../services/ChatServiceInterface.js';
+import { getContextCwd, type RuntimeContext } from '../runtime/index.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
-import type { Tool } from '../tools/types/index.js';
-import { SessionId } from '../types/branded.js';
-import {
-    type BladeConfig,
-    type JsonObject,
-    type McpServerConfig,
-    PermissionMode,
-    type PermissionsConfig,
-} from '../types/common.js';
+import type { Tool } from '../tools/types/tool.js';
+import { PermissionMode } from '../types/constants.js';
+import { SessionId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
+import type { PermissionsConfig } from '../types/permissions.js';
 import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { AttachmentHandler } from './AttachmentHandler.js';
 import { CompactionHandler } from './CompactionHandler.js';
+import type { BladeConfig } from './config.js';
 import { RECONCILED_INITIAL_INPUT } from './InitialInputPreparation.js';
 import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
@@ -56,18 +45,14 @@ import { PlanExecutor } from './PlanExecutor.js';
 import { AgentSessionStore } from './subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
-import {
-    TokenBudget,
-    type TokenBudgetConfig,
-    type TokenBudgetSnapshot,
-} from './TokenBudget.js';
+import { TokenBudget, type TokenBudgetConfig, type TokenBudgetSnapshot } from './TokenBudget.js';
 import type {
-    AgentOptions,
-    ChatContext,
-    LoopOptions,
-    LoopResult,
-    PlanApprovalResult,
-    UserMessageContent,
+  AgentOptions,
+  ChatContext,
+  LoopOptions,
+  LoopResult,
+  PlanApprovalResult,
+  UserMessageContent,
 } from './types.js';
 import { isPlanApprovalResult } from './types.js';
 
@@ -122,25 +107,23 @@ export class Agent {
   private planExecutor: PlanExecutor;
   private loopRunner!: LoopRunner;
 
-  constructor(
-    config: BladeConfig,
-    runtimeOptions: AgentOptions = {},
-    deps: AgentRuntimeDeps = {},
-  ) {
+  constructor(config: BladeConfig, runtimeOptions: AgentOptions = {}, deps: AgentRuntimeDeps = {}) {
     this.config = config;
     this.runtimeOptions = runtimeOptions;
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
     this.executionPipeline =
       deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
-    this.toolCatalog = this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
+    this.toolCatalog =
+      this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.localDiscovery = runtimeOptions.localDiscovery ?? true;
     this.runtimeMcpRegistry =
       deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
     this.subagentRegistry =
-      deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
+      deps.subagentRegistry ??
+      new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
     this.backgroundAgentManager =
       deps.backgroundAgentManager ??
       BackgroundAgentManager.create(
@@ -163,11 +146,7 @@ export class Agent {
       deps.modelMiddleware,
       deps.providerRegistry,
     );
-    this.planExecutor = new PlanExecutor(
-      config.language,
-      this.rootLogger,
-      this.localDiscovery,
-    );
+    this.planExecutor = new PlanExecutor(config.language, this.rootLogger, this.localDiscovery);
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
 
@@ -181,11 +160,11 @@ export class Agent {
     const models = config.models || [];
     if (models.length === 0) {
       throw new Error(
-        '❌ 没有可用的模型配置\n\n'
-          + '请先使用以下命令添加模型：\n'
-          + '  /model add\n\n'
-          + '或运行初始化向导：\n'
-          + '  /init'
+        '❌ 没有可用的模型配置\n\n' +
+          '请先使用以下命令添加模型：\n' +
+          '  /model add\n\n' +
+          '或运行初始化向导：\n' +
+          '  /init',
       );
     }
 
@@ -221,7 +200,7 @@ export class Agent {
       const modelConfig = this.modelManager.resolveModelConfig(this.runtimeOptions.modelId);
       await this.modelManager.applyModelConfig(modelConfig, '🚀 使用模型:');
       const compactionHandler = new CompactionHandler(
-        () => this.modelManager.getChatService(),
+        () => this.modelManager.getModelService(),
         () => this.modelManager.getContextManager(),
         this.rootLogger,
         () => this.modelManager.getProviderRegistry(),
@@ -242,7 +221,7 @@ export class Agent {
 
       this.isInitialized = true;
       this.log(
-        `Agent初始化完成，已加载 ${this.executionPipeline.getRegistry().getAll().length} 个工具`
+        `Agent初始化完成，已加载 ${this.executionPipeline.getRegistry().getAll().length} 个工具`,
       );
     } catch (error) {
       this.error('Agent初始化失败', error);
@@ -267,7 +246,10 @@ export class Agent {
 
     if (isPlanApprovalResult(result) && context.permissionMode === 'plan') {
       return this.executePlanApproval(
-        prepared.enhancedMessage, prepared.context, prepared.loopOptions, result,
+        prepared.enhancedMessage,
+        prepared.context,
+        prepared.loopOptions,
+        result,
       );
     }
 
@@ -317,17 +299,19 @@ export class Agent {
 
   public async chatWithSystem(systemPrompt: string, message: string): Promise<string> {
     if (!this.isInitialized) throw new Error('Agent未初始化');
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: message },
     ];
-    const response = await this.modelManager.getChatService().chat(messages);
+    const response = await this.modelManager.getModelService().chat(messages);
     return response.content;
   }
 
   // ===== Getters =====
 
-  public getChatService(): IChatService { return this.modelManager.getChatService(); }
+  public getModelService(): ModelService {
+    return this.modelManager.getModelService();
+  }
   public getContextManager(): ContextManager | undefined {
     return this.modelManager.getContextManager();
   }
@@ -346,7 +330,7 @@ export class Agent {
     return {
       initialized: this.isInitialized,
       components: {
-        chatService: this.modelManager.getChatService() ? 'ready' : 'not_loaded',
+        modelService: this.modelManager.getModelService() ? 'ready' : 'not_loaded',
         contextManager: this.modelManager.getContextManager() ? 'ready' : 'not_loaded',
       },
     };
@@ -371,7 +355,9 @@ export class Agent {
     const allTools = registry.getAll();
     const toolsToRemove = allTools.filter((tool) => !whitelist.includes(tool.name));
     for (const tool of toolsToRemove) registry.unregister(tool.name);
-    this.logger.debug(`🔒 Applied tool whitelist: ${whitelist.join(', ')} (removed ${toolsToRemove.length} tools)`);
+    this.logger.debug(
+      `🔒 Applied tool whitelist: ${whitelist.join(', ')} (removed ${toolsToRemove.length} tools)`,
+    );
   }
 
   public clearSkillContext(): void {
@@ -395,17 +381,16 @@ export class Agent {
 
   // ===== Private Helpers =====
 
-  private createDefaultPipeline(
-    middleware: readonly ToolMiddleware[] = [],
-  ): ExecutionPipeline {
+  private createDefaultPipeline(middleware: readonly ToolMiddleware[] = []): ExecutionPipeline {
     const registry = new ToolRegistry();
     const permissions: PermissionsConfig = {
       ...this.config.permissions,
       ...this.runtimeOptions.permissions,
     };
     const permissionMode = this.runtimeOptions.permissionMode ?? PermissionMode.DEFAULT;
-    const permissionHandler = this.runtimeOptions.permissionHandler
-      ?? (this.runtimeOptions.canUseTool
+    const permissionHandler =
+      this.runtimeOptions.permissionHandler ??
+      (this.runtimeOptions.canUseTool
         ? createPermissionHandlerFromCanUseTool(this.runtimeOptions.canUseTool)
         : undefined);
     return new ExecutionPipeline(registry, {
@@ -467,9 +452,7 @@ export class Agent {
       signal: ctx.signal,
       ...options,
       prepareInput: (input) =>
-        this.localDiscovery
-          ? this.prepareMessageForContext(input, ctx)
-          : Promise.resolve(input),
+        this.localDiscovery ? this.prepareMessageForContext(input, ctx) : Promise.resolve(input),
     };
 
     return { enhancedMessage, context: ctx, loopOptions };
@@ -483,7 +466,9 @@ export class Agent {
 
     if (context.permissionMode === 'plan') {
       return this.planExecutor.runPlanLoop(
-        enhancedMessage, context, loopOptions,
+        enhancedMessage,
+        context,
+        loopOptions,
         (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
       );
     }
@@ -494,7 +479,9 @@ export class Agent {
   /**
    * 流式 Plan 路由：plan 模式 → PlanExecutor 流 → 可能续接执行流，否则 → LoopRunner 流。
    */
-  private async *streamWithPlanSupport(prepared: PreparedContext): AsyncGenerator<AgentEvent, LoopResult> {
+  private async *streamWithPlanSupport(
+    prepared: PreparedContext,
+  ): AsyncGenerator<AgentEvent, LoopResult> {
     const { enhancedMessage, context, loopOptions } = prepared;
 
     if (context.permissionMode === 'plan') {
@@ -537,10 +524,7 @@ export class Agent {
     return newResult.finalMessage || '';
   }
 
-  private injectPlanContent(
-    message: UserMessageContent,
-    planContent?: string,
-  ): UserMessageContent {
+  private injectPlanContent(message: UserMessageContent, planContent?: string): UserMessageContent {
     if (!planContent) return message;
     const planSuffix = `\n\n<approved-plan>\n${planContent}\n</approved-plan>\n\nIMPORTANT: Execute according to the approved plan above. Follow the steps exactly as specified.`;
     if (typeof message === 'string') return message + planSuffix;
@@ -561,7 +545,10 @@ export class Agent {
       if (result.prompt) {
         this.log('系统提示配置验证成功');
         this.logger.debug(
-          `[SystemPrompt] 可用来源: ${result.sources.filter((s) => s.loaded).map((s) => s.name).join(', ')}`
+          `[SystemPrompt] 可用来源: ${result.sources
+            .filter((s) => s.loaded)
+            .map((s) => s.name)
+            .join(', ')}`,
         );
       }
     } catch (error) {
@@ -627,7 +614,9 @@ export class Agent {
     this.subagentRegistry.setLogger(this.rootLogger);
     this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
     if (this.subagentRegistry.getAllNames().length > 0) {
-      this.logger.debug(`📦 Subagents already loaded: ${this.subagentRegistry.getAllNames().join(', ')}`);
+      this.logger.debug(
+        `📦 Subagents already loaded: ${this.subagentRegistry.getAllNames().join(', ')}`,
+      );
       return;
     }
     try {
@@ -636,7 +625,9 @@ export class Agent {
         this.config.storageRoot,
       );
       if (loadedCount > 0) {
-        this.logger.debug(`✅ Loaded ${loadedCount} subagents: ${this.subagentRegistry.getAllNames().join(', ')}`);
+        this.logger.debug(
+          `✅ Loaded ${loadedCount} subagents: ${this.subagentRegistry.getAllNames().join(', ')}`,
+        );
       } else {
         this.logger.debug('📦 No subagents configured');
       }
@@ -646,9 +637,7 @@ export class Agent {
   }
 
   private async discoverSkills(): Promise<void> {
-    await this.discoverSkillsForCwd(
-      getContextCwd(this.defaultContext),
-    );
+    await this.discoverSkillsForCwd(getContextCwd(this.defaultContext));
   }
 
   private async discoverSkillsForCwd(cwd?: string): Promise<void> {
@@ -659,7 +648,9 @@ export class Agent {
       const result = await discoverSkills({ cwd });
       this.lastPreparedSkillCwd = cwd;
       if (result.skills.length > 0) {
-        this.logger.debug(`✅ Discovered ${result.skills.length} skills: ${result.skills.map((s) => s.name).join(', ')}`);
+        this.logger.debug(
+          `✅ Discovered ${result.skills.length} skills: ${result.skills.map((s) => s.name).join(', ')}`,
+        );
       } else {
         this.logger.debug('📦 No skills configured');
       }
@@ -689,9 +680,7 @@ export class Agent {
   ): Promise<UserMessageContent> {
     await this.discoverSkillsForCwd(this.getContextWorkingDirectory(context));
     const attachmentHandler = this.createAttachmentHandler(context);
-    return attachmentHandler
-      ? attachmentHandler.processAtMentionsForContent(message)
-      : message;
+    return attachmentHandler ? attachmentHandler.processAtMentionsForContent(message) : message;
   }
 
   private log(message: string, data?: unknown): void {

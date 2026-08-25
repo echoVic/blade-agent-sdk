@@ -4,7 +4,7 @@
  * 默认配置和配置加载逻辑
  */
 
-import type { HookConfig } from './types/HookTypes.js';
+import type { HookConfig } from './types.js';
 
 /**
  * 默认 Hook 配置
@@ -53,10 +53,7 @@ export const DEFAULT_HOOK_CONFIG: Required<HookConfig> = {
 /**
  * 合并配置
  */
-export function mergeHookConfig(
-  base: HookConfig,
-  override: Partial<HookConfig>
-): HookConfig {
+export function mergeHookConfig(base: HookConfig, override: Partial<HookConfig>): HookConfig {
   return {
     ...base,
     ...override,

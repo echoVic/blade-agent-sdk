@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
-import { join } from 'node:path';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { SessionId } from '../../../../types/branded.js';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { SessionId } from '../../../../types/identifiers.js';
 import { TodoManager } from '../TodoManager.js';
 
 const tempDirs: string[] = [];

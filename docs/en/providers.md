@@ -1,5 +1,9 @@
 # Providers and Logging
 
+Provider-neutral message, configuration, service, retry, and usage contracts
+are available from `@blade-ai/agent-sdk/model`. This browser-safe entry point
+does not load a concrete provider SDK.
+
 ## Supported providers
 
 | Provider | `type` | Package |
@@ -13,7 +17,7 @@
 
 Provider adapters are loaded lazily. Optional adapters only need to be installed when you use them.
 
-## ProviderConfig
+## ProviderConnectionConfig
 
 ```ts
 type BuiltinProviderType =
@@ -24,7 +28,7 @@ type BuiltinProviderType =
   | 'deepseek'
   | 'openai-compatible';
 
-interface ProviderConfig {
+interface ProviderConnectionConfig {
   id?: string;
   type: BuiltinProviderType | (string & {});
   apiKey?: string;
@@ -206,15 +210,15 @@ the same `type`.
 import {
   createSession,
   ProviderRegistry,
-  type ChatConfig,
-  type IChatService,
+  type ModelServiceConfig,
+  type ModelService,
   type ProviderAdapter,
 } from '@blade-ai/agent-sdk';
 
 const adapter = {
   type: 'acme-chat',
-  async create(config: Readonly<ChatConfig>): Promise<IChatService> {
-    return new AcmeChatService(config);
+  async create(config: Readonly<ModelServiceConfig>): Promise<ModelService> {
+    return new AcmeModelService(config);
   },
 } satisfies ProviderAdapter;
 
@@ -229,7 +233,7 @@ const session = await createSession({
 });
 ```
 
-An adapter returns the existing `IChatService` contract, so model middleware,
+An adapter returns the existing `ModelService` contract, so model middleware,
 request and stream-idle deadlines, durable model-attempt tracking, subagents,
 and compaction continue to use the same runtime path. A custom adapter may also
 override a built-in `type` for one Registry instance. Duplicate or malformed

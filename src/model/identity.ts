@@ -1,4 +1,4 @@
-import type { ProviderType } from '../types/common.js';
+import type { ProviderType } from './config.js';
 
 export interface ModelIdentity {
   readonly provider: string;

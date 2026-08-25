@@ -1,4 +1,4 @@
-import type { AgentId } from '../types/branded.js';
+import type { AgentId } from '../types/identifiers.js';
 import { SdkError } from './SdkError.js';
 
 export type SessionHandoffErrorCode =

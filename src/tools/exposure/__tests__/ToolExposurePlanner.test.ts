@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { PermissionMode } from '../../../types/common.js';
+import { PermissionMode } from '../../../types/constants.js';
 import { ToolCatalog } from '../../catalog/ToolCatalog.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { completeToolExecution, ToolKind } from '../../types/index.js';
+import { ToolKind } from '../../types/kind.js';
+import { completeToolExecution } from '../../types/result.js';
 import { ToolExposurePlanner } from '../ToolExposurePlanner.js';
 
 function registerTool(registry: ToolRegistry, tool: ReturnType<typeof createTool>) {

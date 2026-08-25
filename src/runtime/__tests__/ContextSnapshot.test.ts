@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SessionId } from '../../types/branded.js';
-import {
-  createContextSnapshot,
-  hasFilesystemCapability,
-  mergeContext,
-} from '../index.js';
+import { SessionId } from '../../types/identifiers.js';
+import { createContextSnapshot, hasFilesystemCapability, mergeContext } from '../index.js';
 
 describe('ContextSnapshot', () => {
   it('should let turn-scoped filesystem roots override session-level roots', () => {
@@ -32,21 +28,17 @@ describe('ContextSnapshot', () => {
   });
 
   it('should create a snapshot with convenience accessors derived from context', () => {
-    const snapshot = createContextSnapshot(
-      SessionId('session-1'),
-      'turn-1',
-      {
-        capabilities: {
-          filesystem: {
-            roots: ['/repo'],
-            cwd: '/repo',
-          },
-        },
-        environment: {
-          FOO: 'bar',
+    const snapshot = createContextSnapshot(SessionId('session-1'), 'turn-1', {
+      capabilities: {
+        filesystem: {
+          roots: ['/repo'],
+          cwd: '/repo',
         },
       },
-    );
+      environment: {
+        FOO: 'bar',
+      },
+    });
 
     expect(snapshot.filesystemRoots).toEqual(['/repo']);
     expect(snapshot.cwd).toBe('/repo');
@@ -55,17 +47,17 @@ describe('ContextSnapshot', () => {
 
   it('should report filesystem capability only when snapshot roots are present', () => {
     expect(hasFilesystemCapability()).toBe(false);
+    expect(hasFilesystemCapability(createContextSnapshot(SessionId('s'), 't', {}))).toBe(false);
     expect(
-      hasFilesystemCapability(createContextSnapshot(SessionId('s'), 't', {})),
-    ).toBe(false);
-    expect(
-      hasFilesystemCapability(createContextSnapshot(SessionId('s'), 't', {
-        capabilities: {
-          filesystem: {
-            roots: ['/repo'],
+      hasFilesystemCapability(
+        createContextSnapshot(SessionId('s'), 't', {
+          capabilities: {
+            filesystem: {
+              roots: ['/repo'],
+            },
           },
-        },
-      })),
+        }),
+      ),
     ).toBe(true);
   });
 });

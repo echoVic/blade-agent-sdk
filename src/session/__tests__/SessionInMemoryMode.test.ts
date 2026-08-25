@@ -1,13 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import { describe, expect, it, vi } from 'vitest';
+import type { ModelMessage } from '../../model/message.js';
+import { MessageId } from '../../types/identifiers.js';
 
 let turnCounter = 0;
 
 const createAgent = vi.fn(async () => ({
-  async *streamChat(message: string, context: { messages: Message[] }) {
+  async *streamChat(message: string, context: { messages: ModelMessage[] }) {
     turnCounter += 1;
     const turnId = turnCounter;
 
@@ -83,12 +84,9 @@ describe('Session in-memory mode', () => {
       'assistant-2',
     ]);
 
-    const forked = await session.fork({ messageId: 'assistant-1' });
+    const forked = await session.fork({ messageId: MessageId('assistant-1') });
 
-    expect(forked.messages.map((message) => message.id)).toEqual([
-      'user-1',
-      'assistant-1',
-    ]);
+    expect(forked.messages.map((message) => message.id)).toEqual(['user-1', 'assistant-1']);
 
     await forked.close();
     await session.close();

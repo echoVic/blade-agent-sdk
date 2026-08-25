@@ -14,10 +14,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type AdvisoryFileLockErrors,
-  withAdvisoryFileLock,
-} from '../../../utils/advisoryFileLock.js';
-import {
   CommandId,
   EventId,
   EventSequence,
@@ -28,7 +24,11 @@ import {
   SessionId,
   TurnId,
   WorkerId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
+import {
+  type AdvisoryFileLockErrors,
+  withAdvisoryFileLock,
+} from '../../../utils/advisoryFileLock.js';
 import { DurableEventSequenceConflictError, DurableEventStoreError } from '../DurableEventStore.js';
 import { DurableExecutionLeaseError } from '../DurableExecutionLeaseStore.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
@@ -588,7 +588,9 @@ describe('JsonlDurableEventStore', () => {
     });
     await expect(leaseStore.requiresExecutionLease(sessionId)).resolves.toBe(true);
     if (process.platform !== 'win32') {
-      expect((await stat(leaseStore.getExecutionLeaseFilePath(sessionId))).mode & 0o777).toBe(0o600);
+      expect((await stat(leaseStore.getExecutionLeaseFilePath(sessionId))).mode & 0o777).toBe(
+        0o600,
+      );
     }
     await expect(
       leaseStore.acquireExecutionLease(sessionId, {
@@ -756,23 +758,22 @@ describe('JsonlDurableEventStore', () => {
     const operationGate = new Promise<void>((resolve) => {
       finishOperation = resolve;
     });
-    const fencedOperation = firstStore.withExecutionLease(
-      firstLease,
-      async () => {
-        enterOperation?.();
-        await operationGate;
-      },
-    );
+    const fencedOperation = firstStore.withExecutionLease(firstLease, async () => {
+      enterOperation?.();
+      await operationGate;
+    });
     await operationEntered;
     now += 1_001;
     let takeoverSettled = false;
-    const takeover = secondStore.acquireExecutionLease(sessionId, {
-      leaseId: ExecutionLeaseId('lease-fenced-persistence-second'),
-      ownerId: WorkerId('worker-fenced-persistence-second'),
-      ttlMs: 1_000,
-    }).finally(() => {
-      takeoverSettled = true;
-    });
+    const takeover = secondStore
+      .acquireExecutionLease(sessionId, {
+        leaseId: ExecutionLeaseId('lease-fenced-persistence-second'),
+        ownerId: WorkerId('worker-fenced-persistence-second'),
+        ttlMs: 1_000,
+      })
+      .finally(() => {
+        takeoverSettled = true;
+      });
 
     await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25));
     expect(takeoverSettled).toBe(false);

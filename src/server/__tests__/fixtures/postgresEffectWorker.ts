@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import {
   ExecutionLeaseId,
   WorkerId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
 import { PostgresRuntimeStore } from '../../PostgresRuntimeStore.js';
 import { effectLease } from '../../WorkerRuntime.js';
 

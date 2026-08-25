@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
 import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 
 function deferred<T = void>() {
@@ -38,7 +38,7 @@ describe('ConcurrencyScheduler', () => {
       const gates = Array.from({ length: 12 }, () => deferred<number>());
 
       const results = gates.map((g, i) =>
-        scheduler.schedule(ToolKind.ReadOnly, async () => g.promise.then(() => i))
+        scheduler.schedule(ToolKind.ReadOnly, async () => g.promise.then(() => i)),
       );
 
       await new Promise((r) => setTimeout(r, 0));
@@ -66,7 +66,7 @@ describe('ConcurrencyScheduler', () => {
         scheduler.schedule(ToolKind.Write, async () => {
           started.push(i);
           await g.promise;
-        })
+        }),
       );
 
       await new Promise((r) => setTimeout(r, 0));
@@ -93,7 +93,7 @@ describe('ConcurrencyScheduler', () => {
         scheduler.schedule(ToolKind.Execute, async () => {
           started.push(i);
           await g.promise;
-        })
+        }),
       );
 
       await new Promise((r) => setTimeout(r, 0));
@@ -121,15 +121,12 @@ describe('ConcurrencyScheduler', () => {
       await expect(
         scheduler.schedule(ToolKind.Execute, async () => {
           throw new Error('boom');
-        })
+        }),
       ).rejects.toThrow('boom');
 
       expect(scheduler.getStats()[ToolKind.Execute].inFlight).toBe(0);
 
-      const result = await scheduler.schedule(
-        ToolKind.Execute,
-        async () => 'ok'
-      );
+      const result = await scheduler.schedule(ToolKind.Execute, async () => 'ok');
       expect(result).toBe('ok');
     });
   });
@@ -141,9 +138,7 @@ describe('ConcurrencyScheduler', () => {
       const reason = new Error('cancelled before acquire');
       controller.abort(reason);
 
-      await expect(
-        scheduler.acquire(ToolKind.Execute, controller.signal),
-      ).rejects.toBe(reason);
+      await expect(scheduler.acquire(ToolKind.Execute, controller.signal)).rejects.toBe(reason);
       expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
         inFlight: 0,
         queued: 0,
@@ -235,16 +230,10 @@ describe('ConcurrencyScheduler', () => {
       const scheduler = new ConcurrencyScheduler({ execute: 1 });
       const blockExec = deferred<void>();
 
-      const execPromise = scheduler.schedule(
-        ToolKind.Execute,
-        async () => blockExec.promise
-      );
+      const execPromise = scheduler.schedule(ToolKind.Execute, async () => blockExec.promise);
       await new Promise((r) => setTimeout(r, 0));
 
-      const readResult = await scheduler.schedule(
-        ToolKind.ReadOnly,
-        async () => 'read-ok'
-      );
+      const readResult = await scheduler.schedule(ToolKind.ReadOnly, async () => 'read-ok');
       expect(readResult).toBe('read-ok');
 
       blockExec.resolve();
@@ -262,7 +251,7 @@ describe('ConcurrencyScheduler', () => {
         scheduler.schedule(ToolKind.Execute, async () => {
           started.push(i);
           await g.promise;
-        })
+        }),
       );
 
       await new Promise((r) => setTimeout(r, 0));
@@ -315,13 +304,10 @@ describe('ConcurrencyScheduler', () => {
       const gates = Array.from({ length: 6 }, () => deferred<void>());
       const started: number[] = [];
       const promises = gates.map((g, i) =>
-        [pipelineA, pipelineB, pipelineC][i % 3].schedule(
-          ToolKind.Execute,
-          async () => {
-            started.push(i);
-            await g.promise;
-          }
-        )
+        [pipelineA, pipelineB, pipelineC][i % 3].schedule(ToolKind.Execute, async () => {
+          started.push(i);
+          await g.promise;
+        }),
       );
 
       await new Promise((r) => setTimeout(r, 0));

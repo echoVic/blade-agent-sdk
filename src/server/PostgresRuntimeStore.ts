@@ -1,21 +1,18 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
-import {
-  Pool,
-  type PoolClient,
-  type PoolConfig,
-  type QueryResultRow,
-} from 'pg';
+import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
+import type { ContextData } from '../context/types.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
 import {
   AGENT_PROTOCOL_VERSION,
-  parseAgentCommandResult,
-  parseAgentServerEvent,
   type AgentCommandResult,
   type AgentEventPage,
   type AgentServerEvent,
+  parseAgentCommandResult,
+  parseAgentServerEvent,
 } from '../protocol/index.js';
-import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import {
   DurableEventSequenceConflictError,
   DurableEventStoreError,
@@ -25,10 +22,7 @@ import type {
   DurableExecutionLease,
   DurableExecutionLeaseAcquireOptions,
 } from '../session/events/DurableExecutionLeaseStore.js';
-import {
-  parseDurableEventDraft,
-  parseDurableEventEnvelope,
-} from '../session/events/schemas.js';
+import { parseDurableEventDraft, parseDurableEventEnvelope } from '../session/events/schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventAppendOptions,
@@ -46,44 +40,28 @@ import type {
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
-import type {
-  SessionSnapshot,
-  SessionState,
-  SessionSummary,
-} from '../session/SessionStore.js';
-import type {
-  ContextData,
-  PendingInputInfo,
-  SessionInfo,
-} from '../context/types.js';
+import type { SessionSnapshot, SessionState, SessionSummary } from '../session/SessionStore.js';
+import type { PersistedPendingInput, TranscriptSession } from '../session/transcript.js';
+import type { MessageRole } from '../types/constants.js';
 import {
+  CommandId,
+  EventId,
   EventSequence,
-  type ExecutionLeaseId,
+  ExecutionLeaseId,
   FencingToken,
-  MessageId,
   type InputId,
+  MessageId,
   type RequestId,
-  type SessionId,
-  type WorkerId,
-} from '../types/branded.js';
-import type {
-  JsonObject,
-  JsonValue,
-  MessageRole,
-} from '../types/common.js';
-import {
-  cloneJsonValue,
-  cloneMessage,
-} from '../services/messageUtils.js';
+  SessionId,
+  ToolUseId,
+  WorkerId,
+} from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { toJsonValue } from '../utils/jsonValue.js';
-import type {
-  AgentCommandClaim,
-  AgentServerSessionRecord,
-} from './AgentServerStore.js';
+import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
 import {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
-  RuntimeStoreError,
   type RuntimeCommandCommit,
   type RuntimeCommitResult,
   type RuntimeDomainEvent,
@@ -92,6 +70,7 @@ import {
   type RuntimeEffectStatus,
   type RuntimeProjectionRecord,
   type RuntimeStore,
+  RuntimeStoreError,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
 import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
@@ -200,30 +179,54 @@ function asSessionState(value: unknown): SessionState {
   return structuredClone(value) as SessionState;
 }
 
+function parseRuntimeDomainEvent(value: unknown): RuntimeDomainEvent {
+  assertJsonObject(value, 'runtime domain event');
+  const event = asJsonObject(value);
+  if (
+    event.schemaVersion !== RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION ||
+    typeof event.eventId !== 'string' ||
+    typeof event.tenantId !== 'string' ||
+    typeof event.sessionId !== 'string' ||
+    typeof event.commandId !== 'string' ||
+    typeof event.sequence !== 'number' ||
+    !Number.isSafeInteger(event.sequence) ||
+    event.sequence < 1 ||
+    typeof event.type !== 'string' ||
+    typeof event.occurredAt !== 'string' ||
+    typeof event.recordedAt !== 'string'
+  ) {
+    throw new RuntimeStoreError(
+      'RUNTIME_STORE_INVALID_TRANSACTION',
+      'PostgreSQL returned an invalid runtime domain event',
+    );
+  }
+  assertJsonObject(event.data, 'runtime domain event data');
+
+  return {
+    schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
+    eventId: EventId(event.eventId),
+    tenantId: event.tenantId,
+    sessionId: SessionId(event.sessionId),
+    commandId: CommandId(event.commandId),
+    sequence: EventSequence(event.sequence),
+    type: event.type,
+    data: asJsonObject(event.data),
+    occurredAt: event.occurredAt,
+    recordedAt: event.recordedAt,
+  };
+}
+
 function advisoryLockKey(key: string): readonly [number, number] {
   const digest = createHash('sha256').update(key).digest();
   return [digest.readInt32BE(0), digest.readInt32BE(4)];
 }
 
 function isPostgresUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === '23505'
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
 }
 
-function assertStrictJsonValue(
-  value: unknown,
-  label: string,
-  seen = new WeakSet<object>(),
-): void {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'boolean'
-  ) {
+function assertStrictJsonValue(value: unknown, label: string, seen = new WeakSet<object>()): void {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return;
   }
   if (typeof value === 'number') {
@@ -280,11 +283,7 @@ function assertJsonObject(value: unknown, label: string): void {
       { cause: error },
     );
   }
-  if (
-    converted === null
-    || Array.isArray(converted)
-    || typeof converted !== 'object'
-  ) {
+  if (converted === null || Array.isArray(converted) || typeof converted !== 'object') {
     throw new RuntimeStoreError(
       'RUNTIME_STORE_INVALID_TRANSACTION',
       `${label} must be a JSON object`,
@@ -298,7 +297,7 @@ function initialSessionState(
   subagentInfo?: SessionRepositorySubagentInfo,
 ): SessionState {
   const timestamp = new Date(now).toISOString();
-  const sessionInfo: Partial<SessionInfo> = {
+  const sessionInfo: Partial<TranscriptSession> = {
     sessionId,
     rootId: subagentInfo?.parentSessionId ?? sessionId,
     parentId: subagentInfo?.parentSessionId,
@@ -325,10 +324,10 @@ function initialSessionState(
 
 function appendMessage(
   state: SessionState,
-  messageId: string,
-  message: Message,
+  messageId: MessageId,
+  message: ModelMessage,
   createdAt: number,
-  parentMessageId?: string,
+  parentMessageId?: MessageId,
 ): void {
   state.timeline.push({
     id: messageId,
@@ -341,9 +340,7 @@ function appendMessage(
   state.lastActivity = createdAt;
 }
 
-function messageMetadata(
-  metadata?: SessionRepositoryMessageMetadata,
-): JsonValue | undefined {
+function messageMetadata(metadata?: SessionRepositoryMessageMetadata): JsonValue | undefined {
   if (!metadata) {
     return undefined;
   }
@@ -368,21 +365,20 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   constructor(options: PostgresRuntimeStoreOptions = {}) {
     if (!options.pool && !options.connectionString && !options.poolConfig) {
-      throw new TypeError(
-        'PostgresRuntimeStore requires pool, connectionString, or poolConfig',
-      );
+      throw new TypeError('PostgresRuntimeStore requires pool, connectionString, or poolConfig');
     }
-    this.pool = options.pool ?? new Pool({
-      ...options.poolConfig,
-      connectionString:
-        options.connectionString ?? options.poolConfig?.connectionString,
-    });
+    this.pool =
+      options.pool ??
+      new Pool({
+        ...options.poolConfig,
+        connectionString: options.connectionString ?? options.poolConfig?.connectionString,
+      });
     this.ownsPool = !options.pool;
     this.schema = quoteIdentifier(options.schema ?? 'public', 'schema');
-    this.prefix = quoteIdentifier(
-      options.tablePrefix ?? 'blade_runtime',
-      'tablePrefix',
-    ).slice(1, -1);
+    this.prefix = quoteIdentifier(options.tablePrefix ?? 'blade_runtime', 'tablePrefix').slice(
+      1,
+      -1,
+    );
     this.maxAgentEventsPerSession =
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant =
@@ -451,16 +447,16 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async claimCommand(
     tenantId: string,
-    commandId: string,
+    commandId: CommandId,
     commandFingerprint: string,
     ttlMs: number,
   ): Promise<AgentCommandClaim> {
     if (
-      !tenantId.trim()
-      || !commandId.trim()
-      || !commandFingerprint.trim()
-      || !Number.isSafeInteger(ttlMs)
-      || ttlMs < 1
+      !tenantId.trim() ||
+      !commandId.trim() ||
+      !commandFingerprint.trim() ||
+      !Number.isSafeInteger(ttlMs) ||
+      ttlMs < 1
     ) {
       throw new RangeError('Command claim parameters are invalid');
     }
@@ -485,21 +481,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
         };
       }
       const now = Date.now();
-      if (
-        row
-        && (
-          row.status === 'sealed'
-          || new Date(row.expires_at).getTime() > now
-        )
-      ) {
+      if (row && (row.status === 'sealed' || new Date(row.expires_at).getTime() > now)) {
         return {
           status: 'in_progress',
-          retryAfterMs: row.status === 'sealed'
-            ? 1000
-            : Math.max(1, new Date(row.expires_at).getTime() - now),
+          retryAfterMs:
+            row.status === 'sealed' ? 1000 : Math.max(1, new Date(row.expires_at).getTime() - now),
         };
       }
-      const leaseId = nanoid();
+      const leaseId = ExecutionLeaseId(nanoid());
       const expiresAt = new Date(now + ttlMs);
       await client.query(
         `INSERT INTO ${this.table('commands')} (
@@ -521,8 +510,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async sealCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
     const result = await this.queryClient().query(
@@ -539,8 +528,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async completeCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
     result: AgentCommandResult,
   ): Promise<void> {
     await this.initialize();
@@ -559,8 +548,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async releaseCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
     await this.queryClient().query(
@@ -621,7 +610,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       ? {
           tenantId: row.tenant_id,
           createdBy: row.created_by,
-          sessionId: row.session_id as SessionId,
+          sessionId: SessionId(row.session_id),
           status: row.status,
           createdAt: asIso(row.created_at),
           updatedAt: asIso(row.updated_at),
@@ -640,11 +629,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     const limit = options.limit ?? 50;
     const offset = options.cursor ? Number(options.cursor) : 0;
     if (
-      !Number.isSafeInteger(offset)
-      || offset < 0
-      || !Number.isSafeInteger(limit)
-      || limit < 1
-      || limit > 100
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100
     ) {
       throw new RangeError('Session list pagination is invalid');
     }
@@ -671,7 +660,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       sessions: rows.map((row) => ({
         tenantId: row.tenant_id,
         createdBy: row.created_by,
-        sessionId: row.session_id as SessionId,
+        sessionId: SessionId(row.session_id),
         status: row.status,
         createdAt: asIso(row.created_at),
         updatedAt: asIso(row.updated_at),
@@ -699,13 +688,15 @@ export class PostgresRuntimeStore implements RuntimeStore {
         sessionId,
         'agent',
         undefined,
-        [({ sequence, eventId, recordedAt }) => ({
-          ...event,
-          protocolVersion: AGENT_PROTOCOL_VERSION,
-          eventId,
-          sequence,
-          occurredAt: event.occurredAt ?? recordedAt,
-        })],
+        [
+          ({ sequence, eventId, recordedAt }) => ({
+            ...event,
+            protocolVersion: AGENT_PROTOCOL_VERSION,
+            eventId,
+            sequence,
+            occurredAt: event.occurredAt ?? recordedAt,
+          }),
+        ],
         this.maxAgentEventsPerSession,
       );
       return parseAgentServerEvent(stored);
@@ -717,15 +708,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     options: { after?: number; limit?: number } = {},
   ): Promise<AgentEventPage> {
-    const page = await this.readStream(
-      tenantId,
-      sessionId,
-      'agent',
-      options.after,
-      options.limit,
-    );
-    const events = page.payloads.map((payload) =>
-      parseAgentServerEvent(payload));
+    const page = await this.readStream(tenantId, sessionId, 'agent', options.after, options.limit);
+    const events = page.payloads.map((payload) => parseAgentServerEvent(payload));
     const last = events.at(-1);
     return {
       events,
@@ -741,16 +725,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
     };
   }
 
-  async commitRuntimeTransaction(
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeCommitResult> {
+  async commitRuntimeTransaction(commit: RuntimeCommandCommit): Promise<RuntimeCommitResult> {
     await this.initialize();
     this.validateRuntimeCommit(commit);
-    if (
-      commit.projection
-      && commit.events?.length
-      && commit.projection.offset < 1
-    ) {
+    if (commit.projection && commit.events?.length && commit.projection.offset < 1) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_INVALID_TRANSACTION',
         'Projection offset must reference a committed event',
@@ -758,10 +736,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
     try {
       return await this.transaction(async (client) => {
-        await this.lock(
-          client,
-          `command:${commit.tenantId}:${commit.command.commandId}`,
-        );
+        await this.lock(client, `command:${commit.tenantId}:${commit.command.commandId}`);
         const commandResult = await client.query<CommandRow>(
           `SELECT command_fingerprint, lease_id, status, expires_at, result
              FROM ${this.table('commands')}
@@ -770,10 +745,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           [commit.tenantId, commit.command.commandId],
         );
         const existing = commandResult.rows[0];
-        if (
-          existing
-          && existing.command_fingerprint !== commit.command.fingerprint
-        ) {
+        if (existing && existing.command_fingerprint !== commit.command.fingerprint) {
           throw new RuntimeStoreError(
             'RUNTIME_STORE_COMMAND_CONFLICT',
             `Command ${commit.command.commandId} has a different fingerprint`,
@@ -858,17 +830,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     options: { readonly after?: number; readonly limit?: number } = {},
   ): Promise<RuntimeDomainEventPage> {
-    const page = await this.readStream(
-      tenantId,
-      sessionId,
-      'domain',
-      options.after,
-      options.limit,
-    );
+    const page = await this.readStream(tenantId, sessionId, 'domain', options.after, options.limit);
     return {
-      events: page.payloads.map((payload) =>
-        structuredClone(payload) as unknown as RuntimeDomainEvent),
-      headSequence: page.headSequence,
+      events: page.payloads.map(parseRuntimeDomainEvent),
+      headSequence: page.headSequence === null ? null : EventSequence(page.headSequence),
       hasMore: page.hasMore,
     };
   }
@@ -1184,14 +1149,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         'durable',
       );
       if (
-        options.expectedLastSequence !== undefined
-        && options.expectedLastSequence !== previousSequence
+        options.expectedLastSequence !== undefined &&
+        options.expectedLastSequence !== previousSequence
       ) {
         throw new DurableEventSequenceConflictError(
           options.expectedLastSequence,
-          previousSequence === null
-            ? null
-            : EventSequence(previousSequence),
+          previousSequence === null ? null : EventSequence(previousSequence),
         );
       }
       const events = await this.appendStream(
@@ -1210,8 +1173,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           occurredAt: draft.occurredAt ?? recordedAt,
         })),
       );
-      const durableEvents = events.map((value) =>
-        parseDurableEventEnvelope(value));
+      const durableEvents = events.map((value) => parseDurableEventEnvelope(value));
       const last = durableEvents.at(-1);
       if (!last) {
         throw new DurableEventStoreError(
@@ -1221,9 +1183,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
       return {
         events: durableEvents,
-        previousSequence: previousSequence === null
-          ? null
-          : EventSequence(previousSequence),
+        previousSequence: previousSequence === null ? null : EventSequence(previousSequence),
         lastSequence: last.sequence,
       };
     });
@@ -1242,23 +1202,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
       options.after === undefined ? undefined : Number(options.after),
       options.limit,
     );
-    const events = page.payloads.map((value) =>
-      parseDurableEventEnvelope(value));
+    const events = page.payloads.map((value) => parseDurableEventEnvelope(value));
     const last = events.at(-1);
     return {
       events,
-      headSequence: page.headSequence === null
-        ? null
-        : EventSequence(page.headSequence),
+      headSequence: page.headSequence === null ? null : EventSequence(page.headSequence),
       nextCursor: last?.sequence ?? null,
       hasMore: page.hasMore,
     };
   }
 
-  async getDurableHead(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<EventSequence | null> {
+  async getDurableHead(tenantId: string, sessionId: SessionId): Promise<EventSequence | null> {
     await this.initialize();
     const result = await this.queryClient().query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
@@ -1270,15 +1224,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return row ? EventSequence(asNumber(row.next_sequence) - 1) : null;
   }
 
-  async loadSessionState(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<SessionState | null> {
-    const projection = await this.getProjection(
-      tenantId,
-      sessionId,
-      SESSION_PROJECTION,
-    );
+  async loadSessionState(tenantId: string, sessionId: SessionId): Promise<SessionState | null> {
+    const projection = await this.getProjection(tenantId, sessionId, SESSION_PROJECTION);
     return projection ? asSessionState(projection.state) : null;
   }
 
@@ -1317,10 +1264,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
     await this.initialize();
     return this.transaction(async (client) => {
-      await this.lock(
-        client,
-        `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`,
-      );
+      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
       const projectionResult = await client.query<ProjectionRow>(
         `SELECT projection_offset, state, updated_at
            FROM ${this.table('projections')}
@@ -1346,7 +1290,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           sequence,
           tenantId,
           sessionId,
-          commandId: `transcript:${eventId}`,
+          commandId: CommandId(`transcript:${eventId}`),
           type: event.type,
           data: event.data,
           occurredAt: recordedAt,
@@ -1368,32 +1312,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
            projection_offset = EXCLUDED.projection_offset,
            state = EXCLUDED.state,
            updated_at = NOW()`,
-        [
-          tenantId,
-          sessionId,
-          SESSION_PROJECTION,
-          offset,
-          JSON.stringify(state),
-        ],
+        [tenantId, sessionId, SESSION_PROJECTION, offset, JSON.stringify(state)],
       );
       return result;
     });
   }
 
-  async deleteSessionProjection(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<void> {
+  async deleteSessionProjection(tenantId: string, sessionId: SessionId): Promise<void> {
     await this.initialize();
     await this.transaction(async (client) => {
-      await this.lock(
-        client,
-        `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`,
-      );
-      await this.lock(
-        client,
-        `stream:${tenantId}:${sessionId}:transcript`,
-      );
+      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
+      await this.lock(client, `stream:${tenantId}:${sessionId}:transcript`);
       await client.query(
         `DELETE FROM ${this.table('events')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
@@ -1413,7 +1342,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     });
   }
 
-  async listSessionProjectionIds(tenantId: string): Promise<string[]> {
+  async listSessionProjectionIds(tenantId: string): Promise<SessionId[]> {
     await this.initialize();
     const result = await this.queryClient().query(
       `SELECT session_id
@@ -1422,7 +1351,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ORDER BY session_id ASC`,
       [tenantId, SESSION_PROJECTION],
     );
-    return result.rows.map((row) => String(row.session_id));
+    return result.rows.map((row) => SessionId(String(row.session_id)));
   }
 
   async cleanupSessionProjections(tenantId: string): Promise<void> {
@@ -1436,16 +1365,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
       [tenantId, SESSION_PROJECTION, this.maxSessionsPerTenant],
     );
     for (const row of result.rows) {
-      await this.deleteSessionProjection(
-        tenantId,
-        String(row.session_id) as SessionId,
-      );
+      await this.deleteSessionProjection(tenantId, SessionId(String(row.session_id)));
     }
   }
 
-  async sessionStorageStats(
-    tenantId: string,
-  ): Promise<SessionRepositoryStorageStats> {
+  async sessionStorageStats(tenantId: string): Promise<SessionRepositoryStorageStats> {
     await this.initialize();
     const result = await this.queryClient().query(
       `SELECT COUNT(*)::int AS total_sessions,
@@ -1484,12 +1408,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
       );
     }
     if (
-      commit.expectedLastSequence !== undefined
-      && commit.expectedLastSequence !== null
-      && (
-        !Number.isSafeInteger(commit.expectedLastSequence)
-        || commit.expectedLastSequence < 1
-      )
+      commit.expectedLastSequence !== undefined &&
+      commit.expectedLastSequence !== null &&
+      (!Number.isSafeInteger(commit.expectedLastSequence) || commit.expectedLastSequence < 1)
     ) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_INVALID_TRANSACTION',
@@ -1515,10 +1436,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         }
         eventIds.add(event.eventId);
       }
-      if (
-        event.occurredAt
-        && !Number.isFinite(Date.parse(event.occurredAt))
-      ) {
+      if (event.occurredAt && !Number.isFinite(Date.parse(event.occurredAt))) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Event occurredAt at index ${index} is invalid`,
@@ -1529,20 +1447,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
     const effectIds = new Set<string>();
     const idempotencyKeys = new Set<string>();
     for (const [index, effect] of (commit.effects ?? []).entries()) {
-      if (
-        !effect.effectId.trim()
-        || !effect.type.trim()
-        || !effect.idempotencyKey.trim()
-      ) {
+      if (!effect.effectId.trim() || !effect.type.trim() || !effect.idempotencyKey.trim()) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Effect identifiers at index ${index} must not be empty`,
         );
       }
-      if (
-        effectIds.has(effect.effectId)
-        || idempotencyKeys.has(effect.idempotencyKey)
-      ) {
+      if (effectIds.has(effect.effectId) || idempotencyKeys.has(effect.idempotencyKey)) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Duplicate effect identity at index ${index}`,
@@ -1552,19 +1463,16 @@ export class PostgresRuntimeStore implements RuntimeStore {
       idempotencyKeys.add(effect.idempotencyKey);
       assertJsonObject(effect.payload, `Effect payload at index ${index}`);
       if (
-        effect.executionMode !== undefined
-        && effect.executionMode !== 'idempotent'
-        && effect.executionMode !== 'at_most_once'
+        effect.executionMode !== undefined &&
+        effect.executionMode !== 'idempotent' &&
+        effect.executionMode !== 'at_most_once'
       ) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Effect executionMode at index ${index} is invalid`,
         );
       }
-      if (
-        effect.availableAt
-        && !Number.isFinite(Date.parse(effect.availableAt))
-      ) {
+      if (effect.availableAt && !Number.isFinite(Date.parse(effect.availableAt))) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Effect availableAt at index ${index} is invalid`,
@@ -1574,9 +1482,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
     if (commit.projection) {
       if (
-        !commit.projection.name.trim()
-        || !Number.isSafeInteger(commit.projection.offset)
-        || commit.projection.offset < 0
+        !commit.projection.name.trim() ||
+        !Number.isSafeInteger(commit.projection.offset) ||
+        commit.projection.offset < 0
       ) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
@@ -1584,12 +1492,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         );
       }
       if (
-        commit.projection.expectedOffset !== undefined
-        && commit.projection.expectedOffset !== null
-        && (
-          !Number.isSafeInteger(commit.projection.expectedOffset)
-          || commit.projection.expectedOffset < 0
-        )
+        commit.projection.expectedOffset !== undefined &&
+        commit.projection.expectedOffset !== null &&
+        (!Number.isSafeInteger(commit.projection.expectedOffset) ||
+          commit.projection.expectedOffset < 0)
       ) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
@@ -1602,15 +1508,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   private async createSchema(): Promise<void> {
     const client = await this.pool.connect();
-    const lockKey = advisoryLockKey(
-      `runtime-store-schema:${this.schema}:${this.prefix}`,
-    );
+    const lockKey = advisoryLockKey(`runtime-store-schema:${this.schema}:${this.prefix}`);
     let lockAcquired = false;
     try {
-      await client.query(
-        'SELECT pg_advisory_lock($1, $2)',
-        [lockKey[0], lockKey[1]],
-      );
+      await client.query('SELECT pg_advisory_lock($1, $2)', [lockKey[0], lockKey[1]]);
       lockAcquired = true;
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
       await client.query(`
@@ -1732,14 +1633,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ? Number(storedVersion.rows[0].value)
         : 1;
       if (
-        previousSchemaVersion !== 1
-        && previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
+        previousSchemaVersion !== 1 &&
+        previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
       ) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Unsupported Runtime Store schema version: ${String(
-            storedVersion.rows[0]?.value,
-          )}`,
+          `Unsupported Runtime Store schema version: ${String(storedVersion.rows[0]?.value)}`,
         );
       }
       await this.workerRuntime.createSchema(client, previousSchemaVersion);
@@ -1752,10 +1651,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
       );
     } finally {
       if (lockAcquired) {
-        await client.query(
-          'SELECT pg_advisory_unlock($1, $2)',
-          [lockKey[0], lockKey[1]],
-        ).catch(() => undefined);
+        await client
+          .query('SELECT pg_advisory_unlock($1, $2)', [lockKey[0], lockKey[1]])
+          .catch(() => undefined);
       }
       client.release();
     }
@@ -1769,9 +1667,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.transactionContext.getStore() ?? this.pool;
   }
 
-  private async transaction<T>(
-    operation: (client: PoolClient) => Promise<T>,
-  ): Promise<T> {
+  private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     const activeClient = this.transactionContext.getStore();
     if (activeClient) {
       const savepoint = quoteIdentifier(
@@ -1810,10 +1706,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   private async lock(client: PoolClient, key: string): Promise<void> {
     const lockKey = advisoryLockKey(key);
-    await client.query(
-      'SELECT pg_advisory_xact_lock($1, $2)',
-      [lockKey[0], lockKey[1]],
-    );
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lockKey[0], lockKey[1]]);
   }
 
   private async currentHead(
@@ -1830,40 +1723,43 @@ export class PostgresRuntimeStore implements RuntimeStore {
         FOR UPDATE`,
       [tenantId, sessionId, streamName],
     );
-    return result.rows[0]
-      ? asNumber(result.rows[0].next_sequence) - 1
-      : null;
+    return result.rows[0] ? asNumber(result.rows[0].next_sequence) - 1 : null;
   }
 
-  private async appendStream<TPayload extends {
-    readonly eventId: string;
-    readonly type: string;
-    readonly occurredAt: string;
-    readonly commandId?: string;
-  }>(
+  private async appendStream<
+    TPayload extends {
+      readonly eventId: EventId;
+      readonly sequence: EventSequence;
+      readonly type: string;
+      readonly occurredAt: string;
+      readonly commandId?: CommandId;
+    },
+  >(
     client: PoolClient,
     tenantId: string,
     sessionId: SessionId,
     streamName: string,
     knownHead: number | null | undefined,
     factories: readonly ((fields: {
-      sequence: number;
-      eventId: string;
+      sequence: EventSequence;
+      eventId: EventId;
       recordedAt: string;
     }) => TPayload)[],
     retention?: number,
   ): Promise<TPayload[]> {
-    const current = knownHead === undefined
-      ? await this.currentHead(client, tenantId, sessionId, streamName)
-      : knownHead;
+    const current =
+      knownHead === undefined
+        ? await this.currentHead(client, tenantId, sessionId, streamName)
+        : knownHead;
     const firstSequence = (current ?? 0) + 1;
     const recordedAt = new Date().toISOString();
     const payloads = factories.map((factory, index) =>
       factory({
-        sequence: firstSequence + index,
-        eventId: nanoid(),
+        sequence: EventSequence(firstSequence + index),
+        eventId: EventId(nanoid()),
         recordedAt,
-      }));
+      }),
+    );
     if (payloads.length === 0) {
       return [];
     }
@@ -1873,9 +1769,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       stream_name: streamName,
       sequence: firstSequence + index,
       event_id: String(payload.eventId),
-      command_id: typeof payload.commandId === 'string'
-        ? payload.commandId
-        : null,
+      command_id: typeof payload.commandId === 'string' ? payload.commandId : null,
       event_type: String(payload.type),
       payload,
       occurred_at: String(payload.occurredAt ?? recordedAt),
@@ -1905,9 +1799,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       [JSON.stringify(rows)],
     );
     const nextSequence = firstSequence + payloads.length;
-    const retainedFirst = retention
-      ? Math.max(1, nextSequence - retention)
-      : 1;
+    const retainedFirst = retention ? Math.max(1, nextSequence - retention) : 1;
     await client.query(
       `INSERT INTO ${this.table('stream_heads')} (
          tenant_id, session_id, stream_name, first_sequence, next_sequence
@@ -1947,10 +1839,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('Event page limit must be between 1 and 1000');
     }
     return this.transaction(async (client) => {
-      await this.lock(
-        client,
-        `stream:${tenantId}:${sessionId}:${streamName}`,
-      );
+      await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
       const headResult = await client.query<StreamHeadRow>(
         `SELECT first_sequence, next_sequence
            FROM ${this.table('stream_heads')}
@@ -1982,8 +1871,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         [tenantId, sessionId, streamName, after, limit + 1],
       );
       return {
-        payloads: result.rows.slice(0, limit).map((row) =>
-          asJsonObject(row.payload)),
+        payloads: result.rows.slice(0, limit).map((row) => asJsonObject(row.payload)),
         headSequence: nextSequence - 1,
         hasMore: result.rows.length > limit,
       };
@@ -1994,20 +1882,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
     client: PoolClient,
     commit: RuntimeCommandCommit,
   ): Promise<RuntimeDomainEvent[]> {
-    const current = await this.currentHead(
-      client,
-      commit.tenantId,
-      commit.sessionId,
-      'domain',
-    );
-    if (
-      commit.expectedLastSequence !== undefined
-      && commit.expectedLastSequence !== current
-    ) {
+    const current = await this.currentHead(client, commit.tenantId, commit.sessionId, 'domain');
+    if (commit.expectedLastSequence !== undefined && commit.expectedLastSequence !== current) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_SEQUENCE_CONFLICT',
-        `Expected runtime event sequence ${String(commit.expectedLastSequence)}, `
-          + `but current sequence is ${String(current)}`,
+        `Expected runtime event sequence ${String(commit.expectedLastSequence)}, ` +
+          `but current sequence is ${String(current)}`,
       );
     }
     const payloads = await this.appendStream(
@@ -2073,28 +1953,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<RuntimeProjectionRecord> {
     const projection = commit.projection;
     if (!projection) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'Projection is required',
-      );
+      throw new RuntimeStoreError('RUNTIME_STORE_INVALID_TRANSACTION', 'Projection is required');
     }
-    const domainHead = await this.currentHead(
-      client,
-      commit.tenantId,
-      commit.sessionId,
-      'domain',
-    );
+    const domainHead = await this.currentHead(client, commit.tenantId, commit.sessionId, 'domain');
     if (projection.offset !== (domainHead ?? 0)) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_INVALID_TRANSACTION',
-        `Projection ${projection.name} offset ${projection.offset} `
-          + `does not match domain head ${String(domainHead)}`,
+        `Projection ${projection.name} offset ${projection.offset} ` +
+          `does not match domain head ${String(domainHead)}`,
       );
     }
-    await this.lock(
-      client,
-      `projection:${commit.tenantId}:${commit.sessionId}:${projection.name}`,
-    );
+    await this.lock(client, `projection:${commit.tenantId}:${commit.sessionId}:${projection.name}`);
     const current = await client.query<ProjectionRow>(
       `SELECT projection_offset, state, updated_at
          FROM ${this.table('projections')}
@@ -2102,17 +1971,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         FOR UPDATE`,
       [commit.tenantId, commit.sessionId, projection.name],
     );
-    const currentOffset = current.rows[0]
-      ? asNumber(current.rows[0].projection_offset)
-      : null;
-    if (
-      projection.expectedOffset !== undefined
-      && projection.expectedOffset !== currentOffset
-    ) {
+    const currentOffset = current.rows[0] ? asNumber(current.rows[0].projection_offset) : null;
+    if (projection.expectedOffset !== undefined && projection.expectedOffset !== currentOffset) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_PROJECTION_CONFLICT',
-        `Expected ${projection.name} offset ${String(projection.expectedOffset)}, `
-          + `but current offset is ${String(currentOffset)}`,
+        `Expected ${projection.name} offset ${String(projection.expectedOffset)}, ` +
+          `but current offset is ${String(currentOffset)}`,
       );
     }
     await client.query(
@@ -2175,8 +2039,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       : null;
     return {
       status: 'replayed',
-      events: events.rows.map((row) =>
-        structuredClone(row.payload) as RuntimeDomainEvent),
+      events: events.rows.map((row) => parseRuntimeDomainEvent(row.payload)),
       effects: effects.rows.map((row) => this.effectRecord(row)),
       ...(projection ? { projection } : {}),
     };
@@ -2210,8 +2073,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
   private effectRecord(row: EffectRow): RuntimeEffectRecord {
     return {
       tenantId: row.tenant_id,
-      sessionId: row.session_id as SessionId,
-      commandId: row.command_id,
+      sessionId: SessionId(row.session_id),
+      commandId: CommandId(row.command_id),
       effectId: row.effect_id,
       type: row.effect_type,
       payload: asJsonObject(row.payload),
@@ -2221,10 +2084,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
       attempts: row.attempts,
       availableAt: asIso(row.available_at),
       createdAt: asIso(row.created_at),
-      ...(row.worker_id ? { workerId: row.worker_id as WorkerId } : {}),
-      ...(row.lease_id
-        ? { leaseId: row.lease_id as ExecutionLeaseId }
-        : {}),
+      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
+      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
       ...(asNumber(row.fencing_token) > 0
         ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
         : {}),
@@ -2278,11 +2139,11 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
   async saveMessage(
     sessionId: SessionId,
     messageRole: MessageRole,
-    content: string | ContentPart[],
-    parentUuid: string | null = null,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
     metadata?: SessionRepositoryMessageMetadata,
     subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string> {
+  ): Promise<MessageId> {
     const messageId = MessageId(nanoid());
     return this.runtime.mutateSessionState(
       this.tenantId,
@@ -2298,16 +2159,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             role: messageRole,
             content: structuredClone(content),
             reasoningContent: metadata?.reasoningContent,
-            tool_calls: metadata?.toolCalls
-              ? structuredClone(metadata.toolCalls)
-              : undefined,
+            tool_calls: metadata?.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
             metadata: messageMetadata(metadata),
             modelIdentity: metadata?.modelIdentity
               ? structuredClone(metadata.modelIdentity)
               : undefined,
           },
           now,
-          parentUuid ?? undefined,
+          parentMessageId ?? undefined,
         );
         return messageId;
       },
@@ -2315,10 +2174,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     );
   }
 
-  async saveInputEnqueued(
-    sessionId: SessionId,
-    input: PendingInputInfo,
-  ): Promise<void> {
+  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
     await this.runtime.mutateSessionState(
       this.tenantId,
       sessionId,
@@ -2341,10 +2197,10 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     sessionId: SessionId,
     inputId: InputId,
     requestId: RequestId,
-    content: string | ContentPart[],
-    parentUuid: string | null = null,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
     subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string> {
+  ): Promise<MessageId> {
     const messageId = MessageId(nanoid());
     return this.runtime.mutateSessionState(
       this.tenantId,
@@ -2352,9 +2208,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
       'transcript.input_applied',
       { inputId, requestId, messageId },
       (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter(
-          (input) => input.inputId !== inputId,
-        );
+        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
         appendMessage(
           state,
           messageId,
@@ -2365,7 +2219,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             metadata: { inputId, requestId },
           },
           now,
-          parentUuid ?? undefined,
+          parentMessageId ?? undefined,
         );
         return messageId;
       },
@@ -2373,20 +2227,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     );
   }
 
-  async saveInputCancelled(
-    sessionId: SessionId,
-    inputId: InputId,
-    reason: string,
-  ): Promise<void> {
+  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
     await this.runtime.mutateSessionState(
       this.tenantId,
       sessionId,
       'transcript.input_cancelled',
       { inputId, reason },
       (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter(
-          (input) => input.inputId !== inputId,
-        );
+        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
         state.lastActivity = now;
       },
     );
@@ -2396,12 +2244,12 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
-    parentUuid: string | null = null,
+    parentMessageId: MessageId | null = null,
     subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: string,
+    requestedToolCallId?: ToolUseId,
   ): Promise<PersistedToolUse> {
     const messageId = MessageId(nanoid());
-    const toolCallId = requestedToolCallId ?? nanoid();
+    const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
     return this.runtime.mutateSessionState(
       this.tenantId,
       sessionId,
@@ -2415,19 +2263,19 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             id: messageId,
             role: 'assistant',
             content: '',
-            tool_calls: [{
-              id: toolCallId,
-              type: 'function',
-              function: {
-                name: toolName,
-                arguments: typeof toolInput === 'string'
-                  ? toolInput
-                  : JSON.stringify(toolInput),
+            tool_calls: [
+              {
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: toolName,
+                  arguments: typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput),
+                },
               },
-            }],
+            ],
           },
           now,
-          parentUuid ?? undefined,
+          parentMessageId ?? undefined,
         );
         state.toolCalls.push({
           id: toolCallId,
@@ -2445,14 +2293,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
 
   async saveToolResult(
     sessionId: SessionId,
-    toolId: string,
+    toolId: ToolUseId,
     toolName: string,
     toolOutput: JsonValue,
-    parentUuid: string | null = null,
+    parentMessageId: MessageId | null = null,
     error?: string,
     subagentInfo?: SessionRepositorySubagentInfo,
     subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<string> {
+  ): Promise<MessageId> {
     const messageId = MessageId(nanoid());
     return this.runtime.mutateSessionState(
       this.tenantId,
@@ -2475,7 +2323,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             name: toolName,
           },
           now,
-          parentUuid ?? undefined,
+          parentMessageId ?? undefined,
         );
         const call = [...state.toolCalls]
           .reverse()
@@ -2493,9 +2341,8 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             status: subagentRef.subagentStatus,
             summary: subagentRef.subagentSummary,
             startedAt: new Date(now).toISOString(),
-            finishedAt: subagentRef.subagentStatus === 'running'
-              ? null
-              : new Date(now).toISOString(),
+            finishedAt:
+              subagentRef.subagentStatus === 'running' ? null : new Date(now).toISOString(),
           });
         }
         return messageId;
@@ -2508,8 +2355,8 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     sessionId: SessionId,
     summary: string,
     metadata: SessionRepositoryCompactionMetadata,
-    parentUuid: string | null = null,
-  ): Promise<string> {
+    parentMessageId: MessageId | null = null,
+  ): Promise<MessageId> {
     const messageId = MessageId(nanoid());
     return this.runtime.mutateSessionState(
       this.tenantId,
@@ -2530,7 +2377,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             },
           },
           now,
-          parentUuid ?? undefined,
+          parentMessageId ?? undefined,
         );
         state.summary = summary;
         state.summaryMessageIds.push(messageId);
@@ -2539,10 +2386,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     );
   }
 
-  async saveContext(
-    sessionId: SessionId,
-    contextData: ContextData,
-  ): Promise<void> {
+  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
     const messages = contextData.layers.conversation.messages.map((message) => ({
       messageId: MessageId(nanoid()),
       role: message.role,
@@ -2579,14 +2423,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     return this.runtime.loadSessionState(this.tenantId, sessionId);
   }
 
-  async loadMessages(sessionId: SessionId): Promise<Message[]> {
+  async loadMessages(sessionId: SessionId): Promise<ModelMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages.map((message) => cloneMessage(message)) ?? [];
   }
 
   async forkState(
     sessionId: SessionId,
-    options?: { messageId?: string },
+    options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null> {
     const state = await this.loadState(sessionId);
     if (!state) {
@@ -2596,9 +2440,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     if (options?.messageId) {
       const index = state.messageIds.indexOf(options.messageId);
       if (index === -1) {
-        throw new Error(
-          `Message with ID "${options.messageId}" not found in session history`,
-        );
+        throw new Error(`Message with ID "${options.messageId}" not found in session history`);
       }
       endIndex = index + 1;
     }
@@ -2609,28 +2451,23 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
       messages: timeline.map((entry) => cloneMessage(entry.message)),
       messageIds,
       lastActivity: timeline.at(-1)?.createdAt ?? state.createdAt,
-      summary: [...timeline]
-        .reverse()
-        .find((entry) => state.summaryMessageIds.includes(entry.id))
+      summary: [...timeline].reverse().find((entry) => state.summaryMessageIds.includes(entry.id))
         ?.message.content as string | undefined,
     };
   }
 
-  listSessions(): Promise<string[]> {
+  listSessions(): Promise<SessionId[]> {
     return this.runtime.listSessionProjectionIds(this.tenantId);
   }
 
-  async getSessionSummary(
-    sessionId: SessionId,
-  ): Promise<SessionSummary | null> {
+  async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
     const state = await this.loadState(sessionId);
     return state
       ? {
           sessionId,
           lastActivity: state.lastActivity,
           messageCount: state.messages.filter(
-            (message) =>
-              message.role === 'user' || message.role === 'assistant',
+            (message) => message.role === 'user' || message.role === 'assistant',
           ).length,
           topics: [],
           summaryText: state.summary,
@@ -2655,9 +2492,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     return {
       isAvailable: health.ready,
       canWrite: health.ready,
-      ...(!health.ready && health.details?.error
-        ? { error: String(health.details.error) }
-        : {}),
+      ...(!health.ready && health.details?.error ? { error: String(health.details.error) } : {}),
     };
   }
 
@@ -2666,23 +2501,11 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     events: readonly DurableEventDraft[],
     options?: DurableEventAppendOptions,
   ): Promise<DurableEventAppendResult> {
-    return this.runtime.appendDurableEvents(
-      this.tenantId,
-      sessionId,
-      events,
-      options,
-    );
+    return this.runtime.appendDurableEvents(this.tenantId, sessionId, events, options);
   }
 
-  read(
-    sessionId: SessionId,
-    options?: DurableEventReadOptions,
-  ): Promise<DurableEventPage> {
-    return this.runtime.readDurableEvents(
-      this.tenantId,
-      sessionId,
-      options,
-    );
+  read(sessionId: SessionId, options?: DurableEventReadOptions): Promise<DurableEventPage> {
+    return this.runtime.readDurableEvents(this.tenantId, sessionId, options);
   }
 
   getHeadSequence(sessionId: SessionId): Promise<EventSequence | null> {

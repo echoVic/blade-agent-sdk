@@ -2,14 +2,16 @@
  * Agent核心类型定义
  */
 
+import type { OutputFormat } from '../model/config.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
 import type { ContextSnapshot } from '../runtime/index.js';
-import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { SandboxSettings } from '../sandbox/config.js';
 import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
-import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/ExecutionTypes.js';
-import type { AgentId, InputId, RequestId, SessionId } from '../types/branded.js';
-import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
-import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
+import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/execution.js';
+import type { PermissionMode } from '../types/constants.js';
+import type { AgentId, InputId, RequestId, SessionId } from '../types/identifiers.js';
+import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../types/permissions.js';
 import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
 import type { InitialInputPreparation } from './InitialInputPreparation.js';
 import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
@@ -21,12 +23,10 @@ import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
  * 用户消息内容类型
  * 支持纯文本或多模态内容（文本 + 图片）
  */
-export type UserMessageContent = string | ContentPart[];
+export type UserMessageContent = string | ModelContent[];
 
 export interface InputApplicationLifecycle {
-  onInputApplying(
-    input: Pick<AgentSteeringInput, 'inputId' | 'priority'>,
-  ): Promise<void>;
+  onInputApplying(input: Pick<AgentSteeringInput, 'inputId' | 'priority'>): Promise<void>;
 }
 
 /**
@@ -60,21 +60,19 @@ export interface IBackgroundAgentController {
   killAgent(agentId: AgentId): Promise<boolean>;
   cancelCurrentWork(agentId: AgentId): boolean;
   startBackgroundAgent(options: StartBackgroundAgentOptions): Promise<string>;
-  resumeAgent(
-    agentId: AgentId,
-    newPrompt: string,
-    ...args: unknown[]
-  ): Promise<string | undefined>;
+  resumeAgent(agentId: AgentId, newPrompt: string, ...args: unknown[]): Promise<string | undefined>;
   sendMessage(agentId: AgentId, message: string): boolean;
 }
 
-export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
+export interface IBackgroundAgentManager
+  extends IBackgroundAgentReader,
+    IBackgroundAgentController {}
 
 /**
  * 子代理信息（用于 JSONL 写入）
  */
 interface SubagentInfoForContext {
-  parentSessionId: string;
+  parentSessionId: SessionId;
   subagentType: string;
   isSidechain: boolean;
 }
@@ -89,7 +87,7 @@ interface SubagentInfoForContext {
  * 不包含：循环过程中的事件回调（这些应该放在 LoopOptions）
  */
 export interface ChatContext {
-  messages: Message[];
+  messages: ModelMessage[];
   userId: string;
   sessionId: SessionId;
   snapshot?: ContextSnapshot;

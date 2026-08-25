@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../errors/ConfigError.js';
 import { HookTimeoutError } from '../../errors/HookTimeoutError.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import type { ToolResult } from '../../tools/types/index.js';
-import { SessionId, ToolUseId } from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
+import type { ModelContent } from '../../model/message.js';
+import type { ToolResult } from '../../tools/types/result.js';
+import { HookEvent, PermissionMode } from '../../types/constants.js';
+import { SessionId, ToolUseId } from '../../types/identifiers.js';
 import { HookRuntime } from '../HookRuntime.js';
 import { HookProcessContainmentError } from '../WindowsProcessJob.js';
 
@@ -264,10 +263,9 @@ describe('HookRuntime', () => {
   });
 
   it('quarantines file hooks after a containment failure', async () => {
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
-    const executeUserPromptSubmitHooks = vi.fn()
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
+    const executeUserPromptSubmitHooks = vi
+      .fn()
       .mockRejectedValueOnce(containmentError)
       .mockResolvedValue({ proceed: true });
     const runtime = new HookRuntime({
@@ -279,13 +277,9 @@ describe('HookRuntime', () => {
       } as never,
     });
 
-    await expect(
-      runtime.applyUserPromptSubmit('first'),
-    ).rejects.toBe(containmentError);
+    await expect(runtime.applyUserPromptSubmit('first')).rejects.toBe(containmentError);
     expect(runtime.getTerminalContainmentFailure()).toBe(containmentError);
-    await expect(
-      runtime.applyUserPromptSubmit('second'),
-    ).rejects.toBe(containmentError);
+    await expect(runtime.applyUserPromptSubmit('second')).rejects.toBe(containmentError);
     expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
   });
 
@@ -294,9 +288,7 @@ describe('HookRuntime', () => {
     const secondStarted = deferred();
     const releaseFirst = deferred();
     const releaseSecond = deferred();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
     let callCount = 0;
     const executeUserPromptSubmitHooks = vi.fn(async () => {
       callCount += 1;
@@ -358,16 +350,14 @@ describe('HookRuntime', () => {
       sessionId: SessionId('session-1'),
       permissionMode: PermissionMode.DEFAULT,
       callbacks: {
-        [HookEvent.UserPromptSubmit]: [
-          async () => ({ action: 'continue' }),
-        ],
+        [HookEvent.UserPromptSubmit]: [async () => ({ action: 'continue' })],
       },
       resolveProjectDir: () => '/tmp/project',
       hookManager: hookManager as never,
     });
 
     const getImageCountSpy = vi.spyOn(
-      runtime as unknown as { getImageCount: (message: string | ContentPart[]) => number },
+      runtime as unknown as { getImageCount: (message: string | ModelContent[]) => number },
       'getImageCount',
     );
 
@@ -410,7 +400,7 @@ describe('HookRuntime', () => {
       { type: 'text', text: 'first chunk' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,after-first' } },
       { type: 'text', text: 'second chunk' },
-    ] satisfies ContentPart[]);
+    ] satisfies ModelContent[]);
 
     expect(rewritten).toEqual([
       { type: 'text', text: 'updated prompt' },
@@ -451,9 +441,13 @@ describe('HookRuntime', () => {
       hookManager: hookManager as never,
     });
 
-    const pre = await runtime.applyPreToolUse('Read', { file_path: 'a.ts' }, {
-      toolUseId: ToolUseId('tool-1'),
-    });
+    const pre = await runtime.applyPreToolUse(
+      'Read',
+      { file_path: 'a.ts' },
+      {
+        toolUseId: ToolUseId('tool-1'),
+      },
+    );
 
     const result: ToolResult = {
       status: 'success',

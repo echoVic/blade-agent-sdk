@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import {
   parseDurableRuntimeContext,
   parseDurableUserMessageContent,
@@ -51,9 +51,7 @@ describe('DurableRequestRecovery', () => {
     { input: [{ type: 'image_url', image_url: {} }] },
     { input: [{ type: 'unknown' }] },
   ] satisfies Array<{ input: JsonValue }>)('rejects invalid request content %#', ({ input }) => {
-    expect(() => parseDurableUserMessageContent(input)).toThrow(
-      SessionDurableRecorderError,
-    );
+    expect(() => parseDurableUserMessageContent(input)).toThrow(SessionDurableRecorderError);
   });
 
   it('round-trips a complete runtime context', () => {
@@ -92,9 +90,7 @@ describe('DurableRequestRecovery', () => {
     { capabilities: { browser: { pageId: 1 } } },
     { capabilities: { network: { allowDomains: [1] } } },
   ] as JsonObject[])('rejects invalid runtime context %#', (context) => {
-    expect(() => parseDurableRuntimeContext(context)).toThrow(
-      SessionDurableRecorderError,
-    );
+    expect(() => parseDurableRuntimeContext(context)).toThrow(SessionDurableRecorderError);
   });
 
   it('rejects non-JSON runtime context values before persistence', () => {

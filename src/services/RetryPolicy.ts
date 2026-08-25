@@ -10,25 +10,13 @@
  * 6. Exponential backoff + jitter + Retry-After header
  */
 
-// ===== Query Source =====
+import type { ModelRetryConfig, ModelRetryEvent, QuerySource } from '../model/retry.js';
 
 /**
  * Query source — determines retry strategy for 529 errors.
  * Foreground sources (user is waiting) retry on 529.
  * Background sources (summary, suggestion, etc.) bail immediately to avoid cascade amplification.
  */
-export type QuerySource =
-  | 'main_thread'
-  | 'agent'
-  | 'compact'
-  | 'side_question'
-  | 'hook_agent'
-  | 'hook_prompt'
-  | 'verification_agent'
-  | 'summary'
-  | 'suggestion'
-  | 'classifier';
-
 const FOREGROUND_RETRY_SOURCES = new Set<QuerySource>([
   'main_thread',
   'agent',
@@ -44,46 +32,7 @@ function shouldRetry529(querySource?: QuerySource): boolean {
   return querySource === undefined || FOREGROUND_RETRY_SOURCES.has(querySource);
 }
 
-// ===== Retry Event =====
-
-export interface RetryEvent {
-  type: 'retry_attempt';
-  attempt: number;
-  maxRetries: number;
-  delayMs: number;
-  error: {
-    status?: number;
-    message: string;
-  };
-  querySource?: QuerySource;
-}
-
-// ===== Retry Config =====
-
-export interface RetryConfig {
-  /**
-   * Maximum number of retries AFTER the initial attempt.
-   * Total attempts = 1 (initial) + maxRetries.
-   * e.g. maxRetries: 3 → up to 4 total attempts.
-   */
-  maxRetries: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-  backoffMultiplier: number;
-  retryableStatusCodes: number[];
-  /** Consecutive 529 error limit before triggering FallbackTriggeredError */
-  max529Retries: number;
-  /** Model to fallback to when 529 limit is exceeded */
-  fallbackModel?: string;
-  /** Current model name (used in FallbackTriggeredError.originalModel) */
-  currentModel?: string;
-  /** Query source — affects 529 retry strategy */
-  querySource?: QuerySource;
-  /** Retry callback */
-  onRetry?: (event: RetryEvent) => void | Promise<void>;
-}
-
-export const DEFAULT_RETRY_CONFIG: RetryConfig = {
+export const DEFAULT_RETRY_CONFIG: ModelRetryConfig = {
   maxRetries: 3,
   initialDelayMs: 1000,
   maxDelayMs: 30000,
@@ -475,7 +424,7 @@ function parseRetryAfterValue(value: string): number | undefined {
 
 // ===== Delay Calculation =====
 
-export function getRetryDelay(attempt: number, config: RetryConfig, error?: unknown): number {
+export function getRetryDelay(attempt: number, config: ModelRetryConfig, error?: unknown): number {
   const exponentialDelay = Math.min(
     config.initialDelayMs * config.backoffMultiplier ** Math.max(0, attempt - 1),
     config.maxDelayMs,
@@ -512,10 +461,10 @@ export interface RetryContext {
  */
 export async function* withRetry<T>(
   fn: (ctx: RetryContext) => Promise<T>,
-  partialConfig: Partial<RetryConfig> = {},
+  partialConfig: Partial<ModelRetryConfig> = {},
   signal?: AbortSignal,
-): AsyncGenerator<RetryEvent, T> {
-  const config: RetryConfig = {
+): AsyncGenerator<ModelRetryEvent, T> {
+  const config: ModelRetryConfig = {
     ...DEFAULT_RETRY_CONFIG,
     ...partialConfig,
     retryableStatusCodes:
@@ -586,7 +535,7 @@ export async function* withRetry<T>(
 
       const delayMs = getRetryDelay(attempt, config, error);
 
-      const retryEvent: RetryEvent = {
+      const retryEvent: ModelRetryEvent = {
         type: 'retry_attempt',
         attempt,
         maxRetries: config.maxRetries,

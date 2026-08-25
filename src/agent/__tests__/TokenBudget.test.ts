@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageInfo } from '../../services/ChatServiceInterface.js';
+import type { ModelUsage } from '../../model/usage.js';
 import { TokenBudget } from '../TokenBudget.js';
 
-function createUsage(overrides: Partial<UsageInfo> = {}): UsageInfo {
+function createUsage(overrides: Partial<ModelUsage> = {}): ModelUsage {
   return {
     promptTokens: 0,
     completionTokens: 0,
@@ -15,18 +15,22 @@ describe('TokenBudget', () => {
   it('record() accumulates tokens correctly', () => {
     const budget = new TokenBudget({ maxTotalTokens: 1000 });
 
-    budget.record(createUsage({
-      promptTokens: 100,
-      completionTokens: 25,
-      cacheCreationInputTokens: 10,
-      cacheReadInputTokens: 5,
-    }));
-    budget.record(createUsage({
-      promptTokens: 50,
-      completionTokens: 10,
-      cacheCreationInputTokens: 3,
-      cacheReadInputTokens: 2,
-    }));
+    budget.record(
+      createUsage({
+        promptTokens: 100,
+        completionTokens: 25,
+        cacheCreationInputTokens: 10,
+        cacheReadInputTokens: 5,
+      }),
+    );
+    budget.record(
+      createUsage({
+        promptTokens: 50,
+        completionTokens: 10,
+        cacheCreationInputTokens: 3,
+        cacheReadInputTokens: 2,
+      }),
+    );
 
     const snapshot = budget.getSnapshot();
     expect(snapshot.totalInputTokens).toBe(150);
@@ -66,12 +70,14 @@ describe('TokenBudget', () => {
       costPerCacheReadToken: 0.0005,
     });
 
-    budget.record(createUsage({
-      promptTokens: 100,
-      completionTokens: 50,
-      cacheCreationInputTokens: 20,
-      cacheReadInputTokens: 10,
-    }));
+    budget.record(
+      createUsage({
+        promptTokens: 100,
+        completionTokens: 50,
+        cacheCreationInputTokens: 20,
+        cacheReadInputTokens: 10,
+      }),
+    );
 
     expect(budget.getSnapshot()).toEqual({
       totalInputTokens: 100,
@@ -95,13 +101,15 @@ describe('TokenBudget', () => {
       costPerCacheReadToken: 0.0001,
     });
 
-    budget.record(createUsage({
-      promptTokens: 100,
-      completionTokens: 50,
-      cacheReadInputTokens: 80,
-      cacheMissInputTokens: 20,
-      billableInputTokens: 20,
-    }));
+    budget.record(
+      createUsage({
+        promptTokens: 100,
+        completionTokens: 50,
+        cacheReadInputTokens: 80,
+        cacheMissInputTokens: 20,
+        billableInputTokens: 20,
+      }),
+    );
 
     expect(budget.getSnapshot()).toMatchObject({
       totalInputTokens: 100,
@@ -116,12 +124,14 @@ describe('TokenBudget', () => {
   it('reset() clears all counters', () => {
     const budget = new TokenBudget({ maxTotalTokens: 1000 });
 
-    budget.record(createUsage({
-      promptTokens: 100,
-      completionTokens: 50,
-      cacheCreationInputTokens: 20,
-      cacheReadInputTokens: 10,
-    }));
+    budget.record(
+      createUsage({
+        promptTokens: 100,
+        completionTokens: 50,
+        cacheCreationInputTokens: 20,
+        cacheReadInputTokens: 10,
+      }),
+    );
     budget.reset();
 
     expect(budget.getSnapshot()).toEqual({
@@ -141,10 +151,12 @@ describe('TokenBudget', () => {
   it('unlimited budget never exhausts', () => {
     const budget = new TokenBudget();
 
-    budget.record(createUsage({
-      promptTokens: 10_000,
-      completionTokens: 5_000,
-    }));
+    budget.record(
+      createUsage({
+        promptTokens: 10_000,
+        completionTokens: 5_000,
+      }),
+    );
 
     expect(budget.isExhausted()).toBe(false);
     expect(budget.isWarning()).toBe(false);

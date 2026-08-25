@@ -1,5 +1,5 @@
-import type { SessionId } from '../../types/branded.js';
-import type { JsonValue } from '../../types/common.js';
+import type { SessionId } from '../../types/identifiers.js';
+import type { JsonValue } from '../../types/json.js';
 import type { CompressedContext, ContextMessage } from '../types.js';
 
 export interface CacheItem<T> {
@@ -107,11 +107,7 @@ export class CacheStore {
   /**
    * 缓存消息摘要
    */
-  cacheMessageSummary(
-    sessionId: SessionId,
-    messages: ContextMessage[],
-    summary: string
-  ): void {
+  cacheMessageSummary(sessionId: SessionId, messages: ContextMessage[], summary: string): void {
     const key = `summary:${sessionId}:${messages.length}`;
     this.set(
       key,
@@ -120,7 +116,7 @@ export class CacheStore {
         messageCount: messages.length,
         lastMessage: messages[messages.length - 1]?.timestamp || 0,
       },
-      10 * 60 * 1000
+      10 * 60 * 1000,
     ); // 10分钟TTL
   }
 
@@ -129,7 +125,7 @@ export class CacheStore {
    */
   getMessageSummary(
     sessionId: SessionId,
-    messageCount: number
+    messageCount: number,
   ): {
     summary: string;
     messageCount: number;

@@ -1,29 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-  CompactionOptions,
-  CompactionResult,
-} from '../../context/CompactionService.js';
+import type { CompactionOptions, CompactionResult } from '../../context/CompactionService.js';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
-import { SessionId } from '../../types/branded.js';
+import { SessionId } from '../../types/identifiers.js';
 import { ConversationState } from '../state/ConversationState.js';
 
-const mockCompact = vi.fn(async (
-  _messages: Message[],
-  _options: CompactionOptions,
-): Promise<CompactionResult> => ({
-  success: true,
-  summary: 'summary',
-  preTokens: 700,
-  postTokens: 120,
-  filesIncluded: [],
-  compactedMessages: [{ role: 'user' as const, content: 'summary' }],
-  boundaryMessage: { role: 'system' as const, content: 'boundary' },
-  summaryMessage: { role: 'user' as const, content: 'summary' },
-}));
+const mockCompact = vi.fn(
+  async (_messages: ModelMessage[], _options: CompactionOptions): Promise<CompactionResult> => ({
+    success: true,
+    summary: 'summary',
+    preTokens: 700,
+    postTokens: 120,
+    filesIncluded: [],
+    compactedMessages: [{ role: 'user' as const, content: 'summary' }],
+    boundaryMessage: { role: 'system' as const, content: 'boundary' },
+    summaryMessage: { role: 'user' as const, content: 'summary' },
+  }),
+);
 
 vi.mock('../../context/CompactionService.js', async () => {
   const actual = await vi.importActual<typeof import('../../context/CompactionService.js')>(
@@ -48,27 +44,37 @@ describe('CompactionHandler', () => {
 
   it('uses microcompact before LLM compaction and skips the LLM when enough context is recovered', async () => {
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-          apiKey: 'test-key',
-          baseUrl: 'https://example.com',
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          }),
+        }) as never,
       () => undefined,
     );
 
-    const contextMessages: Message[] = [
+    const contextMessages: ModelMessage[] = [
       { role: 'user', content: 'Investigate the build failure' },
       { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(4000) },
       { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
     ];
-    const convState = new ConversationState(null, contextMessages.slice(0, -1), contextMessages[contextMessages.length - 1]);
+    const convState = new ConversationState(
+      null,
+      contextMessages.slice(0, -1),
+      contextMessages[contextMessages.length - 1],
+    );
 
-    const stream = handler.checkAndCompactInLoop(convState, { sessionId: SessionId('session-1') }, 2, 700);
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      { sessionId: SessionId('session-1') },
+      2,
+      700,
+    );
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();
@@ -91,16 +97,17 @@ describe('CompactionHandler', () => {
 
   it('checks execution ownership before compaction provider I/O', async () => {
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-          apiKey: 'test-key',
-          baseUrl: 'https://example.com',
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          }),
+        }) as never,
       () => undefined,
     );
     const convState = new ConversationState(
@@ -132,36 +139,34 @@ describe('CompactionHandler', () => {
 
   it('discards a compaction result when execution ownership changes during provider I/O', async () => {
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-          apiKey: 'test-key',
-          baseUrl: 'https://example.com',
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          }),
+        }) as never,
       () => undefined,
     );
     const originalMessages = [
       { role: 'user', content: 'context that must remain unchanged' },
       { role: 'assistant', content: 'continue' },
-    ] satisfies Message[];
+    ] satisfies ModelMessage[];
     const currentMessage = originalMessages.at(-1);
     if (!currentMessage) {
       throw new Error('Expected a current compaction message');
     }
-    const convState = new ConversationState(
-      null,
-      originalMessages.slice(0, -1),
-      currentMessage,
-    );
+    const convState = new ConversationState(null, originalMessages.slice(0, -1), currentMessage);
     const leaseLost = new DurableExecutionLeaseError(
       'DURABLE_EXECUTION_LEASE_LOST',
       'execution ownership changed',
     );
-    const assertExecutionLease = vi.fn()
+    const assertExecutionLease = vi
+      .fn()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(leaseLost);
     const stream = handler.checkAndCompactInLoop(
@@ -186,16 +191,17 @@ describe('CompactionHandler', () => {
   it('propagates the active provider registry to automatic and reactive compaction', async () => {
     const providerRegistry = new ProviderRegistry();
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-          apiKey: 'test-key',
-          baseUrl: 'https://example.com',
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          }),
+        }) as never,
       () => undefined,
       undefined,
       () => providerRegistry,
@@ -220,10 +226,9 @@ describe('CompactionHandler', () => {
       [{ role: 'user', content: 'context that requires compaction' }],
       { role: 'assistant', content: 'continue' },
     );
-    const reactiveStream = handler.reactiveCompact(
-      reactiveState,
-      { sessionId: SessionId('provider-registry-reactive-session') },
-    );
+    const reactiveStream = handler.reactiveCompact(reactiveState, {
+      sessionId: SessionId('provider-registry-reactive-session'),
+    });
 
     await reactiveStream.next();
     await reactiveStream.next();
@@ -241,21 +246,22 @@ describe('CompactionHandler', () => {
       { providerType: 'custom-api' },
     );
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'custom-model',
-          provider: 'custom-api',
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'custom-model',
+            provider: 'custom-api',
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+          }),
+        }) as never,
       () => undefined,
     );
-    const createState = () => new ConversationState(
-      null,
-      [{ role: 'user', content: 'context that requires compaction' }],
-      { role: 'assistant', content: 'continue' },
-    );
+    const createState = () =>
+      new ConversationState(null, [{ role: 'user', content: 'context that requires compaction' }], {
+        role: 'assistant',
+        content: 'continue',
+      });
 
     mockCompact.mockRejectedValueOnce(registryError);
     const automaticStream = handler.checkAndCompactInLoop(
@@ -268,10 +274,9 @@ describe('CompactionHandler', () => {
     await expect(automaticStream.next()).rejects.toBe(registryError);
 
     mockCompact.mockRejectedValueOnce(registryError);
-    const reactiveStream = handler.reactiveCompact(
-      createState(),
-      { sessionId: SessionId('missing-adapter-reactive-session') },
-    );
+    const reactiveStream = handler.reactiveCompact(createState(), {
+      sessionId: SessionId('missing-adapter-reactive-session'),
+    });
     await reactiveStream.next();
     await expect(reactiveStream.next()).rejects.toBe(registryError);
   });
@@ -282,14 +287,15 @@ describe('CompactionHandler', () => {
     );
     mockCompact.mockRejectedValueOnce(containmentError);
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+          }),
+        }) as never,
       () => undefined,
     );
     const convState = new ConversationState(
@@ -317,14 +323,15 @@ describe('CompactionHandler', () => {
     );
     mockCompact.mockRejectedValueOnce(containmentError);
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+          }),
+        }) as never,
       () => undefined,
     );
     const convState = new ConversationState(
@@ -332,10 +339,9 @@ describe('CompactionHandler', () => {
       [{ role: 'user', content: 'context that requires compaction' }],
       { role: 'assistant', content: 'continue' },
     );
-    const stream = handler.reactiveCompact(
-      convState,
-      { sessionId: SessionId('containment-reactive-compaction-session') },
-    );
+    const stream = handler.reactiveCompact(convState, {
+      sessionId: SessionId('containment-reactive-compaction-session'),
+    });
 
     await expect(stream.next()).resolves.toMatchObject({
       value: { type: 'compacting', isCompacting: true },
@@ -348,16 +354,17 @@ describe('CompactionHandler', () => {
     mockCompact.mockRejectedValueOnce(new Error('compaction failed'));
 
     const handler = new CompactionHandler(
-      () => ({
-        getConfig: () => ({
-          model: 'gpt-4o-mini',
-          provider: 'openai-compatible' as const,
-          maxContextTokens: 1000,
-          maxOutputTokens: 200,
-          apiKey: 'test-key',
-          baseUrl: 'https://example.com',
-        }),
-      }) as never,
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o-mini',
+            provider: 'openai-compatible' as const,
+            maxContextTokens: 1000,
+            maxOutputTokens: 200,
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          }),
+        }) as never,
       () => undefined,
     );
 
@@ -365,8 +372,12 @@ describe('CompactionHandler', () => {
       { role: 'user', content: 'Investigate the build failure' },
       { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(4000) },
       { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
-    ] satisfies Message[];
-    const convState = new ConversationState(null, originalMessages.slice(0, -1), originalMessages[originalMessages.length - 1]);
+    ] satisfies ModelMessage[];
+    const convState = new ConversationState(
+      null,
+      originalMessages.slice(0, -1),
+      originalMessages[originalMessages.length - 1],
+    );
     const controller = new AbortController();
 
     const stream = handler.reactiveCompact(convState, {

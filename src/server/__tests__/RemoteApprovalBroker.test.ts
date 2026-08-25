@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionRequestId, SessionId } from '../../types/branded.js';
+import { PermissionRequestId, SessionId } from '../../types/identifiers.js';
 import { RemoteApprovalBroker } from '../RemoteApprovalBroker.js';
 
 describe('RemoteApprovalBroker', () => {
@@ -39,9 +39,11 @@ describe('RemoteApprovalBroker', () => {
       message: 'Allow?',
     });
 
-    expect(() => broker.resolve('tenant-b', sessionId, requestId, {
-      approved: true,
-    })).toThrow(/not pending/i);
+    expect(() =>
+      broker.resolve('tenant-b', sessionId, requestId, {
+        approved: true,
+      }),
+    ).toThrow(/not pending/i);
     broker.cancelSession('tenant-a', sessionId, new Error('cancelled'));
     await expect(pending).rejects.toThrow('cancelled');
   });
@@ -52,11 +54,10 @@ describe('RemoteApprovalBroker', () => {
       timeoutMs: 1000,
     });
     const controller = new AbortController();
-    const pending = broker.createHandler('tenant-a', SessionId('session-1'))
-      .requestConfirmation({
-        message: 'Allow?',
-        abortSignal: controller.signal,
-      });
+    const pending = broker.createHandler('tenant-a', SessionId('session-1')).requestConfirmation({
+      message: 'Allow?',
+      abortSignal: controller.signal,
+    });
     controller.abort(new Error('request aborted'));
     await expect(pending).rejects.toThrow('request aborted');
   });
@@ -66,7 +67,8 @@ describe('RemoteApprovalBroker', () => {
       publish: async () => {},
       timeoutMs: 5,
     });
-    const pending = broker.createHandler('tenant-a', SessionId('session-1'))
+    const pending = broker
+      .createHandler('tenant-a', SessionId('session-1'))
       .requestConfirmation({ message: 'Allow?' });
 
     await expect(pending).rejects.toMatchObject({
@@ -84,15 +86,16 @@ describe('RemoteApprovalBroker', () => {
       },
       timeoutMs: 1000,
     });
-    const pending = broker.createHandler('tenant-a', sessionId)
-      .requestConfirmation({
-        permissionRequestId: requestId,
-        message: 'Allow?',
-      });
+    const pending = broker.createHandler('tenant-a', sessionId).requestConfirmation({
+      permissionRequestId: requestId,
+      message: 'Allow?',
+    });
 
     await expect(pending).rejects.toThrow('event store unavailable');
-    expect(() => broker.resolve('tenant-a', sessionId, requestId, {
-      approved: true,
-    })).toThrow(/not pending/i);
+    expect(() =>
+      broker.resolve('tenant-a', sessionId, requestId, {
+        approved: true,
+      }),
+    ).toThrow(/not pending/i);
   });
 });

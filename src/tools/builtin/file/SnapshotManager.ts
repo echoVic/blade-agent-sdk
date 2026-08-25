@@ -1,7 +1,7 @@
 import * as crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import type { MessageId, SessionId } from '../../../types/branded.js';
+import type { MessageId, SessionId } from '../../../types/identifiers.js';
 
 /**
  * 快照元数据
@@ -145,14 +145,14 @@ export class SnapshotManager {
 
     const snapshotPath = path.join(
       this.snapshotDir,
-      `${snapshot.backupFileName}@v${metadata.version}`
+      `${snapshot.backupFileName}@v${metadata.version}`,
     );
 
     try {
       const content = await fs.readFile(snapshotPath, { encoding: 'utf-8' });
       await fs.writeFile(filePath, content, { encoding: 'utf-8' });
       console.log(
-        `[SnapshotManager] 恢复快照: ${filePath} <- ${snapshot.backupFileName}@v${metadata.version}`
+        `[SnapshotManager] 恢复快照: ${filePath} <- ${snapshot.backupFileName}@v${metadata.version}`,
       );
     } catch (error) {
       console.error(`[SnapshotManager] 恢复快照失败: ${filePath}`, error);
@@ -177,7 +177,7 @@ export class SnapshotManager {
     if (fileSnapshots.length <= this.maxSnapshots) return;
 
     const sortedSnapshots = fileSnapshots.sort(
-      (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+      (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
     );
     const toDelete = sortedSnapshots.slice(0, fileSnapshots.length - this.maxSnapshots);
 
@@ -187,7 +187,7 @@ export class SnapshotManager {
 
       const snapshotPath = path.join(
         this.snapshotDir,
-        `${snapshot.backupFileName}@v${metadata.version}`
+        `${snapshot.backupFileName}@v${metadata.version}`,
       );
 
       try {
@@ -220,7 +220,7 @@ export class SnapshotManager {
           const filePath = path.join(snapshotDir, file);
           const stats = await fs.stat(filePath);
           return { file, mtime: stats.mtime.getTime() };
-        })
+        }),
       );
 
       filesWithStats.sort((a, b) => b.mtime - a.mtime);

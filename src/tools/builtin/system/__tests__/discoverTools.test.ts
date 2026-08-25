@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
+import { createTool } from '../../../core/createTool.js';
 import { ToolRegistry } from '../../../registry/ToolRegistry.js';
-import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
-import { ToolKind } from '../../../types/ToolKind.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { ToolKind } from '../../../types/kind.js';
 import {
   collectToolExecution,
   completeToolExecution,
   type ToolYield,
-} from '../../../types/ToolResult.js';
-import { createTool } from '../../../core/createTool.js';
+} from '../../../types/result.js';
 import { discoverToolsTool } from '../discoverTools.js';
 
 async function executeDiscoverTools(
@@ -18,10 +18,7 @@ async function executeDiscoverTools(
 ) {
   const events: ToolYield[] = [];
   const result = await collectToolExecution(
-    discoverToolsTool.build(params).execute(
-      new AbortController().signal,
-      context,
-    ),
+    discoverToolsTool.build(params).execute(new AbortController().signal, context),
     (event) => {
       events.push(event);
     },
@@ -32,18 +29,20 @@ async function executeDiscoverTools(
 describe('DiscoverTools tool', () => {
   it('activates matching deferred tools through a runtime patch', async () => {
     const registry = new ToolRegistry();
-    registry.register(createTool({
-      name: 'HeavyInspect',
-      displayName: 'Heavy Inspect',
-      kind: ToolKind.Execute,
-      sideEffect: 'non_idempotent',
-      description: { short: 'Heavy inspection tool' },
-      exposure: {
-        mode: 'deferred',
-      },
-      schema: z.object({}),
-      execute: () => completeToolExecution({ status: 'success', model: '' }),
-    }) as never);
+    registry.register(
+      createTool({
+        name: 'HeavyInspect',
+        displayName: 'Heavy Inspect',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Heavy inspection tool' },
+        exposure: {
+          mode: 'deferred',
+        },
+        schema: z.object({}),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
+      }) as never,
+    );
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
@@ -70,18 +69,20 @@ describe('DiscoverTools tool', () => {
 
   it('skips already discovered tools and returns a helpful empty result', async () => {
     const registry = new ToolRegistry();
-    registry.register(createTool({
-      name: 'HeavyInspect',
-      displayName: 'Heavy Inspect',
-      kind: ToolKind.Execute,
-      sideEffect: 'non_idempotent',
-      description: { short: 'Heavy inspection tool' },
-      exposure: {
-        mode: 'deferred',
-      },
-      schema: z.object({}),
-      execute: () => completeToolExecution({ status: 'success', model: '' }),
-    }) as never);
+    registry.register(
+      createTool({
+        name: 'HeavyInspect',
+        displayName: 'Heavy Inspect',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Heavy inspection tool' },
+        exposure: {
+          mode: 'deferred',
+        },
+        schema: z.object({}),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
+      }) as never,
+    );
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
@@ -95,22 +96,25 @@ describe('DiscoverTools tool', () => {
 
   it('prefers catalog-backed search so discovery works from immutable pools too', async () => {
     const catalog = new ToolCatalog();
-    catalog.register(createTool({
-      name: 'HeavyInspect',
-      displayName: 'Heavy Inspect',
-      kind: ToolKind.Execute,
-      sideEffect: 'non_idempotent',
-      description: { short: 'Heavy inspection tool' },
-      exposure: {
-        mode: 'deferred',
+    catalog.register(
+      createTool({
+        name: 'HeavyInspect',
+        displayName: 'Heavy Inspect',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Heavy inspection tool' },
+        exposure: {
+          mode: 'deferred',
+        },
+        schema: z.object({}),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
+      }),
+      {
+        kind: 'builtin',
+        trustLevel: 'trusted',
+        sourceId: 'builtin',
       },
-      schema: z.object({}),
-      execute: () => completeToolExecution({ status: 'success', model: '' }),
-    }), {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    );
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },

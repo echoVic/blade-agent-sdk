@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
-import { SessionId } from '../../types/branded.js';
-import { LoopState } from '../state/LoopState.js';
+import type { ModelMessage } from '../../model/message.js';
+import { SessionId } from '../../types/identifiers.js';
 import { ConversationState } from '../state/ConversationState.js';
+import { LoopState } from '../state/LoopState.js';
 
 describe('LoopState', () => {
   it('exposes conversationState for the loop', () => {
-    const _initialMessages: Message[] = [{ role: 'user', content: 'hello' }];
+    const _initialMessages: ModelMessage[] = [{ role: 'user', content: 'hello' }];
     const convState = new ConversationState(null, [], { role: 'user', content: 'hello' });
 
     const loopState = new LoopState({
@@ -16,7 +16,7 @@ describe('LoopState', () => {
         userId: 'user-1',
       },
       resolveTools: () => [],
-      resolveChatService: () =>
+      resolveModelService: () =>
         ({
           chat: async () => ({
             content: 'ok',

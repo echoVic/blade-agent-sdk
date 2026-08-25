@@ -1,22 +1,13 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import {
-  appendFile,
-  mkdir,
-  mkdtemp,
-  open,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tryLock, unlock } from 'fs-native-extensions';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SessionId } from '../../../types/branded.js';
-import type { SessionEvent } from '../../types.js';
+import type { TranscriptEvent } from '../../../session/transcript.js';
+import { EventId, SessionId } from '../../../types/identifiers.js';
 import { JSONLStore } from '../JSONLStore.js';
 import { PersistentStore } from '../PersistentStore.js';
 
@@ -27,10 +18,7 @@ const lockHolderPath = join(
   'advisoryLockHolder.mjs',
 );
 
-async function withTimeout<T>(
-  promise: Promise<T>,
-  message: string,
-): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -57,12 +45,9 @@ async function createStore(options?: { lockTimeoutMs?: number }): Promise<{
   };
 }
 
-function event(
-  id: string,
-  sessionId = SessionId('session'),
-): SessionEvent {
+function event(id: string, sessionId = SessionId('session')): TranscriptEvent {
   return {
-    id,
+    id: EventId(id),
     sessionId,
     timestamp: '2026-08-23T00:00:00.000Z',
     type: 'session_updated',
@@ -73,9 +58,7 @@ function event(
 
 afterEach(async () => {
   await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
-      rm(root, { recursive: true, force: true }),
-    ),
+    temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
 });
 
@@ -86,9 +69,7 @@ describe('JSONLStore', () => {
     const entries = Array.from({ length: 100 }, (_, index) => event(`event-${index}`));
 
     await Promise.all(
-      entries.map((entry, index) =>
-        (index % 2 === 0 ? store : otherStore).append(entry),
-      ),
+      entries.map((entry, index) => (index % 2 === 0 ? store : otherStore).append(entry)),
     );
 
     const persisted = await store.readAll();
@@ -118,9 +99,7 @@ describe('JSONLStore', () => {
 
     await Promise.all(stores.map((store) => store.createSession(sessionId)));
 
-    const transcript = new JSONLStore(
-      join(root, 'sessions', `${sessionId}.jsonl`),
-    );
+    const transcript = new JSONLStore(join(root, 'sessions', `${sessionId}.jsonl`));
     const entries = await transcript.readAll();
     expect(entries.filter((entry) => entry.type === 'session_created')).toHaveLength(1);
   });
@@ -136,10 +115,7 @@ describe('JSONLStore', () => {
 
     const content = await readFile(filePath, 'utf8');
     expect(content).not.toContain('"torn"');
-    await expect(store.readAll()).resolves.toEqual([
-      event('before'),
-      event('after'),
-    ]);
+    await expect(store.readAll()).resolves.toEqual([event('before'), event('after')]);
   });
 
   it('fails closed when a committed record is corrupt', async () => {
@@ -202,11 +178,7 @@ describe('JSONLStore', () => {
     await store.append(event('valid'));
     await appendFile(
       filePath,
-      Buffer.concat([
-        Buffer.from('{"id":"'),
-        Buffer.from([0xe2, 0x82]),
-        Buffer.from('"}\n'),
-      ]),
+      Buffer.concat([Buffer.from('{"id":"'), Buffer.from([0xe2, 0x82]), Buffer.from('"}\n')]),
     );
 
     await expect(store.readAll()).rejects.toMatchObject({
@@ -216,14 +188,8 @@ describe('JSONLStore', () => {
   });
 
   it.each([
-    [
-      'a duplicate event ID',
-      event('first'),
-    ],
-    [
-      'a different Session ID',
-      event('second', SessionId('other-session')),
-    ],
+    ['a duplicate event ID', event('first')],
+    ['a different Session ID', event('second', SessionId('other-session'))],
   ])('fails closed when the log contains %s', async (_description, invalidEvent) => {
     const { filePath, store } = await createStore();
     await store.append(event('first'));
@@ -277,11 +243,7 @@ describe('JSONLStore', () => {
   it('honors a lock held by an independent Node.js process', async () => {
     const { filePath } = await createStore();
     await mkdir(dirname(filePath), { recursive: true });
-    const child = spawn(process.execPath, [
-      lockHolderPath,
-      `${filePath}.lock`,
-      '500',
-    ]);
+    const child = spawn(process.execPath, [lockHolderPath, `${filePath}.lock`, '500']);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     let stderr = '';
@@ -305,10 +267,7 @@ describe('JSONLStore', () => {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGTERM');
       }
-      const [code, signal] = await withTimeout(
-        closed,
-        `Lock holder did not exit: ${stderr}`,
-      );
+      const [code, signal] = await withTimeout(closed, `Lock holder did not exit: ${stderr}`);
       expect(code ?? signal).not.toBeNull();
     }
   });

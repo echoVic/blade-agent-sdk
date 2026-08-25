@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
@@ -18,8 +18,7 @@ export const enterPlanModeTool = createTool({
 
   // 工具描述
   description: {
-    short:
-      'Use this tool to enter plan mode for complex tasks requiring careful planning',
+    short: 'Use this tool to enter plan mode for complex tasks requiring careful planning',
     long: `Use this tool when you encounter a complex task that requires careful planning and exploration before implementation. This tool transitions you into plan mode where you can thoroughly explore the codebase and design an implementation approach.
 
 ## When to Use This Tool

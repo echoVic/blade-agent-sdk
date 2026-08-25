@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import type { RuntimeContext } from '../../runtime/index.js';
-import { SessionId } from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
+import { PermissionMode } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
 import type { SessionOptions } from '../types.js';
 
 const { SessionRuntime } = await import('../SessionRuntime.js');

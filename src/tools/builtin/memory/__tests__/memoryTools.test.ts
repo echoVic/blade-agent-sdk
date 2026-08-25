@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getBuiltinTools } from '../../index.js';
 import { MemoryManager } from '../../../../memory/MemoryManager.js';
 import type { MemoryStore } from '../../../../memory/MemoryStore.js';
-import type { Memory, MemoryInput } from '../../../../memory/MemoryTypes.js';
-import { collectToolExecution } from '../../../types/index.js';
-import { SessionId } from '../../../../types/branded.js';
+import type { Memory, MemoryInput } from '../../../../memory/types.js';
+import { SessionId } from '../../../../types/identifiers.js';
+import { collectToolExecution } from '../../../types/result.js';
+import { getBuiltinTools } from '../../index.js';
 import { createMemoryReadTool, createMemoryWriteTool } from '../index.js';
 
 class InMemoryStore implements MemoryStore {
@@ -34,16 +34,14 @@ async function executeTool<TParams>(
   tool: ReturnType<typeof createMemoryReadTool> | ReturnType<typeof createMemoryWriteTool>,
   params: TParams,
 ) {
-  return collectToolExecution(
-    tool.build(params as never).execute(new AbortController().signal),
-  );
+  return collectToolExecution(tool.build(params as never).execute(new AbortController().signal));
 }
 
 describe('memory tools', () => {
   it('does not register memory tools by default', async () => {
     const tools = await getBuiltinTools({ sessionId: SessionId('memory-default') });
     expect(tools.map((tool) => tool.name)).not.toEqual(
-      expect.arrayContaining(['MemoryRead', 'MemoryWrite'])
+      expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
@@ -55,7 +53,7 @@ describe('memory tools', () => {
     });
 
     expect(tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['MemoryRead', 'MemoryWrite'])
+      expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
@@ -101,7 +99,9 @@ describe('memory tools', () => {
 
     expect(() => readTool.build({ operation: 'get' } as never)).toThrow();
     expect(() => readTool.build({ operation: 'search' } as never)).toThrow();
-    expect(() => writeTool.build({ operation: 'save', name: 'project-context' } as never)).toThrow();
+    expect(() =>
+      writeTool.build({ operation: 'save', name: 'project-context' } as never),
+    ).toThrow();
   });
 
   it('acknowledges delete requests without claiming a missing record was deleted', async () => {

@@ -1,12 +1,16 @@
 import type { UserMessageContent } from '../agent/types.js';
-import type { StreamMessage } from '../session/types.js';
+import type { SessionStreamEvent } from '../session/types.js';
 import type {
+  CommandId,
+  EventId,
+  EventSequence,
   InputId,
+  MessageId,
   PermissionRequestId,
   RequestId,
   SessionId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 
 export const AGENT_PROTOCOL_VERSION = 1 as const;
 export type AgentProtocolVersion = typeof AGENT_PROTOCOL_VERSION;
@@ -24,8 +28,7 @@ export const AgentCommandType = {
   PERMISSION_RESOLVE: 'permission.resolve',
 } as const;
 
-export type AgentCommandType =
-  (typeof AgentCommandType)[keyof typeof AgentCommandType];
+export type AgentCommandType = (typeof AgentCommandType)[keyof typeof AgentCommandType];
 
 export type AgentServerScope =
   | 'session:create'
@@ -54,7 +57,7 @@ export interface AgentClientCapabilities {
 
 interface AgentCommandBase<TType extends AgentCommandType, TData> {
   readonly protocolVersion: AgentProtocolVersion;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly type: TType;
   readonly data: TData;
 }
@@ -100,7 +103,7 @@ export type ForkSessionCommand = AgentCommandBase<
   typeof AgentCommandType.SESSION_FORK,
   {
     readonly sessionId: SessionId;
-    readonly messageId?: string;
+    readonly messageId?: MessageId;
     readonly metadata?: JsonObject;
   }
 >;
@@ -178,21 +181,19 @@ export interface AgentProtocolErrorData {
 
 export interface AgentCommandSuccess<TData = unknown> {
   readonly protocolVersion: AgentProtocolVersion;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly ok: true;
   readonly data: TData;
 }
 
 export interface AgentCommandFailure {
   readonly protocolVersion: AgentProtocolVersion;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly ok: false;
   readonly error: AgentProtocolErrorData;
 }
 
-export type AgentCommandResult<TData = unknown> =
-  | AgentCommandSuccess<TData>
-  | AgentCommandFailure;
+export type AgentCommandResult<TData = unknown> = AgentCommandSuccess<TData> | AgentCommandFailure;
 
 export interface AgentSessionDescriptor {
   readonly sessionId: SessionId;
@@ -205,8 +206,8 @@ export interface AgentSessionDescriptor {
 export interface AgentEventCursor {
   readonly protocolVersion: AgentProtocolVersion;
   readonly sessionId: SessionId;
-  readonly sequence: number;
-  readonly eventId: string;
+  readonly sequence: EventSequence;
+  readonly eventId: EventId;
 }
 
 export interface AgentPermissionRequest {
@@ -223,18 +224,18 @@ export interface AgentPermissionRequest {
 export type AgentServerEvent =
   | {
       readonly protocolVersion: AgentProtocolVersion;
-      readonly eventId: string;
-      readonly sequence: number;
+      readonly eventId: EventId;
+      readonly sequence: EventSequence;
       readonly sessionId: SessionId;
       readonly requestId?: RequestId;
       readonly occurredAt: string;
       readonly type: 'session.stream';
-      readonly data: StreamMessage;
+      readonly data: SessionStreamEvent;
     }
   | {
       readonly protocolVersion: AgentProtocolVersion;
-      readonly eventId: string;
-      readonly sequence: number;
+      readonly eventId: EventId;
+      readonly sequence: EventSequence;
       readonly sessionId: SessionId;
       readonly requestId?: RequestId;
       readonly occurredAt: string;
@@ -243,8 +244,8 @@ export type AgentServerEvent =
     }
   | {
       readonly protocolVersion: AgentProtocolVersion;
-      readonly eventId: string;
-      readonly sequence: number;
+      readonly eventId: EventId;
+      readonly sequence: EventSequence;
       readonly sessionId: SessionId;
       readonly requestId?: RequestId;
       readonly occurredAt: string;
@@ -262,6 +263,10 @@ export interface AgentProtocolCapabilities {
     readonly eventReplay: true;
     readonly idempotentCommands: true;
   };
+}
+
+export interface AgentInitializationData extends AgentProtocolCapabilities {
+  readonly serverTime: string;
 }
 
 export interface AgentEventPage {

@@ -2,8 +2,8 @@ import { SdkError } from '../errors/SdkError.js';
 import type {
   ExecutionCheckpointId,
   ExecutionId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type { CredentialRequest } from './CredentialBroker.js';
 
 export interface ExecutionResourceLimits {

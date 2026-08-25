@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
@@ -16,13 +16,15 @@ export const discoverToolsTool = createTool({
 
 This tool searches deferred/discoverable tools, returns the best matches, and activates them for subsequent turns in the current session.`,
   },
-  schema: lazySchema(() => z.object({
-    query: z.string().min(1).describe('Search query for hidden tools'),
-    max_results: ToolSchemas.semanticNumber()
-      .pipe(z.number().int().min(1).max(10))
-      .optional()
-      .describe('Maximum tools to activate'),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      query: z.string().min(1).describe('Search query for hidden tools'),
+      max_results: ToolSchemas.semanticNumber()
+        .pipe(z.number().int().min(1).max(10))
+        .optional()
+        .describe('Maximum tools to activate'),
+    }),
+  ),
   async *execute(params, context) {
     const searchCatalog = context.toolCatalog;
     const searchSource = searchCatalog ?? context.toolRegistry;
@@ -58,9 +60,7 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     }
 
     const activatedNames = matches.map((tool) => tool.name);
-    const summary = matches
-      .map((tool) => `- ${tool.name}: ${tool.description.short}`)
-      .join('\n');
+    const summary = matches.map((tool) => `- ${tool.name}: ${tool.description.short}`).join('\n');
     const runtimePatch = {
       scope: 'session' as const,
       source: 'tool' as const,

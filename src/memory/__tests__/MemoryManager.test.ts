@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryManager } from '../MemoryManager.js';
 import type { MemoryStore } from '../MemoryStore.js';
-import type { Memory, MemoryInput } from '../MemoryTypes.js';
+import type { Memory, MemoryInput } from '../types.js';
 
 class FakeMemoryStore implements MemoryStore {
   private readonly records = new Map<string, Memory>();
@@ -58,7 +58,7 @@ describe('MemoryManager', () => {
 
     expect(await manager.readIndexContent()).toBe(
       '- [project-context](project-context) — Repository conventions\n' +
-      '- [user-preferences](user-preferences) — Product boundaries'
+        '- [user-preferences](user-preferences) — Product boundaries',
     );
   });
 

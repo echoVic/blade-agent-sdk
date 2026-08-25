@@ -1,14 +1,14 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import { createTool, defineTool, toolFromDefinition } from '../core/createTool.js';
-import type { ReadMetadata } from '../types/ToolMetadata.js';
+import { ToolKind } from '../types/kind.js';
+import type { ReadMetadata } from '../types/metadata.js';
 import {
   collectToolExecution,
   completeToolExecution,
   type ToolResult,
   type ToolYield,
-} from '../types/ToolResult.js';
-import { ToolKind } from '../types/ToolKind.js';
+} from '../types/result.js';
 import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
@@ -177,10 +177,11 @@ describe('createTool', () => {
             value: z.string(),
           });
         }),
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
       });
 
       expect(schemaInitCount).toBe(0);
@@ -200,27 +201,26 @@ describe('createTool', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'General tool description' },
         describe: (params) => ({
-          short: params?.target
-            ? `Inspect target: ${params.target}`
-            : 'General tool description',
+          short: params?.target ? `Inspect target: ${params.target}` : 'General tool description',
         }),
         schema: z.object({
           target: z.string(),
         }),
-        execute: ({ target }) => completeToolExecution({
-          status: 'success',
-          model: target,
-        }),
+        execute: ({ target }) =>
+          completeToolExecution({
+            status: 'success',
+            model: target,
+          }),
       });
 
       expect(describedTool.getFunctionDeclaration().description).toContain(
-        'General tool description'
+        'General tool description',
       );
       expect(describedTool.describe({ target: '/tmp/demo.txt' }).short).toBe(
-        'Inspect target: /tmp/demo.txt'
+        'Inspect target: /tmp/demo.txt',
       );
       expect(describedTool.build({ target: '/tmp/demo.txt' }).getDescription()).toBe(
-        'Inspect target: /tmp/demo.txt'
+        'Inspect target: /tmp/demo.txt',
       );
     });
   });
@@ -259,10 +259,11 @@ describe('createTool', () => {
           backupPath: z.string().optional(),
           files: z.array(z.string()).optional(),
         }),
-        execute: ({ file_path }) => completeToolExecution({
-          status: 'success',
-          model: file_path,
-        }),
+        execute: ({ file_path }) =>
+          completeToolExecution({
+            status: 'success',
+            model: file_path,
+          }),
       });
 
       const invocation = pathTool.build({
@@ -289,12 +290,9 @@ describe('createTool', () => {
   describe('execute', () => {
     it('should execute with valid params', async () => {
       const events: ToolYield[] = [];
-      const result = await collectToolExecution(
-        echoTool.execute({ message: 'Hello' }),
-        (event) => {
-          events.push(event);
-        },
-      );
+      const result = await collectToolExecution(echoTool.execute({ message: 'Hello' }), (event) => {
+        events.push(event);
+      });
       expect(result.status).toBe('success');
       expect(result.model).toBe('Hello');
       expect(events).toEqual([
@@ -328,10 +326,11 @@ describe('createTool', () => {
                 message: 'Blocked by semantic validation',
               }
             : undefined,
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
       });
 
       const blocked = await collectToolExecution(guardedTool.execute({ value: 'blocked' }));
@@ -410,9 +409,7 @@ describe('createTool', () => {
         })) as never,
       });
 
-      await expect(
-        collectToolExecution(invalidTool.execute({})),
-      ).rejects.toMatchObject({
+      await expect(collectToolExecution(invalidTool.execute({}))).rejects.toMatchObject({
         name: 'ToolExecutionError',
         code: 'TOOL_EXECUTION_ERROR',
         toolName: 'InvalidTool',
@@ -434,9 +431,7 @@ describe('createTool', () => {
         })) as never,
       });
 
-      await expect(
-        collectToolExecution(invalidTool.execute({})),
-      ).rejects.toMatchObject({
+      await expect(collectToolExecution(invalidTool.execute({}))).rejects.toMatchObject({
         name: 'ToolExecutionError',
         code: 'TOOL_EXECUTION_ERROR',
         toolName: 'InvalidDefinition',
@@ -460,20 +455,15 @@ describe('createTool', () => {
                 message: 'Blocked by tool permission',
               }
             : undefined,
-        execute: ({ value }) => completeToolExecution({
-          status: 'success',
-          model: value,
-        }),
+        execute: ({ value }) =>
+          completeToolExecution({
+            status: 'success',
+            model: value,
+          }),
       });
 
-      const blocked = await guardedTool.checkPermissions?.(
-        { value: 'blocked' },
-        {} as never,
-      );
-      const allowed = await guardedTool.checkPermissions?.(
-        { value: 'allowed' },
-        {} as never,
-      );
+      const blocked = await guardedTool.checkPermissions?.({ value: 'blocked' }, {} as never);
+      const allowed = await guardedTool.checkPermissions?.({ value: 'allowed' }, {} as never);
 
       expect(blocked).toEqual({
         behavior: 'deny',
@@ -611,9 +601,7 @@ describe('createTool', () => {
       });
 
       expect(toolWithSignature.preparePermissionMatcher).toBeDefined();
-      expect(
-        toolWithSignature.preparePermissionMatcher?.({ path: '/test/file.ts' })
-      ).toEqual({
+      expect(toolWithSignature.preparePermissionMatcher?.({ path: '/test/file.ts' })).toEqual({
         signatureContent: '/test/file.ts',
         abstractRule: 'read:/test/file.ts',
       });

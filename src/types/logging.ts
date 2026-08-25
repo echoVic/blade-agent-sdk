@@ -1,3 +1,5 @@
+import type { SessionId } from './identifiers.js';
+
 export type LogLevelName = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogEntry {
@@ -5,7 +7,7 @@ export interface LogEntry {
   category: string;
   message: string;
   timestamp: string;
-  sessionId?: string;
+  sessionId?: SessionId;
   args?: unknown[];
 }
 

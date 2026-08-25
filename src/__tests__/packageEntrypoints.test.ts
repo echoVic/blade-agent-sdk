@@ -59,6 +59,10 @@ describe('package entrypoints', () => {
         types: './dist/middleware/index.d.ts',
         import: './dist/middleware/index.js',
       },
+      './model': {
+        types: './dist/model/index.d.ts',
+        import: './dist/model/index.js',
+      },
     });
   });
 
@@ -74,6 +78,7 @@ describe('package entrypoints', () => {
       'src/tools/index.ts',
       'src/node/index.ts',
       'src/middleware/index.ts',
+      'src/model/index.ts',
       'src/session/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);
@@ -189,6 +194,7 @@ describe('package entrypoints', () => {
       'src/core/index.ts',
       'src/browser/index.ts',
       'src/browser/server-only-stub.ts',
+      'src/model/index.ts',
     ]) {
       const source = readFileSync(file, 'utf-8');
       for (const pattern of disallowedPatterns) {

@@ -1,4 +1,4 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 
 export interface SoftCompactionOptions {
   maxToolResultLength?: number;
@@ -6,7 +6,7 @@ export interface SoftCompactionOptions {
 }
 
 export interface SoftCompactionResult {
-  messages: Message[];
+  messages: ModelMessage[];
   truncatedCount: number;
   savedChars: number;
 }
@@ -15,13 +15,11 @@ const DEFAULT_MAX_TOOL_RESULT_LENGTH = 2000;
 const DEFAULT_MAX_TOOL_RESULTS_TO_KEEP = 50;
 
 export function softCompact(
-  messages: Message[],
+  messages: ModelMessage[],
   options: SoftCompactionOptions = {},
 ): SoftCompactionResult {
-  const maxToolResultLength =
-    options.maxToolResultLength ?? DEFAULT_MAX_TOOL_RESULT_LENGTH;
-  const maxToolResultsToKeep =
-    options.maxToolResultsToKeep ?? DEFAULT_MAX_TOOL_RESULTS_TO_KEEP;
+  const maxToolResultLength = options.maxToolResultLength ?? DEFAULT_MAX_TOOL_RESULT_LENGTH;
+  const maxToolResultsToKeep = options.maxToolResultsToKeep ?? DEFAULT_MAX_TOOL_RESULTS_TO_KEEP;
 
   // Reserved for future count-based trimming; this tier only truncates payload size.
   void maxToolResultsToKeep;

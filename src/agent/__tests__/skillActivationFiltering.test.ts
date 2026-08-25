@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
+import type { ModelMessage } from '../../model/message.js';
 import { RuntimePatchManager } from '../RuntimePatchManager.js';
 
 describe('createSkillActivationContext — system message filtering', () => {
@@ -8,13 +8,13 @@ describe('createSkillActivationContext — system message filtering', () => {
     return new RuntimePatchManager(undefined, NOOP_LOGGER);
   }
 
-  const user = (content: string): Message => ({ role: 'user', content });
-  const asst = (content: string): Message => ({ role: 'assistant', content });
-  const sys = (content: string): Message => ({ role: 'system', content });
+  const user = (content: string): ModelMessage => ({ role: 'user', content });
+  const asst = (content: string): ModelMessage => ({ role: 'assistant', content });
+  const sys = (content: string): ModelMessage => ({ role: 'system', content });
 
   it('excludes system messages from file reference analysis', () => {
     const rpm = createRPM();
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       sys('You are a helpful assistant. File: /etc/passwd'),
       user('Please read /home/user/app.ts'),
       asst('I will read the file.'),
@@ -33,7 +33,7 @@ describe('createSkillActivationContext — system message filtering', () => {
 
   it('still extracts paths from user and assistant messages', () => {
     const rpm = createRPM();
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       user('Please edit /src/index.ts'),
       asst('I read /src/utils.ts and will update it.'),
     ];
@@ -47,7 +47,7 @@ describe('createSkillActivationContext — system message filtering', () => {
 
   it('returns empty paths when all messages are system', () => {
     const rpm = createRPM();
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       sys('System prompt with /some/path.ts'),
       sys('Catalog at /tools/registry.json'),
     ];

@@ -1,38 +1,35 @@
-import { describe, expect, it } from 'vitest';
-import type { LogEntry } from '../../types/logging.js';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
-import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
-import type { SessionEvent } from '../../context/types.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
+import type { ModelContent } from '../../model/message.js';
 import { createSession, forkSession, resumeSession } from '../../node/index.js';
+import { EventId, MessageId, PartId, SessionId } from '../../types/identifiers.js';
+import type { LogEntry } from '../../types/logging.js';
 import {
   createSession as createServerSession,
   resumeSession as resumeServerSession,
 } from '../Session.js';
-import { MessageId, SessionId } from '../../types/branded.js';
-import {
-  isSessionEventStore,
-  type SessionRepository,
-} from '../SessionRepository.js';
+import { isSessionEventStore, type SessionRepository } from '../SessionRepository.js';
+import type { TranscriptEvent } from '../transcript.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-persistence-test-'));
 }
 
-function sessionEvent<T extends SessionEvent['type']>(
+function sessionEvent<T extends TranscriptEvent['type']>(
   sessionId: SessionId,
   timestamp: string,
   id: string,
   type: T,
-  data: Extract<SessionEvent, { type: T }>['data'],
-): Extract<SessionEvent, { type: T }> {
-  return { id, sessionId, timestamp, type, version: '1.1.2', data } as Extract<
-    SessionEvent,
+  data: Extract<TranscriptEvent, { type: T }>['data'],
+): Extract<TranscriptEvent, { type: T }> {
+  return { id: EventId(id), sessionId, timestamp, type, version: '1.1.2', data } as Extract<
+    TranscriptEvent,
     { type: T }
   >;
 }
@@ -55,12 +52,12 @@ function createOptions(workspaceRoot: string) {
 
 describe('Session persistence', () => {
   it('recognizes only complete transcript event Stores', () => {
-    expect(isSessionEventStore({
-      saveMessage: async () => 'message-1',
-    } as never)).toBe(false);
-    expect(isSessionEventStore(
-      new PersistentStore(createWorkspaceRoot()),
-    )).toBe(true);
+    expect(
+      isSessionEventStore({
+        saveMessage: async () => 'message-1',
+      } as never),
+    ).toBe(false);
+    expect(isSessionEventStore(new PersistentStore(createWorkspaceRoot()))).toBe(true);
   });
 
   it('requires an event writer when a read-only repository is configured', async () => {
@@ -91,11 +88,13 @@ describe('Session persistence', () => {
       },
     };
 
-    await expect(createServerSession({
-      ...createOptions(createWorkspaceRoot()),
-      storagePath: undefined,
-      sessionRepository: repository,
-    })).rejects.toMatchObject({
+    await expect(
+      createServerSession({
+        ...createOptions(createWorkspaceRoot()),
+        storagePath: undefined,
+        sessionRepository: repository,
+      }),
+    ).rejects.toMatchObject({
       code: 'CONFIG_ERROR',
     });
   });
@@ -121,9 +120,7 @@ describe('Session persistence', () => {
   });
 
   it('rejects a server storagePath without an injected repository', async () => {
-    await expect(
-      createServerSession(createOptions(createWorkspaceRoot())),
-    ).rejects.toMatchObject({
+    await expect(createServerSession(createOptions(createWorkspaceRoot()))).rejects.toMatchObject({
       code: 'CONFIG_ERROR',
     });
   });
@@ -134,7 +131,9 @@ describe('Session persistence', () => {
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', {
+      file_path: 'README.md',
+    });
     const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
       toolUse.toolCallId,
@@ -182,35 +181,35 @@ describe('Session persistence', () => {
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'user-text', 'part_created', {
-        partId: 'user-text',
+        partId: PartId('user-text'),
         messageId: MessageId('user-1'),
         partType: 'text',
         payload: { text: 'run two tools' },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-call', 'part_created', {
-        partId: 'call-first',
+        partId: PartId('call-first'),
         messageId: MessageId('user-1'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-result', 'part_created', {
-        partId: 'call-first',
+        partId: PartId('call-first'),
         messageId: MessageId('call-first'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-first', toolName: 'Search', output: 'first result' },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-call', 'part_created', {
-        partId: 'call-second',
+        partId: PartId('call-second'),
         messageId: MessageId('call-first'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-result', 'part_created', {
-        partId: 'call-second',
+        partId: PartId('call-second'),
         messageId: MessageId('call-second'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-second', toolName: 'Search', output: 'second result' },
@@ -219,19 +218,20 @@ describe('Session persistence', () => {
       sessionEvent(sessionId, now, 'final', 'message_created', {
         messageId: MessageId('assistant-final'),
         role: 'assistant',
-        parentMessageId: 'call-second',
+        parentMessageId: MessageId('call-second'),
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'final-text', 'part_created', {
-        partId: 'final-text',
+        partId: PartId('final-text'),
         messageId: MessageId('assistant-final'),
         partType: 'text',
         payload: { text: 'done' },
         createdAt: now,
       }),
     ];
-    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId))
-      .appendBatch(entries);
+    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId)).appendBatch(
+      entries,
+    );
 
     const session = await resumeSession({
       sessionId,
@@ -246,9 +246,11 @@ describe('Session persistence', () => {
       'tool',
       'assistant',
     ]);
-    expect(session.messages.filter((message) => message.role === 'tool').map(
-      (message) => message.tool_call_id,
-    )).toEqual(['call-first', 'call-second']);
+    expect(
+      session.messages
+        .filter((message) => message.role === 'tool')
+        .map((message) => message.tool_call_id),
+    ).toEqual(['call-first', 'call-second']);
 
     await session.close();
   });
@@ -363,17 +365,21 @@ describe('Session persistence', () => {
   it('should reject resume and sessionId-based fork when persistence is disabled', async () => {
     const workspaceRoot = createWorkspaceRoot();
 
-    await expect(resumeSession({
-      sessionId: SessionId('session-disabled'),
-      ...createOptions(workspaceRoot),
-      persistSession: false,
-    })).rejects.toThrow(/requires session persistence/i);
+    await expect(
+      resumeSession({
+        sessionId: SessionId('session-disabled'),
+        ...createOptions(workspaceRoot),
+        persistSession: false,
+      }),
+    ).rejects.toThrow(/requires session persistence/i);
 
-    await expect(forkSession({
-      sessionId: SessionId('session-disabled'),
-      ...createOptions(workspaceRoot),
-      persistSession: false,
-    })).rejects.toThrow(/requires session persistence/i);
+    await expect(
+      forkSession({
+        sessionId: SessionId('session-disabled'),
+        ...createOptions(workspaceRoot),
+        persistSession: false,
+      }),
+    ).rejects.toThrow(/requires session persistence/i);
   });
 
   it('should resume multimodal user messages with image parts intact', async () => {
@@ -381,7 +387,7 @@ describe('Session persistence', () => {
     const persistentStore = new PersistentStore(workspaceRoot);
 
     const sessionId = SessionId('session-multimodal');
-    const content: ContentPart[] = [
+    const content: ModelContent[] = [
       { type: 'image_url', image_url: { url: 'data:image/png;base64,resume' } },
     ];
 
@@ -410,10 +416,12 @@ describe('Session persistence', () => {
       'utf8',
     );
 
-    await expect(resumeSession({
-      sessionId,
-      ...createOptions(workspaceRoot),
-    })).rejects.toMatchObject({
+    await expect(
+      resumeSession({
+        sessionId,
+        ...createOptions(workspaceRoot),
+      }),
+    ).rejects.toMatchObject({
       code: 'SESSION_JSONL_CORRUPT_LOG',
     });
   });

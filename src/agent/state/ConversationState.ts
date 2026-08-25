@@ -1,4 +1,4 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 
 /**
  * ConversationState — 消息单一事实源的封装边界。
@@ -9,13 +9,13 @@ import type { Message } from '../../services/ChatServiceInterface.js';
  * - toArray() 返回浅拷贝（结构封装，不做对象级防变异）
  */
 export class ConversationState {
-  private readonly _messages: Message[];
+  private readonly _messages: ModelMessage[];
   private readonly _hasRootSystemPrompt: boolean;
 
   constructor(
-    rootSystemPrompt: Message | null,
-    contextMessages: Message[],
-    userMessage: Message,
+    rootSystemPrompt: ModelMessage | null,
+    contextMessages: ModelMessage[],
+    userMessage: ModelMessage,
   ) {
     this._messages = [];
     this._hasRootSystemPrompt = rootSystemPrompt !== null;
@@ -36,12 +36,12 @@ export class ConversationState {
   // ===== 读取 =====
 
   /** 只读快照，供 LLM 调用和序列化（返回浅拷贝防止外部修改数组结构） */
-  toArray(): readonly Message[] {
+  toArray(): readonly ModelMessage[] {
     return [...this._messages];
   }
 
   /** 剥离 root slot，保留所有其他消息（含非根 system）*/
-  getContextMessages(): Message[] {
+  getContextMessages(): ModelMessage[] {
     if (!this._hasRootSystemPrompt) return [...this._messages];
     return this._messages.slice(1);
   }
@@ -49,14 +49,14 @@ export class ConversationState {
   // ===== 尾部追加（AgentLoop 核心路径）=====
 
   /** 追加消息到尾部（助手响应、工具结果、注入消息等） */
-  append(...messages: Message[]): void {
+  append(...messages: ModelMessage[]): void {
     this._messages.push(...messages);
   }
 
   // ===== System 块操作（RuntimePatchManager 用）=====
 
   /** 在 system 消息块末尾（第一个非 system 消息之前）插入 */
-  insertAfterSystemBlock(message: Message): void {
+  insertAfterSystemBlock(message: ModelMessage): void {
     const insertIndex = this._messages.findIndex((m) => m.role !== 'system');
     if (insertIndex === -1) {
       this._messages.push(message);
@@ -66,7 +66,7 @@ export class ConversationState {
   }
 
   /** 替换指定索引的消息（仅限 root slot 之后） */
-  replaceAt(index: number, message: Message): void {
+  replaceAt(index: number, message: ModelMessage): void {
     const minIndex = this._hasRootSystemPrompt ? 1 : 0;
     if (index < minIndex) throw new Error('Cannot replace root system prompt');
     this._messages[index] = message;
@@ -80,7 +80,7 @@ export class ConversationState {
   }
 
   /** 查找消息索引（供 RuntimePatchManager 定位 catalog） */
-  findIndex(predicate: (msg: Message, index: number) => boolean): number {
+  findIndex(predicate: (msg: ModelMessage, index: number) => boolean): number {
     return this._messages.findIndex(predicate);
   }
 
@@ -90,12 +90,8 @@ export class ConversationState {
    * 替换所有非根内容。root slot 保持不动。
    * 不变量：newMessages 禁止包含根 prompt（由调用方保证）。
    */
-  replaceContent(newMessages: Message[]): void {
+  replaceContent(newMessages: ModelMessage[]): void {
     const rootSlotCount = this._hasRootSystemPrompt ? 1 : 0;
-    this._messages.splice(
-      rootSlotCount,
-      this._messages.length - rootSlotCount,
-      ...newMessages,
-    );
+    this._messages.splice(rootSlotCount, this._messages.length - rootSlotCount, ...newMessages);
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionMode } from '../../../types/common.js';
+import { PermissionMode } from '../../../types/constants.js';
 import { ToolRegistry } from '../ToolRegistry.js';
 
 function createTool(
@@ -189,13 +189,17 @@ describe('ToolRegistry ordering', () => {
 
   it('prioritizes exact name and alias matches ahead of looser description hits', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('Inspect', {
-      aliases: ['Scan'],
-      description: { short: 'Inspect project files' },
-    }) as never);
-    registry.register(createTool('ProjectAnalyzer', {
-      description: { short: 'Runs a scan over the project' },
-    }) as never);
+    registry.register(
+      createTool('Inspect', {
+        aliases: ['Scan'],
+        description: { short: 'Inspect project files' },
+      }) as never,
+    );
+    registry.register(
+      createTool('ProjectAnalyzer', {
+        description: { short: 'Runs a scan over the project' },
+      }) as never,
+    );
 
     expect(registry.search('scan').map((tool) => tool.name)).toEqual([
       'Inspect',
@@ -205,18 +209,20 @@ describe('ToolRegistry ordering', () => {
 
   it('indexes discovery hints and long descriptions for deferred tool search', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('HeavyInspect', {
-      description: {
-        short: 'Heavy inspection tool',
-        long: 'Performs exhaustive repository inspection for architecture review.',
-      },
-      exposure: {
-        mode: 'deferred',
-        discoveryHint: 'Use for architecture review or deep repository inspection.',
-      },
-      tags: ['analysis'],
-      category: 'inspection',
-    }) as never);
+    registry.register(
+      createTool('HeavyInspect', {
+        description: {
+          short: 'Heavy inspection tool',
+          long: 'Performs exhaustive repository inspection for architecture review.',
+        },
+        exposure: {
+          mode: 'deferred',
+          discoveryHint: 'Use for architecture review or deep repository inspection.',
+        },
+        tags: ['analysis'],
+        category: 'inspection',
+      }) as never,
+    );
 
     expect(registry.search('architecture review').map((tool) => tool.name)).toEqual([
       'HeavyInspect',

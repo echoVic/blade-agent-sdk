@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { ModelMessage, ModelToolCall } from '../../../model/message.js';
 import { decideNoToolTurn, RETRY_PROMPT } from '../decideNoToolTurn.js';
 import { decideTurnLimit } from '../decideTurnLimit.js';
 import { planToolExecution } from '../planToolExecution.js';
-import type { FunctionToolCall } from '../types.js';
 
 describe('agent loop decisions', () => {
   describe('decideNoToolTurn', () => {
@@ -17,7 +16,7 @@ describe('agent loop decisions', () => {
     });
 
     it('should stop retrying after two retry prompts', async () => {
-      const messages: Message[] = [
+      const messages: ModelMessage[] = [
         { role: 'user', content: RETRY_PROMPT },
         { role: 'assistant', content: '让我先看一下：' },
         { role: 'user', content: RETRY_PROMPT },
@@ -52,7 +51,7 @@ describe('agent loop decisions', () => {
   });
 
   describe('planToolExecution', () => {
-    const toolCall = (name: string): FunctionToolCall => ({
+    const toolCall = (name: string): ModelToolCall => ({
       id: `${name}-call`,
       type: 'function',
       function: { name, arguments: '{}' },
@@ -61,9 +60,7 @@ describe('agent loop decisions', () => {
     it('should return parallel for empty/multi calls and serial for a single call', () => {
       expect(planToolExecution([]).mode).toBe('parallel');
       expect(planToolExecution([toolCall('ReadFile')]).mode).toBe('serial');
-      expect(
-        planToolExecution([toolCall('ReadA'), toolCall('ReadB')]).mode,
-      ).toBe('parallel');
+      expect(planToolExecution([toolCall('ReadA'), toolCall('ReadB')]).mode).toBe('parallel');
     });
   });
 
@@ -71,8 +68,8 @@ describe('agent loop decisions', () => {
     const baseInput = {
       maxTurns: 3,
       turnsCount: 3,
-      messages: [{ role: 'user', content: 'Hi' }] as Message[],
-      contextMessages: [{ role: 'user', content: 'Hi' }] as Message[],
+      messages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
+      contextMessages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
       toolCallsCount: 2,
       startTime: Date.now() - 100,
       totalTokens: 321,
@@ -88,7 +85,7 @@ describe('agent loop decisions', () => {
     });
 
     it('should continue with compaction payload when handler returns continue and compact succeeds', async () => {
-      const compactedMessages: Message[] = [{ role: 'user', content: 'Continue' }];
+      const compactedMessages: ModelMessage[] = [{ role: 'user', content: 'Continue' }];
       const decision = await decideTurnLimit({
         ...baseInput,
         onTurnLimitReached: async () => ({ continue: true }),

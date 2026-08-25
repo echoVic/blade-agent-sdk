@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
-import { collectToolExecution } from '../../../types/ToolResult.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { collectToolExecution } from '../../../types/result.js';
 import { enterPlanModeTool } from '../EnterPlanModeTool.js';
 
 describe('EnterPlanMode Tool', () => {

@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { SessionId } from '../../../types/identifiers.js';
 import {
   getProjectStoragePath,
   getSessionFilePath,
   getSessionFilePathFromStorageRoot,
   unescapeProjectPath,
 } from '../pathUtils.js';
-import { SessionId } from '../../../types/branded.js';
 
 const STORAGE_ROOT = '/tmp/test-storage';
 
@@ -44,7 +44,11 @@ describe('pathUtils', () => {
 
   describe('getSessionFilePath', () => {
     it('should return .jsonl file path', () => {
-      const result = getSessionFilePath(STORAGE_ROOT, '/Users/john/project', SessionId('session-123'));
+      const result = getSessionFilePath(
+        STORAGE_ROOT,
+        '/Users/john/project',
+        SessionId('session-123'),
+      );
       expect(result).toContain('session-123.jsonl');
     });
 
@@ -64,22 +68,19 @@ describe('pathUtils', () => {
       'nul\0byte',
     ])('rejects unsafe Session ID %j', (sessionId) => {
       expect(() =>
-        getSessionFilePath(
-          STORAGE_ROOT,
-          '/Users/john/project',
-          SessionId(sessionId),
-        ),
+        getSessionFilePath(STORAGE_ROOT, '/Users/john/project', SessionId(sessionId)),
       ).toThrow(/path-segment-safe/);
-      expect(() =>
-        getSessionFilePathFromStorageRoot(STORAGE_ROOT, SessionId(sessionId)),
-      ).toThrow(/path-segment-safe/);
+      expect(() => getSessionFilePathFromStorageRoot(STORAGE_ROOT, SessionId(sessionId))).toThrow(
+        /path-segment-safe/,
+      );
     });
 
     it('preserves safe opaque Session IDs', () => {
       const sessionId = SessionId('session.v2_custom-123');
 
-      expect(getSessionFilePathFromStorageRoot(STORAGE_ROOT, sessionId))
-        .toBe(join(STORAGE_ROOT, 'sessions', `${sessionId}.jsonl`));
+      expect(getSessionFilePathFromStorageRoot(STORAGE_ROOT, sessionId)).toBe(
+        join(STORAGE_ROOT, 'sessions', `${sessionId}.jsonl`),
+      );
     });
   });
 });

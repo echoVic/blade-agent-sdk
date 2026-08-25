@@ -1,4 +1,5 @@
 import type { AgentCommandType, AgentProtocolErrorCode } from '../protocol/index.js';
+import type { CommandId, SessionId } from '../types/identifiers.js';
 
 export interface AgentServerCommandMetric {
   readonly commandType: AgentCommandType;
@@ -11,7 +12,7 @@ export interface AgentServerCommandMetric {
 
 export interface AgentServerEventMetric {
   readonly tenantId: string;
-  readonly sessionId: string;
+  readonly sessionId: SessionId;
   readonly eventType: string;
 }
 
@@ -19,9 +20,9 @@ export interface AgentServerAuditRecord {
   readonly occurredAt: string;
   readonly tenantId: string;
   readonly subject: string;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly commandType: AgentCommandType;
-  readonly sessionId?: string;
+  readonly sessionId?: SessionId;
   readonly outcome: 'success' | 'error';
   readonly errorCode?: AgentProtocolErrorCode;
 }

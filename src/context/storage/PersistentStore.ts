@@ -1,38 +1,37 @@
-import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { nanoid } from 'nanoid';
+import type { ModelContent, ModelToolCall } from '../../model/message.js';
 import type {
-  ContentPart,
-  ModelIdentity,
-  ToolCall,
-} from '../../services/ChatServiceInterface.js';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
-import {
-  NoopSessionRepository,
-  type PersistedToolUse,
-  type SessionPersistence,
+  PersistedToolUse,
+  SessionPersistence,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryMessageMetadata,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
 } from '../../session/SessionRepository.js';
+import { JsonlSessionStore } from '../../session/SessionStore.js';
+import type {
+  PersistedPendingInput,
+  TranscriptEvent,
+  TranscriptMessage,
+  TranscriptPart,
+  TranscriptSession,
+} from '../../session/transcript.js';
+import type { MessageRole } from '../../types/constants.js';
 import {
+  EventId,
   type InputId,
   MessageId,
+  type MessageId as MessageIdType,
+  PartId,
   type RequestId,
   SessionId,
-} from '../../types/branded.js';
-import type {
-  JsonObject,
-  JsonValue,
-  MessageRole,
-} from '../../types/common.js';
-import type {
-  ContextData,
-  ConversationContext,
-  MessageInfo,
-  PendingInputInfo,
-  PartInfo,
-  SessionContext,
-  SessionEvent,
-  SessionInfo,
-} from '../types.js';
+  ToolUseId,
+  type ToolUseId as ToolUseIdType,
+} from '../../types/identifiers.js';
+import type { JsonValue } from '../../types/json.js';
+import type { ContextData, ConversationContext, SessionContext } from '../types.js';
 import { JSONLStore } from './JSONLStore.js';
 import {
   detectGitBranch,
@@ -92,25 +91,20 @@ export class PersistentStore implements SessionPersistence {
    */
   private readonly knownSessions = new Set<string>();
 
-  constructor(
-    storageRoot: string,
-    maxSessions = 100,
-    version = '0.0.10',
-    projectPath?: string,
-  ) {
+  constructor(storageRoot: string, maxSessions = 100, version = '0.0.10', projectPath?: string) {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
     this.projectPath = projectPath;
     this.maxSessions = maxSessions;
     this.version = version;
   }
 
-  private createEvent<T extends SessionEvent['type']>(
+  private createEvent<T extends TranscriptEvent['type']>(
     type: T,
     sessionId: SessionId,
-    data: Extract<SessionEvent, { type: T }>['data']
-  ): SessionEvent {
+    data: Extract<TranscriptEvent, { type: T }>['data'],
+  ): TranscriptEvent {
     return {
-      id: nanoid(),
+      id: EventId(nanoid()),
       sessionId,
       timestamp: new Date().toISOString(),
       type,
@@ -118,12 +112,12 @@ export class PersistentStore implements SessionPersistence {
       ...(this.projectPath ? { gitBranch: detectGitBranch(this.projectPath) } : {}),
       version: this.version,
       data,
-    } as SessionEvent;
+    } as TranscriptEvent;
   }
 
   private async ensureSessionCreated(
     sessionId: SessionId,
-    subagentInfo?: { parentSessionId: string; subagentType: string; isSidechain: boolean }
+    subagentInfo?: SessionRepositorySubagentInfo,
   ): Promise<void> {
     if (this.knownSessions.has(sessionId)) return;
 
@@ -131,7 +125,7 @@ export class PersistentStore implements SessionPersistence {
     const store = new JSONLStore(filePath);
 
     const now = new Date().toISOString();
-    const sessionInfo: SessionInfo = {
+    const sessionInfo: TranscriptSession = {
       sessionId,
       rootId: subagentInfo?.parentSessionId ?? sessionId,
       parentId: subagentInfo?.parentSessionId,
@@ -180,11 +174,7 @@ export class PersistentStore implements SessionPersistence {
 
   async createSession(
     sessionId: SessionId,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
+    subagentInfo?: SessionRepositorySubagentInfo,
   ): Promise<void> {
     await this.ensureSessionCreated(sessionId, subagentInfo);
   }
@@ -195,32 +185,21 @@ export class PersistentStore implements SessionPersistence {
   async saveMessage(
     sessionId: SessionId,
     messageRole: MessageRole,
-    content: string | ContentPart[],
-    parentUuid: string | null = null,
-    metadata?: {
-      model?: string;
-      modelIdentity?: ModelIdentity;
-      usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: JsonObject;
-      reasoningContent?: string;
-      toolCalls?: ToolCall[];
-    },
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    }
-  ): Promise<string> {
+    content: string | ModelContent[],
+    parentMessageId: MessageIdType | null = null,
+    metadata?: SessionRepositoryMessageMetadata,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageIdType> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
       const messageId = MessageId(nanoid());
-      const messageInfo: MessageInfo = {
+      const messageInfo: TranscriptMessage = {
         messageId,
         role: messageRole,
-        parentMessageId: parentUuid ?? undefined,
+        parentMessageId: parentMessageId ?? undefined,
         createdAt: now,
         model: metadata?.modelIdentity?.model ?? metadata?.model,
         modelIdentity: metadata?.modelIdentity,
@@ -240,10 +219,7 @@ export class PersistentStore implements SessionPersistence {
     }
   }
 
-  async saveInputEnqueued(
-    sessionId: SessionId,
-    input: PendingInputInfo,
-  ): Promise<void> {
+  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
     await this.ensureSessionCreated(sessionId);
@@ -254,23 +230,19 @@ export class PersistentStore implements SessionPersistence {
     sessionId: SessionId,
     inputId: InputId,
     requestId: RequestId,
-    content: string | ContentPart[],
-    parentUuid: string | null = null,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-  ): Promise<string> {
+    content: string | ModelContent[],
+    parentMessageId: MessageIdType | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageIdType> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
     await this.ensureSessionCreated(sessionId, subagentInfo);
     const now = new Date().toISOString();
     const messageId = MessageId(nanoid());
-    const messageInfo: MessageInfo = {
+    const messageInfo: TranscriptMessage = {
       messageId,
       role: 'user',
-      parentMessageId: parentUuid ?? undefined,
+      parentMessageId: parentMessageId ?? undefined,
       createdAt: now,
       customMetadata: {
         inputId,
@@ -290,19 +262,17 @@ export class PersistentStore implements SessionPersistence {
     return messageId;
   }
 
-  async saveInputCancelled(
-    sessionId: SessionId,
-    inputId: InputId,
-    reason: string,
-  ): Promise<void> {
+  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
     await this.ensureSessionCreated(sessionId);
-    await store.append(this.createEvent('input_cancelled', sessionId, {
-      inputId,
-      reason,
-      cancelledAt: Date.now(),
-    }));
+    await store.append(
+      this.createEvent('input_cancelled', sessionId, {
+        inputId,
+        reason,
+        cancelledAt: Date.now(),
+      }),
+    );
   }
 
   /**
@@ -312,61 +282,57 @@ export class PersistentStore implements SessionPersistence {
     sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
-    parentUuid: string | null = null,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    requestedToolCallId?: string,
+    parentMessageId: MessageIdType | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    requestedToolCallId?: ToolUseIdType,
   ): Promise<PersistedToolUse> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const toolCallId = requestedToolCallId ?? nanoid();
+      const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
       const messageId = MessageId(nanoid());
-      const messageInfo: MessageInfo = {
+      const messageInfo: TranscriptMessage = {
         messageId,
         role: 'assistant',
-        parentMessageId: parentUuid ?? undefined,
+        parentMessageId: parentMessageId ?? undefined,
         createdAt: now,
       };
-      const entries: SessionEvent[] = [
+      const entries: TranscriptEvent[] = [
         this.createEvent('message_created', sessionId, messageInfo),
       ];
-      const partInfo: PartInfo = {
-        partId: toolCallId,
+      const partInfo: TranscriptPart = {
+        partId: PartId(toolCallId),
         messageId,
         partType: 'tool_call',
         payload: { toolCallId, toolName, input: toolInput },
         createdAt: now,
       };
       entries.push(this.createEvent('part_created', sessionId, partInfo));
-      if (toolName === 'Task' && toolInput && typeof toolInput === 'object' && !Array.isArray(toolInput)) {
+      if (
+        toolName === 'Task' &&
+        toolInput &&
+        typeof toolInput === 'object' &&
+        !Array.isArray(toolInput)
+      ) {
         const subtaskInput = toolInput;
         const childSessionId =
           typeof subtaskInput.subagent_session_id === 'string'
             ? subtaskInput.subagent_session_id
             : undefined;
         const agentType =
-          typeof subtaskInput.subagent_type === 'string'
-            ? subtaskInput.subagent_type
-            : undefined;
+          typeof subtaskInput.subagent_type === 'string' ? subtaskInput.subagent_type : undefined;
         if (childSessionId && agentType) {
-          const subtaskPart: PartInfo = {
-            partId: nanoid(),
+          const subtaskPart: TranscriptPart = {
+            partId: PartId(nanoid()),
             messageId,
             partType: 'subtask_ref',
             payload: {
               childSessionId,
               agentType,
               status: 'running',
-              summary:
-                typeof subtaskInput.description === 'string'
-                  ? subtaskInput.description
-                  : '',
+              summary: typeof subtaskInput.description === 'string' ? subtaskInput.description : '',
               startedAt: now,
             },
             createdAt: now,
@@ -377,10 +343,7 @@ export class PersistentStore implements SessionPersistence {
       await store.appendBatch(entries);
       return { messageId, toolCallId };
     } catch (error) {
-      console.error(
-        `[PersistentStore] 保存工具调用失败 (session: ${sessionId}):`,
-        error
-      );
+      console.error(`[PersistentStore] 保存工具调用失败 (session: ${sessionId}):`, error);
       throw error;
     }
   }
@@ -390,40 +353,31 @@ export class PersistentStore implements SessionPersistence {
    */
   async saveToolResult(
     sessionId: SessionId,
-    toolId: string,
+    toolId: ToolUseIdType,
     toolName: string,
     toolOutput: JsonValue,
-    parentUuid: string | null = null,
+    parentMessageId: MessageIdType | null = null,
     error?: string,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    subagentRef?: {
-      subagentSessionId: string;
-      subagentType: string;
-      subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
-      subagentSummary?: string;
-    }
-  ): Promise<string> {
+    subagentInfo?: SessionRepositorySubagentInfo,
+    subagentRef?: SessionRepositorySubagentRef,
+  ): Promise<MessageIdType> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
       const messageId = MessageId(nanoid());
-      const messageInfo: MessageInfo = {
+      const messageInfo: TranscriptMessage = {
         messageId,
         role: 'tool',
-        parentMessageId: parentUuid ?? undefined,
+        parentMessageId: parentMessageId ?? undefined,
         createdAt: now,
       };
-      const entries: SessionEvent[] = [
+      const entries: TranscriptEvent[] = [
         this.createEvent('message_created', sessionId, messageInfo),
       ];
-      const toolResultPart: PartInfo = {
-        partId: toolId,
+      const toolResultPart: TranscriptPart = {
+        partId: PartId(toolId),
         messageId,
         partType: 'tool_result',
         payload: { toolCallId: toolId, toolName, output: toolOutput, error: error ?? null },
@@ -431,10 +385,9 @@ export class PersistentStore implements SessionPersistence {
       };
       entries.push(this.createEvent('part_created', sessionId, toolResultPart));
       if (subagentRef) {
-        const finishedAt =
-          subagentRef.subagentStatus === 'running' ? null : now;
-        const subtaskPart: PartInfo = {
-          partId: nanoid(),
+        const finishedAt = subagentRef.subagentStatus === 'running' ? null : now;
+        const subtaskPart: TranscriptPart = {
+          partId: PartId(nanoid()),
           messageId,
           partType: 'subtask_ref',
           payload: {
@@ -452,10 +405,7 @@ export class PersistentStore implements SessionPersistence {
       await store.appendBatch(entries);
       return messageId;
     } catch (error) {
-      console.error(
-        `[PersistentStore] 保存工具结果失败 (session: ${sessionId}):`,
-        error
-      );
+      console.error(`[PersistentStore] 保存工具结果失败 (session: ${sessionId}):`, error);
       throw error;
     }
   }
@@ -473,29 +423,24 @@ export class PersistentStore implements SessionPersistence {
   async saveCompaction(
     sessionId: SessionId,
     summary: string,
-    metadata: {
-      trigger: 'auto' | 'manual';
-      preTokens: number;
-      postTokens?: number;
-      filesIncluded?: string[];
-    },
-    parentUuid: string | null = null
-  ): Promise<string> {
+    metadata: SessionRepositoryCompactionMetadata,
+    parentMessageId: MessageIdType | null = null,
+  ): Promise<MessageIdType> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId);
       const now = new Date().toISOString();
       const messageId = MessageId(nanoid());
-      const messageInfo: MessageInfo = {
+      const messageInfo: TranscriptMessage = {
         messageId,
         role: 'system',
-        parentMessageId: parentUuid ?? undefined,
+        parentMessageId: parentMessageId ?? undefined,
         createdAt: now,
       };
       const compactMetadata = this.buildCompactionMetadata(metadata);
-      const partInfo: PartInfo = {
-        partId: nanoid(),
+      const partInfo: TranscriptPart = {
+        partId: PartId(nanoid()),
         messageId,
         partType: 'summary',
         payload: { text: summary, metadata: compactMetadata },
@@ -560,9 +505,10 @@ export class PersistentStore implements SessionPersistence {
       messages: state.timeline.map((entry) => ({
         id: entry.id,
         role: entry.message.role,
-        content: typeof entry.message.content === 'string'
-          ? entry.message.content
-          : JSON.stringify(entry.message.content),
+        content:
+          typeof entry.message.content === 'string'
+            ? entry.message.content
+            : JSON.stringify(entry.message.content),
         timestamp: entry.createdAt,
       })),
       summary: state.summary,
@@ -579,14 +525,14 @@ export class PersistentStore implements SessionPersistence {
     return this.getSessionStore().loadMessages(sessionId);
   }
 
-  async forkState(sessionId: SessionId, options?: { messageId?: string }) {
+  async forkState(sessionId: SessionId, options?: { messageId?: MessageIdType }) {
     return this.getSessionStore().forkState(sessionId, options);
   }
 
   /**
    * 获取所有会话列表
    */
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     return this.getSessionStore().listSessions();
   }
 
@@ -638,7 +584,7 @@ export class PersistentStore implements SessionPersistence {
 
       // 获取所有会话的摘要信息并按时间排序
       const sessionSummaries = await Promise.all(
-        sessions.map((sessionId) => this.getSessionSummary(SessionId(sessionId)))
+        sessions.map((sessionId) => this.getSessionSummary(SessionId(sessionId))),
       );
 
       const validSummaries = sessionSummaries
@@ -650,9 +596,7 @@ export class PersistentStore implements SessionPersistence {
         .slice(this.maxSessions)
         .map((summary) => summary.sessionId);
 
-      await Promise.all(
-        sessionsToDelete.map((sessionId) => this.deleteSession(sessionId))
-      );
+      await Promise.all(sessionsToDelete.map((sessionId) => this.deleteSession(sessionId)));
 
       console.log(`[PersistentStore] 已清理 ${sessionsToDelete.length} 个旧会话`);
     } catch (error) {
@@ -735,37 +679,41 @@ export class PersistentStore implements SessionPersistence {
   private buildPartEntries(
     sessionId: SessionId,
     messageId: MessageId,
-    content: string | ContentPart[],
+    content: string | ModelContent[],
     createdAt: string,
     extra?: {
       reasoningContent?: string;
-      toolCalls?: ToolCall[];
+      toolCalls?: ModelToolCall[];
     },
-  ): SessionEvent[] {
-    const extraEntries: SessionEvent[] = [];
+  ): TranscriptEvent[] {
+    const extraEntries: TranscriptEvent[] = [];
     if (extra?.reasoningContent) {
-      extraEntries.push(this.createEvent('part_created', sessionId, {
-        partId: nanoid(),
-        messageId,
-        partType: 'reasoning',
-        payload: { text: extra.reasoningContent },
-        createdAt,
-      } satisfies PartInfo));
+      extraEntries.push(
+        this.createEvent('part_created', sessionId, {
+          partId: PartId(nanoid()),
+          messageId,
+          partType: 'reasoning',
+          payload: { text: extra.reasoningContent },
+          createdAt,
+        } satisfies TranscriptPart),
+      );
     }
 
     if (extra?.toolCalls) {
       for (const toolCall of extra.toolCalls) {
-        extraEntries.push(this.createEvent('part_created', sessionId, {
-          partId: toolCall.id,
-          messageId,
-          partType: 'tool_call',
-          payload: {
-            toolCallId: toolCall.id,
-            toolName: toolCall.function.name,
-            input: parseToolCallArguments(toolCall.function.arguments),
-          },
-          createdAt,
-        } satisfies PartInfo));
+        extraEntries.push(
+          this.createEvent('part_created', sessionId, {
+            partId: PartId(toolCall.id),
+            messageId,
+            partType: 'tool_call',
+            payload: {
+              toolCallId: toolCall.id,
+              toolName: toolCall.function.name,
+              input: parseToolCallArguments(toolCall.function.arguments),
+            },
+            createdAt,
+          } satisfies TranscriptPart),
+        );
       }
     }
 
@@ -775,12 +723,12 @@ export class PersistentStore implements SessionPersistence {
         ...(content !== ''
           ? [
               this.createEvent('part_created', sessionId, {
-                partId: nanoid(),
+                partId: PartId(nanoid()),
                 messageId,
                 partType: 'text',
                 payload: { text: content },
                 createdAt,
-              } satisfies PartInfo),
+              } satisfies TranscriptPart),
             ]
           : []),
       ];
@@ -791,7 +739,7 @@ export class PersistentStore implements SessionPersistence {
       ...content.map((part) => {
         if (part.type === 'text') {
           return this.createEvent('part_created', sessionId, {
-            partId: nanoid(),
+            partId: PartId(nanoid()),
             messageId,
             partType: 'text',
             payload: {
@@ -801,12 +749,12 @@ export class PersistentStore implements SessionPersistence {
                 : {}),
             },
             createdAt,
-          } satisfies PartInfo);
+          } satisfies TranscriptPart);
         }
 
         const mimeType = extractMimeType(part.image_url.url);
         return this.createEvent('part_created', sessionId, {
-          partId: nanoid(),
+          partId: PartId(nanoid()),
           messageId,
           partType: 'image',
           payload: {
@@ -814,202 +762,12 @@ export class PersistentStore implements SessionPersistence {
             dataUrl: part.image_url.url,
           },
           createdAt,
-        } satisfies PartInfo);
+        } satisfies TranscriptPart);
       }),
     ];
   }
 
   private getSessionStore(): JsonlSessionStore {
     return new JsonlSessionStore(this.storageRoot);
-  }
-}
-
-/** @deprecated Use NoopSessionRepository. */
-export class NoopPersistentStore extends NoopSessionRepository {
-  async initialize(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async createSession(
-    _sessionId: SessionId,
-    _subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-  ): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async saveMessage(
-    _sessionId: SessionId,
-    _messageRole: MessageRole,
-    _content: string | ContentPart[],
-    _parentUuid: string | null = null,
-    _metadata?: {
-      model?: string;
-      modelIdentity?: ModelIdentity;
-      usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: JsonObject;
-    },
-    _subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    _requestedToolCallId?: string,
-  ): Promise<string> {
-    return nanoid();
-  }
-
-  async saveInputEnqueued(
-    _sessionId: SessionId,
-    _input: PendingInputInfo,
-  ): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async saveAppliedInputMessage(
-    _sessionId: SessionId,
-    _inputId: InputId,
-    _requestId: RequestId,
-    _content: string | ContentPart[],
-    _parentUuid: string | null = null,
-    _subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-  ): Promise<string> {
-    return nanoid();
-  }
-
-  async saveInputCancelled(
-    _sessionId: SessionId,
-    _inputId: InputId,
-    _reason: string,
-  ): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async saveToolUse(
-    _sessionId: SessionId,
-    _toolName: string,
-    _toolInput: JsonValue,
-    _parentUuid: string | null = null,
-    _subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    requestedToolCallId?: string,
-  ): Promise<PersistedToolUse> {
-    return {
-      messageId: nanoid(),
-      toolCallId: requestedToolCallId ?? nanoid(),
-    };
-  }
-
-  async saveToolResult(
-    _sessionId: SessionId,
-    _toolId: string,
-    _toolName: string,
-    _toolOutput: JsonValue,
-    _parentUuid: string | null = null,
-    _error?: string,
-    _subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    _subagentRef?: {
-      subagentSessionId: string;
-      subagentType: string;
-      subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
-      subagentSummary?: string;
-    },
-  ): Promise<string> {
-    return nanoid();
-  }
-
-  async saveCompaction(
-    _sessionId: SessionId,
-    _summary: string,
-    _metadata: {
-      trigger: 'auto' | 'manual';
-      preTokens: number;
-      postTokens?: number;
-      filesIncluded?: string[];
-    },
-    _parentUuid: string | null = null,
-  ): Promise<string> {
-    return nanoid();
-  }
-
-  async saveContext(_sessionId: SessionId, _contextData: ContextData): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async saveSession(_sessionId: SessionId, _sessionContext: SessionContext): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async saveConversation(
-    _sessionId: SessionId,
-    _conversation: ConversationContext,
-  ): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async loadSession(_sessionId: SessionId): Promise<SessionContext | null> {
-    return null;
-  }
-
-  async loadConversation(_sessionId: SessionId): Promise<ConversationContext | null> {
-    return null;
-  }
-
-  async listSessions(): Promise<string[]> {
-    return [];
-  }
-
-  async getSessionSummary(_sessionId: SessionId): Promise<{
-    sessionId: SessionId;
-    lastActivity: number;
-    messageCount: number;
-    topics: string[];
-  } | null> {
-    return null;
-  }
-
-  async deleteSession(_sessionId: SessionId): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async cleanupOldSessions(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  async getStorageStats(): Promise<{
-    totalSessions: number;
-    totalSize: number;
-    projectPath?: string;
-  }> {
-    return {
-      totalSessions: 0,
-      totalSize: 0,
-    };
-  }
-
-  async checkStorageHealth(): Promise<{
-    isAvailable: boolean;
-    canWrite: boolean;
-    error?: string;
-  }> {
-    return {
-      isAvailable: false,
-      canWrite: false,
-      error: 'Session persistence is disabled',
-    };
   }
 }

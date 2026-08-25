@@ -21,6 +21,7 @@ split npm dependencies into separate packages.
 | `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Versioned command/event schemas, parsers, and protocol errors |
 | `@blade-ai/agent-sdk/tools` | Browser and Node.js | Tool authoring, catalog, and execution contracts |
 | `@blade-ai/agent-sdk/middleware` | Browser and Node.js | Onion composition, model/tool middleware, and plugin definitions |
+| `@blade-ai/agent-sdk/model` | Browser and Node.js | Provider-neutral model configuration, messages, services, retries, and usage |
 
 The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/node` resolve server APIs to stubs that throw an explicit error.
 
@@ -37,16 +38,16 @@ Functions:
 
 Types:
 
-`AgentDefinition`, `BuiltinProviderType`, `ChatConfig`, `ExecutionContext`,
+`AgentDefinition`, `BuiltinProviderType`, `ModelServiceConfig`, `ExecutionContext`,
 `ForkOptions`, `ForkSessionOptions`,
 `ForkSessionResult`, `HookCallback`, `HookInput`, `HookOutput`,
 `InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelIdentity`, `ModelInfo`,
-`PendingSessionInput`, `PromptResult`, `ProviderAdapter`, `ProviderConfig`,
+`PendingSessionInput`, `PromptResult`, `ProviderAdapter`, `ProviderConnectionConfig`,
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionRepository`,
-`SessionEventStore`, `SessionPersistence`, `SessionTool`, `StreamMessage`,
-`StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
+`SessionEventStore`, `SessionPersistence`, `SessionTool`, `SessionStreamEvent`,
+`StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolExecutionRecord`,
 `ToolDefinition`, and `ToolResult`.
 
 Repository support types:
@@ -77,7 +78,11 @@ Constants:
 - `FencingToken`
 - `AgentId`
 - `MessageId`
+- `PartId`
 - `ToolUseId`
+- `TraceId`
+- `SpanId`
+- `TraceEventId`
 
 These ID exports are branded identifiers, not arbitrary strings.
 
@@ -102,6 +107,7 @@ Runtime:
 - `parseAgentCommandResult`
 - `parseAgentEventCursor`
 - `parseAgentServerEvent`
+- `agentInitializationDataSchema`
 
 Types:
 
@@ -153,6 +159,7 @@ Types:
 - `AgentPrincipal`
 - `AgentServerScope`
 - `AgentProtocolCapabilities`
+- `AgentInitializationData`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
 - `assertRuntimeStoreConformance` (`/server/testing`)
@@ -415,15 +422,38 @@ Types:
 
 - `BuiltinProviderType`
 - `ProviderType`
-- `ProviderConfig`
+- `PROVIDER_TYPES`
+- `isBuiltinProviderType`
+- `ProviderConnectionConfig`
 - `ProviderAdapter`
 - `ProviderRegistryErrorCode`
-- `ChatConfig`
-- `IChatService`
+- `ModelConfig`
+- `ModelServiceConfig`
+- `ModelService`
+- `ModelMessage`
+- `ModelContent`
+- `ModelTextContent`
+- `ModelImageContent`
+- `ModelToolCall`
+- `ModelToolCallDelta`
+- `ModelStreamToolCall`
+- `ModelResponse`
+- `ModelStreamChunk`
+- `ModelToolDefinition`
+- `ModelProviderOptions`
+- `ModelSideQueryOptions`
+- `ModelRetryConfig`
+- `ModelRetryEvent`
+- `QuerySource`
 - `ModelIdentity`
+- `ModelUsage`
+- `TokenUsage`
+- `resolveModelIdentity`
+- `normalizeModelUsage`
 
 See [Providers and Logging](./providers) for adapter registration and routing
-semantics.
+semantics, and [Type Architecture](./type-architecture) for ownership and
+boundary rules.
 
 ## Permissions
 
@@ -446,6 +476,7 @@ Types:
 - `PermissionHandlerRequest`
 - `PermissionResult`
 - `PermissionRuleValue`
+- `PermissionsConfig`
 - `PermissionUpdate`
 
 Constants:
@@ -477,7 +508,7 @@ Runtime:
 
 - `composeMiddleware`
 - `definePlugin`
-- `wrapChatService`
+- `wrapModelService`
 
 Types:
 
@@ -629,15 +660,11 @@ Types:
 - `AgentLogger`
 - `LogEntry`
 - `LogLevelName`
-- `Assert`
-- `Extends`
-- `IsEqual`
-- `KeysEqual`
 
 Constants:
 
 - `MessageRole`
-- `StreamMessageType`
+- `SessionStreamEventType`
 
 Utility:
 

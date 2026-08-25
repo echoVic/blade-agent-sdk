@@ -1,11 +1,8 @@
-import type {
-  AgentRunControl,
-  AgentSteeringInput,
-} from '../agent/AgentRunControl.js';
+import type { AgentRunControl, AgentSteeringInput } from '../agent/AgentRunControl.js';
 import type { SteeringInterruptReason } from '../types/abort.js';
-import type { InputId, RequestId } from '../types/branded.js';
-import { InputPriority } from './types.js';
+import type { InputId, RequestId } from '../types/identifiers.js';
 import type { SessionInputInbox } from './SessionInputInbox.js';
+import { InputPriority } from './types.js';
 
 export type RequestAbortReason =
   | { kind: 'user_abort' }
@@ -59,10 +56,7 @@ export class ActiveRequestController implements AgentRunControl {
   }
 
   get stepSignal(): AbortSignal {
-    return AbortSignal.any([
-      this.requestController.signal,
-      this.stepController.signal,
-    ]);
+    return AbortSignal.any([this.requestController.signal, this.stepController.signal]);
   }
 
   get isSealed(): boolean {
@@ -93,25 +87,20 @@ export class ActiveRequestController implements AgentRunControl {
     this.stepController = new AbortController();
   }
 
-  claimSteeringInputs(options: {
-    includeNow?: boolean;
-    sealIfEmpty?: boolean;
-  } = {}): AgentSteeringInput[] {
+  claimSteeringInputs(
+    options: { includeNow?: boolean; sealIfEmpty?: boolean } = {},
+  ): AgentSteeringInput[] {
     const priorities = options.includeNow
       ? [InputPriority.NOW, InputPriority.NEXT]
       : [InputPriority.NEXT];
-    const inputs = this.inputInbox?.claimForRequest(
-      this.requestId,
-      priorities,
-      this.initialInputId,
-    ) ?? [];
+    const inputs =
+      this.inputInbox?.claimForRequest(this.requestId, priorities, this.initialInputId) ?? [];
     if (options.sealIfEmpty && inputs.length === 0) {
       this.sealed = true;
     }
     return inputs.flatMap((input) =>
-      input.priority === InputPriority.LATER
-        ? []
-        : [input as AgentSteeringInput]);
+      input.priority === InputPriority.LATER ? [] : [input as AgentSteeringInput],
+    );
   }
 
   acknowledgeInput(inputId: InputId): void {

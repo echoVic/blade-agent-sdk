@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import type { ModelToolCall } from '../../../model/message.js';
 import type { ToolRegistry } from '../../../tools/registry/ToolRegistry.js';
 import { toolUpdateToAgentEvent } from '../toolUpdateToAgentEvent.js';
-import type { FunctionToolCall } from '../types.js';
 
-const toolCall: FunctionToolCall = {
+const toolCall: ModelToolCall = {
   id: 'tc-1',
   type: 'function',
   function: { name: 'Read', arguments: '{}' },
 };
 
 const registry = {
-  get: (name: string) =>
-    name === 'Read' ? { kind: 'readonly' as const } : undefined,
+  get: (name: string) => (name === 'Read' ? { kind: 'readonly' as const } : undefined),
 } as unknown as ToolRegistry;
 
 describe('toolUpdateToAgentEvent', () => {
@@ -21,7 +20,7 @@ describe('toolUpdateToAgentEvent', () => {
   });
 
   it('maps tool_ready for unknown tool to tool_start with undefined kind', () => {
-    const unknown: FunctionToolCall = {
+    const unknown: ModelToolCall = {
       ...toolCall,
       function: { ...toolCall.function, name: 'Unknown' },
     };
@@ -32,7 +31,7 @@ describe('toolUpdateToAgentEvent', () => {
   it('maps tool_result', () => {
     const result = { status: 'success' as const, model: 'ok' };
     const event = toolUpdateToAgentEvent(
-      { type: 'tool_result', outcome: { toolCall, result, effects: [], toolUseUuid: null } },
+      { type: 'tool_result', outcome: { toolCall, result, effects: [], toolMessageId: null } },
       registry,
     );
     expect(event).toEqual({ type: 'tool_result', toolCall, result });
@@ -40,29 +39,35 @@ describe('toolUpdateToAgentEvent', () => {
 
   it('maps tool_progress / tool_message', () => {
     expect(
-      toolUpdateToAgentEvent({
-        type: 'tool_progress',
-        toolCall,
-        progress: { kind: 'progress', message: 'p', completed: 1, total: 2 },
-      }, registry),
+      toolUpdateToAgentEvent(
+        {
+          type: 'tool_progress',
+          toolCall,
+          progress: { kind: 'progress', message: 'p', completed: 1, total: 2 },
+        },
+        registry,
+      ),
     ).toEqual({
       type: 'tool_progress',
       toolCall,
       progress: { kind: 'progress', message: 'p', completed: 1, total: 2 },
     });
     expect(
-      toolUpdateToAgentEvent({
-        type: 'tool_message',
-        toolCall,
-        content: { summary: 'm' },
-      }, registry),
+      toolUpdateToAgentEvent(
+        {
+          type: 'tool_message',
+          toolCall,
+          content: { summary: 'm' },
+        },
+        registry,
+      ),
     ).toEqual({ type: 'tool_message', toolCall, content: { summary: 'm' } });
   });
 
   it('returns null for internal-only updates', () => {
     expect(
       toolUpdateToAgentEvent(
-        { type: 'tool_started', toolCall, params: {}, toolUseUuid: null },
+        { type: 'tool_started', toolCall, params: {}, toolMessageId: null },
         registry,
       ),
     ).toBeNull();
@@ -74,7 +79,7 @@ describe('toolUpdateToAgentEvent', () => {
             toolCall,
             result: { status: 'success' as const, model: '' },
             effects: [],
-            toolUseUuid: null,
+            toolMessageId: null,
           },
         },
         registry,

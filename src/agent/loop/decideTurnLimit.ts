@@ -1,27 +1,25 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import type { LoopResult, TurnLimitResponse } from '../types.js';
 
 type TurnLimitReachedHandler = (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-type TurnLimitCompactHandler = (ctx: {
-  contextMessages: Message[];
-}) => Promise<{
+type TurnLimitCompactHandler = (ctx: { contextMessages: ModelMessage[] }) => Promise<{
   success: boolean;
-  compactedMessages?: Message[];
-  continueMessage?: Message;
+  compactedMessages?: ModelMessage[];
+  continueMessage?: ModelMessage;
 }>;
 
 export type TurnLimitDecision =
   | { action: 'stop'; result: LoopResult }
   | {
       action: 'compact_and_continue';
-      compactedMessages?: Message[];
-      continueMessage?: Message;
+      compactedMessages?: ModelMessage[];
+      continueMessage?: ModelMessage;
     };
 
 interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
-  contextMessages: Message[];
+  contextMessages: ModelMessage[];
   toolCallsCount: number;
   startTime: number;
   totalTokens: number;
@@ -29,9 +27,7 @@ interface DecideTurnLimitInput {
   onTurnLimitCompact?: TurnLimitCompactHandler;
 }
 
-export async function decideTurnLimit(
-  input: DecideTurnLimitInput,
-): Promise<TurnLimitDecision> {
+export async function decideTurnLimit(input: DecideTurnLimitInput): Promise<TurnLimitDecision> {
   const {
     maxTurns,
     turnsCount,

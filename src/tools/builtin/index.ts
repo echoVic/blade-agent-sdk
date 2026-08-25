@@ -5,8 +5,8 @@
 import { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
 import type { McpRegistry } from '../../mcp/McpRegistry.js';
 import type { MemoryManager } from '../../memory/MemoryManager.js';
-import { SessionId } from '../../types/branded.js';
-import type { Tool } from '../types/index.js';
+import { SessionId } from '../../types/identifiers.js';
+import type { Tool } from '../types/tool.js';
 import { createBuiltinToolGroups, flattenBuiltinToolGroups } from './groups.js';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {

@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { writeSync } from 'node:fs';
-import { EventId, SessionId } from '../../../../types/branded.js';
+import { EventId, SessionId } from '../../../../types/identifiers.js';
 import { JsonlDurableEventStore } from '../../JsonlDurableEventStore.js';
 import { DurableEventType } from '../../types.js';
 

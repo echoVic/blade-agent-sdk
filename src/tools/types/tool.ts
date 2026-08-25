@@ -1,10 +1,10 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { z } from 'zod';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
-import type { ExecutionContext } from './ExecutionTypes.js';
-import type { ToolBehavior, ToolKind, ToolSideEffect } from './ToolKind.js';
-import type { ToolExecution, ToolValidationError } from './ToolResult.js';
+import type { ExecutionContext } from './execution.js';
+import type { ToolBehavior, ToolKind, ToolSideEffect } from './kind.js';
+import type { ToolExecution, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
   name: string;
@@ -12,17 +12,14 @@ export interface FunctionDeclaration {
   parameters: JSONSchema7;
 }
 
-export interface ToolInvocation<TParams = JsonObject> {
+export interface ToolInvocation<TParams = unknown> {
   readonly toolName: string;
   readonly params: TParams;
 
   getDescription(): string;
   getAffectedPaths(): string[];
   validate?(context?: Partial<ExecutionContext>): Promise<ToolValidationError | undefined>;
-  execute(
-    signal: AbortSignal,
-    context?: Partial<ExecutionContext>,
-  ): ToolExecution;
+  execute(signal: AbortSignal, context?: Partial<ExecutionContext>): ToolExecution;
 }
 
 export interface ToolDescription {
@@ -100,7 +97,7 @@ export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams =
   preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;
 }
 
-export interface Tool<TParams = JsonObject> {
+export interface Tool<TParams = unknown> {
   readonly name: string;
   readonly aliases?: string[];
   readonly displayName: string;
@@ -121,20 +118,20 @@ export interface Tool<TParams = JsonObject> {
   readonly tags: string[];
 
   getFunctionDeclaration(): FunctionDeclaration;
-  describe(params?: TParams): ToolDescription;
+  describe(params?: unknown): ToolDescription;
   getMetadata(): Record<string, unknown>;
-  build(params: TParams): ToolInvocation<TParams>;
-  execute(params: TParams, context?: ExecutionContext): ToolExecution;
+  build(params: unknown): ToolInvocation<TParams>;
+  execute(params: unknown, context?: ExecutionContext): ToolExecution;
 
   validateInput?: (
-    params: TParams,
+    params: unknown,
     context: ExecutionContext,
   ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
   checkPermissions?: (
-    params: TParams,
+    params: unknown,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params: TParams) => ToolBehavior;
+  resolveBehavior?: (params: unknown) => ToolBehavior;
   getBehaviorHint?: () => ToolBehavior;
-  preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;
+  preparePermissionMatcher?: (params: unknown) => PreparedPermissionMatcher;
 }

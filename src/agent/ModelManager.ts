@@ -1,21 +1,23 @@
 /**
- * ModelManager — 模型配置解析、切换、ChatService 创建
+ * ModelManager — 模型配置解析、切换、ModelService 创建
  *
  * 从 Agent.ts 拆分，职责单一：管理模型生命周期
  */
 
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import { type ModelMiddleware, wrapChatService } from '../middleware/ModelMiddleware.js';
-import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
-import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
+import { type ModelMiddleware, wrapModelService } from '../middleware/ModelMiddleware.js';
+import type { ModelConfig, OutputFormat } from '../model/config.js';
+import type { ModelService } from '../model/service.js';
+import { createModelService } from '../services/createModelService.js';
 import { withDeepSeekDefaults } from '../services/deepseek.js';
+import { wrapModelServiceWithTimeouts } from '../services/ModelServiceTimeout.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
-import type { BladeConfig, ModelConfig, OutputFormat } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';
+import type { BladeConfig } from './config.js';
 
 export class ModelManager {
-  private chatService!: IChatService;
+  private modelService!: ModelService;
   private currentModelId?: string;
   private currentModelMaxContextTokens!: number;
   private readonly contextManager: ContextManager;
@@ -36,8 +38,8 @@ export class ModelManager {
 
   // ===== Getters =====
 
-  getChatService(): IChatService {
-    return this.chatService;
+  getModelService(): ModelService {
+    return this.modelService;
   }
 
   getContextManager(): ContextManager {
@@ -90,7 +92,7 @@ export class ModelManager {
     const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
     this.currentModelMaxContextTokens = maxContextTokens;
 
-    const chatService = await createChatServiceAsync(
+    const modelService = await createModelService(
       {
         provider: modelConfig.provider,
         providerId: modelConfig.providerId?.trim() || modelConfig.provider,
@@ -110,8 +112,8 @@ export class ModelManager {
       this.logger,
       this.providerRegistry,
     );
-    this.chatService = wrapChatServiceWithTimeouts(
-      wrapChatService(chatService, this.modelMiddleware),
+    this.modelService = wrapModelServiceWithTimeouts(
+      wrapModelService(modelService, this.modelMiddleware),
     );
 
     this.currentModelId = modelConfig.id;

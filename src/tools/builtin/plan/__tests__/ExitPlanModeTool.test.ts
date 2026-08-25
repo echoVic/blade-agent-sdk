@@ -3,10 +3,11 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SessionId } from '../../../../types/branded.js';
-import { type BladeConfig, PermissionMode } from '../../../../types/common.js';
-import { collectToolExecution } from '../../../types/index.js';
-import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
+import type { BladeConfig } from '../../../../agent/config.js';
+import { PermissionMode } from '../../../../types/constants.js';
+import { SessionId } from '../../../../types/identifiers.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { collectToolExecution } from '../../../types/result.js';
 import { exitPlanModeTool } from '../ExitPlanModeTool.js';
 
 const tempDirs: string[] = [];
@@ -34,12 +35,10 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 async function executeWithContext(
   context: Partial<ExecutionContext>,
-  plan = '# Plan\n\n1. Add tests'
+  plan = '# Plan\n\n1. Add tests',
 ) {
   const invocation = exitPlanModeTool.build({ plan });
-  return collectToolExecution(
-    invocation.execute(new AbortController().signal, context),
-  );
+  return collectToolExecution(invocation.execute(new AbortController().signal, context));
 }
 
 describe('ExitPlanMode Tool', () => {
@@ -65,7 +64,7 @@ describe('ExitPlanMode Tool', () => {
         type: 'exitPlanMode',
         abortSignal: controller.signal,
         planContent: '# Plan\n\n1. Add tests',
-      })
+      }),
     );
     expect(result.status).toBe('success');
     expect(result.metadata?.targetMode).toBe(PermissionMode.DEFAULT);
@@ -84,7 +83,7 @@ describe('ExitPlanMode Tool', () => {
     expect(result.status).toBe('success');
     expect(result.model).toBe(
       '✅ Plan mode exit requested. No interactive confirmation available.\n' +
-      'Proceeding with implementation.',
+        'Proceeding with implementation.',
     );
   });
 });

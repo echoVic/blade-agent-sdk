@@ -1,8 +1,8 @@
 import type { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
 import type { McpRegistry } from '../../mcp/McpRegistry.js';
 import type { MemoryManager } from '../../memory/MemoryManager.js';
-import type { SessionId } from '../../types/branded.js';
-import type { Tool } from '../types/index.js';
+import type { SessionId } from '../../types/identifiers.js';
+import type { Tool } from '../types/tool.js';
 import { editTool, readTool, writeTool } from './file/index.js';
 import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp/index.js';
 import { createMemoryReadTool, createMemoryWriteTool } from './memory/index.js';
@@ -45,16 +45,9 @@ export function createBuiltinToolGroups(options: BuiltinToolGroupOptions): Built
   const { sessionId, configDir, mcpRegistry, memoryManager, subagentRegistry } = options;
 
   return {
-    filesystem: [
-      readTool,
-      editTool,
-      writeTool,
-      notebookEditTool,
-      globTool,
-      grepTool,
-    ] as unknown as Tool[],
-    shell: [bashTool, killShellTool] as unknown as Tool[],
-    web: [webFetchTool, webSearchTool] as unknown as Tool[],
+    filesystem: [readTool, editTool, writeTool, notebookEditTool, globTool, grepTool],
+    shell: [bashTool, killShellTool],
+    web: [webFetchTool, webSearchTool],
     task: [
       createTaskTool({ registry: subagentRegistry }),
       taskOutputTool,
@@ -64,12 +57,12 @@ export function createBuiltinToolGroups(options: BuiltinToolGroupOptions): Built
       createTaskListTool({ sessionId }),
       createTaskStopTool({ sessionId }),
       createTodoWriteTool({ sessionId, configDir }),
-    ] as unknown as Tool[],
+    ],
     memory: memoryManager
-      ? ([
+      ? [
           createMemoryReadTool({ manager: memoryManager }),
           createMemoryWriteTool({ manager: memoryManager }),
-        ] as unknown as Tool[])
+        ]
       : [],
     system: [
       enterPlanModeTool,
@@ -77,12 +70,9 @@ export function createBuiltinToolGroups(options: BuiltinToolGroupOptions): Built
       askUserQuestionTool,
       discoverToolsTool,
       skillTool,
-    ] as unknown as Tool[],
+    ],
     mcpResources: mcpRegistry
-      ? ([
-          createListMcpResourcesTool(mcpRegistry),
-          createReadMcpResourceTool(mcpRegistry),
-        ] as unknown as Tool[])
+      ? [createListMcpResourcesTool(mcpRegistry), createReadMcpResourceTool(mcpRegistry)]
       : [],
   };
 }

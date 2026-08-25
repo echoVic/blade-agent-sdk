@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
-import type {
-  ChatConfig,
-  IChatService,
-} from '../../services/ChatServiceInterface.js';
+import type { ModelServiceConfig } from '../../model/config.js';
+import type { ModelService } from '../../model/service.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { createSession } from '../Session.js';
 
-function createService(initialConfig: ChatConfig): IChatService {
+function createService(initialConfig: ModelServiceConfig): ModelService {
   let config = initialConfig;
   return {
     async chat() {
@@ -38,8 +36,7 @@ function createService(initialConfig: ChatConfig): IChatService {
 
 describe('Session provider registry', () => {
   it('runs a Session through a custom provider adapter', async () => {
-    const create = vi.fn((config: Readonly<ChatConfig>) =>
-      createService({ ...config }));
+    const create = vi.fn((config: Readonly<ModelServiceConfig>) => createService({ ...config }));
     const registry = new ProviderRegistry([
       {
         type: 'custom-wire-api',

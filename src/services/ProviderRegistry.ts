@@ -1,10 +1,10 @@
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
-import type { ProviderType } from '../types/common.js';
-import type { ChatConfig, IChatService } from './ChatServiceInterface.js';
+import type { ModelServiceConfig, ProviderType } from '../model/config.js';
+import type { ModelService } from '../model/service.js';
 
 export interface ProviderAdapter {
   readonly type: ProviderType;
-  create(config: Readonly<ChatConfig>): IChatService | PromiseLike<IChatService>;
+  create(config: Readonly<ModelServiceConfig>): ModelService | PromiseLike<ModelService>;
 }
 
 function normalizeAdapterType(type: unknown): ProviderType {
@@ -18,17 +18,17 @@ function normalizeAdapterType(type: unknown): ProviderType {
   return type;
 }
 
-function isChatService(value: unknown): value is IChatService {
+function isModelService(value: unknown): value is ModelService {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const service = value as Partial<Record<keyof IChatService, unknown>>;
+  const service = value as Partial<Record<keyof ModelService, unknown>>;
   return (
-    typeof service.chat === 'function'
-    && typeof service.sideQuery === 'function'
-    && typeof service.streamChat === 'function'
-    && typeof service.getConfig === 'function'
-    && typeof service.updateConfig === 'function'
+    typeof service.chat === 'function' &&
+    typeof service.sideQuery === 'function' &&
+    typeof service.streamChat === 'function' &&
+    typeof service.getConfig === 'function' &&
+    typeof service.updateConfig === 'function'
   );
 }
 
@@ -56,10 +56,13 @@ export class ProviderRegistry {
           { providerType: type },
         );
       }
-      registered.set(type, Object.freeze({
+      registered.set(
         type,
-        create: adapter.create.bind(adapter),
-      }));
+        Object.freeze({
+          type,
+          create: adapter.create.bind(adapter),
+        }),
+      );
     }
     this.adapters = registered;
   }
@@ -76,7 +79,7 @@ export class ProviderRegistry {
     return Object.freeze([...this.adapters.values()]);
   }
 
-  async create(config: Readonly<ChatConfig>): Promise<IChatService> {
+  async create(config: Readonly<ModelServiceConfig>): Promise<ModelService> {
     const type = normalizeAdapterType(config.provider);
     const adapter = this.adapters.get(type);
     if (!adapter) {
@@ -88,7 +91,7 @@ export class ProviderRegistry {
     }
 
     const service = await adapter.create(config);
-    if (!isChatService(service)) {
+    if (!isModelService(service)) {
       throw new ProviderRegistryError(
         'PROVIDER_ADAPTER_INVALID',
         `Provider adapter "${type}" returned an invalid chat service`,

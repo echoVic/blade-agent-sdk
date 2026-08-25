@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
-import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
+import type { ModelServiceConfig } from '../../model/config.js';
+import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 
 const mockChat = vi.fn(async () => ({
@@ -11,7 +12,7 @@ const mockChat = vi.fn(async () => ({
 const mockSideQuery = vi.fn(async () => ({
   content: '<summary>ok</summary>',
 }));
-const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => {
+const mockCreateModelServiceAsync = vi.fn(async (config: ModelServiceConfig) => {
   let currentConfig = config;
   return {
     chat: mockChat,
@@ -22,14 +23,14 @@ const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => {
     getConfig() {
       return currentConfig;
     },
-    updateConfig(next: Partial<ChatConfig>) {
+    updateConfig(next: Partial<ModelServiceConfig>) {
       currentConfig = { ...currentConfig, ...next };
     },
   };
 });
 
-vi.mock('../../services/ChatServiceInterface.js', () => ({
-  createChatServiceAsync: mockCreateChatServiceAsync,
+vi.mock('../../services/createModelService.js', () => ({
+  createModelService: mockCreateModelServiceAsync,
 }));
 
 vi.mock('../FileAnalyzer.js', () => ({
@@ -43,13 +44,13 @@ const { compact, retainRecentMessages } = await import('../CompactionService.js'
 
 describe('CompactionService', () => {
   beforeEach(() => {
-    mockCreateChatServiceAsync.mockClear();
+    mockCreateModelServiceAsync.mockClear();
     mockChat.mockClear();
     mockSideQuery.mockClear();
   });
 
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
-    const messages: Message[] = [{ role: 'user', content: 'hello' }];
+    const messages: ModelMessage[] = [{ role: 'user', content: 'hello' }];
     const controller = new AbortController();
     const providerRegistry = new ProviderRegistry();
 
@@ -63,12 +64,12 @@ describe('CompactionService', () => {
       signal: controller.signal,
     });
 
-    expect(mockCreateChatServiceAsync).toHaveBeenCalledWith(
+    expect(mockCreateModelServiceAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-5',
-        timeout: 60_000,
+        requestTimeoutMs: 60_000,
       }),
       expect.anything(),
       providerRegistry,
@@ -107,7 +108,7 @@ describe('CompactionService', () => {
       'No provider adapter is registered for "custom-api"',
       { providerType: 'custom-api' },
     );
-    mockCreateChatServiceAsync.mockRejectedValueOnce(registryError);
+    mockCreateModelServiceAsync.mockRejectedValueOnce(registryError);
 
     await expect(
       compact([{ role: 'user', content: 'hello' }], {
@@ -122,16 +123,13 @@ describe('CompactionService', () => {
 
   it('preserves a hook containment failure when cancellation races cleanup', async () => {
     const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
-    const preCompactHook = vi.spyOn(
-      HookManager.getInstance(),
-      'executePreCompactHooks',
-    ).mockImplementationOnce(async () => {
-      controller.abort(new Error('request cancelled'));
-      throw containmentError;
-    });
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
+    const preCompactHook = vi
+      .spyOn(HookManager.getInstance(), 'executePreCompactHooks')
+      .mockImplementationOnce(async () => {
+        controller.abort(new Error('request cancelled'));
+        throw containmentError;
+      });
 
     await expect(
       compact([{ role: 'user', content: 'hello' }], {
@@ -147,13 +145,12 @@ describe('CompactionService', () => {
 
   it('routes session-owned compaction hooks through the runtime boundary', async () => {
     const controller = new AbortController();
-    const runFileHookOperation = vi.fn(async (
-      signal: AbortSignal | undefined,
-      operation: () => Promise<unknown>,
-    ) => {
-      expect(signal).toBe(controller.signal);
-      return operation();
-    });
+    const runFileHookOperation = vi.fn(
+      async (signal: AbortSignal | undefined, operation: () => Promise<unknown>) => {
+        expect(signal).toBe(controller.signal);
+        return operation();
+      },
+    );
 
     await compact([{ role: 'user', content: 'hello' }], {
       trigger: 'manual',
@@ -168,7 +165,7 @@ describe('CompactionService', () => {
   });
 
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       {
         role: 'assistant',
         content: 'a',
@@ -195,7 +192,7 @@ describe('CompactionService', () => {
   });
 
   it('retainRecentMessages keeps tool results whose tool_calls are in the window', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       {
         role: 'assistant',
         content: 'a',

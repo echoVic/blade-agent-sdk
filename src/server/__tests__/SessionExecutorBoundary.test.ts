@@ -2,26 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
   type AgentCommand,
+  AgentCommandType,
   type AgentPrincipal,
 } from '../../protocol/index.js';
-import {
-  InputId,
-  PermissionRequestId,
-  RequestId,
-  SessionId,
-} from '../../types/branded.js';
+import { InputId, PermissionRequestId, RequestId, SessionId } from '../../types/identifiers.js';
 import { AgentServer } from '../AgentServer.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
-import type {
-  RuntimeStore,
-  RuntimeTenantStore,
-} from '../RuntimeStore.js';
-import type {
-  SessionExecutor,
-  SessionExecutorCommandContext,
-} from '../SessionExecutor.js';
+import type { RuntimeStore, RuntimeTenantStore } from '../RuntimeStore.js';
+import type { SessionExecutor, SessionExecutorCommandContext } from '../SessionExecutor.js';
 
 const principal: AgentPrincipal = {
   tenantId: 'tenant-a',
@@ -33,11 +22,7 @@ const sessionId = SessionId('session-1');
 const forkedSessionId = SessionId('session-2');
 const now = '2026-08-25T00:00:00.000Z';
 
-function command<T extends AgentCommand>(
-  type: T['type'],
-  commandId: string,
-  data: T['data'],
-): T {
+function command<T extends AgentCommand>(type: T['type'], commandId: string, data: T['data']): T {
   return {
     protocolVersion: AGENT_PROTOCOL_VERSION,
     commandId,
@@ -180,12 +165,9 @@ describe('SessionExecutor boundary', () => {
   });
 
   it('keeps AgentServer independent from Session implementation state', () => {
-    const source = readFileSync(
-      new URL('../AgentServer.ts', import.meta.url),
-      'utf8',
-    );
+    const source = readFileSync(new URL('../AgentServer.ts', import.meta.url), 'utf8');
 
-    expect(source).not.toContain("../session/Session.js");
+    expect(source).not.toContain('../session/Session.js');
     expect(source).not.toContain('activeSessions');
   });
 
@@ -197,18 +179,18 @@ describe('SessionExecutor boundary', () => {
     }) as unknown as RuntimeStore;
     const server = new AgentServer({ runtimeStore, sessionExecutor: executor });
 
-    await expect(server.execute(
-      command(AgentCommandType.SESSION_CREATE, 'create-runtime-store', {}),
-      principal,
-    )).resolves.toMatchObject({ ok: true });
+    await expect(
+      server.execute(
+        command(AgentCommandType.SESSION_CREATE, 'create-runtime-store', {}),
+        principal,
+      ),
+    ).resolves.toMatchObject({ ok: true });
 
     expect(calls[0]?.context?.runtimeStore).toBe(tenantStore);
     await server.close();
   });
 
   it('requires either an executor or a Session options resolver', () => {
-    expect(() => new AgentServer({} as never)).toThrow(
-      /sessionExecutor or resolveSessionOptions/,
-    );
+    expect(() => new AgentServer({} as never)).toThrow(/sessionExecutor or resolveSessionOptions/);
   });
 });

@@ -1,28 +1,34 @@
 import { nanoid } from 'nanoid';
+import type { UserMessageContent } from '../agent/types.js';
 import {
-  AgentProtocolError,
   AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
-  parseAgentCommandResult,
-  parseAgentEventCursor,
-  parseAgentServerEvent,
   type AgentClientCapabilities,
   type AgentClientInfo,
   type AgentCommand,
   type AgentCommandResult,
+  AgentCommandType,
   type AgentEventCursor,
+  type AgentInitializationData,
   type AgentInputSubmissionData,
-  type AgentProtocolCapabilities,
+  AgentProtocolError,
   type AgentServerEvent,
   type AgentSessionDescriptor,
+  agentInitializationDataSchema,
+  agentInputSubmissionDataSchema,
+  agentSessionListDataSchema,
+  agentSessionResultSchema,
+  parseAgentCommandResult,
+  parseAgentEventCursor,
+  parseAgentServerEvent,
 } from '../protocol/index.js';
 import {
+  CommandId,
+  MessageId,
   PermissionRequestId,
   type RequestId,
   SessionId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
-import type { UserMessageContent } from '../agent/types.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 
 export interface AgentClientOptions {
   readonly baseUrl: string;
@@ -96,7 +102,7 @@ export class AgentClient {
   private readonly maxCommandAttempts: number;
   private readonly maxEventReconnectAttempts: number;
   private readonly retryBaseDelayMs: number;
-  private initialization?: Promise<AgentProtocolCapabilities>;
+  private initialization?: Promise<AgentInitializationData>;
 
   constructor(private readonly options: AgentClientOptions) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
@@ -107,10 +113,7 @@ export class AgentClient {
     this.maxCommandAttempts = options.maxCommandAttempts ?? 3;
     this.maxEventReconnectAttempts = options.maxEventReconnectAttempts ?? 5;
     this.retryBaseDelayMs = options.retryBaseDelayMs ?? 250;
-    if (
-      !Number.isSafeInteger(this.maxCommandAttempts)
-      || this.maxCommandAttempts < 1
-    ) {
+    if (!Number.isSafeInteger(this.maxCommandAttempts) || this.maxCommandAttempts < 1) {
       throw new RangeError('maxCommandAttempts must be a positive safe integer');
     }
     for (const [name, value] of [
@@ -123,17 +126,20 @@ export class AgentClient {
     }
   }
 
-  initialize(options: AgentClientCommandOptions = {}): Promise<AgentProtocolCapabilities> {
+  initialize(options: AgentClientCommandOptions = {}): Promise<AgentInitializationData> {
     if (!this.initialization) {
-      const initializing = this.sendCommand({
-        protocolVersion: AGENT_PROTOCOL_VERSION,
-        commandId: options.commandId ?? nanoid(),
-        type: AgentCommandType.INITIALIZE,
-        data: {
-          client: this.options.client,
-          capabilities: this.options.capabilities,
+      const initializing = this.sendCommand(
+        {
+          protocolVersion: AGENT_PROTOCOL_VERSION,
+          commandId: CommandId(options.commandId ?? nanoid()),
+          type: AgentCommandType.INITIALIZE,
+          data: {
+            client: this.options.client,
+            capabilities: this.options.capabilities,
+          },
         },
-      }, options.signal).then((result) => result.data as AgentProtocolCapabilities);
+        options.signal,
+      ).then((result) => agentInitializationDataSchema.parse(result.data));
       this.initialization = initializing;
       void initializing.catch(() => {
         if (this.initialization === initializing) {
@@ -149,13 +155,16 @@ export class AgentClient {
     options: AgentClientCommandOptions = {},
   ): Promise<RemoteAgentSession> {
     await this.initialize({ signal: options.signal });
-    const result = await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_CREATE,
-      data: { metadata },
-    }, options.signal);
-    const descriptor = (result.data as { session: AgentSessionDescriptor }).session;
+    const result = await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_CREATE,
+        data: { metadata },
+      },
+      options.signal,
+    );
+    const descriptor = agentSessionResultSchema.parse(result.data).session;
     return new RemoteAgentSession(this, descriptor.sessionId);
   }
 
@@ -165,12 +174,15 @@ export class AgentClient {
   ): Promise<RemoteAgentSession> {
     await this.initialize({ signal: options.signal });
     const id = SessionId(sessionId);
-    await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_RESUME,
-      data: { sessionId: id },
-    }, options.signal);
+    await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_RESUME,
+        data: { sessionId: id },
+      },
+      options.signal,
+    );
     return new RemoteAgentSession(this, id);
   }
 
@@ -182,17 +194,20 @@ export class AgentClient {
     } = {},
   ): Promise<RemoteAgentSession> {
     await this.initialize({ signal: options.signal });
-    const result = await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_FORK,
-      data: {
-        sessionId: SessionId(sessionId),
-        messageId: options.messageId,
-        metadata: options.metadata,
+    const result = await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_FORK,
+        data: {
+          sessionId: SessionId(sessionId),
+          messageId: options.messageId ? MessageId(options.messageId) : undefined,
+          metadata: options.metadata,
+        },
       },
-    }, options.signal);
-    const descriptor = (result.data as { session: AgentSessionDescriptor }).session;
+      options.signal,
+    );
+    const descriptor = agentSessionResultSchema.parse(result.data).session;
     return new RemoteAgentSession(this, descriptor.sessionId);
   }
 
@@ -201,13 +216,16 @@ export class AgentClient {
     options: AgentClientCommandOptions = {},
   ): Promise<JsonObject> {
     await this.initialize({ signal: options.signal });
-    const result = await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_READ,
-      data: { sessionId: SessionId(sessionId) },
-    }, options.signal);
-    return result.data as JsonObject;
+    const result = await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_READ,
+        data: { sessionId: SessionId(sessionId) },
+      },
+      options.signal,
+    );
+    return result.data;
   }
 
   async listSessions(
@@ -220,19 +238,19 @@ export class AgentClient {
     readonly nextCursor?: string;
   }> {
     await this.initialize({ signal: options.signal });
-    const result = await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_LIST,
-      data: {
-        cursor: options.cursor,
-        limit: options.limit,
+    const result = await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_LIST,
+        data: {
+          cursor: options.cursor,
+          limit: options.limit,
+        },
       },
-    }, options.signal);
-    return result.data as unknown as {
-      sessions: AgentSessionDescriptor[];
-      nextCursor?: string;
-    };
+      options.signal,
+    );
+    return agentSessionListDataSchema.parse(result.data);
   }
 
   async submitInput(
@@ -245,19 +263,22 @@ export class AgentClient {
     } = {},
   ): Promise<AgentInputSubmissionData> {
     await this.initialize({ signal: options.signal });
-    const result = await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.INPUT_SUBMIT,
-      data: {
-        sessionId: SessionId(sessionId),
-        input,
-        priority: options.priority,
-        expectedRequestId: options.expectedRequestId,
-        maxTurns: options.maxTurns,
+    const result = await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.INPUT_SUBMIT,
+        data: {
+          sessionId: SessionId(sessionId),
+          input,
+          priority: options.priority,
+          expectedRequestId: options.expectedRequestId,
+          maxTurns: options.maxTurns,
+        },
       },
-    }, options.signal);
-    return result.data as unknown as AgentInputSubmissionData;
+      options.signal,
+    );
+    return agentInputSubmissionDataSchema.parse(result.data);
   }
 
   async abortRequest(
@@ -265,12 +286,15 @@ export class AgentClient {
     options: AgentClientCommandOptions = {},
   ): Promise<void> {
     await this.initialize({ signal: options.signal });
-    await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.REQUEST_ABORT,
-      data: { sessionId: SessionId(sessionId) },
-    }, options.signal);
+    await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.REQUEST_ABORT,
+        data: { sessionId: SessionId(sessionId) },
+      },
+      options.signal,
+    );
   }
 
   async closeSession(
@@ -278,12 +302,15 @@ export class AgentClient {
     options: AgentClientCommandOptions = {},
   ): Promise<void> {
     await this.initialize({ signal: options.signal });
-    await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.SESSION_CLOSE,
-      data: { sessionId: SessionId(sessionId) },
-    }, options.signal);
+    await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.SESSION_CLOSE,
+        data: { sessionId: SessionId(sessionId) },
+      },
+      options.signal,
+    );
   }
 
   async resolvePermission(
@@ -297,16 +324,19 @@ export class AgentClient {
     options: AgentClientCommandOptions = {},
   ): Promise<void> {
     await this.initialize({ signal: options.signal });
-    await this.sendCommand({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: options.commandId ?? nanoid(),
-      type: AgentCommandType.PERMISSION_RESOLVE,
-      data: {
-        sessionId: SessionId(sessionId),
-        permissionRequestId: PermissionRequestId(permissionRequestId),
-        ...response,
+    await this.sendCommand(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId(options.commandId ?? nanoid()),
+        type: AgentCommandType.PERMISSION_RESOLVE,
+        data: {
+          sessionId: SessionId(sessionId),
+          permissionRequestId: PermissionRequestId(permissionRequestId),
+          ...response,
+        },
       },
-    }, options.signal);
+      options.signal,
+    );
   }
 
   async *events(
@@ -419,7 +449,7 @@ export class AgentClient {
   private async sendCommand(
     command: AgentCommand,
     signal?: AbortSignal,
-  ): Promise<Extract<AgentCommandResult, { ok: true }>> {
+  ): Promise<Extract<AgentCommandResult<JsonObject>, { ok: true }>> {
     let attempt = 0;
     while (true) {
       attempt += 1;
@@ -433,7 +463,7 @@ export class AgentClient {
           body: JSON.stringify(command),
           signal,
         });
-        let result: AgentCommandResult;
+        let result: AgentCommandResult<JsonObject>;
         try {
           result = parseAgentCommandResult(await response.json());
         } catch (error) {
@@ -471,10 +501,7 @@ export class AgentClient {
         if (signal?.aborted) {
           throw signal.reason ?? error;
         }
-        if (
-          error instanceof AgentProtocolError &&
-          !error.retryable
-        ) {
+        if (error instanceof AgentProtocolError && !error.retryable) {
           throw error;
         }
         if (attempt >= this.maxCommandAttempts) {
@@ -522,7 +549,7 @@ export class AgentClient {
   }
 
   private retryDelay(attempt: number): number {
-    const exponential = this.retryBaseDelayMs * (2 ** Math.max(0, attempt - 1));
+    const exponential = this.retryBaseDelayMs * 2 ** Math.max(0, attempt - 1);
     return exponential + Math.floor(Math.random() * this.retryBaseDelayMs);
   }
 

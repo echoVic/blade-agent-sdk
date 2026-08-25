@@ -11,7 +11,7 @@ import {
   ToolAttemptId,
   ToolUseId,
   TurnId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
 import {
   DurableEventProjectionError,
   DurableSessionProjector,
@@ -952,12 +952,9 @@ describe('DurableSessionProjector', () => {
         },
       ]),
     ).toThrow(/does not declare durable tool call/);
-    expect(() =>
-      project([
-        ...turnPrefix(),
-        toolScheduled(),
-      ]),
-    ).toThrow(/does not belong to the current model attempt/);
+    expect(() => project([...turnPrefix(), toolScheduled()])).toThrow(
+      /does not belong to the current model attempt/,
+    );
   });
 
   it('rejects stale tool-attempt bindings and duplicate model tool-call IDs', () => {
@@ -1641,40 +1638,40 @@ describe('DurableSessionProjector', () => {
     });
   });
 
-  it.each(['pure', 'idempotent'] as const)(
-    'classifies a started %s tool as replayable',
-    (sideEffect) => {
-      const projection = project([
-        ...toolTurnPrefix(),
-        toolScheduled('non_idempotent'),
-        {
-          type: DurableEventType.TOOL_STARTED,
-          requestId,
-          turnId,
-          toolAttemptId,
-          data: {
-            toolCallId,
-            toolName: 'Write',
-            input: { file_path: '/tmp/final-file' },
-            sideEffect,
-          },
+  it.each([
+    'pure',
+    'idempotent',
+  ] as const)('classifies a started %s tool as replayable', (sideEffect) => {
+    const projection = project([
+      ...toolTurnPrefix(),
+      toolScheduled('non_idempotent'),
+      {
+        type: DurableEventType.TOOL_STARTED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/final-file' },
+          sideEffect,
         },
-      ]);
+      },
+    ]);
 
-      expect(planDurableSessionRecovery(projection)).toMatchObject({
-        action: 'resume_turn',
-        retryableToolAttempts: [
-          expect.objectContaining({
-            executionStarted: true,
-            status: 'started',
-            input: { file_path: '/tmp/final-file' },
-            sideEffect,
-          }),
-        ],
-        unknownToolAttempts: [],
-      });
-    },
-  );
+    expect(planDurableSessionRecovery(projection)).toMatchObject({
+      action: 'resume_turn',
+      retryableToolAttempts: [
+        expect.objectContaining({
+          executionStarted: true,
+          status: 'started',
+          input: { file_path: '/tmp/final-file' },
+          sideEffect,
+        }),
+      ],
+      unknownToolAttempts: [],
+    });
+  });
 
   it('projects every non-success terminal lifecycle variant', () => {
     const failedRequest = project([

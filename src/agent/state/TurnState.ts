@@ -1,22 +1,14 @@
-import type { JSONSchema7 } from 'json-schema';
+import type { ModelMessage } from '../../model/message.js';
+import type { ModelService, ModelToolDefinition } from '../../model/service.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
-import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type {
-  ConfirmationHandler,
-  ToolExecutionLifecycle,
-} from '../../tools/types/ExecutionTypes.js';
-import type { SessionId } from '../../types/branded.js';
-import type { BladeConfig, PermissionMode } from '../../types/common.js';
+import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
+import type { PermissionMode } from '../../types/constants.js';
+import type { SessionId } from '../../types/identifiers.js';
+import type { BladeConfig } from '../config.js';
 import type { IBackgroundAgentManager } from '../types.js';
-
-export type LlmToolDefinition = {
-  name: string;
-  description: string;
-  parameters: JSONSchema7;
-};
 
 export interface LoopSkillState {
   skillId: string;
@@ -46,9 +38,9 @@ export interface LoopExecutionContext {
 
 export interface TurnState {
   turn: number;
-  messages: readonly Message[];
-  tools: LlmToolDefinition[];
-  chatService: IChatService;
+  messages: readonly ModelMessage[];
+  tools: ModelToolDefinition[];
+  modelService: ModelService;
   maxContextTokens: number;
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;

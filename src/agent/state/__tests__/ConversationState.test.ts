@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
-import type { JsonObject } from '../../../types/common.js';
+import type { ModelMessage } from '../../../model/message.js';
+import type { JsonObject } from '../../../types/json.js';
 import { ConversationState } from '../ConversationState.js';
 
-const sys = (content: string, meta?: JsonObject): Message => ({
+const sys = (content: string, meta?: JsonObject): ModelMessage => ({
   role: 'system',
   content,
   ...(meta ? { metadata: meta } : {}),
 });
-const user = (content: string): Message => ({ role: 'user', content });
-const asst = (content: string): Message => ({ role: 'assistant', content });
+const user = (content: string): ModelMessage => ({ role: 'user', content });
+const asst = (content: string): ModelMessage => ({ role: 'assistant', content });
 
 describe('ConversationState', () => {
   // ===== 构造 + slot[0] 不变量 =====
@@ -32,7 +32,7 @@ describe('ConversationState', () => {
     });
 
     it('preserves contextMessages between root and user message', () => {
-      const ctx: Message[] = [asst('prev'), user('old')];
+      const ctx: ModelMessage[] = [asst('prev'), user('old')];
       const cs = new ConversationState(sys('root'), ctx, user('new'));
       const arr = cs.toArray();
       expect(arr).toEqual([sys('root'), asst('prev'), user('old'), user('new')]);
@@ -44,7 +44,7 @@ describe('ConversationState', () => {
   describe('toArray', () => {
     it('returns a shallow copy — pushing to result does not affect internal state', () => {
       const cs = new ConversationState(sys('root'), [], user('hi'));
-      const copy = cs.toArray() as Message[];
+      const copy = cs.toArray() as ModelMessage[];
       copy.push(asst('injected'));
       expect(cs.length).toBe(2); // not 3
     });

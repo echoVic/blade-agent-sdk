@@ -1,4 +1,4 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 
 const INCOMPLETE_INTENT_PATTERNS = [
   /：\s*$/,
@@ -10,10 +10,10 @@ const INCOMPLETE_INTENT_PATTERNS = [
 
 export const RETRY_PROMPT = '请执行你提到的操作，不要只是描述。';
 export const DEFAULT_CONTINUE_REMINDER =
-  '\n\n<system-reminder>\n'
-  + 'Please continue the conversation from where we left it off without asking the user any further questions. '
-  + 'Continue with the last task that you were asked to work on.\n'
-  + '</system-reminder>';
+  '\n\n<system-reminder>\n' +
+  'Please continue the conversation from where we left it off without asking the user any further questions. ' +
+  'Continue with the last task that you were asked to work on.\n' +
+  '</system-reminder>';
 
 type StopCheck = (ctx: {
   content: string;
@@ -21,24 +21,23 @@ type StopCheck = (ctx: {
 }) => Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }>;
 
 export type NoToolTurnDecision =
-  | { action: 'retry'; message: Message }
-  | { action: 'continue_with_reminder'; message: Message; warning?: string }
+  | { action: 'retry'; message: ModelMessage }
+  | { action: 'continue_with_reminder'; message: ModelMessage; warning?: string }
   | { action: 'finish' };
 
 function isIncompleteIntent(content: string): boolean {
   return INCOMPLETE_INTENT_PATTERNS.some((pattern) => pattern.test(content));
 }
 
-function countRecentRetries(messages: readonly Message[]): number {
+function countRecentRetries(messages: readonly ModelMessage[]): number {
   return messages
     .slice(-10)
-    .filter((message) => message.role === 'user' && message.content === RETRY_PROMPT)
-    .length;
+    .filter((message) => message.role === 'user' && message.content === RETRY_PROMPT).length;
 }
 
 export async function decideNoToolTurn(
   content: string,
-  messages: readonly Message[],
+  messages: readonly ModelMessage[],
   turn: number,
   onStopCheck?: StopCheck,
 ): Promise<NoToolTurnDecision> {

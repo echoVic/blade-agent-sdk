@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { NetworkSandboxSettings, SandboxSettings } from '../types/common.js';
+import type { NetworkSandboxSettings, SandboxSettings } from './config.js';
 import { createSandboxUnavailableError } from './sandboxErrors.js';
 
 export interface SandboxExecutionOptions {
@@ -339,7 +339,10 @@ export class SandboxExecutor {
     return lines.join('\n');
   }
 
-  buildExecutionOptions(workDir: string, networkSettings?: NetworkSandboxSettings): SandboxExecutionOptions {
+  buildExecutionOptions(
+    workDir: string,
+    networkSettings?: NetworkSandboxSettings,
+  ): SandboxExecutionOptions {
     const options: SandboxExecutionOptions = {
       workDir,
       allowedReadPaths: [],

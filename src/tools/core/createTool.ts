@@ -1,18 +1,8 @@
 import type { z } from 'zod';
-import type { JsonObject, JsonValue } from '../../types/common.js';
-import type {
-    ExecutionContext,
-    Tool,
-    ToolConfig,
-    ToolDefinition,
-    ToolInvocation,
-} from '../types/index.js';
-import {
-    createToolBehavior,
-    isReadOnlyKind,
-    isToolSideEffect,
-    ToolKind,
-} from '../types/ToolKind.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
+import type { ExecutionContext } from '../types/execution.js';
+import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
+import type { Tool, ToolConfig, ToolDefinition, ToolInvocation } from '../types/tool.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
@@ -22,7 +12,7 @@ import { UnifiedToolInvocation } from './ToolInvocation.js';
  * 创建工具的工厂函数
  */
 export function createTool<TSchema extends z.ZodSchema>(
-  config: ToolConfig<TSchema, z.infer<TSchema>>
+  config: ToolConfig<TSchema, z.infer<TSchema>>,
 ): Tool<z.infer<TSchema>> {
   type TParams = z.infer<TSchema>;
   let cachedSchema: TSchema | undefined;
@@ -36,8 +26,7 @@ export function createTool<TSchema extends z.ZodSchema>(
     return cachedSchema;
   };
 
-  const resolveDescription = (params?: TParams) =>
-    config.describe?.(params) ?? config.description;
+  const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
 
   const staticBehavior = createToolBehavior(config.kind, config.sideEffect, {
     isReadOnly: config.isReadOnly,
@@ -93,8 +82,10 @@ export function createTool<TSchema extends z.ZodSchema>(
     category: config.category,
     tags: config.tags || [],
 
-    describe(params?: TParams) {
-      return resolveDescription(params);
+    describe(params?: unknown) {
+      return resolveDescription(
+        params === undefined ? undefined : parseWithZod(getSchema(), params),
+      );
     },
 
     /**
@@ -139,7 +130,7 @@ export function createTool<TSchema extends z.ZodSchema>(
     /**
      * 构建工具调用
      */
-    build(params: TParams): ToolInvocation<TParams> {
+    build(params: unknown): ToolInvocation<TParams> {
       // 使用 Zod 验证参数
       const validatedParams = parseWithZod(getSchema(), params);
 
@@ -156,17 +147,14 @@ export function createTool<TSchema extends z.ZodSchema>(
     /**
      * 一键执行
      */
-    execute(params: TParams, context: ExecutionContext = {}) {
+    execute(params: unknown, context: ExecutionContext = {}) {
       const invocation = this.build(params);
-      return invocation.execute(
-        context.signal ?? new AbortController().signal,
-        context,
-      );
+      return invocation.execute(context.signal ?? new AbortController().signal, context);
     },
 
     validateInput: validateInputFn
-      ? (params: TParams, context: ExecutionContext) =>
-          validateInputFn(params, context)
+      ? (params: unknown, context: ExecutionContext) =>
+          validateInputFn(parseWithZod(getSchema(), params), context)
       : undefined,
 
     getBehaviorHint() {
@@ -174,11 +162,11 @@ export function createTool<TSchema extends z.ZodSchema>(
     },
 
     checkPermissions: checkPermissionsFn
-      ? (params: TParams, context: ExecutionContext) =>
-          checkPermissionsFn(params, context)
+      ? (params: unknown, context: ExecutionContext) =>
+          checkPermissionsFn(parseWithZod(getSchema(), params), context)
       : undefined,
 
-    resolveBehavior(params: TParams) {
+    resolveBehavior(params: unknown) {
       const validatedParams = parseWithZod(getSchema(), params);
       if (!config.resolveBehavior) {
         return staticBehavior;
@@ -190,7 +178,7 @@ export function createTool<TSchema extends z.ZodSchema>(
     },
 
     preparePermissionMatcher: preparePermissionMatcherFn
-      ? (params: TParams) => preparePermissionMatcherFn(params)
+      ? (params: unknown) => preparePermissionMatcherFn(parseWithZod(getSchema(), params))
       : undefined,
   };
 }
@@ -220,15 +208,16 @@ function formatToolDescription(description: {
 
 /**
  * 从 ToolDefinition 创建 Tool 实例
- * 
+ *
  * 用于将用户定义的简化工具转换为内部 Tool 对象
  */
 export function toolFromDefinition<TParams = JsonObject>(
-  definition: ToolDefinition<TParams>
+  definition: ToolDefinition<TParams>,
 ): Tool<TParams> {
-  const description = typeof definition.description === 'string'
-    ? { short: definition.description }
-    : definition.description;
+  const description =
+    typeof definition.description === 'string'
+      ? { short: definition.description }
+      : definition.description;
   const staticBehavior = createToolBehavior(
     definition.kind || ToolKind.Execute,
     definition.sideEffect,
@@ -285,10 +274,11 @@ export function toolFromDefinition<TParams = JsonObject>(
       };
     },
 
-    build(params: TParams): ToolInvocation<TParams> {
+    build(params: unknown): ToolInvocation<TParams> {
+      const typedParams = params as TParams;
       return new UnifiedToolInvocation<TParams>(
         definition.name,
-        params,
+        typedParams,
         (p, ctx) => definition.execute(p, ctx),
         undefined,
         undefined,
@@ -296,12 +286,9 @@ export function toolFromDefinition<TParams = JsonObject>(
       );
     },
 
-    execute(params: TParams, context: ExecutionContext = {}) {
+    execute(params: unknown, context: ExecutionContext = {}) {
       const invocation = this.build(params);
-      return invocation.execute(
-        context.signal ?? new AbortController().signal,
-        context,
-      );
+      return invocation.execute(context.signal ?? new AbortController().signal, context);
     },
 
     getBehaviorHint() {
@@ -342,16 +329,18 @@ function inferAffectedPaths(params: unknown): string[] {
 }
 
 function isPathLikeKey(key: string): boolean {
-  return key === 'path'
-    || key.endsWith('_path')
-    || key.endsWith('Path')
-    || key === 'file'
-    || key === 'directory';
+  return (
+    key === 'path' ||
+    key.endsWith('_path') ||
+    key.endsWith('Path') ||
+    key === 'file' ||
+    key === 'directory'
+  );
 }
 
 /**
  * 定义工具的便捷函数
- * 
+ *
  * @example
  * ```typescript
  * const myTool = defineTool({
@@ -374,12 +363,10 @@ function isPathLikeKey(key: string): boolean {
  * ```
  */
 export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
-  definition: ToolDefinition<TParams, TData>
+  definition: ToolDefinition<TParams, TData>,
 ): ToolDefinition<TParams, TData> {
   if (!isToolSideEffect(definition.sideEffect)) {
-    throw new TypeError(
-      'Tool sideEffect must be pure, idempotent, or non_idempotent',
-    );
+    throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   return definition;
 }

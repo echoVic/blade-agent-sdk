@@ -1,6 +1,6 @@
 import { AbortError } from '../../errors/AbortError.js';
 import { SdkError } from '../../errors/SdkError.js';
-import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
+import { EventId, EventSequence, SessionId } from '../../types/identifiers.js';
 import {
   type DurableEventStore,
   type DurableEventStoreOperation,
@@ -114,7 +114,7 @@ export function parseDurableEventCursor(value: unknown): DurableEventCursor {
   }
   return {
     version: DURABLE_EVENT_CURSOR_VERSION,
-    sessionId: cursor.sessionId as SessionId,
+    sessionId: SessionId(cursor.sessionId),
     sequence: EventSequence(cursor.sequence as number),
     eventId: EventId(cursor.eventId),
   };

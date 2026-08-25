@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { OutputParser } from '../OutputParser.js';
-import type { CommandHook, HookConfig, ProcessResult } from '../types/HookTypes.js';
-import { HookType } from '../types/HookTypes.js';
+import type { CommandHook, HookConfig, ProcessResult } from '../types.js';
+import { HookType } from '../types.js';
 
 describe('OutputParser', () => {
   const parser = new OutputParser();

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { SessionId } from '../../../types/branded.js';
+import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorCode } from '../../../utils/errorUtils.js';
 import type { TodoItem, TodoStatus, ValidationResult } from './types.js';
 
@@ -56,18 +56,14 @@ export class TodoManager {
    * 更新 TODO 列表
    */
   async updateTodos(
-    newTodos: Array<
-      Partial<TodoItem> & Pick<TodoItem, 'content' | 'status' | 'activeForm'>
-    >
+    newTodos: Array<Partial<TodoItem> & Pick<TodoItem, 'content' | 'status' | 'activeForm'>>,
   ): Promise<void> {
     await this.ensureLoaded();
 
     const now = new Date().toISOString();
 
     const processed: TodoItem[] = newTodos.map((todo) => {
-      const existing = this.todos.find(
-        (t) => t.id === todo.id || t.content === todo.content
-      );
+      const existing = this.todos.find((t) => t.id === todo.id || t.content === todo.content);
 
       return {
         ...todo,
@@ -75,13 +71,9 @@ export class TodoManager {
         priority: todo.priority || existing?.priority || 'medium',
         createdAt: existing?.createdAt || now,
         startedAt:
-          todo.status === 'in_progress' && !existing?.startedAt
-            ? now
-            : existing?.startedAt,
+          todo.status === 'in_progress' && !existing?.startedAt ? now : existing?.startedAt,
         completedAt:
-          todo.status === 'completed' && !existing?.completedAt
-            ? now
-            : existing?.completedAt,
+          todo.status === 'completed' && !existing?.completedAt ? now : existing?.completedAt,
       };
     });
 

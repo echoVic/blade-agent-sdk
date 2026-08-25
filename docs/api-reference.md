@@ -19,6 +19,7 @@
 | `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | 版本化 command/event schema、解析器和协议错误 |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/middleware` | Browser-safe / Node | 洋葱组合器、模型/工具 middleware 与插件定义 |
+| `@blade-ai/agent-sdk/model` | Browser-safe / Node | Provider 无关的模型配置、消息、服务、重试与用量契约 |
 
 ## 函数
 
@@ -51,7 +52,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
 | `composeMiddleware` | root / core / middleware | 组合通用洋葱 middleware |
 | `definePlugin` | root / core / middleware | 定义声明式 Agent 插件 |
-| `wrapChatService` | root / core / middleware | 使用模型 middleware 包装 `IChatService` |
+| `wrapModelService` | root / core / middleware | 使用模型 middleware 包装 `ModelService` |
 | `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
 | `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
 | `getErrorMessage` 等 | root | 安全提取未知错误信息 |
@@ -92,7 +93,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
 | `ToolKind` | `ReadOnly` / `Write` / `Execute` |
 | `InputPriority` | `NOW` / `NEXT` / `LATER` |
-| `StreamMessageType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
+| `SessionStreamEventType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
 | `MessageRole` | `SYSTEM` / `USER` / `ASSISTANT` / `TOOL` |
 | `PermissionDecision` | `ALLOW` / `DENY` / `ASK` |
 
@@ -115,11 +116,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
-| `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
+| `MessageId` / `PartId` / `ToolUseId` | transcript 消息、内容 part 与工具调用标识 |
+| `EventId` / `EventSequence` | event 标识与 Session 内单调序列 |
 | `CommandId` / `TurnId` / `ModelAttemptId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、模型尝试、工具尝试与权限请求标识 |
 | `WorkerId` / `ExecutionLeaseId` / `FencingToken` | worker、租约和单调 fence 的 branded identifiers |
+| `TraceId` / `SpanId` / `TraceEventId` | trace、span 与 trace event 标识 |
 | `StreamOptions` | stream() 选项 |
-| `StreamMessage` | Session 流式消息联合类型 |
+| `SessionStreamEvent` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
 | `ResumeOptions` | resume 选项 |
 | `ForkOptions` | fork 选项 |
@@ -142,11 +145,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `AgentCommand` / `AgentCommandResult` | protocol v1 command 与结果判别联合 |
 | `AgentServerEvent` / `AgentEventCursor` / `AgentEventPage` | 单调 sequence 的远程事件与 cursor |
 | `AgentPrincipal` / `AgentServerScope` | 服务端认证主体与授权 scope |
-| `AgentProtocolCapabilities` / `AgentClientCapabilities` | `initialize` 能力协商 |
+| `AgentProtocolCapabilities` / `AgentClientCapabilities` | 服务端与客户端能力描述 |
+| `AgentInitializationData` | `initialize` 响应，包含协商能力与 `serverTime` |
 | `AgentProtocolError` / `AgentProtocolErrorCode` | 稳定 wire error |
 | `AGENT_PROTOCOL_VERSION` / `AgentCommandType` | 协议版本与 command 常量 |
 | `parseAgentCommand` / `parseAgentCommandResult` | strict command envelope parser |
 | `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
+| `agentInitializationDataSchema` | strict initialize response schema |
 | `RuntimeStore` / `RuntimeTenantStore` | 共享 authority 与 tenant-scoped Session/durable adapter |
 | `RUNTIME_STORE_SCHEMA_VERSION` / `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION` | 数据库 schema 与 domain event schema 版本 |
 | `RuntimeCommandCommit` / `RuntimeCommitResult` | 原子 command、event、effect、projection transaction |
@@ -277,7 +282,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolModelContent` | 回写模型上下文的工具内容 |
 | `ToolDisplayContent` | 展示给用户的工具内容 |
 | `ExecutionContext` | 工具执行上下文 |
-| `ToolCallRecord` | 工具调用记录 |
+| `ToolExecutionRecord` | 工具调用记录 |
 | `ToolExposureConfig` | 工具暴露配置 |
 | `ToolExposureMode` | 工具暴露模式 |
 | `ToolExecutionUpdate` | 工具执行过程更新事件 |
@@ -317,14 +322,29 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ProviderRegistryError` | Registry 配置与查找错误 |
 | `ProviderRegistryErrorCode` | Registry 错误码 |
 | `ProviderAdapter` | 自定义 provider adapter 契约 |
-| `ProviderConfig` | Provider 配置 |
+| `ProviderConnectionConfig` | Provider 配置 |
 | `BuiltinProviderType` | 内置 Provider adapter 类型字面量 |
 | `ProviderType` | 内置或自定义 Provider adapter 类型 |
-| `ChatConfig` | 传给 Provider adapter 的模型请求配置 |
-| `IChatService` | Provider adapter 返回的聊天服务契约 |
+| `PROVIDER_TYPES` / `isBuiltinProviderType` | 内置 Provider catalog 与类型守卫 |
+| `ModelConfig` | Registry 中可注册、可切换的模型描述 |
+| `ModelServiceConfig` | 传给 Provider adapter 的模型请求配置 |
+| `ModelService` | Provider adapter 返回的聊天服务契约 |
+| `ModelMessage` / `ModelContent` / `ModelToolCall` | Provider 无关的模型消息与工具调用 |
+| `ModelTextContent` / `ModelImageContent` | 文本与图片内容 part |
+| `ModelToolCallDelta` / `ModelStreamToolCall` | 流式工具调用增量与聚合类型 |
+| `ModelResponse` / `ModelStreamChunk` | 非流式响应与流式增量 |
+| `ModelToolDefinition` | 传给模型的函数定义 |
+| `ModelProviderOptions` / `ModelSideQueryOptions` | Provider 扩展和 side query 选项 |
+| `ModelRetryConfig` / `ModelRetryEvent` / `QuerySource` | 模型重试策略、可观察事件与查询来源 |
 | `ModelIdentity` | 生成 assistant 消息的 Provider、API adapter 与模型身份 |
+| `ModelUsage` | Provider 返回的原始 token 用量 |
 | `ModelInfo` | 模型信息 |
-| `TokenUsage` | Token 用量 |
+| `TokenUsage` | Agent/Session 聚合后的 token 预算视图 |
+| `resolveModelIdentity` | 从规范化配置解析模型身份 |
+| `normalizeModelUsage` | 把 Provider usage 转成 Agent/Session 用量 |
+
+上述 Provider 无关契约可从 `@blade-ai/agent-sdk/model` 单独导入。类型所有权和
+边界转换规则见[类型架构](./type-architecture)。
 
 ### MCP
 
@@ -349,6 +369,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `PermissionHandler` | 底层权限处理器接口 |
 | `PermissionHandlerRequest` | 权限处理请求 |
 | `PermissionRuleValue` | 权限规则值 |
+| `PermissionsConfig` | Session 权限规则配置 |
 | `PermissionUpdate` | 权限更新 |
 
 ### Hooks
@@ -441,7 +462,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `CleanupFn` / `CleanupHandle` / `GracefulShutdownOptions` | 清理生命周期类型 |
 | `AgentId` / `MessageId` / `ToolUseId` | Agent、消息和工具调用 branded identifiers |
 | `JsonObject` / `JsonValue` | 严格 JSON 类型 |
-| `Assert` / `Extends` / `IsEqual` / `KeysEqual` | 编译期类型断言辅助类型 |
 | `lazySingleton` | 惰性单例辅助函数 |
 
 ### Hook 协议

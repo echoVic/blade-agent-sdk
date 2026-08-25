@@ -1,18 +1,11 @@
 import type { JSONSchema7 } from 'json-schema';
 import { ConfigError } from '../errors/ConfigError.js';
 import { ModelTimeoutError, type ModelTimeoutErrorCode } from '../errors/ModelTimeoutError.js';
-import {
-  awaitWithAbortSignal,
-  getAbortSignalReason,
-} from '../utils/abortPromise.js';
-import type {
-  ChatConfig,
-  ChatResponse,
-  IChatService,
-  Message,
-  StreamChunk,
-} from './ChatServiceInterface.js';
-import type { RetryEvent } from './RetryPolicy.js';
+import type { ModelServiceConfig } from '../model/config.js';
+import type { ModelMessage } from '../model/message.js';
+import type { ModelRetryEvent } from '../model/retry.js';
+import type { ModelResponse, ModelService, ModelStreamChunk } from '../model/service.js';
+import { awaitWithAbortSignal, getAbortSignalReason } from '../utils/abortPromise.js';
 
 export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
 export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
@@ -34,10 +27,10 @@ function resolveTimeout(value: number | undefined, fallback: number, name: strin
   return resolved;
 }
 
-function resolveModelTimeouts(config: ChatConfig): ResolvedModelTimeouts {
+function resolveModelTimeouts(config: ModelServiceConfig): ResolvedModelTimeouts {
   return {
     requestTimeoutMs: resolveTimeout(
-      config.requestTimeoutMs ?? config.timeout,
+      config.requestTimeoutMs,
       DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
       'requestTimeoutMs',
     ),
@@ -221,10 +214,10 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
  * This wrapper remains outside model middleware so a middleware that stalls
  * before or after delegating is subject to the same timeout as the provider.
  */
-export function wrapChatServiceWithTimeouts(service: IChatService): IChatService {
+export function wrapModelServiceWithTimeouts(service: ModelService): ModelService {
   resolveModelTimeouts(service.getConfig());
 
-  const wrapped: IChatService = {
+  const wrapped: ModelService = {
     async chat(messages, tools, signal) {
       const { requestTimeoutMs } = resolveModelTimeouts(service.getConfig());
       return await runWithRequestTimeout(
@@ -242,14 +235,14 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
       );
     },
     async *streamChat(
-      messages: readonly Message[],
+      messages: readonly ModelMessage[],
       tools?: Array<{
         name: string;
         description: string;
         parameters: JSONSchema7;
       }>,
       signal?: AbortSignal,
-    ): AsyncGenerator<StreamChunk, void, unknown> {
+    ): AsyncGenerator<ModelStreamChunk, void, unknown> {
       const { streamIdleTimeoutMs } = resolveModelTimeouts(service.getConfig());
       yield* runGeneratorWithTimeout(
         (operationSignal) => service.streamChat(messages, tools, operationSignal),
@@ -276,7 +269,7 @@ export function wrapChatServiceWithTimeouts(service: IChatService): IChatService
       messages,
       tools,
       signal,
-    ): AsyncGenerator<RetryEvent, ChatResponse> {
+    ): AsyncGenerator<ModelRetryEvent, ModelResponse> {
       const { requestTimeoutMs } = resolveModelTimeouts(service.getConfig());
       return yield* runGeneratorWithTimeout(
         (operationSignal) => chatWithRetryEvents(messages, tools, operationSignal),

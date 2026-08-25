@@ -1,5 +1,6 @@
-import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
-import type { ModelIdentity } from '../../services/ModelIdentity.js';
+import type { ModelIdentity } from '../../model/identity.js';
+import type { ModelUsage, TokenUsage } from '../../model/usage.js';
+import type { ToolSideEffect } from '../../tools/types/kind.js';
 import type {
   CommandId,
   EventId,
@@ -12,8 +13,8 @@ import type {
   ToolAttemptId,
   ToolUseId,
   TurnId,
-} from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+} from '../../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
 export const DURABLE_EVENT_SCHEMA_VERSION = 4 as const;
@@ -76,22 +77,9 @@ export interface DurableEventError {
   retryable?: boolean;
 }
 
-export interface DurableTokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-}
+export type DurableTokenUsage = Pick<TokenUsage, 'inputTokens' | 'outputTokens' | 'totalTokens'>;
 
-export interface DurableModelUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  reasoningTokens?: number;
-  cacheCreationInputTokens?: number;
-  cacheReadInputTokens?: number;
-  cacheMissInputTokens?: number;
-  billableInputTokens?: number;
-}
+export type DurableModelUsage = ModelUsage;
 
 export interface DurableModelToolCall {
   id: ToolUseId;
@@ -219,90 +207,85 @@ export interface DurableEventDataMap {
   };
 }
 
-type SessionEventType =
-  | typeof DurableEventType.SESSION_CREATED
-  | typeof DurableEventType.SESSION_CLOSED;
+interface SessionEventCorrelation {
+  readonly commandId?: CommandId;
+  readonly modelAttemptId?: never;
+}
 
-type RequestEventType =
-  | typeof DurableEventType.REQUEST_ACCEPTED
-  | typeof DurableEventType.REQUEST_STARTED
-  | typeof DurableEventType.REQUEST_COMPLETED
-  | typeof DurableEventType.REQUEST_FAILED
-  | typeof DurableEventType.REQUEST_INTERRUPTED;
+interface RequestAcceptedCorrelation {
+  readonly requestId: RequestId;
+  readonly commandId: CommandId;
+}
 
-type TurnEventType =
-  | typeof DurableEventType.TURN_STARTED
-  | typeof DurableEventType.TURN_COMPLETED
-  | typeof DurableEventType.TURN_ABORTED;
+interface RequestEventCorrelation {
+  readonly requestId: RequestId;
+  readonly commandId?: CommandId;
+  readonly modelAttemptId?: never;
+}
 
-type ModelEventType =
-  | typeof DurableEventType.MODEL_REQUEST_STARTED
-  | typeof DurableEventType.MODEL_REQUEST_COMPLETED
-  | typeof DurableEventType.MODEL_REQUEST_FAILED
-  | typeof DurableEventType.MODEL_REQUEST_ABORTED;
+interface TurnEventCorrelation extends RequestEventCorrelation {
+  readonly turnId: TurnId;
+  readonly toolAttemptId?: never;
+}
 
-type ToolEventType =
-  | typeof DurableEventType.TOOL_STARTED
-  | typeof DurableEventType.TOOL_COMPLETED
-  | typeof DurableEventType.TOOL_FAILED
-  | typeof DurableEventType.TOOL_CANCELLED
-  | typeof DurableEventType.TOOL_OUTCOME_UNKNOWN;
+interface ModelEventCorrelation {
+  readonly requestId: RequestId;
+  readonly turnId: TurnId;
+  readonly modelAttemptId: ModelAttemptId;
+  readonly commandId?: CommandId;
+}
 
-type PermissionEventType =
-  | typeof DurableEventType.PERMISSION_REQUESTED
-  | typeof DurableEventType.PERMISSION_RESOLVED;
+interface ToolScheduledCorrelation {
+  readonly requestId: RequestId;
+  readonly turnId: TurnId;
+  readonly modelAttemptId?: ModelAttemptId;
+  readonly toolAttemptId: ToolAttemptId;
+  readonly commandId?: CommandId;
+}
 
-type DurableEventCorrelation<TType extends DurableEventType> =
-  TType extends typeof DurableEventType.REQUEST_ACCEPTED
-    ? { readonly requestId: RequestId; readonly commandId: CommandId }
-    : TType extends ModelEventType
-      ? {
-          readonly requestId: RequestId;
-          readonly turnId: TurnId;
-          readonly modelAttemptId: ModelAttemptId;
-          readonly commandId?: CommandId;
-        }
-      : TType extends typeof DurableEventType.TOOL_SCHEDULED
-        ? {
-            readonly requestId: RequestId;
-            readonly turnId: TurnId;
-            readonly modelAttemptId?: ModelAttemptId;
-            readonly toolAttemptId: ToolAttemptId;
-            readonly commandId?: CommandId;
-          }
-        : TType extends ToolEventType | PermissionEventType
-          ? {
-              readonly requestId: RequestId;
-              readonly turnId: TurnId;
-              readonly toolAttemptId: ToolAttemptId;
-              readonly modelAttemptId?: never;
-              readonly commandId?: CommandId;
-            }
-          : TType extends TurnEventType
-            ? {
-                readonly requestId: RequestId;
-                readonly turnId: TurnId;
-                readonly modelAttemptId?: never;
-                readonly toolAttemptId?: never;
-                readonly commandId?: CommandId;
-              }
-            : TType extends typeof DurableEventType.INPUT_APPLIED
-              ? {
-                  readonly requestId: RequestId;
-                  readonly turnId?: TurnId;
-                  readonly modelAttemptId?: never;
-                  readonly toolAttemptId?: never;
-                  readonly commandId?: CommandId;
-                }
-              : TType extends Exclude<RequestEventType, typeof DurableEventType.REQUEST_ACCEPTED>
-                ? {
-                    readonly requestId: RequestId;
-                    readonly modelAttemptId?: never;
-                    readonly commandId?: CommandId;
-                  }
-                : TType extends SessionEventType
-                  ? { readonly commandId?: CommandId; readonly modelAttemptId?: never }
-                  : never;
+interface ToolEventCorrelation {
+  readonly requestId: RequestId;
+  readonly turnId: TurnId;
+  readonly toolAttemptId: ToolAttemptId;
+  readonly modelAttemptId?: never;
+  readonly commandId?: CommandId;
+}
+
+interface InputAppliedCorrelation {
+  readonly requestId: RequestId;
+  readonly turnId?: TurnId;
+  readonly modelAttemptId?: never;
+  readonly toolAttemptId?: never;
+  readonly commandId?: CommandId;
+}
+
+interface DurableEventCorrelationMap {
+  [DurableEventType.SESSION_CREATED]: SessionEventCorrelation;
+  [DurableEventType.SESSION_CLOSED]: SessionEventCorrelation;
+  [DurableEventType.REQUEST_ACCEPTED]: RequestAcceptedCorrelation;
+  [DurableEventType.REQUEST_STARTED]: RequestEventCorrelation;
+  [DurableEventType.REQUEST_COMPLETED]: RequestEventCorrelation;
+  [DurableEventType.REQUEST_FAILED]: RequestEventCorrelation;
+  [DurableEventType.REQUEST_INTERRUPTED]: RequestEventCorrelation;
+  [DurableEventType.TURN_STARTED]: TurnEventCorrelation;
+  [DurableEventType.TURN_COMPLETED]: TurnEventCorrelation;
+  [DurableEventType.TURN_ABORTED]: TurnEventCorrelation;
+  [DurableEventType.MODEL_REQUEST_STARTED]: ModelEventCorrelation;
+  [DurableEventType.MODEL_REQUEST_COMPLETED]: ModelEventCorrelation;
+  [DurableEventType.MODEL_REQUEST_FAILED]: ModelEventCorrelation;
+  [DurableEventType.MODEL_REQUEST_ABORTED]: ModelEventCorrelation;
+  [DurableEventType.TOOL_SCHEDULED]: ToolScheduledCorrelation;
+  [DurableEventType.TOOL_STARTED]: ToolEventCorrelation;
+  [DurableEventType.TOOL_COMPLETED]: ToolEventCorrelation;
+  [DurableEventType.TOOL_FAILED]: ToolEventCorrelation;
+  [DurableEventType.TOOL_CANCELLED]: ToolEventCorrelation;
+  [DurableEventType.TOOL_OUTCOME_UNKNOWN]: ToolEventCorrelation;
+  [DurableEventType.PERMISSION_REQUESTED]: ToolEventCorrelation;
+  [DurableEventType.PERMISSION_RESOLVED]: ToolEventCorrelation;
+  [DurableEventType.INPUT_APPLIED]: InputAppliedCorrelation;
+}
+
+type DurableEventCorrelation<TType extends DurableEventType> = DurableEventCorrelationMap[TType];
 
 type DurableEventDraftVariant<TType extends DurableEventType> = {
   readonly type: TType;

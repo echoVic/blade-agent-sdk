@@ -1,22 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { MessageId, SessionId, ToolUseId } from '../../../types/identifiers.js';
+import type { ContextData, ContextMessage, ContextToolCall } from '../../types.js';
 import { ContextCompressor } from '../ContextCompressor.js';
-import { SessionId } from '../../../types/branded.js';
-import type { ContextData, ContextMessage, ToolCall } from '../../types.js';
 
 // ===== Helpers =====
 
-function makeMessage(role: 'user' | 'assistant' | 'system', content: string, ts?: number): ContextMessage {
+function makeMessage(
+  role: 'user' | 'assistant' | 'system',
+  content: string,
+  ts?: number,
+): ContextMessage {
   return {
-    id: `msg-${Math.random().toString(36).slice(2, 8)}`,
+    id: MessageId(`msg-${Math.random().toString(36).slice(2, 8)}`),
     role,
     content,
     timestamp: ts || Date.now(),
   };
 }
 
-function makeToolCall(name: string, status: 'success' | 'error' = 'success'): ToolCall {
+function makeToolCall(name: string, status: 'success' | 'error' = 'success'): ContextToolCall {
   return {
-    id: `tc-${Math.random().toString(36).slice(2, 8)}`,
+    id: ToolUseId(`tc-${Math.random().toString(36).slice(2, 8)}`),
     name,
     input: { path: 'test.ts' },
     output: status === 'success' ? 'ok' : undefined,
@@ -28,13 +32,16 @@ function makeToolCall(name: string, status: 'success' | 'error' = 'success'): To
 
 function makeContextData(
   messages: ContextMessage[],
-  toolCalls: ToolCall[] = []
+  toolCalls: ContextToolCall[] = [],
 ): ContextData {
   return {
     layers: {
       system: { role: 'assistant', capabilities: [], tools: [], version: '1.0' },
       session: {
-        sessionId: SessionId('test'), preferences: {}, configuration: {}, startTime: Date.now(),
+        sessionId: SessionId('test'),
+        preferences: {},
+        configuration: {},
+        startTime: Date.now(),
       },
       conversation: {
         messages,

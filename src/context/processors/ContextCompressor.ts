@@ -1,4 +1,4 @@
-import type { CompressedContext, ContextData, ContextMessage, ToolCall } from '../types.js';
+import type { CompressedContext, ContextData, ContextMessage, ContextToolCall } from '../types.js';
 
 /**
  * 上下文压缩器 - 智能压缩上下文以节省 token 使用
@@ -8,11 +8,7 @@ export class ContextCompressor {
   private readonly keyPointsLimit: number;
   private readonly recentMessagesLimit: number;
 
-  constructor(
-    maxSummaryLength = 500,
-    keyPointsLimit = 10,
-    recentMessagesLimit = 20
-  ) {
+  constructor(maxSummaryLength = 500, keyPointsLimit = 10, recentMessagesLimit = 20) {
     this.maxSummaryLength = maxSummaryLength;
     this.keyPointsLimit = keyPointsLimit;
     this.recentMessagesLimit = recentMessagesLimit;
@@ -43,12 +39,7 @@ export class ContextCompressor {
     const toolSummary = this.generateToolSummary(toolCalls);
 
     // 估算 token 数量
-    const tokenCount = this.estimateTokenCount(
-      summary,
-      keyPoints,
-      recentMessages,
-      toolSummary
-    );
+    const tokenCount = this.estimateTokenCount(summary, keyPoints, recentMessages, toolSummary);
 
     return {
       summary,
@@ -133,10 +124,7 @@ export class ContextCompressor {
   /**
    * 提取关键要点
    */
-  private extractKeyPoints(
-    messages: ContextMessage[],
-    toolCalls: ToolCall[]
-  ): string[] {
+  private extractKeyPoints(messages: ContextMessage[], toolCalls: ContextToolCall[]): string[] {
     const keyPoints: Set<string> = new Set();
 
     // 从消息中提取关键点
@@ -173,15 +161,12 @@ export class ContextCompressor {
   /**
    * 生成工具调用摘要
    */
-  private generateToolSummary(toolCalls: ToolCall[]): string {
+  private generateToolSummary(toolCalls: ContextToolCall[]): string {
     if (toolCalls.length === 0) {
       return '';
     }
 
-    const toolStats = new Map<
-      string,
-      { count: number; success: number; recent: number }
-    >();
+    const toolStats = new Map<string, { count: number; success: number; recent: number }>();
     const recentTime = Date.now() - 10 * 60 * 1000; // 最近10分钟
 
     for (const call of toolCalls) {
@@ -208,7 +193,7 @@ export class ContextCompressor {
     summary: string,
     keyPoints: string[],
     recentMessages: ContextMessage[],
-    toolSummary?: string
+    toolSummary?: string,
   ): number {
     let totalLength = summary.length + keyPoints.join(' ').length;
 
@@ -227,11 +212,7 @@ export class ContextCompressor {
   /**
    * 从内容中提取上下文
    */
-  private extractContext(
-    content: string,
-    keyword: string,
-    maxLength: number
-  ): string | null {
+  private extractContext(content: string, keyword: string, maxLength: number): string | null {
     const index = content.indexOf(keyword);
     if (index === -1) return null;
 
@@ -304,14 +285,14 @@ export class ContextCompressor {
   /**
    * 总结工具使用情况
    */
-  private summarizeToolUsage(toolCalls: ToolCall[]): string[] {
+  private summarizeToolUsage(toolCalls: ContextToolCall[]): string[] {
     const summary: string[] = [];
     const recentCalls = toolCalls.filter(
-      (call) => Date.now() - call.timestamp < 30 * 60 * 1000 // 最近30分钟
+      (call) => Date.now() - call.timestamp < 30 * 60 * 1000, // 最近30分钟
     );
 
     if (recentCalls.length > 0) {
-      const toolGroups = new Map<string, ToolCall[]>();
+      const toolGroups = new Map<string, ContextToolCall[]>();
       recentCalls.forEach((call) => {
         const group = toolGroups.get(call.name) || [];
         group.push(call);

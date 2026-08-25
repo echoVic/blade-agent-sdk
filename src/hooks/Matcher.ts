@@ -12,7 +12,7 @@
  */
 
 import picomatch from 'picomatch';
-import type { MatchContext, MatcherConfig } from './types/HookTypes.js';
+import type { MatchContext, MatcherConfig } from './types.js';
 
 /**
  * 参数模式正则
@@ -65,7 +65,9 @@ export class Matcher {
     if (!toolName) return false;
     // 数组格式：任一匹配即可
     if (Array.isArray(tools)) {
-      return tools.some((pattern) => this.matchToolWithParams(pattern, toolName, command, filePath));
+      return tools.some((pattern) =>
+        this.matchToolWithParams(pattern, toolName, command, filePath),
+      );
     }
     // 字符串格式
     return this.matchToolWithParams(tools, toolName, command, filePath);
@@ -147,11 +149,7 @@ export class Matcher {
   /**
    * 获取工具的参数值
    */
-  private getArgValue(
-    toolName: string,
-    command?: string,
-    filePath?: string
-  ): string | undefined {
+  private getArgValue(toolName: string, command?: string, filePath?: string): string | undefined {
     // Bash 工具使用 command
     if (toolName === 'Bash' || toolName === 'BashTool') {
       return command;

@@ -10,13 +10,11 @@ import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/ty
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { SessionHandoffError } from '../../errors/SessionHandoffError.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import { BackgroundShellManager } from '../../tools/builtin/shell/BackgroundShellManager.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import {
-  collectToolExecution,
-  completeToolExecution,
-} from '../../tools/types/index.js';
+import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
+import { HookEvent, PermissionMode } from '../../types/constants.js';
 import {
   AgentId,
   CommandId,
@@ -30,9 +28,8 @@ import {
   ToolUseId,
   TurnId,
   WorkerId,
-} from '../../types/branded.js';
-import { type JsonValue, PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
+} from '../../types/identifiers.js';
+import type { JsonValue } from '../../types/json.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
 import {
   DurableEventSubscriptionError,
@@ -245,10 +242,12 @@ describe('Session durable events', () => {
     vi.useFakeTimers();
     const { root, store } = createStore();
     let leaseSignal: AbortSignal | undefined;
-    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (_sessionId, leaseOptions) => {
-      leaseSignal = leaseOptions.signal;
-      return await new Promise<never>(() => {});
-    });
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(
+      async (_sessionId, leaseOptions) => {
+        leaseSignal = leaseOptions.signal;
+        return await new Promise<never>(() => {});
+      },
+    );
     const creating = createSession({
       ...options(store),
       persistSession: true,
@@ -289,9 +288,7 @@ describe('Session durable events', () => {
 
     const subscription = await session.subscribeDurableEvents();
 
-    expect(
-      (subscription as unknown as { storeTimeoutMs: number }).storeTimeoutMs,
-    ).toBe(15_000);
+    expect((subscription as unknown as { storeTimeoutMs: number }).storeTimeoutMs).toBe(15_000);
     await subscription.return();
     await session.close();
   });
@@ -985,11 +982,11 @@ describe('Session durable events', () => {
     });
     const promptHook = vi.spyOn(HookRuntime.prototype, 'applyUserPromptSubmit');
     let observedMessage: UserMessageContent | undefined;
-    let observedHistory: readonly Message[] | undefined;
+    let observedHistory: readonly ModelMessage[] | undefined;
     let observedOptions: LoopOptions | undefined;
     streamChat = async function* requestRolloverStream(message, context, loopOptions) {
       observedMessage = message;
-      observedHistory = (context as { messages: Message[] }).messages;
+      observedHistory = (context as { messages: ModelMessage[] }).messages;
       observedOptions = loopOptions;
       yield { type: 'turn_start', turn: 1, maxTurns: 7 };
       yield { type: 'turn_end', turn: 1, hasToolCalls: false };
@@ -1164,10 +1161,10 @@ describe('Session durable events', () => {
       recoveryInputId,
     });
     let observedMessage: UserMessageContent | undefined;
-    let observedHistory: readonly Message[] | undefined;
+    let observedHistory: readonly ModelMessage[] | undefined;
     streamChat = async function* rolloverStream(message, context) {
       observedMessage = message;
-      observedHistory = (context as { messages: Message[] }).messages;
+      observedHistory = (context as { messages: ModelMessage[] }).messages;
       yield { type: 'turn_start', turn: 1, maxTurns: 9 };
       yield { type: 'turn_end', turn: 1, hasToolCalls: false };
       return {
@@ -1900,7 +1897,8 @@ describe('Session durable events', () => {
       throw new Error('Expected an initialized Session runtime');
     }
     const originalClose = runtime.close.bind(runtime);
-    const runtimeClose = vi.spyOn(runtime, 'close')
+    const runtimeClose = vi
+      .spyOn(runtime, 'close')
       .mockRejectedValueOnce(new Error('runtime cleanup failed'))
       .mockImplementation(originalClose);
     const release = vi.spyOn(store, 'releaseExecutionLease');
@@ -1941,7 +1939,8 @@ describe('Session durable events', () => {
     }
     const hookRuntime = runtime.getHookRuntime();
     const originalSessionEnd = hookRuntime.runSessionEnd.bind(hookRuntime);
-    const sessionEnd = vi.spyOn(hookRuntime, 'runSessionEnd')
+    const sessionEnd = vi
+      .spyOn(hookRuntime, 'runSessionEnd')
       .mockRejectedValueOnce(new Error('SessionEnd cleanup failed'))
       .mockImplementation(originalSessionEnd);
     const release = vi.spyOn(store, 'releaseExecutionLease');
@@ -1982,9 +1981,7 @@ describe('Session durable events', () => {
       .mockImplementation(originalClose);
     const release = vi.spyOn(store, 'releaseExecutionLease');
 
-    await expect(session.suspendForHandoff()).rejects.toThrow(
-      'handoff runtime cleanup failed',
-    );
+    await expect(session.suspendForHandoff()).rejects.toThrow('handoff runtime cleanup failed');
     expect(release).not.toHaveBeenCalled();
     expect(session.getExecutionLease()).not.toBeNull();
 
@@ -2033,9 +2030,7 @@ describe('Session durable events', () => {
     const firstEvent = output.next();
     await started.promise;
 
-    await expect(session.suspendForHandoff()).rejects.toThrow(
-      'inline hook callback cleaning up',
-    );
+    await expect(session.suspendForHandoff()).rejects.toThrow('inline hook callback cleaning up');
     await expect(firstEvent).resolves.toEqual({ value: undefined, done: true });
     expect(releaseLease).not.toHaveBeenCalled();
     expect(session.getExecutionLease()).not.toBeNull();
@@ -2075,10 +2070,11 @@ describe('Session durable events', () => {
             type: 'object',
             properties: {},
           },
-          execute: () => completeToolExecution({
-            status: 'success',
-            model: 'unexpected',
-          }),
+          execute: () =>
+            completeToolExecution({
+              status: 'success',
+              model: 'unexpected',
+            }),
         },
       ],
       allowedTools: ['PermissionCleanupTool'],

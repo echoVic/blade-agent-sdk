@@ -14,11 +14,11 @@
 | S1 | Agent Loop | `src/agent/` (excl. subagents) | AgentLoop.ts, LoopState.ts, TurnState.ts, ConversationState.ts, runTurn.ts, executeToolCalls.ts | recommend |
 | S2 | Session | `src/session/` | Session.ts, SessionRuntime.ts, SessionStore.ts, types.ts | recommend |
 | S3 | Tools Infrastructure | `src/tools/` (excl. builtin) | ExecutionPipeline.ts, ConcurrencyScheduler.ts, ToolCatalog.ts, ToolRegistry.ts, ToolExposurePlanner.ts | recommend |
-| S4 | Hooks System | `src/hooks/` | HookRuntime.ts, HookExecutor.ts, HookManager.ts, OutputParser.ts, types/HookTypes.ts | recommend |
+| S4 | Hooks System | `src/hooks/` | HookRuntime.ts, HookExecutor.ts, HookManager.ts, OutputParser.ts, types.ts | recommend |
 | S5 | Context & Compaction | `src/context/` | CompactionService.ts, PersistentStore.ts, JSONLStore.ts, ContextManager.ts | recommend |
 | S6 | MCP | `src/mcp/` + `tools/builtin/mcp/` | McpRegistry.ts, McpClient.ts, createMcpTool.ts | recommend |
 | S7 | Subagents | `src/agent/subagents/` | SubagentExecutor.ts, BackgroundAgentManager.ts, AgentSessionStore.ts | recommend |
-| S8 | Services | `src/services/` | VercelAIChatService.ts, deepseek.ts, RetryPolicy.ts | recommend |
+| S8 | Services | `src/services/` | VercelAIModelService.ts, deepseek.ts, RetryPolicy.ts | recommend |
 | S9 | Builtin Tools | `src/tools/builtin/` | web/searchProviders.ts, web/webSearch.ts, file/edit.ts, file/write.ts | recommend |
 | S10 | Sandbox | `src/sandbox/` | SandboxService.ts, SandboxExecutor.ts | recommend |
 | S11 | Prompts | `src/prompts/` | processors/types.ts, AttachmentCollector.ts, AttachmentHandler.ts | recommend |
@@ -110,7 +110,7 @@ Findings are ranked by concrete impact, confidence, implementation effort, and b
 - **Confidence**: high
 - **Evidence**:
   - [AgentLoop.ts:152-155](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/agent/AgentLoop.ts#L152-L155) — `recoveryAttemptedTurn`, `recoveryAttempt`, `retryCurrentTurn` are three independent local variables.
-  - Additionally, `LoopState.recovery`/`TurnState.recovery`/`TurnState.transitionReason` (defined in [LoopState.ts](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/agent/state/LoopState.ts#L34-L38) and [TurnState.ts](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/agent/state/TurnState.ts#L26-L30)) mirror this state but have **zero consumers**. `runTurn.ts` only reads `turnState.tools` and `turnState.chatService`.
+  - Additionally, `LoopState.recovery`/`TurnState.recovery`/`TurnState.transitionReason` (defined in [LoopState.ts](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/agent/state/LoopState.ts#L34-L38) and [TurnState.ts](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/agent/state/TurnState.ts#L26-L30)) mirror this state but have **zero consumers**. `runTurn.ts` only reads `turnState.tools` and `turnState.modelService`.
 - **Current complexity / invalid states**:
   - Combinations like `retryCurrentTurn=true, recoveryAttemptedTurn=null` are representable but nonsensical.
   - Dead mirror state in `LoopState` adds 5 methods (`startRecovery`, `markRecoveryRetry`, `failRecovery`, `resetRecovery`, `getRecoveryState`) and two fields that are never read — maintenance surface with no value.
@@ -141,7 +141,7 @@ Findings are ranked by concrete impact, confidence, implementation effort, and b
 
 - **Confidence**: high
 - **Evidence**:
-  - [HookTypes.ts:887-917](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/hooks/types/HookTypes.ts#L887-L917) — `success: boolean`, `blocking?: boolean`, `needsConfirmation?: boolean` encode four mutually exclusive outcomes but permit 8 combinations.
+  - [types.ts:887-917](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/hooks/types.ts#L887-L917) — `success: boolean`, `blocking?: boolean`, `needsConfirmation?: boolean` encode four mutually exclusive outcomes but permit 8 combinations.
   - Every consumer in [HookExecutor.ts:80-101](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/hooks/HookExecutor.ts#L80-L101) (and ~10 methods total) re-derives the state through nested `if (!result.success) { if (result.blocking) ... }` cascades.
 - **Current complexity / invalid states**:
   - `{ success: true, blocking: true }`, `{ blocking: true, needsConfirmation: true }` are contradictory but representable.
@@ -166,7 +166,7 @@ Findings are ranked by concrete impact, confidence, implementation effort, and b
   - Consumers become `switch(result.status)` instead of nested conditionals.
   - The sole producer (`OutputParser.parse`) already has distinct code paths per state.
 - **Smallest credible scope**:
-  - `types/HookTypes.ts`, `OutputParser.ts`, `HookExecutor.ts`.
+  - `types.ts`, `OutputParser.ts`, `HookExecutor.ts`.
   - `__tests__/OutputParser.test.ts` assertions updated from `.success`/`.blocking`/`.needsConfirmation` to `.status`.
 - **Regression risks**: Internal-only type; external consumers use per-event result types (`PreToolHookResult`, etc.), not raw `HookExecutionResult`.
 - **Validation**: Existing OutputParser tests cover all four states.
@@ -294,13 +294,13 @@ Findings are ranked by concrete impact, confidence, implementation effort, and b
 - **Proposed representation**: Create internal `writeGuard.ts` with `runWriteGuard(...)` and `recordWriteComplete(...)`. Each tool calls two helpers instead of 40+ lines of boilerplate.
 - **Scope**: New `src/tools/builtin/file/writeGuard.ts` (~50 lines); edit.ts and write.ts updated.
 
-#### F11. VercelAIChatService: `chat()` duplicates `chatWithRetryEvents()` [S8]
+#### F11. VercelAIModelService: `chat()` duplicates `chatWithRetryEvents()` [S8]
 
 - **Confidence**: high
 - **Evidence**:
-  - [VercelAIChatService.ts:733-748](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIChatService.ts#L733-L748) and [L825-840](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIChatService.ts#L825-L840) — character-for-character identical 15-line `generateText` config blocks wrapped in `withRetry`.
+  - [VercelAIModelService.ts:733-748](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIModelService.ts#L733-L748) and [L825-840](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIModelService.ts#L825-L840) — character-for-character identical 15-line `generateText` config blocks wrapped in `withRetry`.
 - **Current complexity**: A new `generateText` option must be updated in two places; silent divergence possible.
-- **Proposed representation**: `chat()` delegates to `chatWithRetryEvents()` using the existing `consumeRetryGenerator` helper ([L214-228](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIChatService.ts#L214-L228)).
+- **Proposed representation**: `chat()` delegates to `chatWithRetryEvents()` using the existing `consumeRetryGenerator` helper ([L214-228](file:///Users/bytedance/Documents/GitHub/blade-agent-sdk/src/services/VercelAIModelService.ts#L214-L228)).
 - **Scope**: 1 file only; ~5 lines replacing 15.
 
 #### F12. DeepSeek: Token-derivation logic duplication [S8]
@@ -432,7 +432,7 @@ Each slice is an independently shippable change. Slices within a tier have no cr
 | Step | Action |
 |------|--------|
 | 1 | Explored repository structure (47k LoC production TS; 22 identifiable subsystems) |
-| 2 | Read architectural files: `index.ts`, `Session.ts`, `AgentLoop.ts`, `TurnState.ts`, `HookTypes.ts`, `McpClient.ts`, `ExecutionPipeline.ts`, `ConversationState.ts`, `PersistentStore.ts`, `JSONLStore.ts`, `CompactionService.ts`, `SubagentExecutor.ts`, `BackgroundAgentManager.ts`, `searchProviders.ts`, `SandboxService.ts`, `AttachmentCollector` types, `VercelAIChatService.ts`, `deepseek.ts`, `edit.ts`, `write.ts`, `webSearch.ts`, `McpRegistry.ts`, `HookRuntime.ts`, `ConcurrencyScheduler.ts`, `runToolCall.ts`, `executeToolCalls.ts` |
+| 2 | Read architectural files: `index.ts`, `Session.ts`, `AgentLoop.ts`, `TurnState.ts`, `types.ts`, `McpClient.ts`, `ExecutionPipeline.ts`, `ConversationState.ts`, `PersistentStore.ts`, `JSONLStore.ts`, `CompactionService.ts`, `SubagentExecutor.ts`, `BackgroundAgentManager.ts`, `searchProviders.ts`, `SandboxService.ts`, `AttachmentCollector` types, `VercelAIModelService.ts`, `deepseek.ts`, `edit.ts`, `write.ts`, `webSearch.ts`, `McpRegistry.ts`, `HookRuntime.ts`, `ConcurrencyScheduler.ts`, `runToolCall.ts`, `executeToolCalls.ts` |
 | 3 | Dispatched 11 parallel review agents with non-overlapping ownership boundaries (bounded concurrency = 5→6 concurrent workers) |
 | 4 | Independently validated each finding via direct file reads and grep verification (dead code confirmed by searching for production callers; stale-error bug confirmed by tracing event flow; all duplications confirmed via side-by-side reads) |
 | 5 | Ran coverage pass: enumerated all `src/` directories; verified platform entries (`browser/`, `local/`, `server/`, `core/`) are re-export barrels; scripts evaluated as build tooling |

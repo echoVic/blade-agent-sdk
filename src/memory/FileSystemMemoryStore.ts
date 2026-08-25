@@ -1,9 +1,9 @@
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import matter from 'gray-matter';
-import type { Memory, MemoryInput } from './MemoryTypes.js';
 import type { MemoryStore } from './MemoryStore.js';
+import type { Memory, MemoryInput } from './types.js';
 
 const INDEX_FILE = 'MEMORY.md';
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -30,7 +30,7 @@ export class FileSystemMemoryStore implements MemoryStore {
         description: memory.description,
         type: memory.type,
       }),
-      'utf8'
+      'utf8',
     );
 
     const stored: Memory = {
@@ -84,7 +84,7 @@ export class FileSystemMemoryStore implements MemoryStore {
   async list(): Promise<Memory[]> {
     const entries = await this.readIndex();
     const memories = await Promise.all(
-      entries.map((entry) => this.get(path.basename(entry.filePath, '.md')))
+      entries.map((entry) => this.get(path.basename(entry.filePath, '.md'))),
     );
     return memories.filter((memory): memory is Memory => memory !== undefined);
   }
@@ -120,8 +120,7 @@ export class FileSystemMemoryStore implements MemoryStore {
 
   private async writeIndex(entries: MemoryIndexEntry[]): Promise<void> {
     await mkdir(this.dir, { recursive: true });
-    const lines = entries
-      .map((entry) => `- [${entry.title}](${entry.filePath}) — ${entry.hook}`);
+    const lines = entries.map((entry) => `- [${entry.title}](${entry.filePath}) — ${entry.hook}`);
     await writeFile(path.join(this.dir, INDEX_FILE), `${lines.join('\n')}\n`, 'utf8');
   }
 
@@ -132,7 +131,7 @@ export class FileSystemMemoryStore implements MemoryStore {
   private ensureSlug(name: string): asserts name is string {
     if (!SLUG_PATTERN.test(name)) {
       throw new Error(
-        `Memory name "${name}" must be a lowercase slug (a-z0-9 and hyphen) without spaces`
+        `Memory name "${name}" must be a lowercase slug (a-z0-9 and hyphen) without spaces`,
       );
     }
   }

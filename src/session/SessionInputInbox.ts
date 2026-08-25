@@ -1,7 +1,7 @@
 import type { UserMessageContent } from '../agent/types.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { cloneContentPart } from '../services/messageUtils.js';
-import type { InputId, RequestId } from '../types/branded.js';
+import type { InputId, RequestId } from '../types/identifiers.js';
 import {
   InputPriority,
   type InputPriority as InputPriorityType,
@@ -30,8 +30,8 @@ export class SessionInputInbox {
   reserve(entry: PendingSessionInput): void {
     const retainedBytes = getRetainedBytes(entry.content);
     if (
-      this.entries.length >= this.maxInputs
-      || this.retainedBytes + retainedBytes > this.maxBytes
+      this.entries.length >= this.maxInputs ||
+      this.retainedBytes + retainedBytes > this.maxBytes
     ) {
       throw new SessionInputError(
         'SESSION_INPUT_QUEUE_FULL',
@@ -80,11 +80,11 @@ export class SessionInputInbox {
   claimNextLater(requestId: RequestId): PendingSessionInput | undefined {
     const entry = this.entries.find(
       (candidate) =>
-        candidate.priority === InputPriority.LATER
-        && candidate.targetRequestId === undefined
+        candidate.priority === InputPriority.LATER &&
+        candidate.targetRequestId === undefined &&
         // 与 claimForRequest 保持一致：仅领取已持久化提交的输入，
         // 避免领取 reserve() 之后尚未 markCommitted 的条目。
-        && this.committedInputIds.has(candidate.inputId),
+        this.committedInputIds.has(candidate.inputId),
     );
     if (!entry) {
       return undefined;
@@ -99,23 +99,21 @@ export class SessionInputInbox {
     priorities: readonly InputPriorityType[],
     excludedInputId?: InputId,
   ): PendingSessionInput[] {
-    const priorityOrder = new Map(
-      priorities.map((priority, index) => [priority, index]),
-    );
+    const priorityOrder = new Map(priorities.map((priority, index) => [priority, index]));
     const matched = this.entries
       .filter(
         (entry) =>
-          entry.targetRequestId === requestId
-          && priorityOrder.has(entry.priority)
-          && entry.inputId !== excludedInputId
-          && this.committedInputIds.has(entry.inputId)
-          && !this.claimedInputIds.has(entry.inputId),
+          entry.targetRequestId === requestId &&
+          priorityOrder.has(entry.priority) &&
+          entry.inputId !== excludedInputId &&
+          this.committedInputIds.has(entry.inputId) &&
+          !this.claimedInputIds.has(entry.inputId),
       )
       .sort(
         (left, right) =>
-          (priorityOrder.get(left.priority) ?? Number.MAX_SAFE_INTEGER)
-          - (priorityOrder.get(right.priority) ?? Number.MAX_SAFE_INTEGER)
-          || left.acceptedAt - right.acceptedAt,
+          (priorityOrder.get(left.priority) ?? Number.MAX_SAFE_INTEGER) -
+            (priorityOrder.get(right.priority) ?? Number.MAX_SAFE_INTEGER) ||
+          left.acceptedAt - right.acceptedAt,
       );
 
     for (const entry of matched) {
@@ -195,9 +193,8 @@ export class SessionInputInbox {
 function cloneEntry(entry: PendingSessionInput): PendingSessionInput {
   return {
     ...entry,
-    content: typeof entry.content === 'string'
-      ? entry.content
-      : entry.content.map(cloneContentPart),
+    content:
+      typeof entry.content === 'string' ? entry.content : entry.content.map(cloneContentPart),
   };
 }
 

@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { AgentEvent, TokenUsageInfo } from '../../agent/AgentEvent.js';
+import type { AgentEvent } from '../../agent/AgentEvent.js';
 import type {
   ModelExecutionLifecycle,
   ModelRequestAbortReason,
@@ -11,7 +11,8 @@ import type {
   UserMessageContent,
 } from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
-import type { ModelIdentity } from '../../services/ModelIdentity.js';
+import type { ModelIdentity } from '../../model/identity.js';
+import type { TokenUsage } from '../../model/usage.js';
 import type {
   ToolExecutionLifecycle,
   ToolExecutionStartedLifecycle,
@@ -19,8 +20,8 @@ import type {
   ToolPermissionResolution,
   ToolScheduledLifecycle,
   ToolSettledLifecycle,
-} from '../../tools/types/ExecutionTypes.js';
-import { ToolErrorType } from '../../tools/types/ToolResult.js';
+} from '../../tools/types/execution.js';
+import { ToolErrorType } from '../../tools/types/result.js';
 import {
   CommandId,
   type EventId,
@@ -31,8 +32,8 @@ import {
   ToolAttemptId,
   ToolUseId,
   TurnId,
-} from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+} from '../../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import { toJsonValue } from '../../utils/jsonValue.js';
 import type {
   DurableCommandCommitOptions,
@@ -74,9 +75,7 @@ interface ActiveModelAttempt {
 
 function toDurableEventError(error: unknown, fallbackMessage: string): DurableEventError {
   const record =
-    typeof error === 'object' && error !== null
-      ? error as Record<string, unknown>
-      : undefined;
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : undefined;
   const rawMessage =
     error instanceof Error
       ? error.message
@@ -85,12 +84,8 @@ function toDurableEventError(error: unknown, fallbackMessage: string): DurableEv
         : String(error);
   return {
     message: rawMessage.trim() === '' ? fallbackMessage : rawMessage,
-    ...(typeof record?.code === 'string' && record.code.trim() !== ''
-      ? { code: record.code }
-      : {}),
-    ...(typeof record?.retryable === 'boolean'
-      ? { retryable: record.retryable }
-      : {}),
+    ...(typeof record?.code === 'string' && record.code.trim() !== '' ? { code: record.code } : {}),
+    ...(typeof record?.retryable === 'boolean' ? { retryable: record.retryable } : {}),
   };
 }
 
@@ -98,7 +93,7 @@ export type DurableRequestFinish =
   | {
       status: 'completed';
       output?: JsonValue;
-      usage?: TokenUsageInfo;
+      usage?: TokenUsage;
     }
   | {
       status: 'failed';
@@ -128,10 +123,8 @@ export class DurableSessionRecoveryRequiredError extends SdkError {
   }
 }
 
-export class SessionDurableRecorder implements
-  ToolExecutionLifecycle,
-  InputApplicationLifecycle,
-  ModelExecutionLifecycle
+export class SessionDurableRecorder
+  implements ToolExecutionLifecycle, InputApplicationLifecycle, ModelExecutionLifecycle
 {
   private activeTurn: ActiveTurn | null = null;
   private activeModelAttempt: ActiveModelAttempt | null = null;
@@ -183,10 +176,10 @@ export class SessionDurableRecorder implements
     if (!this.activeTurn) {
       const request = this.journal.getProjection().activeRequest;
       if (
-        this.completedTurnObserved
-        && request?.requestId === this.requestId
-        && request.status === 'running'
-        && (request.pendingInputIds ?? []).length === 0
+        this.completedTurnObserved &&
+        request?.requestId === this.requestId &&
+        request.status === 'running' &&
+        (request.pendingInputIds ?? []).length === 0
       ) {
         await this.startTurn(request.lastTurn + 1);
       }
@@ -315,9 +308,10 @@ export class SessionDurableRecorder implements
     this.requestStarted = true;
   }
 
-  async onInputApplying(
-    input: { readonly inputId: InputId; readonly priority: 'now' | 'next' },
-  ): Promise<void> {
+  async onInputApplying(input: {
+    readonly inputId: InputId;
+    readonly priority: 'now' | 'next';
+  }): Promise<void> {
     this.assertNewWorkAllowed();
     this.assertRequestOpen();
     if (!this.requestStarted) {
@@ -374,29 +368,28 @@ export class SessionDurableRecorder implements
         if (this.handoffRequested) {
           return;
         }
-        if (!await this.abortTurn(event.turn, 'request_interrupted')) {
+        if (!(await this.abortTurn(event.turn, 'request_interrupted'))) {
           throw new SessionDurableRecorderError(
             `Turn ${this.activeTurn?.turnId ?? event.turn} has a tool outcome that requires reconciliation`,
           );
         }
         this.ignoredTurnEnd = event.turn;
         return;
-      case 'input_applied':
-        {
-          const persistedPriority = this.persistedInputApplications.get(event.inputId);
-          if (!persistedPriority) {
-            throw new SessionDurableRecorderError(
-              `Input ${event.inputId} was not persisted before preparation`,
-            );
-          }
-          if (persistedPriority !== event.priority) {
-            throw new SessionDurableRecorderError(
-              `Input ${event.inputId} changed priority after durable application`,
-            );
-          }
-          this.persistedInputApplications.delete(event.inputId);
-          return;
+      case 'input_applied': {
+        const persistedPriority = this.persistedInputApplications.get(event.inputId);
+        if (!persistedPriority) {
+          throw new SessionDurableRecorderError(
+            `Input ${event.inputId} was not persisted before preparation`,
+          );
         }
+        if (persistedPriority !== event.priority) {
+          throw new SessionDurableRecorderError(
+            `Input ${event.inputId} changed priority after durable application`,
+          );
+        }
+        this.persistedInputApplications.delete(event.inputId);
+        return;
+      }
       default:
         return;
     }
@@ -769,10 +762,7 @@ export class SessionDurableRecorder implements
     this.activeModelAttempt = null;
   }
 
-  private async failModelRequest(
-    attempt: ActiveModelAttempt,
-    error: unknown,
-  ): Promise<void> {
+  private async failModelRequest(attempt: ActiveModelAttempt, error: unknown): Promise<void> {
     this.requireModelAttempt(attempt);
     await this.commitRebasableRequestBoundary([
       {
@@ -987,9 +977,7 @@ export class SessionDurableRecorder implements
 
   private requireLastBoundaryEventId(): EventId {
     if (!this.lastBoundaryEventId) {
-      throw new SessionDurableRecorderError(
-        `Request ${this.requestId} has no durable boundary`,
-      );
+      throw new SessionDurableRecorderError(`Request ${this.requestId} has no durable boundary`);
     }
     return this.lastBoundaryEventId;
   }
@@ -1014,10 +1002,7 @@ export class SessionDurableRecorder implements
 
   private requireModelAttempt(attempt: ActiveModelAttempt): void {
     this.assertRequestOpen();
-    if (
-      this.activeModelAttempt !== attempt
-      || this.activeTurn?.turnId !== attempt.turnId
-    ) {
+    if (this.activeModelAttempt !== attempt || this.activeTurn?.turnId !== attempt.turnId) {
       throw new SessionDurableRecorderError(
         `No active model attempt matches ${attempt.modelAttemptId}`,
       );
@@ -1096,7 +1081,7 @@ export class SessionDurableRecorder implements
 
 export function durableRequestFinishFromLoopResult(
   result: LoopResult,
-  usage: TokenUsageInfo,
+  usage: TokenUsage,
   interruptionReason: DurableRequestInterruptReason = 'user_abort',
 ): DurableRequestFinish {
   if (result.error?.type === 'aborted') {

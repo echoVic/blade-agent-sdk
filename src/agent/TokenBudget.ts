@@ -1,4 +1,4 @@
-import type { UsageInfo } from '../services/ChatServiceInterface.js';
+import type { ModelUsage } from '../model/usage.js';
 
 /** Threshold at which a budget warning is emitted (80%). */
 const DEFAULT_WARNING_THRESHOLD = 0.8;
@@ -63,12 +63,11 @@ export class TokenBudget {
     };
   }
 
-  record(usage: UsageInfo): void {
+  record(usage: ModelUsage): void {
     const outputDelta = usage.completionTokens ?? 0;
     const inputDelta = usage.promptTokens ?? 0;
-    const billableInputDelta = usage.billableInputTokens
-      ?? usage.cacheMissInputTokens
-      ?? inputDelta;
+    const billableInputDelta =
+      usage.billableInputTokens ?? usage.cacheMissInputTokens ?? inputDelta;
     this.inputTokens += inputDelta;
     this.billableInputTokens += billableInputDelta;
     this.outputTokens += outputDelta;
@@ -138,17 +137,19 @@ export class TokenBudget {
 
   getSnapshot(): TokenBudgetSnapshot {
     const estimatedCost =
-      this.billableInputTokens * this.config.costPerInputToken
-      + this.outputTokens * this.config.costPerOutputToken
-      + this.cacheWriteTokens * this.config.costPerCacheWriteToken
-      + this.cacheReadTokens * this.config.costPerCacheReadToken;
+      this.billableInputTokens * this.config.costPerInputToken +
+      this.outputTokens * this.config.costPerOutputToken +
+      this.cacheWriteTokens * this.config.costPerCacheWriteToken +
+      this.cacheReadTokens * this.config.costPerCacheReadToken;
 
-    const budgetRemaining = this.config.maxTotalTokens === undefined
-      ? null
-      : Math.max(this.config.maxTotalTokens - this.totalTokens, 0);
-    const budgetPercent = this.config.maxTotalTokens === undefined
-      ? null
-      : this.totalTokens / this.config.maxTotalTokens;
+    const budgetRemaining =
+      this.config.maxTotalTokens === undefined
+        ? null
+        : Math.max(this.config.maxTotalTokens - this.totalTokens, 0);
+    const budgetPercent =
+      this.config.maxTotalTokens === undefined
+        ? null
+        : this.totalTokens / this.config.maxTotalTokens;
 
     return {
       totalInputTokens: this.inputTokens,

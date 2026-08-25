@@ -8,8 +8,8 @@ import type {
   FencingToken,
   SessionId,
   WorkerId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type {
   RuntimeEffectRecord,
   RuntimeEffectStatus,

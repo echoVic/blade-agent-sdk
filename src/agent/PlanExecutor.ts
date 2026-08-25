@@ -6,7 +6,7 @@
 
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
-import { PermissionMode } from '../types/common.js';
+import { PermissionMode } from '../types/constants.js';
 import type { AgentEvent } from './AgentEvent.js';
 import type { ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
 
@@ -43,20 +43,19 @@ export class PlanExecutor {
       return createPlanModeReminder(message);
     }
 
-    const textParts = message.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+    const textParts = message.filter(
+      (p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text',
+    );
     const firstTextPart = textParts[0];
     if (firstTextPart) {
       return message.map((p) =>
         p === firstTextPart
           ? { type: 'text' as const, text: createPlanModeReminder(firstTextPart.text) }
-          : p
+          : p,
       );
     }
 
-    return [
-      { type: 'text', text: createPlanModeReminder('') },
-      ...message,
-    ];
+    return [{ type: 'text', text: createPlanModeReminder('') }, ...message];
   }
 
   /**

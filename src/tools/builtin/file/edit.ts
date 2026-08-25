@@ -4,21 +4,14 @@ import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-  EditErrorMetadata,
-  EditMetadata,
-  ExecutionContext,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { EditErrorMetadata, EditMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
-import {
-  flexibleMatch,
-  type MatchResult,
-  MatchStrategy,
-  unescapeString,
-} from './editCorrector.js';
+import { flexibleMatch, type MatchResult, MatchStrategy, unescapeString } from './editCorrector.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
 import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
@@ -35,20 +28,16 @@ export const editTool = createTool({
   isConcurrencySafe: false, // 文件编辑不支持并发
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    file_path: ToolSchemas.filePath({
-      description: 'Absolute path of the file to edit',
+  schema: lazySchema(() =>
+    z.object({
+      file_path: ToolSchemas.filePath({
+        description: 'Absolute path of the file to edit',
+      }),
+      old_string: z.string().min(1, 'old_string cannot be empty').describe('String to replace'),
+      new_string: z.string().describe('Replacement string (can be empty)'),
+      replace_all: z.boolean().default(false).describe('Replace all matches (default: first only)'),
     }),
-    old_string: z
-      .string()
-      .min(1, 'old_string cannot be empty')
-      .describe('String to replace'),
-    new_string: z.string().describe('Replacement string (can be empty)'),
-    replace_all: z
-      .boolean()
-      .default(false)
-      .describe('Replace all matches (default: first only)'),
-  })),
+  ),
 
   resolveBehavior: ({ file_path }) => {
     const isDestructive = isSensitivePath(file_path);
@@ -282,7 +271,7 @@ export const editTool = createTool({
         newContent,
         actualString,
         new_string,
-        4 // 上下文行数
+        4, // 上下文行数
       );
 
       // 生成 summary 用于流式显示
@@ -302,8 +291,7 @@ export const editTool = createTool({
         original_size: content.length,
         new_size: newContent.length,
         size_diff: newContent.length - content.length,
-        last_modified:
-          stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
+        last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         snapshot_created: !!(sessionId && messageId),
         session_id: sessionId,
         message_id: messageId,
@@ -396,10 +384,7 @@ function smartMatch(content: string, searchString: string): MatchResult {
   const quoteIndex = normalizedContent.indexOf(normalizedSearch);
   if (quoteIndex !== -1) {
     // 返回原文件中的实际字符串（保持格式）
-    const actualString = content.substring(
-      quoteIndex,
-      quoteIndex + searchString.length
-    );
+    const actualString = content.substring(quoteIndex, quoteIndex + searchString.length);
     return { matched: actualString, strategy: MatchStrategy.NORMALIZE_QUOTES };
   }
 
@@ -471,7 +456,7 @@ function findMatchesWithActual(content: string, actualString: string): number[] 
 function generateRichErrorMessage(
   fileContent: string,
   searchString: string,
-  filePath: string
+  filePath: string,
 ): {
   model: string;
   metadata: EditErrorMetadata;
@@ -511,9 +496,7 @@ Total lines: ${totalLines}
 
   // 显示搜索字符串(截断长文本)
   const searchPreview =
-    searchString.length > 300
-      ? `${searchString.substring(0, 300)}\n... (truncated)`
-      : searchString;
+    searchString.length > 300 ? `${searchString.substring(0, 300)}\n... (truncated)` : searchString;
 
   modelContent += `You tried to match:\n${searchPreview}\n\n`;
 
@@ -528,8 +511,7 @@ Total lines: ${totalLines}
   if (fuzzyMatches.length > 0) {
     modelContent += `Possible similar matches found:\n`;
     fuzzyMatches.forEach((match, idx) => {
-      const preview =
-        match.text.length > 100 ? `${match.text.substring(0, 100)}...` : match.text;
+      const preview = match.text.length > 100 ? `${match.text.substring(0, 100)}...` : match.text;
       modelContent += `  ${idx + 1}. Line ${match.lineNumber} (similarity: ${Math.round(match.similarity * 100)}%)\n     ${preview.replace(/\n/g, '\\n')}\n`;
     });
     modelContent += '\n';
@@ -570,7 +552,7 @@ Common issues:
 function findFuzzyMatches(
   fileContent: string,
   searchString: string,
-  maxResults = 3
+  maxResults = 3,
 ): Array<{ text: string; lineNumber: number; similarity: number }> {
   const lines = fileContent.split('\n');
   const searchLines = searchString.split('\n');
@@ -671,7 +653,7 @@ function levenshteinDistance(str1: string, str2: string): number {
       matrix[i][j] = Math.min(
         matrix[i - 1][j] + 1, // 删除
         matrix[i][j - 1] + 1, // 插入
-        matrix[i - 1][j - 1] + cost // 替换
+        matrix[i - 1][j - 1] + cost, // 替换
       );
     }
   }

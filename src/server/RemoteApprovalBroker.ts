@@ -1,12 +1,12 @@
 import { nanoid } from 'nanoid';
-import { AgentProtocolError } from '../protocol/index.js';
 import type { AgentPermissionRequest } from '../protocol/index.js';
+import { AgentProtocolError } from '../protocol/index.js';
 import type {
   ConfirmationDetails,
   ConfirmationHandler,
   ConfirmationResponse,
-} from '../tools/types/index.js';
-import { PermissionRequestId, type SessionId } from '../types/branded.js';
+} from '../tools/types/execution.js';
+import { PermissionRequestId, type SessionId } from '../types/identifiers.js';
 
 interface PendingApproval {
   readonly tenantId: string;
@@ -38,8 +38,7 @@ export class RemoteApprovalBroker {
 
   createHandler(tenantId: string, sessionId: SessionId): ConfirmationHandler {
     return {
-      requestConfirmation: (details) =>
-        this.requestConfirmation(tenantId, sessionId, details),
+      requestConfirmation: (details) => this.requestConfirmation(tenantId, sessionId, details),
     };
   }
 
@@ -81,8 +80,7 @@ export class RemoteApprovalBroker {
     details: ConfirmationDetails,
   ): Promise<ConfirmationResponse> {
     details.abortSignal?.throwIfAborted();
-    const permissionRequestId =
-      details.permissionRequestId ?? PermissionRequestId(nanoid());
+    const permissionRequestId = details.permissionRequestId ?? PermissionRequestId(nanoid());
     const key = this.key(tenantId, sessionId, permissionRequestId);
     if (this.pending.has(key)) {
       throw new AgentProtocolError(

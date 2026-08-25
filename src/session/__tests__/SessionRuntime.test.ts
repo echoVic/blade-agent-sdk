@@ -15,16 +15,12 @@ import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js
 import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
 import { createTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
-import {
-  collectToolExecution,
-  completeToolExecution,
-  type ToolDefinition,
-  ToolKind,
-} from '../../tools/types/index.js';
-import { SessionId } from '../../types/branded.js';
-import type { JsonObject } from '../../types/common.js';
-import { PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
+import { ToolKind } from '../../tools/types/kind.js';
+import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
+import type { ToolDefinition } from '../../tools/types/tool.js';
+import { HookEvent, PermissionMode } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
+import type { JsonObject } from '../../types/json.js';
 import { SERVER_SESSION_HOST } from '../SessionHostProfile.js';
 import type { SessionOptions } from '../types.js';
 
@@ -182,7 +178,10 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    const toolNames = runtime.getToolRegistry().getAll().map((tool) => tool.name);
+    const toolNames = runtime
+      .getToolRegistry()
+      .getAll()
+      .map((tool) => tool.name);
     expect(toolNames).toEqual(['CustomTool']);
     expect(runtime.getToolCatalog().getEntry('CustomTool')).toMatchObject({
       source: {
@@ -221,79 +220,77 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it.each(['abort', 'throw'] as const)(
-    'preserves the Session tool timeout when a failure hook returns %s',
-    async (hookBehavior) => {
-      let observedAbort = false;
-      const slowTool = createTool({
-        name: 'SlowTool',
-        displayName: 'Slow Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Wait until cancelled' },
-        schema: z.object({}),
-        async *execute(_params, context) {
-          await new Promise<void>((_resolve, reject) => {
-            context.signal?.addEventListener(
-              'abort',
-              () => {
-                observedAbort = true;
-                reject(context.signal?.reason);
-              },
-              { once: true },
-            );
-          });
-          return {
-            status: 'success',
-            model: 'unexpected',
-          };
+  it.each([
+    'abort',
+    'throw',
+  ] as const)('preserves the Session tool timeout when a failure hook returns %s', async (hookBehavior) => {
+    let observedAbort = false;
+    const slowTool = createTool({
+      name: 'SlowTool',
+      displayName: 'Slow Tool',
+      kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
+      description: { short: 'Wait until cancelled' },
+      schema: z.object({}),
+      async *execute(_params, context) {
+        await new Promise<void>((_resolve, reject) => {
+          context.signal?.addEventListener(
+            'abort',
+            () => {
+              observedAbort = true;
+              reject(context.signal?.reason);
+            },
+            { once: true },
+          );
+        });
+        return {
+          status: 'success',
+          model: 'unexpected',
+        };
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-tool-timeout'),
+      createOptions({
+        allowedTools: ['SlowTool'],
+        tools: [slowTool],
+        toolTimeoutMs: 10,
+        hooks: {
+          [HookEvent.PostToolUseFailure]: [
+            async () => {
+              if (hookBehavior === 'throw') {
+                throw new Error('hook failed after timeout');
+              }
+              return {
+                action: 'abort',
+                reason: 'hook attempted to replace timeout',
+              };
+            },
+          ],
         },
-      });
-      const runtime = new SessionRuntime(
-        SessionId('session-tool-timeout'),
-        createOptions({
-          allowedTools: ['SlowTool'],
-          tools: [slowTool],
-          toolTimeoutMs: 10,
-          hooks: {
-            [HookEvent.PostToolUseFailure]: [
-              async () => {
-                if (hookBehavior === 'throw') {
-                  throw new Error('hook failed after timeout');
-                }
-                return {
-                  action: 'abort',
-                  reason: 'hook attempted to replace timeout',
-                };
-              },
-            ],
-          },
-        }),
-        {
-          models: [],
-          toolTimeoutMs: 10,
-        },
-        PermissionMode.YOLO,
-        createFilesystemContext(workspaceRoot),
-        NOOP_LOGGER,
-      );
+      }),
+      {
+        models: [],
+        toolTimeoutMs: 10,
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
 
-      await runtime.initialize();
-      const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-      assertDefined(executionPipeline);
-      const result = await collectToolExecution(
-        executionPipeline.execute('SlowTool', {}, {}),
-      );
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(executionPipeline.execute('SlowTool', {}, {}));
 
-      expect(result).toMatchObject({
-        status: 'error',
-        error: { type: 'timeout_error' },
-      });
-      expect(observedAbort).toBe(true);
+    expect(result).toMatchObject({
+      status: 'error',
+      error: { type: 'timeout_error' },
+    });
+    expect(observedAbort).toBe(true);
 
-      await runtime.close();
-    },
-  );
+    await runtime.close();
+  });
 
   it('fails closed while a timed-out tool is still cleaning up', async () => {
     vi.useFakeTimers();
@@ -390,9 +387,7 @@ describe('SessionRuntime', () => {
     await started.promise;
     await vi.advanceTimersByTimeAsync(50);
     await timeoutResult;
-    await expect(runtime.close()).rejects.toThrow(
-      'still has an inline hook callback cleaning up',
-    );
+    await expect(runtime.close()).rejects.toThrow('still has an inline hook callback cleaning up');
 
     release.resolve();
     await vi.waitFor(() => {
@@ -431,10 +426,14 @@ describe('SessionRuntime', () => {
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
     const resultPromise = collectToolExecution(
-      executionPipeline.execute('CustomTool', {}, {
-        permissionMode: PermissionMode.YOLO,
-        signal: controller.signal,
-      }),
+      executionPipeline.execute(
+        'CustomTool',
+        {},
+        {
+          permissionMode: PermissionMode.YOLO,
+          signal: controller.signal,
+        },
+      ),
     );
 
     await started.promise;
@@ -486,10 +485,14 @@ describe('SessionRuntime', () => {
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
     const resultPromise = collectToolExecution(
-      executionPipeline.execute('CustomTool', {}, {
-        permissionMode: PermissionMode.YOLO,
-        signal: controller.signal,
-      }),
+      executionPipeline.execute(
+        'CustomTool',
+        {},
+        {
+          permissionMode: PermissionMode.YOLO,
+          signal: controller.signal,
+        },
+      ),
     );
 
     await started.promise;
@@ -500,9 +503,7 @@ describe('SessionRuntime', () => {
     });
     release.reject(containmentError);
     await vi.waitFor(() => {
-      expect(executionPipeline.getTerminalCleanupFailure()).toBe(
-        containmentError,
-      );
+      expect(executionPipeline.getTerminalCleanupFailure()).toBe(containmentError);
     });
 
     const cancelBackgroundAgents = vi.spyOn(
@@ -570,9 +571,7 @@ describe('SessionRuntime', () => {
         sourceId: 'plugin:audit',
       },
     });
-    expect(
-      runtime.getBackgroundAgentManager().getMiddleware().tool,
-    ).toHaveLength(1);
+    expect(runtime.getBackgroundAgentManager().getMiddleware().tool).toHaveLength(1);
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
     const result = await collectToolExecution(
@@ -657,10 +656,7 @@ describe('SessionRuntime', () => {
       );
 
       try {
-        await expect(
-          runtime.initialize(),
-          testCase.label,
-        ).rejects.toThrow('已注册');
+        await expect(runtime.initialize(), testCase.label).rejects.toThrow('已注册');
         expect(
           runtime.getToolCatalog().getEntry(testCase.toolName)?.source.sourceId,
           testCase.label,
@@ -701,9 +697,9 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    await expect(
-      runtime.getHookRuntime().applyUserPromptSubmit('original'),
-    ).resolves.toBe('modified by plugin');
+    await expect(runtime.getHookRuntime().applyUserPromptSubmit('original')).resolves.toBe(
+      'modified by plugin',
+    );
     expect(enableHooks).toHaveBeenCalled();
     expect(pluginHook).toHaveBeenCalledOnce();
 
@@ -737,7 +733,8 @@ describe('SessionRuntime', () => {
       completeToolExecution({
         status: 'success',
         model: value,
-      }));
+      }),
+    );
     const runtimeTool = createTool({
       name: 'RuntimeTool',
       displayName: 'Runtime Tool',
@@ -913,7 +910,8 @@ describe('SessionRuntime', () => {
       completeToolExecution({
         status: 'success' as const,
         model: params.value || 'missing',
-      }));
+      }),
+    );
 
     const runtime = new SessionRuntime(
       SessionId('session-3'),
@@ -957,7 +955,11 @@ describe('SessionRuntime', () => {
         { value: 'original' },
         {
           sessionId: SessionId('session-3'),
-          contextSnapshot: createContextSnapshot(SessionId('session-3'), 'turn-1', createFilesystemContext(workspaceRoot)),
+          contextSnapshot: createContextSnapshot(
+            SessionId('session-3'),
+            'turn-1',
+            createFilesystemContext(workspaceRoot),
+          ),
         },
       ),
     );
@@ -1024,7 +1026,8 @@ describe('SessionRuntime', () => {
       completeToolExecution({
         status: 'success' as const,
         model: params.value || 'missing',
-      }));
+      }),
+    );
 
     const runtime = new SessionRuntime(
       SessionId('session-4'),
@@ -1063,7 +1066,11 @@ describe('SessionRuntime', () => {
         { value: 'original' },
         {
           sessionId: SessionId('session-4'),
-          contextSnapshot: createContextSnapshot(SessionId('session-4'), 'turn-1', createFilesystemContext(workspaceRoot)),
+          contextSnapshot: createContextSnapshot(
+            SessionId('session-4'),
+            'turn-1',
+            createFilesystemContext(workspaceRoot),
+          ),
         },
       ),
     );
@@ -1122,7 +1129,11 @@ describe('SessionRuntime', () => {
         { value: 'original' },
         {
           sessionId: SessionId('session-5'),
-          contextSnapshot: createContextSnapshot(SessionId('session-5'), 'turn-1', createFilesystemContext(workspaceRoot)),
+          contextSnapshot: createContextSnapshot(
+            SessionId('session-5'),
+            'turn-1',
+            createFilesystemContext(workspaceRoot),
+          ),
         },
       ),
     );

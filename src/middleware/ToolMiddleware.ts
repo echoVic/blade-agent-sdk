@@ -1,5 +1,6 @@
-import type { ExecutionContext, ToolExecution } from '../tools/types/index.js';
-import type { JsonObject } from '../types/common.js';
+import type { ExecutionContext } from '../tools/types/execution.js';
+import type { ToolExecution } from '../tools/types/result.js';
+import type { JsonObject } from '../types/json.js';
 import type { Middleware } from './composeMiddleware.js';
 
 export interface ToolMiddlewareRequest {

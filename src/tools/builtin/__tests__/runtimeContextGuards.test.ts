@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
-import { collectToolExecution } from '../../types/index.js';
-import { SessionId } from '../../../types/branded.js';
+import { SessionId } from '../../../types/identifiers.js';
+import { collectToolExecution } from '../../types/result.js';
 import { globTool } from '../search/glob.js';
 import { grepTool } from '../search/grep.js';
 import { bashTool } from '../shell/bash.js';
@@ -18,10 +18,7 @@ describe('tool runtime context guards', () => {
     });
 
     const result = await collectToolExecution(
-      invocation.execute(
-        new AbortController().signal,
-        { contextSnapshot: emptySnapshot },
-      ),
+      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
     );
 
     expect(result.status).toBe('error');
@@ -38,10 +35,7 @@ describe('tool runtime context guards', () => {
     });
 
     const result = await collectToolExecution(
-      invocation.execute(
-        new AbortController().signal,
-        { contextSnapshot: emptySnapshot },
-      ),
+      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
     );
 
     expect(result.status).toBe('error');
@@ -56,10 +50,7 @@ describe('tool runtime context guards', () => {
     });
 
     const result = await collectToolExecution(
-      invocation.execute(
-        new AbortController().signal,
-        { contextSnapshot: emptySnapshot },
-      ),
+      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
     );
 
     expect(result.status).toBe('error');

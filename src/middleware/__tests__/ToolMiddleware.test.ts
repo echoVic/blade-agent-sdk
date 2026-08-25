@@ -5,17 +5,16 @@ import { DurableExecutionLeaseError } from '../../session/events/DurableExecutio
 import { createTool } from '../../tools/core/createTool.js';
 import { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import { ToolKind } from '../../tools/types/kind.js';
+import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import {
   collectToolExecution,
   completeToolExecution,
-  type Tool,
   ToolErrorType,
-  type ToolResult,
-  type ToolYield,
-} from '../../tools/types/index.js';
-import { ToolKind } from '../../tools/types/ToolKind.js';
-import { ModelAttemptId, SessionId } from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
+} from '../../tools/types/result.js';
+import type { Tool } from '../../tools/types/tool.js';
+import { PermissionMode } from '../../types/constants.js';
+import { ModelAttemptId, SessionId } from '../../types/identifiers.js';
 import type { ToolMiddleware } from '../ToolMiddleware.js';
 
 function createRegistry(execute: (value: string) => ToolResult): ToolRegistry {
@@ -188,9 +187,7 @@ describe('ToolMiddleware', () => {
             lifecycle.push('scheduled');
             return {
               async onExecutionStarted({ input, sideEffect }) {
-                lifecycle.push(
-                  `started:${String(input.value)}:${sideEffect}`,
-                );
+                lifecycle.push(`started:${String(input.value)}:${sideEffect}`);
               },
             };
           },
@@ -225,8 +222,7 @@ describe('ToolMiddleware', () => {
     const execute = vi.fn(() => ({ status: 'success', model: 'tool' }) as ToolResult);
     const replaceContext: ToolMiddleware = (request, next) =>
       next({ ...request, context: { ...request.context } });
-    const replaceTool: ToolMiddleware = (request, next) =>
-      next({ ...request, toolName: 'Other' });
+    const replaceTool: ToolMiddleware = (request, next) => next({ ...request, toolName: 'Other' });
 
     for (const middleware of [replaceContext, replaceTool]) {
       const pipeline = new ExecutionPipeline(createRegistry(execute), {
@@ -292,19 +288,11 @@ describe('ToolMiddleware', () => {
     });
 
     await expect(
-      collectToolExecution(
-        pipeline.execute(
-          'DynamicInterrupt',
-          { mode: 'block' },
-          {},
-        ),
-      ),
+      collectToolExecution(pipeline.execute('DynamicInterrupt', { mode: 'block' }, {})),
     ).resolves.toMatchObject({
       status: 'error',
       error: {
-        message: expect.stringContaining(
-          'cannot change the tool interrupt behavior',
-        ),
+        message: expect.stringContaining('cannot change the tool interrupt behavior'),
       },
     });
     expect(execute).not.toHaveBeenCalled();
@@ -386,13 +374,16 @@ describe('ToolMiddleware', () => {
     const middleware = vi.fn(() =>
       completeToolExecution({ status: 'success', model: 'unexpected' }),
     );
-    const pipeline = new ExecutionPipeline(createRegistry(() => ({
-      status: 'success',
-      model: 'unexpected',
-    })), {
-      permissionMode: PermissionMode.YOLO,
-      middleware: [middleware],
-    });
+    const pipeline = new ExecutionPipeline(
+      createRegistry(() => ({
+        status: 'success',
+        model: 'unexpected',
+      })),
+      {
+        permissionMode: PermissionMode.YOLO,
+        middleware: [middleware],
+      },
+    );
 
     await expect(
       collectToolExecution(
@@ -417,10 +408,13 @@ describe('ToolMiddleware', () => {
       'worker lost ownership while middleware unwound',
     );
     let middlewareUnwound = false;
-    const execute = vi.fn(() => ({
-      status: 'success',
-      model: 'tool',
-    }) as ToolResult);
+    const execute = vi.fn(
+      () =>
+        ({
+          status: 'success',
+          model: 'tool',
+        }) as ToolResult,
+    );
     const pipeline = new ExecutionPipeline(createRegistry(execute), {
       permissionMode: PermissionMode.YOLO,
       middleware: [
@@ -456,22 +450,23 @@ describe('ToolMiddleware', () => {
       'DURABLE_EXECUTION_LEASE_LOST',
       'middleware observed stale ownership',
     );
-    const pipeline = new ExecutionPipeline(createRegistry(() => ({
-      status: 'success',
-      model: 'unexpected',
-    })), {
-      permissionMode: PermissionMode.YOLO,
-      middleware: [
-        () => {
-          throw leaseError;
-        },
-      ],
-    });
+    const pipeline = new ExecutionPipeline(
+      createRegistry(() => ({
+        status: 'success',
+        model: 'unexpected',
+      })),
+      {
+        permissionMode: PermissionMode.YOLO,
+        middleware: [
+          () => {
+            throw leaseError;
+          },
+        ],
+      },
+    );
 
     await expect(
-      collectToolExecution(
-        pipeline.execute('Echo', { value: 'original' }, {}),
-      ),
+      collectToolExecution(pipeline.execute('Echo', { value: 'original' }, {})),
     ).rejects.toBe(leaseError);
     expect(pipeline.getExecutionHistory()).toEqual([]);
   });
@@ -479,24 +474,27 @@ describe('ToolMiddleware', () => {
   it('does not let middleware swallow a fatal core boundary error', async () => {
     const boundaryError = new Error('ownership check failed after queueing');
     let checks = 0;
-    const pipeline = new ExecutionPipeline(createRegistry(() => ({
-      status: 'success',
-      model: 'unexpected',
-    })), {
-      permissionMode: PermissionMode.YOLO,
-      middleware: [
-        async function* (_request, next) {
-          try {
-            return yield* next();
-          } catch {
-            return {
-              status: 'success',
-              model: 'swallowed',
-            };
-          }
-        },
-      ],
-    });
+    const pipeline = new ExecutionPipeline(
+      createRegistry(() => ({
+        status: 'success',
+        model: 'unexpected',
+      })),
+      {
+        permissionMode: PermissionMode.YOLO,
+        middleware: [
+          async function* (_request, next) {
+            try {
+              return yield* next();
+            } catch {
+              return {
+                status: 'success',
+                model: 'swallowed',
+              };
+            }
+          },
+        ],
+      },
+    );
 
     await expect(
       collectToolExecution(
@@ -543,9 +541,7 @@ describe('ToolMiddleware', () => {
     );
 
     await expect(
-      collectToolExecution(
-        pipeline.execute('Echo', { value: 'original' }, {}),
-      ),
+      collectToolExecution(pipeline.execute('Echo', { value: 'original' }, {})),
     ).resolves.toEqual(coreFailure);
   });
 
@@ -640,45 +636,37 @@ describe('ToolMiddleware', () => {
 
     await expect(
       collectToolExecution(
-        pipeline.execute(
-          'Echo',
-          { value: 'original' },
-          { signal: controller.signal },
-        ),
+        pipeline.execute('Echo', { value: 'original' }, { signal: controller.signal }),
       ),
     ).resolves.toEqual(coreCancellation);
   });
 
   it('preserves a completed core success when abort arrives during unwinding', async () => {
     const controller = new AbortController();
-    const execute = vi.fn((value: string) => ({
-      status: 'success',
-      model: `core:${value}`,
-    }) as ToolResult);
-    const pipeline = new ExecutionPipeline(
-      createRegistry(execute),
-      {
-        permissionMode: PermissionMode.YOLO,
-        middleware: [
-          async function* (_request, next) {
-            const result = yield* next();
-            controller.abort(new Error('late abort'));
-            return {
-              ...result,
-              model: 'middleware result after abort',
-            };
-          },
-        ],
-      },
+    const execute = vi.fn(
+      (value: string) =>
+        ({
+          status: 'success',
+          model: `core:${value}`,
+        }) as ToolResult,
     );
+    const pipeline = new ExecutionPipeline(createRegistry(execute), {
+      permissionMode: PermissionMode.YOLO,
+      middleware: [
+        async function* (_request, next) {
+          const result = yield* next();
+          controller.abort(new Error('late abort'));
+          return {
+            ...result,
+            model: 'middleware result after abort',
+          };
+        },
+      ],
+    });
 
     await expect(
       collectToolExecution(
-        pipeline.execute(
-          'Echo',
-          { value: 'committed' },
-          { signal: controller.signal },
-        ),
+        pipeline.execute('Echo', { value: 'committed' }, { signal: controller.signal }),
       ),
     ).resolves.toMatchObject({
       status: 'success',

@@ -1,8 +1,8 @@
 import { z } from 'zod';
+import type { SessionId } from '../../../types/identifiers.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { ToolKind } from '../../types/kind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import type { SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
 
 export function createTaskListTool({ sessionId }: { sessionId: SessionId }) {

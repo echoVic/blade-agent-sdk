@@ -1,6 +1,6 @@
 import { SdkError } from '../../errors/SdkError.js';
-import type { ModelIdentity } from '../../services/ModelIdentity.js';
-import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
+import type { ModelIdentity } from '../../model/identity.js';
+import type { ToolSideEffect } from '../../tools/types/kind.js';
 import {
   type CommandId,
   EventId,
@@ -10,11 +10,11 @@ import {
   type PermissionRequestId,
   type RequestId,
   type SessionId,
-  type ToolAttemptId,
+  ToolAttemptId,
   type ToolUseId,
   type TurnId,
-} from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+} from '../../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import { canonicalJson } from './canonicalJson.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
@@ -357,7 +357,7 @@ function requireToolAttempt(
   event: ToolScopedEvent,
 ): MutableToolAttemptProjection {
   const turn = requireActiveTurn(state, event);
-  const tool = turn.toolAttempts.get(event.toolAttemptId as ToolAttemptId);
+  const tool = turn.toolAttempts.get(ToolAttemptId(event.toolAttemptId));
   if (!tool) {
     invalid(event, `No tool attempt matches ${String(event.toolAttemptId)}`);
   }
@@ -371,9 +371,9 @@ function requireModelAttempt(
   const turn = requireActiveTurn(state, event);
   const attempt = turn.modelAttempts.get(event.modelAttemptId);
   if (
-    !attempt
-    || turn.activeModelAttempt?.modelAttemptId !== event.modelAttemptId
-    || attempt.status !== 'started'
+    !attempt ||
+    turn.activeModelAttempt?.modelAttemptId !== event.modelAttemptId ||
+    attempt.status !== 'started'
   ) {
     invalid(event, `No active model attempt matches ${String(event.modelAttemptId)}`);
   }
@@ -405,10 +405,7 @@ function assertToolMatchesModelAttempt(
     return;
   }
   const modelAttempt = turn.modelAttempts.get(modelAttemptId);
-  if (
-    !modelAttempt
-    || turn.lastModelAttempt?.modelAttemptId !== modelAttemptId
-  ) {
+  if (!modelAttempt || turn.lastModelAttempt?.modelAttemptId !== modelAttemptId) {
     invalid(event, `Tool call ${toolCallId} does not belong to the current model attempt`);
   }
   if (modelAttempt.status === 'started') {
@@ -423,9 +420,7 @@ function assertToolMatchesModelAttempt(
       `Tool call ${toolCallId} follows model attempt ${modelAttempt.modelAttemptId} with status ${modelAttempt.status}`,
     );
   }
-  const declared = modelAttempt.response?.toolCalls?.find(
-    (toolCall) => toolCall.id === toolCallId,
-  );
+  const declared = modelAttempt.response?.toolCalls?.find((toolCall) => toolCall.id === toolCallId);
   if (!declared || declared.name !== toolName) {
     invalid(
       event,
@@ -482,12 +477,7 @@ function assertCompletedResponseMatchesScheduledTools(
         `Model response does not declare durable tool call ${tool.toolCallId}/${tool.toolName}`,
       );
     }
-    assertModelToolInput(
-      event,
-      tool.toolCallId,
-      declared.arguments,
-      tool.modelInput,
-    );
+    assertModelToolInput(event, tool.toolCallId, declared.arguments, tool.modelInput);
   }
 }
 
@@ -523,8 +513,8 @@ function assertRequestCausation(
   // Schema v2 allowed no causation, and atomic rollover cannot reference an ID
   // assigned later in the same append. New standalone terminal writes include it.
   if (
-    event.causationEventId !== undefined
-    && event.causationEventId !== request.lastBoundaryEventId
+    event.causationEventId !== undefined &&
+    event.causationEventId !== request.lastBoundaryEventId
   ) {
     invalid(
       event,
@@ -538,27 +528,27 @@ function assertNewRequestTerminalCausation(
   event: DurableEventEnvelope,
 ): void {
   if (
-    event.type !== DurableEventTypeValue.REQUEST_COMPLETED
-    && event.type !== DurableEventTypeValue.REQUEST_FAILED
-    && event.type !== DurableEventTypeValue.REQUEST_INTERRUPTED
+    event.type !== DurableEventTypeValue.REQUEST_COMPLETED &&
+    event.type !== DurableEventTypeValue.REQUEST_FAILED &&
+    event.type !== DurableEventTypeValue.REQUEST_INTERRUPTED
   ) {
     return;
   }
   const request = state.activeRequest;
   if (
-    !request
-    || request.requestId !== event.requestId
-    || event.causationEventId === request.lastBoundaryEventId
+    !request ||
+    request.requestId !== event.requestId ||
+    event.causationEventId === request.lastBoundaryEventId
   ) {
     return;
   }
   const terminal = state.lastTurnTerminal;
   const atomicTurnTermination =
-    event.causationEventId === undefined
-    && terminal?.requestId === event.requestId
-    && terminal.commandId !== undefined
-    && terminal.commandId === event.commandId
-    && Number(terminal.sequence) + 1 === Number(event.sequence);
+    event.causationEventId === undefined &&
+    terminal?.requestId === event.requestId &&
+    terminal.commandId !== undefined &&
+    terminal.commandId === event.commandId &&
+    Number(terminal.sequence) + 1 === Number(event.sequence);
   if (!atomicTurnTermination) {
     invalid(event, 'A new Request terminal event requires latest-boundary causation');
   }
@@ -568,23 +558,18 @@ function assertNewInputApplicationBoundary(
   state: ProjectionAccumulator,
   event: DurableEventEnvelope,
 ): void {
-  if (
-    event.type === DurableEventTypeValue.INPUT_APPLIED
-    && state.activeRequest?.activeTurn
-  ) {
+  if (event.type === DurableEventTypeValue.INPUT_APPLIED && state.activeRequest?.activeTurn) {
     invalid(event, 'A new input application requires a completed or aborted Turn');
   }
 }
 
-export function hasCrossedNonIdempotentBoundary(
-  tool: DurableToolAttemptProjection,
-): boolean {
-  return tool.sideEffect === 'non_idempotent'
-    && (
-      tool.status === 'completed'
-      || tool.status === 'failed'
-      || (tool.status === 'cancelled' && tool.executionStarted)
-    );
+export function hasCrossedNonIdempotentBoundary(tool: DurableToolAttemptProjection): boolean {
+  return (
+    tool.sideEffect === 'non_idempotent' &&
+    (tool.status === 'completed' ||
+      tool.status === 'failed' ||
+      (tool.status === 'cancelled' && tool.executionStarted))
+  );
 }
 
 function clonePermission(
@@ -600,14 +585,10 @@ function cloneTool(tool: MutableToolAttemptProjection): DurableToolAttemptProjec
   };
 }
 
-function cloneModelAttempt(
-  attempt: MutableModelAttemptProjection,
-): DurableModelAttemptProjection {
+function cloneModelAttempt(attempt: MutableModelAttemptProjection): DurableModelAttemptProjection {
   return {
     ...attempt,
-    ...(attempt.modelIdentity
-      ? { modelIdentity: { ...attempt.modelIdentity } }
-      : {}),
+    ...(attempt.modelIdentity ? { modelIdentity: { ...attempt.modelIdentity } } : {}),
   };
 }
 
@@ -621,9 +602,7 @@ function cloneTurn(turn: MutableTurnProjection | null): DurableTurnProjection | 
     ...(turn.model ? { model: turn.model } : {}),
     status: turn.status,
     modelAttempts: Array.from(turn.modelAttempts.values(), cloneModelAttempt),
-    activeModelAttempt: turn.activeModelAttempt
-      ? cloneModelAttempt(turn.activeModelAttempt)
-      : null,
+    activeModelAttempt: turn.activeModelAttempt ? cloneModelAttempt(turn.activeModelAttempt) : null,
     toolAttempts: Array.from(turn.toolAttempts.values(), cloneTool),
   };
 }
@@ -717,21 +696,17 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
           requestInterruption.status !== 'running' ||
           requestInterruption.lastTurn !== recovery.turn
         ) {
-          invalid(
-            event,
-            `Recovery origin ${recovery.turnId} is not an atomic canonical rollover`,
-          );
+          invalid(event, `Recovery origin ${recovery.turnId} is not an atomic canonical rollover`);
         }
         const syntheticPreTurn =
-          origin.commandId === event.commandId
-          && Number(origin.sequence) + 1 === Number(turnAbort.sequence);
+          origin.commandId === event.commandId &&
+          Number(origin.sequence) + 1 === Number(turnAbort.sequence);
         recoveryKind = syntheticPreTurn ? 'pre_turn_request' : 'turn';
         reconciledInputIds = syntheticPreTurn
           ? [
               ...(recovery.turn === 1 ? [requestInterruption.inputId] : []),
               ...turnAbort.preparedInputIds.filter(
-                (inputId) =>
-                  recovery.turn !== 1 || inputId !== requestInterruption.inputId,
+                (inputId) => recovery.turn !== 1 || inputId !== requestInterruption.inputId,
               ),
             ]
           : [
@@ -748,10 +723,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
           }
         }
         if (!syntheticPreTurn && origin.commandId === event.commandId) {
-          invalid(
-            event,
-            `Recovery origin ${recovery.turnId} has a non-adjacent synthetic Turn`,
-          );
+          invalid(event, `Recovery origin ${recovery.turnId} has a non-adjacent synthetic Turn`);
         }
         if (turnAbort.unsafeNonIdempotentToolAttemptId) {
           invalid(
@@ -795,10 +767,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       }
       request.status = 'running';
       request.lastBoundaryEventId = event.eventId;
-      if (
-        request.pendingInputIds.length === 1
-        && request.pendingInputIds[0] === request.inputId
-      ) {
+      if (request.pendingInputIds.length === 1 && request.pendingInputIds[0] === request.inputId) {
         request.pendingInputIds = [];
       }
       return;
@@ -933,10 +902,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       const request = requireRunningRequest(state, event);
       const turn = requireActiveTurn(state, event);
       if (turn.activeModelAttempt) {
-        invalid(
-          event,
-          `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
-        );
+        invalid(event, `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`);
       }
       const previousAttempt = turn.lastModelAttempt;
       if (previousAttempt && previousAttempt.status !== 'failed') {
@@ -957,9 +923,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       const attempt: MutableModelAttemptProjection = {
         modelAttemptId: event.modelAttemptId,
         model: event.data.model,
-        ...(event.data.modelIdentity
-          ? { modelIdentity: { ...event.data.modelIdentity } }
-          : {}),
+        ...(event.data.modelIdentity ? { modelIdentity: { ...event.data.modelIdentity } } : {}),
         streaming: event.data.streaming,
         status: 'started',
       };
@@ -1030,12 +994,8 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         toolAttemptId: event.toolAttemptId,
         toolCallId: event.data.toolCallId,
         toolName: event.data.toolName,
-        ...(event.modelAttemptId
-          ? { modelAttemptId: event.modelAttemptId }
-          : {}),
-        ...(event.data.modelInput !== undefined
-          ? { modelInput: event.data.modelInput }
-          : {}),
+        ...(event.modelAttemptId ? { modelAttemptId: event.modelAttemptId } : {}),
+        ...(event.data.modelInput !== undefined ? { modelInput: event.data.modelInput } : {}),
         input: event.data.input,
         sideEffect: event.data.sideEffect,
         interruptBehavior: event.data.interruptBehavior,
@@ -1184,19 +1144,13 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 
     case DurableEventTypeValue.INPUT_APPLIED: {
       const request = requireActiveRequest(state, event);
-      if (
-        event.turnId !== undefined
-        && request.activeTurn?.turnId !== event.turnId
-      ) {
+      if (event.turnId !== undefined && request.activeTurn?.turnId !== event.turnId) {
         invalid(event, `No active turn matches ${String(event.turnId)}`);
       }
       if (state.seenAppliedInputIds.has(event.data.inputId)) {
         invalid(event, `Input ID ${event.data.inputId} was already applied`);
       }
-      if (
-        state.seenInputIds.has(event.data.inputId)
-        && event.data.inputId !== request.inputId
-      ) {
+      if (state.seenInputIds.has(event.data.inputId) && event.data.inputId !== request.inputId) {
         invalid(event, `Input ID ${event.data.inputId} was already used by another Request`);
       }
       state.seenAppliedInputIds.add(event.data.inputId);
@@ -1389,12 +1343,12 @@ export function planDurableSessionRecovery(
     (turn?.modelAttempts ?? []).map((attempt) => [attempt.modelAttemptId, attempt.status]),
   );
   const hasUnconfirmedModelResponse = (tool: DurableToolAttemptProjection): boolean =>
-    tool.modelAttemptId !== undefined
-    && modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
+    tool.modelAttemptId !== undefined &&
+    modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
   const unknownToolAttempts = tools.filter(
     (tool) =>
-      (tool.status === 'started' || tool.status === 'outcome_unknown')
-      && tool.sideEffect === 'non_idempotent',
+      (tool.status === 'started' || tool.status === 'outcome_unknown') &&
+      tool.sideEffect === 'non_idempotent',
   );
   const pendingPermissions = tools.flatMap((tool) =>
     tool.permission?.status === 'pending' && !hasUnconfirmedModelResponse(tool)
@@ -1403,36 +1357,22 @@ export function planDurableSessionRecovery(
   );
   const retryableToolAttempts = tools.filter(
     (tool) =>
-      !hasUnconfirmedModelResponse(tool)
-      && (
-        (
-        tool.status === 'scheduled'
-        && tool.permission?.status !== 'pending'
-        && permissionDecision(tool) !== 'deny'
-        && permissionDecision(tool) !== 'cancel'
-        )
-        || (
-          (tool.status === 'started' || tool.status === 'outcome_unknown')
-          && tool.sideEffect !== 'non_idempotent'
-        )
-      ),
+      !hasUnconfirmedModelResponse(tool) &&
+      ((tool.status === 'scheduled' &&
+        tool.permission?.status !== 'pending' &&
+        permissionDecision(tool) !== 'deny' &&
+        permissionDecision(tool) !== 'cancel') ||
+        ((tool.status === 'started' || tool.status === 'outcome_unknown') &&
+          tool.sideEffect !== 'non_idempotent')),
   );
   const cancelableToolAttempts = tools.filter(
     (tool) =>
-      (
-        tool.status === 'scheduled'
-        && (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel')
-      )
-      || (
-        hasUnconfirmedModelResponse(tool)
-        && (
-          tool.status === 'scheduled'
-          || (
-            (tool.status === 'started' || tool.status === 'outcome_unknown')
-            && tool.sideEffect !== 'non_idempotent'
-          )
-        )
-      ),
+      (tool.status === 'scheduled' &&
+        (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel')) ||
+      (hasUnconfirmedModelResponse(tool) &&
+        (tool.status === 'scheduled' ||
+          ((tool.status === 'started' || tool.status === 'outcome_unknown') &&
+            tool.sideEffect !== 'non_idempotent'))),
   );
 
   let action: DurableSessionRecoveryAction = 'none';
@@ -1445,16 +1385,14 @@ export function planDurableSessionRecovery(
   } else if (turn) {
     action = 'resume_turn';
   } else if (request?.status === 'accepted') {
-    action = (request.appliedInputIds ?? []).length === 0
-      ? 'resume_request'
-      : 'reconcile_request_inputs';
+    action =
+      (request.appliedInputIds ?? []).length === 0 ? 'resume_request' : 'reconcile_request_inputs';
   } else if (pendingInputIds.length > 0) {
     action = 'reconcile_request_inputs';
   } else if (request?.lastTurn === 0) {
     const appliedInputIds = request.appliedInputIds ?? [];
     action =
-      appliedInputIds.length === 1
-      && appliedInputIds[0] === request.inputId
+      appliedInputIds.length === 1 && appliedInputIds[0] === request.inputId
         ? 'rollover_request'
         : 'reconcile_request_inputs';
   } else if (request) {

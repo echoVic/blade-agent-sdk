@@ -41,7 +41,7 @@ export {
   DecisionBehavior,
   HookExitCode,
   HookType,
-} from './hooks/types/HookTypes.js';
+} from './hooks/types.js';
 export type {
   CleanupFn,
   CleanupHandle,
@@ -53,6 +53,8 @@ export {
   registerCleanup,
   resetCleanupRegistry,
 } from './lifecycle/CleanupRegistry.js';
+// --- Constants & types ---
+export type { McpServerConfig } from './mcp/config.js';
 export type {
   McpToolCallResponse,
   McpToolDefinition,
@@ -63,8 +65,40 @@ export type {
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Middleware and plugins ---
 export * from './middleware/index.js';
-export { ProviderRegistry } from './services/ProviderRegistry.js';
-export type { ProviderAdapter } from './services/ProviderRegistry.js';
+export type {
+  BuiltinProviderType,
+  ModelConfig,
+  ModelContent,
+  ModelIdentity,
+  ModelImageContent,
+  ModelMessage,
+  ModelProviderOptions,
+  ModelResponse,
+  ModelRetryConfig,
+  ModelRetryEvent,
+  ModelService,
+  ModelServiceConfig,
+  ModelSideQueryOptions,
+  ModelStreamChunk,
+  ModelStreamToolCall,
+  ModelTextContent,
+  ModelToolCall,
+  ModelToolCallDelta,
+  ModelToolDefinition,
+  ModelUsage,
+  OutputFormat,
+  ProviderConnectionConfig,
+  ProviderType,
+  QuerySource,
+  TokenUsage,
+} from './model/index.js';
+// --- Model contracts ---
+export {
+  isBuiltinProviderType,
+  normalizeModelUsage,
+  PROVIDER_TYPES,
+  resolveModelIdentity,
+} from './model/index.js';
 // --- Observability ---
 export type {
   AgentTrace,
@@ -97,6 +131,7 @@ export {
   hasFilesystemCapability,
   mergeContext,
 } from './runtime/index.js';
+export type { SandboxSettings } from './sandbox/config.js';
 export type {
   DeepSeekBatchChatCompletionItem,
   DeepSeekBatchChatCompletionOptions,
@@ -138,11 +173,11 @@ export {
   sanitizeDeepSeekStrictSchema,
   summarizeDeepSeekBatchChatCompletions,
 } from './services/deepseek.js';
+export type { ProviderAdapter } from './services/ProviderRegistry.js';
+export { ProviderRegistry } from './services/ProviderRegistry.js';
 export * from './session/events/core.js';
 export type {
   AgentDefinition,
-  BuiltinProviderType,
-  ExecutionContext,
   ForkOptions,
   ForkSessionOptions,
   ForkSessionResult,
@@ -156,13 +191,11 @@ export type {
   ModelInfo,
   PendingSessionInput,
   PromptResult,
-  ProviderConfig,
-  ProviderType,
   ResumeOptions,
   SendOptions,
+  SessionEventStore,
   SessionHandoffResult,
   SessionOptions,
-  SessionEventStore,
   SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
@@ -171,14 +204,11 @@ export type {
   SessionRepositoryStorageStats,
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
+  SessionStreamEvent,
   SessionTool,
-  StreamMessage,
   StreamOptions,
   SubagentInfo,
-  TokenUsage,
-  ToolCallRecord,
-  ToolDefinition,
-  ToolResult,
+  ToolExecutionRecord,
 } from './session/index.js';
 // --- Session ---
 export {
@@ -203,10 +233,12 @@ export type {
   ConfirmationDetails,
   ConfirmationHandler,
   ConfirmationResponse,
+  ExecutionContext,
   FunctionDeclaration,
   Tool,
   ToolBehavior,
   ToolConfig,
+  ToolDefinition,
   ToolDescription,
   ToolDescriptionResolver,
   ToolDisplayContent,
@@ -223,6 +255,7 @@ export type {
   ToolModelContent,
   ToolPermissionResolution,
   ToolProgress,
+  ToolResult,
   ToolScheduledLifecycle,
   ToolSchema,
   ToolSettledLifecycle,
@@ -233,7 +266,14 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from './tools/types/index.js';
-export { ToolKind, ToolSideEffect } from './tools/types/ToolKind.js';
+export { ToolKind, ToolSideEffect } from './tools/types/kind.js';
+export {
+  HookEvent,
+  MessageRole,
+  PermissionDecision,
+  PermissionMode,
+  SessionStreamEventType,
+} from './types/constants.js';
 export {
   AgentId,
   CommandId,
@@ -247,29 +287,19 @@ export {
   InputId,
   MessageId,
   ModelAttemptId,
+  PartId,
   PermissionRequestId,
   RequestId,
   SessionId,
+  SpanId,
   ToolAttemptId,
   ToolUseId,
+  TraceEventId,
+  TraceId,
   TurnId,
   WorkerId,
-} from './types/branded.js';
-// --- Constants & types ---
-export type {
-  JsonObject,
-  JsonValue,
-  McpServerConfig,
-  OutputFormat,
-  SandboxSettings,
-} from './types/common.js';
-export {
-  HookEvent,
-  MessageRole,
-  PermissionDecision,
-  PermissionMode,
-  StreamMessageType,
-} from './types/constants.js';
+} from './types/identifiers.js';
+export type { JsonObject, JsonValue } from './types/json.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
   CanUseTool,
@@ -278,6 +308,7 @@ export type {
   PermissionHandlerRequest,
   PermissionResult,
   PermissionRuleValue,
+  PermissionsConfig,
   PermissionUpdate,
 } from './types/permissions.js';
 // --- Permission system ---
@@ -288,7 +319,6 @@ export {
   createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
 } from './types/permissions.js';
-export type { Assert, Extends, IsEqual, KeysEqual } from './types/typeAssertions.js';
 // --- Error utilities ---
 export { getErrorCode, getErrorMessage, getErrorName, toError } from './utils/errorUtils.js';
 // --- Lazy initialization utilities ---

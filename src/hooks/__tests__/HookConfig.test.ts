@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_HOOK_CONFIG, mergeHookConfig } from '../HookConfig.js';
-import type { HookConfig } from '../types/HookTypes.js';
-import { HookType } from '../types/HookTypes.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
+import { DEFAULT_HOOK_CONFIG, mergeHookConfig } from '../HookConfig.js';
+import type { HookConfig } from '../types.js';
+import { HookType } from '../types.js';
 
 function createDefaultHookConfig(): HookConfig {
   return { ...DEFAULT_HOOK_CONFIG, enabled: true };

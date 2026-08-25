@@ -3,16 +3,18 @@ export {
   agentCommandResultSchema,
   agentCommandSchema,
   agentEventCursorSchema,
+  agentInitializationDataSchema,
+  agentInputSubmissionDataSchema,
+  agentPermissionRequestSchema,
   agentServerEventSchema,
+  agentSessionDescriptorSchema,
+  agentSessionListDataSchema,
+  agentSessionResultSchema,
   parseAgentCommand,
   parseAgentCommandResult,
   parseAgentEventCursor,
   parseAgentServerEvent,
 } from './schemas.js';
-export {
-  AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
-} from './types.js';
 export type {
   AbortRequestCommand,
   AgentClientCapabilities,
@@ -23,6 +25,7 @@ export type {
   AgentCommandSuccess,
   AgentEventCursor,
   AgentEventPage,
+  AgentInitializationData,
   AgentInputSubmissionData,
   AgentPermissionRequest,
   AgentPrincipal,
@@ -42,4 +45,8 @@ export type {
   ResolvePermissionCommand,
   ResumeSessionCommand,
   SubmitInputCommand,
+} from './types.js';
+export {
+  AGENT_PROTOCOL_VERSION,
+  AgentCommandType,
 } from './types.js';

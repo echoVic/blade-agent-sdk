@@ -1,4 +1,4 @@
-import type { SandboxSettings } from '../types/common.js';
+import type { SandboxSettings } from './config.js';
 import { getSandboxExecutor } from './SandboxExecutor.js';
 import { createSandboxUnavailableError } from './sandboxErrors.js';
 

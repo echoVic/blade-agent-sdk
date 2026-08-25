@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
-import type { McpServerConfig } from '../types/common.js';
-import type { Tool } from '../tools/types/index.js';
+import type { Tool } from '../tools/types/tool.js';
 import { toError } from '../utils/errorUtils.js';
+import type { McpServerConfig } from './config.js';
 import { createMcpTool } from './createMcpTool.js';
 import { McpClient } from './McpClient.js';
 import type { SdkMcpServerHandle } from './SdkMcpServer.js';
@@ -86,7 +86,7 @@ export class McpRegistry extends EventEmitter {
       }
       throw new Error(
         `MCP server "${name}" is already registered with a different handle. ` +
-        `In-process servers cannot be replaced while other sessions may be using them.`
+          `In-process servers cannot be replaced while other sessions may be using them.`,
       );
     }
 
@@ -206,9 +206,7 @@ export class McpRegistry extends EventEmitter {
    * - 有冲突: serverName__toolName
    */
   async getAvailableTools(): Promise<Tool[]> {
-    return this.getAvailableToolsByServerNames(
-      Array.from(this.servers.keys())
-    );
+    return this.getAvailableToolsByServerNames(Array.from(this.servers.keys()));
   }
 
   /**
@@ -240,9 +238,7 @@ export class McpRegistry extends EventEmitter {
       if (serverInfo.status === McpConnectionStatus.CONNECTED) {
         for (const mcpTool of serverInfo.tools) {
           const hasConflict = (nameConflicts.get(mcpTool.name) || 0) > 1;
-          const toolName = hasConflict
-            ? `${serverName}__${mcpTool.name}`
-            : mcpTool.name;
+          const toolName = hasConflict ? `${serverName}__${mcpTool.name}` : mcpTool.name;
 
           const tool = createMcpTool(serverInfo.client, serverName, mcpTool, toolName);
           tools.push(tool);
@@ -266,10 +262,7 @@ export class McpRegistry extends EventEmitter {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const onStatusChanged = (
-        serverName: string,
-        newStatus: McpConnectionStatus
-      ) => {
+      const onStatusChanged = (serverName: string, newStatus: McpConnectionStatus) => {
         if (serverName !== name) {
           return;
         }
@@ -340,9 +333,7 @@ export class McpRegistry extends EventEmitter {
       return [];
     }
 
-    return serverInfo.tools.map((mcpTool) =>
-      createMcpTool(serverInfo.client, serverName, mcpTool)
-    );
+    return serverInfo.tools.map((mcpTool) => createMcpTool(serverInfo.client, serverName, mcpTool));
   }
 
   /**
@@ -401,7 +392,7 @@ export class McpRegistry extends EventEmitter {
   private setupClientEventHandlers(
     client: McpClient,
     serverInfo: McpServerInfo,
-    name: string
+    name: string,
   ): void {
     client.on('connected', (server) => {
       serverInfo.status = McpConnectionStatus.CONNECTED;
@@ -468,7 +459,7 @@ export class McpRegistry extends EventEmitter {
       this.registerServer(name, config).catch((error) => {
         console.warn(`注册MCP服务器 "${name}" 失败:`, error);
         return error;
-      })
+      }),
     );
 
     await Promise.allSettled(registrationPromises);
@@ -512,7 +503,7 @@ export class McpRegistry extends EventEmitter {
         disconnectPromises.push(
           serverInfo.client.disconnect().catch((error) => {
             console.warn(`断开 MCP 服务器 "${name}" 时出错:`, error);
-          })
+          }),
         );
       }
     }

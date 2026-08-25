@@ -1,9 +1,10 @@
 import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
+import type { BladeConfig } from '../agent/config.js';
 import {
-    type InitialInputPreparation,
-    RECONCILED_INITIAL_INPUT,
+  type InitialInputPreparation,
+  RECONCILED_INITIAL_INPUT,
 } from '../agent/InitialInputPreparation.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { ConfigError } from '../errors/ConfigError.js';
@@ -12,59 +13,65 @@ import { SessionInputError } from '../errors/SessionInputError.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
+import type { ModelConfig, ProviderConnectionConfig } from '../model/config.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
+import type { TokenUsage } from '../model/usage.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
-    type ContextSnapshot,
-    createContextSnapshot,
-    type RuntimeContext,
+  type ContextSnapshot,
+  createContextSnapshot,
+  type RuntimeContext,
 } from '../runtime/index.js';
-import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
-import type { ConfirmationHandler } from '../tools/types/index.js';
-import { CommandId, type EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
+import type { ConfirmationHandler } from '../tools/types/execution.js';
+import { PermissionMode } from '../types/constants.js';
 import {
-    type BladeConfig,
-    type JsonObject,
-    type JsonValue,
-    type ModelConfig,
-    PermissionMode,
-} from '../types/common.js';
+  CommandId,
+  type EventSequence,
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+  type SpanId,
+  ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { ActiveRequestController, type RequestAbortReason } from './ActiveRequestController.js';
 import {
-    parseDurableRuntimeContext,
-    parseDurableUserMessageContent,
-    serializeDurableRuntimeContext,
+  parseDurableRuntimeContext,
+  parseDurableUserMessageContent,
+  serializeDurableRuntimeContext,
 } from './DurableRequestRecovery.js';
 import {
-    DurableEventSubscription,
-    DurableEventSubscriptionError,
-    type DurableEventSubscriptionOptions,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
 import { DurableExecutionLease } from './events/DurableExecutionLease.js';
 import {
-    DurableExecutionLeaseError,
-    type DurableExecutionLease as DurableExecutionLeaseSnapshot,
+  DurableExecutionLeaseError,
+  type DurableExecutionLease as DurableExecutionLeaseSnapshot,
 } from './events/DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
-    DurableRequestProjection,
-    DurableSessionProjection,
-    DurableSessionRecoveryPlan,
+  DurableRequestProjection,
+  DurableSessionProjection,
+  DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
 import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
 import { resolveDurableStoreTimeoutMs } from './events/DurableStoreOperation.js';
 import {
-    type DurableRequestFinish,
-    durableRequestFinishFromLoopResult,
-    DurableSessionRecoveryRequiredError,
-    SessionDurableRecorder,
-    SessionDurableRecorderError,
+  type DurableRequestFinish,
+  DurableSessionRecoveryRequiredError,
+  durableRequestFinishFromLoopResult,
+  SessionDurableRecorder,
+  SessionDurableRecorderError,
 } from './events/SessionDurableRecorder.js';
 import { DurableEventType, type DurableRequestInterruptReason } from './events/types.js';
 import {
-    NODE_SESSION_HOST,
-    SERVER_SESSION_HOST,
-    type SessionHostProfile,
+  NODE_SESSION_HOST,
+  SERVER_SESSION_HOST,
+  type SessionHostProfile,
 } from './SessionHostProfile.js';
 import { SessionInputInbox } from './SessionInputInbox.js';
 import {
@@ -74,28 +81,23 @@ import {
   type SessionRepository,
 } from './SessionRepository.js';
 import { SessionRuntime } from './SessionRuntime.js';
-import type {
-    SessionSnapshot,
-    SessionState,
-} from './SessionStore.js';
+import type { SessionSnapshot, SessionState } from './SessionStore.js';
 import { SessionStreamChannel } from './SessionStreamChannel.js';
 import type {
-    ForkSessionOptions,
-    InputSubmission,
-    ISession,
-    McpServerStatus,
-    McpToolInfo,
-    ModelInfo,
-    PendingSessionInput,
-    PromptResult,
-    ProviderConfig,
-    SendOptions,
-    SessionHandoffResult,
-    SessionOptions,
-    StreamMessage,
-    StreamOptions,
-    TokenUsage,
-    ToolCallRecord,
+  ForkSessionOptions,
+  InputSubmission,
+  ISession,
+  McpServerStatus,
+  McpToolInfo,
+  ModelInfo,
+  PendingSessionInput,
+  PromptResult,
+  SendOptions,
+  SessionHandoffResult,
+  SessionOptions,
+  SessionStreamEvent,
+  StreamOptions,
+  ToolExecutionRecord,
 } from './types.js';
 import { InputPriority } from './types.js';
 
@@ -104,11 +106,10 @@ export interface ResumeOptions extends SessionOptions {
 }
 
 function hasSessionPersistence(options: SessionOptions): boolean {
-  return options.sessionRepository !== undefined
-    && (
-      options.sessionEventStore !== undefined
-      || isSessionEventStore(options.sessionRepository)
-    );
+  return (
+    options.sessionRepository !== undefined &&
+    (options.sessionEventStore !== undefined || isSessionEventStore(options.sessionRepository))
+  );
 }
 
 interface SessionStreamExecution {
@@ -162,7 +163,7 @@ class Session implements ISession {
   readonly sessionId: SessionId;
   private agent: Agent | null = null;
   private runtime: SessionRuntime | null = null;
-  private _messages: Message[] = [];
+  private _messages: ModelMessage[] = [];
   private readonly options: SessionOptions;
   private readonly store: SessionRepository;
   private readonly eventStore: SessionEventStore;
@@ -222,9 +223,8 @@ class Session implements ISession {
       !options.sessionRepository
     ) {
       throw new ConfigError(
-        'Server sessions require sessionRepository and sessionEventStore '
-          + 'for persistence. '
-          + 'Import from @blade-ai/agent-sdk/node to use storagePath-backed local persistence.',
+        'Server sessions require sessionRepository and sessionEventStore for persistence. ' +
+          'Import from @blade-ai/agent-sdk/node to use storagePath-backed local persistence.',
       );
     }
     this.sessionId = sessionId || SessionId(nanoid());
@@ -234,38 +234,34 @@ class Session implements ISession {
     this.defaultContext = options.defaultContext ?? {};
     this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
     this.confirmationHandler =
-      options.confirmationHandlerFactory?.(this.sessionId)
-      ?? options.confirmationHandler;
-    const eventStore = options.sessionEventStore
-      ?? (isSessionEventStore(options.sessionRepository)
-        ? options.sessionRepository
-        : undefined);
+      options.confirmationHandlerFactory?.(this.sessionId) ?? options.confirmationHandler;
+    const eventStore =
+      options.sessionEventStore ??
+      (isSessionEventStore(options.sessionRepository) ? options.sessionRepository : undefined);
     if (
-      options.persistSession !== false
-      && ((options.sessionRepository && !eventStore)
-        || (!options.sessionRepository && eventStore))
+      options.persistSession !== false &&
+      ((options.sessionRepository && !eventStore) || (!options.sessionRepository && eventStore))
     ) {
       throw new ConfigError(
         'Persistent Sessions require both sessionRepository and sessionEventStore.',
       );
     }
     this.persistenceEnabled =
-      options.persistSession !== false
-      && options.sessionRepository !== undefined
-      && eventStore !== undefined;
+      options.persistSession !== false &&
+      options.sessionRepository !== undefined &&
+      eventStore !== undefined;
     const noopRepository = new NoopSessionRepository();
-    this.store = this.persistenceEnabled && options.sessionRepository
-      ? options.sessionRepository
-      : noopRepository;
-    this.eventStore = this.persistenceEnabled && eventStore
-      ? eventStore
-      : noopRepository;
+    this.store =
+      this.persistenceEnabled && options.sessionRepository
+        ? options.sessionRepository
+        : noopRepository;
+    this.eventStore = this.persistenceEnabled && eventStore ? eventStore : noopRepository;
     this.isResumeSession = isResume;
     this.rootLogger = createRootLogger(options.logger, this.sessionId);
     this.logger = this.rootLogger.child(LogCategory.AGENT);
   }
 
-  get messages(): Message[] {
+  get messages(): ModelMessage[] {
     return [...this._messages];
   }
 
@@ -531,7 +527,7 @@ class Session implements ISession {
     };
   }
 
-  private getDefaultBaseUrl(type: ProviderConfig['type']): string {
+  private getDefaultBaseUrl(type: ProviderConnectionConfig['type']): string {
     const urls: Record<string, string> = {
       openai: 'https://api.openai.com/v1',
       'openai-compatible': 'https://api.openai.com/v1',
@@ -745,12 +741,12 @@ class Session implements ISession {
     });
   }
 
-  stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
+  stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent> {
     return this.consumeRequestStream(options);
   }
 
-  private async *consumeRequestStream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
-    const channel = new SessionStreamChannel<StreamMessage>(1);
+  private async *consumeRequestStream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent> {
+    const channel = new SessionStreamChannel<SessionStreamEvent>(1);
     let settled = false;
     let resolveCompletion!: () => void;
     let rejectCompletion!: (error: unknown) => void;
@@ -807,7 +803,7 @@ class Session implements ISession {
   private async *executeStream(
     options: StreamOptions | undefined,
     execution: SessionStreamExecution,
-  ): AsyncGenerator<StreamMessage> {
+  ): AsyncGenerator<SessionStreamEvent> {
     try {
       await this.ensureInitialized();
     } catch (error) {
@@ -973,8 +969,7 @@ class Session implements ISession {
       }
       let errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      let terminalContainmentFailure =
-        isHookProcessContainmentError(terminalError);
+      let terminalContainmentFailure = isHookProcessContainmentError(terminalError);
       try {
         await finishTrace(
           !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
@@ -999,8 +994,7 @@ class Session implements ISession {
         );
         terminalError = combinedError;
         errorMessage = combinedError.message;
-        terminalContainmentFailure =
-          isHookProcessContainmentError(terminalError);
+        terminalContainmentFailure = isHookProcessContainmentError(terminalError);
       }
       try {
         if (terminalContainmentFailure) {
@@ -1030,7 +1024,7 @@ class Session implements ISession {
       return;
     }
 
-    const toolCalls: ToolCallRecord[] = [];
+    const toolCalls: ToolExecutionRecord[] = [];
     let totalUsage: TokenUsage = {
       inputTokens: 0,
       outputTokens: 0,
@@ -1079,8 +1073,8 @@ class Session implements ISession {
 
     try {
       let loopResult: LoopResult | undefined;
-      const turnSpans = new Map<number, string>();
-      const toolSpans = new Map<string, string>();
+      const turnSpans = new Map<number, SpanId>();
+      const toolSpans = new Map<string, SpanId>();
 
       while (true) {
         const next = await stream.next();
@@ -1163,23 +1157,23 @@ class Session implements ISession {
             if (value.toolCall.type !== 'function') break;
             const input = this.safeParseJson(value.toolCall.function.arguments);
             toolCalls.push({
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               input,
               output: '',
               duration: 0,
             });
-            toolSpans.set(
-              value.toolCall.id,
-              traceRecorder?.recordToolStart(
-                value.toolCall.id,
-                value.toolCall.function.name,
-                input,
-              ) ?? '',
+            const toolSpanId = traceRecorder?.recordToolStart(
+              ToolUseId(value.toolCall.id),
+              value.toolCall.function.name,
+              input,
             );
+            if (toolSpanId) {
+              toolSpans.set(value.toolCall.id, toolSpanId);
+            }
             yield {
               type: 'tool_use',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               input,
               sessionId: this.sessionId,
@@ -1199,7 +1193,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_progress',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               progress: value.progress,
               sessionId: this.sessionId,
@@ -1219,7 +1213,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_message',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               content: value.content,
               sessionId: this.sessionId,
@@ -1239,7 +1233,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_runtime_patch',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               patch: value.patch,
               sessionId: this.sessionId,
@@ -1259,7 +1253,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_context_patch',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               patch: value.patch,
               sessionId: this.sessionId,
@@ -1279,7 +1273,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_new_messages',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               messages: value.messages,
               sessionId: this.sessionId,
@@ -1299,7 +1293,7 @@ class Session implements ISession {
             );
             yield {
               type: 'tool_permission_updates',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               updates: value.updates,
               sessionId: this.sessionId,
@@ -1315,7 +1309,7 @@ class Session implements ISession {
             }
             traceRecorder?.recordToolResult(
               toolSpans.get(value.toolCall.id),
-              value.toolCall.id,
+              ToolUseId(value.toolCall.id),
               value.toolCall.function.name,
               value.result.model,
               value.result.status === 'error',
@@ -1323,7 +1317,7 @@ class Session implements ISession {
             toolSpans.delete(value.toolCall.id);
             yield {
               type: 'tool_result',
-              id: value.toolCall.id,
+              id: ToolUseId(value.toolCall.id),
               name: value.toolCall.function.name,
               output: value.result.model,
               display: value.result.display,
@@ -1428,8 +1422,7 @@ class Session implements ISession {
       }
       let errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      let terminalContainmentFailure =
-        isHookProcessContainmentError(terminalError);
+      let terminalContainmentFailure = isHookProcessContainmentError(terminalError);
       try {
         await finishTrace(
           !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
@@ -1454,8 +1447,7 @@ class Session implements ISession {
         );
         terminalError = combinedError;
         errorMessage = combinedError.message;
-        terminalContainmentFailure =
-          isHookProcessContainmentError(terminalError);
+        terminalContainmentFailure = isHookProcessContainmentError(terminalError);
       }
       if (terminalContainmentFailure) {
         throw terminalError;
@@ -1720,17 +1712,15 @@ class Session implements ISession {
       }
 
       const durableRecorder =
-        this.executionState.phase === 'pending'
-        || this.executionState.phase === 'running'
-        || this.executionState.phase === 'suspending'
+        this.executionState.phase === 'pending' ||
+        this.executionState.phase === 'running' ||
+        this.executionState.phase === 'suspending'
           ? this.executionState.durableRecorder
           : null;
       if (
-        (
-          this.executionState.phase === 'pending'
-          || this.executionState.phase === 'running'
-          || this.executionState.phase === 'suspending'
-        ) &&
+        (this.executionState.phase === 'pending' ||
+          this.executionState.phase === 'running' ||
+          this.executionState.phase === 'suspending') &&
         !durableRecorder
       ) {
         throw new SessionHandoffError(
@@ -2444,7 +2434,7 @@ class Session implements ISession {
     return forkedSession;
   }
 
-  private cloneSnapshotMessages(snapshot: SessionSnapshot | null): Message[] {
+  private cloneSnapshotMessages(snapshot: SessionSnapshot | null): ModelMessage[] {
     if (!snapshot) {
       return [];
     }
@@ -2452,13 +2442,13 @@ class Session implements ISession {
     return snapshot.messages.map(cloneMessage);
   }
 
-  private createSnapshotFromMessages(messageId?: string): SessionSnapshot {
+  private createSnapshotFromMessages(messageId?: MessageId): SessionSnapshot {
     let messages = this._messages.map(cloneMessage);
 
     if (messageId) {
       const endIndex = messages.findIndex((message) => message.id === messageId);
       if (endIndex === -1) {
-        throw new Error(`Message with ID "${messageId}" not found in session history`);
+        throw new Error(`ModelMessage with ID "${messageId}" not found in session history`);
       }
       messages = messages.slice(0, endIndex + 1);
     }
@@ -2468,7 +2458,8 @@ class Session implements ISession {
       messages,
       messageIds: messages
         .map((message) => message.id)
-        .filter((id): id is string => typeof id === 'string'),
+        .filter((id): id is string => typeof id === 'string')
+        .map(MessageId),
       lastActivity: Date.now(),
     };
   }
@@ -2479,7 +2470,7 @@ class Session implements ISession {
     }
 
     return message
-      .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+      .filter((part): part is Extract<ModelContent, { type: 'text' }> => part.type === 'text')
       .map((part) => part.text)
       .join('\n');
   }
@@ -2516,8 +2507,8 @@ export async function resumeSessionWithHost(
 ): Promise<ISession> {
   if (options.persistSession === false || !hasSessionPersistence(options)) {
     throw new Error(
-      'resumeSession() requires session persistence through '
-        + 'sessionRepository and sessionEventStore.',
+      'resumeSession() requires session persistence through ' +
+        'sessionRepository and sessionEventStore.',
     );
   }
   const { sessionId, ...sessionOptions } = options;
@@ -2533,7 +2524,7 @@ export async function resumeSessionWithHost(
 }
 
 export interface ForkOptions extends ResumeOptions {
-  messageId?: string;
+  messageId?: MessageId;
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
@@ -2546,9 +2537,9 @@ export async function forkSessionWithHost(
 ): Promise<ISession> {
   if (options.persistSession === false || !hasSessionPersistence(options)) {
     throw new Error(
-      'forkSession() requires session persistence through '
-        + 'sessionRepository and sessionEventStore. '
-        + 'Use session.fork() for an in-memory Session.',
+      'forkSession() requires session persistence through ' +
+        'sessionRepository and sessionEventStore. ' +
+        'Use session.fork() for an in-memory Session.',
     );
   }
   const { sessionId, messageId, ...sessionOptions } = options;
@@ -2580,7 +2571,7 @@ export async function promptWithHost(
   const session = new Session(options, undefined, false, hostProfile);
   await session.initialize();
 
-  const toolCalls: ToolCallRecord[] = [];
+  const toolCalls: ToolExecutionRecord[] = [];
   let totalUsage: TokenUsage = {
     inputTokens: 0,
     outputTokens: 0,

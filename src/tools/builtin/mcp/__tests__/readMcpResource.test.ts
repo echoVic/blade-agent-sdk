@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { collectToolExecution } from '../../../types/index.js';
-import { createReadMcpResourceTool } from '../readMcpResource.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
+import { collectToolExecution } from '../../../types/result.js';
+import { createReadMcpResourceTool } from '../readMcpResource.js';
 
 const mockGetAllServers = vi.fn(() => new Map());
 
@@ -10,9 +10,8 @@ const mockRegistry = {
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
 const readMcpResourceTool = createReadMcpResourceTool(mockRegistry);
-const executeReadMcpResource = (
-  params: Parameters<typeof readMcpResourceTool.execute>[0],
-) => collectToolExecution(readMcpResourceTool.execute(params));
+const executeReadMcpResource = (params: Parameters<typeof readMcpResourceTool.execute>[0]) =>
+  collectToolExecution(readMcpResourceTool.execute(params));
 
 describe('readMcpResourceTool', () => {
   beforeEach(() => {
@@ -50,7 +49,7 @@ describe('readMcpResourceTool', () => {
             uri: 'file:///test.txt',
             text: 'Hello, World!',
             mimeType: 'text/plain',
-          })
+          }),
         ),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
@@ -70,7 +69,7 @@ describe('readMcpResourceTool', () => {
             uri: 'file:///image.png',
             blob: 'base64encodeddata',
             mimeType: 'image/png',
-          })
+          }),
         ),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
@@ -93,7 +92,7 @@ describe('readMcpResourceTool', () => {
         new Map([
           ['server1', { client: mockClient1 }],
           ['server2', { client: mockClient2 }],
-        ])
+        ]),
       );
 
       const result = await executeReadMcpResource({
@@ -153,7 +152,7 @@ describe('readMcpResourceTool', () => {
         new Map([
           ['server1', { client: mockClient1 }],
           ['server2', { client: mockClient2 }],
-        ])
+        ]),
       );
 
       const result = await executeReadMcpResource({ uri: 'file:///test.txt' });
@@ -179,7 +178,7 @@ describe('readMcpResourceTool', () => {
           Promise.resolve({
             uri: 'file:///test.txt',
             mimeType: 'application/octet-stream',
-          })
+          }),
         ),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));

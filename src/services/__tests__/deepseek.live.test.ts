@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createChatServiceAsync } from '../ChatServiceInterface.js';
+import { createModelService } from '../createModelService.js';
 import { createDeepSeekFimCompletion } from '../deepseek.js';
 
 const apiKey = process.env.DEEPSEEK_API_KEY ?? '';
@@ -10,7 +10,7 @@ const describeLive = runLive ? describe : describe.skip;
 
 describeLive('DeepSeek live integration', () => {
   it('runs a basic chat completion through the native provider', async () => {
-    const service = await createChatServiceAsync({
+    const service = await createModelService({
       provider: 'deepseek',
       apiKey,
       baseUrl,
@@ -28,7 +28,7 @@ describeLive('DeepSeek live integration', () => {
   });
 
   it('returns function tool calls from the native provider', async () => {
-    const service = await createChatServiceAsync({
+    const service = await createModelService({
       provider: 'deepseek',
       apiKey,
       baseUrl,
@@ -70,7 +70,7 @@ describeLive('DeepSeek live integration', () => {
   });
 
   it('streams chat deltas and final usage metadata', async () => {
-    const service = await createChatServiceAsync({
+    const service = await createModelService({
       provider: 'deepseek',
       apiKey,
       baseUrl,

@@ -1,4 +1,4 @@
-import type { Memory, MemoryInput } from './MemoryTypes.js';
+import type { Memory, MemoryInput } from './types.js';
 
 export interface MemoryStore {
   save(memory: MemoryInput): Promise<Memory>;

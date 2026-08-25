@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ActiveRequestController } from '../../../session/ActiveRequestController.js';
-import { InputId, RequestId } from '../../../types/branded.js';
+import { InputId, RequestId } from '../../../types/identifiers.js';
 import { createInterruptAwareAbortSignal } from '../toolInterruptBehavior.js';
 
 describe('createInterruptAwareAbortSignal', () => {

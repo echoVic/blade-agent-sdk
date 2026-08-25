@@ -4,9 +4,9 @@ import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/ind
 import type { SkillContent } from '../../../skills/types.js';
 import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
-import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
-import { ToolKind } from '../../types/ToolKind.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
+import { getEffectiveProjectDir } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
@@ -24,12 +24,12 @@ export const skillTool = createTool({
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => z.object({
-    skill: z
-      .string()
-      .describe('The skill name. E.g., "commit-message" or "code-review"'),
-    args: z.string().optional().describe('Optional arguments for the skill'),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      skill: z.string().describe('The skill name. E.g., "commit-message" or "code-review"'),
+      args: z.string().optional().describe('Optional arguments for the skill'),
+    }),
+  ),
 
   description: {
     short: 'Execute a skill within the main conversation',
@@ -125,10 +125,9 @@ Important:
       content.instructions,
       content.metadata.basePath,
       content.assets,
-      args
+      args,
     );
-    const requestedModelId =
-      content.metadata.runtimeEffects?.modelId;
+    const requestedModelId = content.metadata.runtimeEffects?.modelId;
     const runtimeHooks = compileRuntimeHooks(content);
     const runtimePatch = {
       scope: content.metadata.runtimeEffects?.activeScope ?? 'session',
@@ -189,27 +188,31 @@ function compileRuntimeHooks(content: SkillContent): RuntimeHookRegistration[] |
       return [];
     }
 
-    return [{
-      event: hook.event,
-      type: hook.type,
-      value: hook.value,
-      tools: hook.tools,
-      once: hook.once,
-    }];
+    return [
+      {
+        event: hook.event,
+        type: hook.type,
+        value: hook.value,
+        tools: hook.tools,
+        once: hook.once,
+      },
+    ];
   });
 
   return hooks.length > 0 ? hooks : undefined;
 }
 
 function isRuntimeHookEvent(event: HookEvent): event is RuntimeHookEvent {
-  return event === HookEvent.PreToolUse
-    || event === HookEvent.PostToolUse
-    || event === HookEvent.PostToolUseFailure
-    || event === HookEvent.PermissionRequest
-    || event === HookEvent.UserPromptSubmit
-    || event === HookEvent.SessionStart
-    || event === HookEvent.SessionEnd
-    || event === HookEvent.TaskCompleted;
+  return (
+    event === HookEvent.PreToolUse ||
+    event === HookEvent.PostToolUse ||
+    event === HookEvent.PostToolUseFailure ||
+    event === HookEvent.PermissionRequest ||
+    event === HookEvent.UserPromptSubmit ||
+    event === HookEvent.SessionStart ||
+    event === HookEvent.SessionEnd ||
+    event === HookEvent.TaskCompleted
+  );
 }
 
 /**
@@ -236,11 +239,11 @@ function buildSkillInstructions(
     assets.templates.length > 0
       ? `**Templates**:\n${assets.templates.map((asset) => `- ${asset.path}`).join('\n')}`
       : '',
-  ].filter(Boolean).join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
-  const argsSection = args
-    ? `\n**Invocation Arguments:** ${args}\n`
-    : '';
+  const argsSection = args ? `\n**Invocation Arguments:** ${args}\n` : '';
 
   return `# Skill: ${name}
 

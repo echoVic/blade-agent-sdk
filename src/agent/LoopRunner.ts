@@ -13,22 +13,24 @@
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
+import type { ModelMessage } from '../model/message.js';
 import { buildSystemPrompt } from '../prompts/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
 import {
-    isExecutionLeaseFailure,
-    runWithExecutionLeaseBoundary,
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
 import { ToolCatalog } from '../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/index.js';
-import { type BladeConfig, PermissionMode } from '../types/common.js';
+import { PermissionMode } from '../types/constants.js';
+import type { MessageId } from '../types/identifiers.js';
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
+import type { BladeConfig } from './config.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { buildLoopConfig } from './LoopHookBuilder.js';
 import type { ModelManager } from './ModelManager.js';
@@ -38,7 +40,13 @@ import { LoopState } from './state/LoopState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
-import type { AgentOptions, ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
+import type {
+  AgentOptions,
+  ChatContext,
+  LoopOptions,
+  LoopResult,
+  UserMessageContent,
+} from './types.js';
 
 // ===== Module-level helpers =====
 
@@ -133,17 +141,15 @@ export class LoopRunner {
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const requestSignal = options?.signal ?? context.signal;
     if (
-      requestSignal?.aborted
-      && (
-        isExecutionLeaseFailure(requestSignal.reason)
-        || isHookProcessContainmentError(requestSignal.reason)
-      )
+      requestSignal?.aborted &&
+      (isExecutionLeaseFailure(requestSignal.reason) ||
+        isHookProcessContainmentError(requestSignal.reason))
     ) {
       throw requestSignal.reason;
     }
 
     // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
-    const rootPromptMessage: Message | null = systemPrompt
+    const rootPromptMessage: ModelMessage | null = systemPrompt
       ? {
           role: 'system',
           content: [
@@ -165,11 +171,10 @@ export class LoopRunner {
       return isValidSystemSource(source);
     });
 
-    const conversationState = new ConversationState(
-      rootPromptMessage,
-      contextMessages,
-      { role: 'user', content: message },
-    );
+    const conversationState = new ConversationState(rootPromptMessage, contextMessages, {
+      role: 'user',
+      content: message,
+    });
 
     const permissionMode = context.permissionMode;
     const loopState = this.createLoopState(
@@ -180,14 +185,9 @@ export class LoopRunner {
     );
 
     // 2. 保存用户消息到 JSONL
-    let lastMessageUuid: string | null = null;
+    let lastMessageUuid: MessageId | null = null;
     const contextMgr = this.modelManager.getContextManager();
-    if (
-      !requestSignal?.aborted
-      && contextMgr
-      && context.sessionId
-      && options?.inputApplication
-    ) {
+    if (!requestSignal?.aborted && contextMgr && context.sessionId && options?.inputApplication) {
       const sessionId = context.sessionId;
       const inputApplication = options.inputApplication;
       try {
@@ -197,14 +197,15 @@ export class LoopRunner {
             assertExecutionLease: context.assertExecutionLease,
             runWithExecutionLease: context.runWithExecutionLease,
           },
-          () => contextMgr.saveAppliedInputMessage(
-            sessionId,
-            inputApplication.inputId,
-            inputApplication.requestId,
-            message,
-            null,
-            context.subagentInfo,
-          ),
+          () =>
+            contextMgr.saveAppliedInputMessage(
+              sessionId,
+              inputApplication.inputId,
+              inputApplication.requestId,
+              message,
+              null,
+              context.subagentInfo,
+            ),
         );
       } catch (error) {
         if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
@@ -223,14 +224,15 @@ export class LoopRunner {
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
             },
-            () => contextMgr.saveMessage(
-              sessionId,
-              'user',
-              message,
-              null,
-              undefined,
-              context.subagentInfo,
-            ),
+            () =>
+              contextMgr.saveMessage(
+                sessionId,
+                'user',
+                message,
+                null,
+                undefined,
+                context.subagentInfo,
+              ),
           );
         }
       } catch (error) {
@@ -254,9 +256,10 @@ export class LoopRunner {
       };
     }
 
-    const maxTurns = configuredMaxTurns === -1
-      ? AGENT_TURN_SAFETY_LIMIT
-      : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
+    const maxTurns =
+      configuredMaxTurns === -1
+        ? AGENT_TURN_SAFETY_LIMIT
+        : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
 
     // 4. 构建 AgentLoop hooks + config
     const loopConfig = buildLoopConfig({
@@ -266,7 +269,9 @@ export class LoopRunner {
       maxTurns,
       isYoloMode,
       getLastUuid: () => lastMessageUuid,
-      setLastUuid: (uuid: string | null) => { lastMessageUuid = uuid; },
+      setLastUuid: (uuid: MessageId | null) => {
+        lastMessageUuid = uuid;
+      },
       streaming: this.streaming,
       executionPipeline: this.executionPipeline,
       logger: this.logger,
@@ -286,17 +291,16 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
-      if (
-        isExecutionLeaseFailure(error)
-        || isHookProcessContainmentError(error)
-      ) {
+      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
         throw error;
       }
       if (isExecutionLeaseFailure(requestSignal?.reason)) {
         throw requestSignal.reason;
       }
-      if (error instanceof Error &&
-        (error.name === 'AbortError' || error.message.includes('aborted'))) {
+      if (
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.message.includes('aborted'))
+      ) {
         return {
           success: false,
           error: { type: 'aborted', message: '任务已被用户中止' },
@@ -328,9 +332,7 @@ export class LoopRunner {
     if (context.omitEnvironment) {
       return basePrompt;
     }
-    return basePrompt
-      ? `${envContext}\n\n---\n\n${basePrompt}`
-      : envContext;
+    return basePrompt ? `${envContext}\n\n---\n\n${basePrompt}` : envContext;
   }
 
   async buildSystemPromptOnDemand(context?: ChatContext): Promise<string> {
@@ -388,10 +390,7 @@ export class LoopRunner {
     const exposureCatalog = catalog ?? this.executionPipeline.getRegistry();
     const registry = this.executionPipeline.getRegistry();
     const exposurePlanner = new ToolExposurePlanner(exposureCatalog);
-    const effectiveSnapshot = rpm.buildRuntimeContextSnapshot(
-      context.sessionId,
-      context.snapshot,
-    );
+    const effectiveSnapshot = rpm.buildRuntimeContextSnapshot(context.sessionId, context.snapshot);
     const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
     const initialMessages = conversationState.toArray();
     const initialSkillActivationContext = rpm.createSkillActivationContext(
@@ -407,9 +406,9 @@ export class LoopRunner {
       const cwd = loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath;
       const currentMessageCount = loopState.conversationState.length;
       if (
-        cachedSkillActivationContext
-        && cachedSkillActivationMessageCount === currentMessageCount
-        && cachedSkillActivationCwd === cwd
+        cachedSkillActivationContext &&
+        cachedSkillActivationMessageCount === currentMessageCount &&
+        cachedSkillActivationCwd === cwd
       ) {
         return cachedSkillActivationContext;
       }
@@ -437,9 +436,7 @@ export class LoopRunner {
         executionFence: context.executionFence,
         assertExecutionLease: context.assertExecutionLease,
         runWithExecutionLease: context.runWithExecutionLease,
-        toolCatalog: catalog instanceof ToolCatalog
-          ? catalog
-          : undefined,
+        toolCatalog: catalog instanceof ToolCatalog ? catalog : undefined,
         toolRegistry: registry,
         discoveredTools: Array.from(rpm.discoveredTools ?? []),
         lifecycle: toolExecutionLifecycle,
@@ -450,8 +447,9 @@ export class LoopRunner {
         const skillActivationContext = resolveSkillActivationContext();
         loopState.executionContext.skillActivationPaths = skillActivationContext.referencedPaths;
         loopState.executionContext.discoveredTools = Array.from(rpm.discoveredTools ?? []);
-        const runtimeToolPolicy = rpm.runtimeToolPolicySnapshot
-          ?? (rpm.skillContext
+        const runtimeToolPolicy =
+          rpm.runtimeToolPolicySnapshot ??
+          (rpm.skillContext
             ? {
                 allow: rpm.skillContext.allowedTools,
                 deny: rpm.skillContext.deniedTools,
@@ -464,15 +462,15 @@ export class LoopRunner {
           discoveredTools: rpm.discoveredTools,
           sourcePolicy: this.runtimeOptions.toolSourcePolicy,
         });
-        rpm.syncDiscoverableToolsCatalogMessage(loopState.conversationState, rawExposurePlan.discoverableTools);
-        let rawTools = rawExposurePlan.declarations;
-        rawTools = injectSkillsMetadata(
-          rawTools,
-          skillActivationContext,
+        rpm.syncDiscoverableToolsCatalogMessage(
+          loopState.conversationState,
+          rawExposurePlan.discoverableTools,
         );
+        let rawTools = rawExposurePlan.declarations;
+        rawTools = injectSkillsMetadata(rawTools, skillActivationContext);
         return rawTools;
       },
-      resolveChatService: () => this.modelManager.getChatService(),
+      resolveModelService: () => this.modelManager.getModelService(),
       resolveMaxContextTokens: () => this.modelManager.getMaxContextTokens(),
     });
     return loopState;

@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
+import type { BladeConfig } from '../agent/config.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
@@ -8,39 +9,35 @@ import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
-import { PluginHost } from '../middleware/PluginHost.js';
-import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
+import type { McpServerConfig } from '../mcp/config.js';
+import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import { PluginHost } from '../middleware/PluginHost.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
-import {
-  getContextCwd,
-} from '../runtime/index.js';
+import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
-import type { DurableExecutionFence } from './events/DurableExecutionLeaseStore.js';
-import { NODE_SESSION_HOST, type SessionHostProfile } from './SessionHostProfile.js';
-import type {
-  SessionEventStore,
-  SessionRepository,
-} from './SessionRepository.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
-import type { Tool } from '../tools/types/index.js';
-import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
-import type { PermissionMode } from '../types/common.js';
+import type { Tool } from '../tools/types/tool.js';
+import type { PermissionMode } from '../types/constants.js';
 import { HookEvent } from '../types/constants.js';
-import type { AgentId, SessionId } from '../types/branded.js';
+import type { AgentId, SessionId } from '../types/identifiers.js';
+import type { PermissionsConfig } from '../types/permissions.js';
 import {
   createCompositePermissionHandler,
   createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
   type PermissionResult,
 } from '../types/permissions.js';
+import type { DurableExecutionFence } from './events/DurableExecutionLeaseStore.js';
+import { NODE_SESSION_HOST, type SessionHostProfile } from './SessionHostProfile.js';
+import type { SessionEventStore, SessionRepository } from './SessionRepository.js';
 import type {
   AgentDefinition,
   HookCallback,
@@ -51,33 +48,26 @@ import type {
 } from './types.js';
 
 function isSdkMcpServerHandle(
-  config: McpServerConfig | SdkMcpServerHandle
+  config: McpServerConfig | SdkMcpServerHandle,
 ): config is SdkMcpServerHandle {
   return 'createClientTransport' in config && 'server' in config;
 }
 
-function isRuntimeTool(tool: SessionTool): tool is Exclude<
-  SessionTool,
-  { parameters: unknown }
-> {
+function isRuntimeTool(tool: SessionTool): tool is Tool {
   const candidate = tool as {
     build?: unknown;
     execute?: unknown;
     getFunctionDeclaration?: unknown;
   };
-  return typeof candidate.build === 'function'
-    && typeof candidate.execute === 'function'
-    && typeof candidate.getFunctionDeclaration === 'function';
+  return (
+    typeof candidate.build === 'function' &&
+    typeof candidate.execute === 'function' &&
+    typeof candidate.getFunctionDeclaration === 'function'
+  );
 }
 
 function toRuntimeTool(tool: SessionTool): Tool {
-  // Registry dispatch validates parameters before invoking the concrete Tool.
-  // Erase its invariant parameter type only at this heterogeneous boundary.
-  return (
-    isRuntimeTool(tool)
-      ? tool
-      : toolFromDefinition(tool)
-  ) as unknown as Tool;
+  return isRuntimeTool(tool) ? tool : toolFromDefinition(tool);
 }
 
 function resolveStorageRoot(storagePath?: string): string | undefined {
@@ -85,9 +75,7 @@ function resolveStorageRoot(storagePath?: string): string | undefined {
     return undefined;
   }
 
-  return basename(storagePath) === 'sessions'
-    ? dirname(storagePath)
-    : storagePath;
+  return basename(storagePath) === 'sessions' ? dirname(storagePath) : storagePath;
 }
 
 function toSubagentConfig(name: string, definition: AgentDefinition) {
@@ -154,9 +142,9 @@ export class SessionRuntime {
           maxMemorySize: 1000,
           persistentPath: options.storagePath,
           persistenceEnabled:
-            options.persistSession !== false
-            && sessionRepository !== undefined
-            && sessionEventStore !== undefined,
+            options.persistSession !== false &&
+            sessionRepository !== undefined &&
+            sessionEventStore !== undefined,
           cacheSize: 100,
           compressionEnabled: true,
         },
@@ -224,11 +212,8 @@ export class SessionRuntime {
   } {
     const activeSubagentIds = this.backgroundAgentManager.getActiveAgentIds();
     const shellManager =
-      this.hostProfile === NODE_SESSION_HOST
-        ? BackgroundShellManager.getInstance()
-        : undefined;
-    const activeShellIds =
-      shellManager?.getActiveProcessIds(this.sessionId, executionFence) ?? [];
+      this.hostProfile === NODE_SESSION_HOST ? BackgroundShellManager.getInstance() : undefined;
+    const activeShellIds = shellManager?.getActiveProcessIds(this.sessionId, executionFence) ?? [];
     if (activeSubagentIds.length === 0 && activeShellIds.length === 0) {
       this.backgroundAgentManager.sealForHandoff();
       if (shellManager && executionFence) {
@@ -243,10 +228,7 @@ export class SessionRuntime {
   stopBackgroundWorkAfterLeaseLoss(executionFence: DurableExecutionFence): void {
     this.backgroundAgentManager.sealAndCancelAll();
     if (this.hostProfile === NODE_SESSION_HOST) {
-      BackgroundShellManager.getInstance().killExecutionFence(
-        this.sessionId,
-        executionFence,
-      );
+      BackgroundShellManager.getInstance().killExecutionFence(this.sessionId, executionFence);
     }
   }
 
@@ -299,24 +281,17 @@ export class SessionRuntime {
     });
   }
 
-  assertNoPendingCleanup(
-    options: { includeTerminalFailures?: boolean } = {},
-  ): void {
-    const errors = options.includeTerminalFailures === false
-      ? []
-      : this.getTerminalCleanupFailures();
+  assertNoPendingCleanup(options: { includeTerminalFailures?: boolean } = {}): void {
+    const errors =
+      options.includeTerminalFailures === false ? [] : this.getTerminalCleanupFailures();
     if (this.executionPipeline.hasPendingExecutionCleanup()) {
       errors.push(
-        new Error(
-          `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
-        ),
+        new Error(`Session runtime ${this.sessionId} still has a tool execution cleaning up`),
       );
     }
     if (this.executionPipeline.hasPendingPermissionCleanup()) {
       errors.push(
-        new Error(
-          `Session runtime ${this.sessionId} still has a permission callback cleaning up`,
-        ),
+        new Error(`Session runtime ${this.sessionId} still has a permission callback cleaning up`),
       );
     }
     if (this.hookRuntime.hasPendingCallbackCleanup()) {
@@ -335,17 +310,11 @@ export class SessionRuntime {
   }
 
   private getTerminalCleanupFailures(): Error[] {
-    const terminalCleanupFailure =
-      this.executionPipeline.getTerminalCleanupFailure();
-    const hookContainmentFailure =
-      this.hookRuntime.getTerminalContainmentFailure();
-    return Array.from(new Set([
-      terminalCleanupFailure,
-      hookContainmentFailure,
-    ]))
+    const terminalCleanupFailure = this.executionPipeline.getTerminalCleanupFailure();
+    const hookContainmentFailure = this.hookRuntime.getTerminalContainmentFailure();
+    return Array.from(new Set([terminalCleanupFailure, hookContainmentFailure]))
       .filter((error) => error !== undefined)
-      .map((error) =>
-        error instanceof Error ? error : new Error(String(error)));
+      .map((error) => (error instanceof Error ? error : new Error(String(error))));
   }
 
   async close(executionFence?: DurableExecutionFence): Promise<void> {
@@ -363,9 +332,9 @@ export class SessionRuntime {
       );
     }
     const shutdownResults = await Promise.allSettled(shutdownOperations);
-    errors.push(...shutdownResults.flatMap((result) =>
-      result.status === 'rejected' ? [result.reason] : [],
-    ));
+    errors.push(
+      ...shutdownResults.flatMap((result) => (result.status === 'rejected' ? [result.reason] : [])),
+    );
     try {
       await this.mcpRegistry.disconnectAll();
     } catch (error) {
@@ -466,7 +435,7 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools as Tool[], {
+    this.toolCatalog.registerAll(filteredTools, {
       kind: 'builtin',
       trustLevel: 'trusted',
       sourceId: 'builtin',
@@ -568,19 +537,19 @@ export class SessionRuntime {
     }
   }
 
-  private registerTools<TParams>(tools: Tool<TParams>[]): void {
+  private registerTools(tools: Tool[]): void {
     const filteredTools = this.filterTools(tools);
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools as unknown as Tool[], {
+    this.toolCatalog.registerAll(filteredTools, {
       kind: 'custom',
       trustLevel: 'workspace',
       sourceId: 'session',
     });
   }
 
-  private filterTools<TParams>(tools: Tool<TParams>[]): Tool<TParams>[] {
+  private filterTools(tools: Tool[]): Tool[] {
     const allowedTools = this.options.allowedTools;
     const disallowedTools = new Set(this.options.disallowedTools || []);
 
@@ -595,8 +564,9 @@ export class SessionRuntime {
   private createPermissionHandler(): PermissionHandler | undefined {
     const hasPermissionCallbacks =
       (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
-    const basePermissionHandler = this.options.permissionHandler
-      ?? (this.options.canUseTool
+    const basePermissionHandler =
+      this.options.permissionHandler ??
+      (this.options.canUseTool
         ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
         : undefined);
 
@@ -605,7 +575,7 @@ export class SessionRuntime {
     }
 
     const hookPermissionHandler = hasPermissionCallbacks
-      ? (async (request) => {
+      ? ((async (request) => {
           const hookResult = await this.hookRuntime.applyPermissionRequestHooks(
             request.toolName,
             request.input,
@@ -624,13 +594,13 @@ export class SessionRuntime {
             behavior: 'allow',
             updatedInput: hookResult.updatedInput,
           } satisfies PermissionResult;
-        }) satisfies PermissionHandler
+        }) satisfies PermissionHandler)
       : undefined;
 
     return createCompositePermissionHandler([
       hookPermissionHandler,
       basePermissionHandler,
-      async () => ({ behavior: 'ask' } satisfies PermissionResult),
+      async () => ({ behavior: 'ask' }) satisfies PermissionResult,
     ]);
   }
 }

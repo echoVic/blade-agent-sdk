@@ -6,16 +6,15 @@ import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-  ExecutionContext,
-  WriteMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { WriteMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
-import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
+import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
 /**
  * WriteTool - File writer
@@ -30,17 +29,19 @@ export const writeTool = createTool({
   isConcurrencySafe: false, // 文件写入不支持并发
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    file_path: ToolSchemas.filePath({
-      description: 'Absolute file path to write',
+  schema: lazySchema(() =>
+    z.object({
+      file_path: ToolSchemas.filePath({
+        description: 'Absolute file path to write',
+      }),
+      content: z.string().describe('Content to write'),
+      encoding: ToolSchemas.encoding(),
+      create_directories: z
+        .boolean()
+        .default(true)
+        .describe('Automatically create missing parent directories'),
     }),
-    content: z.string().describe('Content to write'),
-    encoding: ToolSchemas.encoding(),
-    create_directories: z
-      .boolean()
-      .default(true)
-      .describe('Automatically create missing parent directories'),
-  })),
+  ),
 
   resolveBehavior: ({ file_path }) => {
     const isDestructive = isSensitivePath(file_path);
@@ -193,8 +194,7 @@ export const writeTool = createTool({
         snapshot_created: snapshotCreated, // 是否创建了快照
         session_id: sessionId,
         message_id: messageId,
-        last_modified:
-          stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
+        last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         has_diff: !!diffSnippet, // 是否生成了 diff
         summary:
           encoding === 'utf8'
@@ -210,8 +210,7 @@ export const writeTool = createTool({
         model: toJsonValue({
           file_path,
           size: stats?.size,
-          modified:
-            stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
+          modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         }),
         metadata,
       };

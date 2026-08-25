@@ -1,5 +1,5 @@
 import { SdkError } from '../../errors/SdkError.js';
-import { type CommandId, EventSequence, type SessionId } from '../../types/branded.js';
+import { type CommandId, EventSequence, type SessionId } from '../../types/identifiers.js';
 import { canonicalJson } from './canonicalJson.js';
 import {
   DurableEventSequenceConflictError,
@@ -14,14 +14,14 @@ import {
   isDurableExecutionLeaseStore,
 } from './DurableExecutionLeaseStore.js';
 import {
-  awaitDurableStoreOperation,
-  resolveDurableStoreTimeoutMs,
-} from './DurableStoreOperation.js';
-import {
   type DurableSessionProjection,
   DurableSessionProjector,
   type DurableSessionRecoveryPlan,
 } from './DurableSessionProjector.js';
+import {
+  awaitDurableStoreOperation,
+  resolveDurableStoreTimeoutMs,
+} from './DurableStoreOperation.js';
 import { parseDurableEventDraft } from './schemas.js';
 import type {
   DurableEventAppendResult,

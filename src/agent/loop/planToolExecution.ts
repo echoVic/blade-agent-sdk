@@ -1,9 +1,10 @@
-import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
-import type { FunctionToolCall } from './types.js';
+import type { ModelToolCall } from '../../model/message.js';
+import type { PermissionMode as PermissionModeValue } from '../../types/constants.js';
+import { PermissionMode } from '../../types/constants.js';
 
 export interface ToolExecutionPlan {
   mode: 'parallel' | 'serial';
-  calls: FunctionToolCall[];
+  calls: ModelToolCall[];
 }
 
 /**
@@ -11,7 +12,7 @@ export interface ToolExecutionPlan {
  * are enforced centrally by ConcurrencyScheduler inside ExecutionPipeline.
  */
 export function planToolExecution(
-  calls: FunctionToolCall[],
+  calls: ModelToolCall[],
   permissionMode?: PermissionModeValue,
 ): ToolExecutionPlan {
   if (calls.length === 1 || permissionMode === PermissionMode.PLAN) {

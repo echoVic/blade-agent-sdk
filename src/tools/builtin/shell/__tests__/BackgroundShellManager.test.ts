@@ -3,12 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
-import {
-  ExecutionLeaseId,
-  FencingToken,
-  SessionId,
-} from '../../../../types/branded.js';
-import { collectToolExecution } from '../../../types/index.js';
+import { ExecutionLeaseId, FencingToken, SessionId } from '../../../../types/identifiers.js';
+import { collectToolExecution } from '../../../types/result.js';
 import { BackgroundShellManager } from '../BackgroundShellManager.js';
 import { bashTool } from '../bash.js';
 
@@ -184,9 +180,9 @@ describe('BackgroundShellManager handoff admission', () => {
       executionFence: currentFence,
     });
 
-    await expect(
-      manager.terminateExecutionFence(sessionId, staleFence),
-    ).resolves.toEqual([stale.id]);
+    await expect(manager.terminateExecutionFence(sessionId, staleFence)).resolves.toEqual([
+      stale.id,
+    ]);
     expect(manager.getActiveProcessIds(sessionId)).toEqual([current.id]);
     expect(() =>
       manager.startBackgroundProcess({

@@ -1,39 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOOP_LOGGER } from '../../../../logging/Logger.js';
-import { getBuiltinTools } from '../../index.js';
-import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.js';
-import { AgentId, SessionId } from '../../../../types/branded.js';
-import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
+import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
 import { HookManager } from '../../../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob.js';
-import {
-  collectToolExecution,
-  type ExecutionContext,
-  type Tool,
-} from '../../../types/index.js';
+import { NOOP_LOGGER } from '../../../../logging/Logger.js';
+import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
+import { AgentId, SessionId } from '../../../../types/identifiers.js';
+import type { ExecutionContext } from '../../../types/execution.js';
+import { collectToolExecution } from '../../../types/result.js';
+import type { Tool } from '../../../types/tool.js';
+import { getBuiltinTools } from '../../index.js';
+import { createTaskTool } from '../task.js';
 import { createTaskCreateTool } from '../taskCreate.js';
 import { createTaskGetTool } from '../taskGet.js';
 import { createTaskListTool } from '../taskList.js';
 import { createTaskStopTool } from '../taskStop.js';
-import { createTaskTool } from '../task.js';
 import { createTaskUpdateTool } from '../taskUpdate.js';
 
 const { runAgenticLoop, createAgent } = vi.hoisted(() => ({
-  runAgenticLoop: vi.fn<
-    (message: string, context: ChatContext, options?: LoopOptions) => Promise<{
-      success: boolean;
-      finalMessage?: string;
-      error?: { message?: string };
-      metadata?: {
-        toolCallsCount?: number;
-        tokensUsed?: number;
-        duration?: number;
-      };
-    }>
-  >(),
+  runAgenticLoop:
+    vi.fn<
+      (
+        message: string,
+        context: ChatContext,
+        options?: LoopOptions,
+      ) => Promise<{
+        success: boolean;
+        finalMessage?: string;
+        error?: { message?: string };
+        metadata?: {
+          toolCallsCount?: number;
+          tokensUsed?: number;
+          duration?: number;
+        };
+      }>
+    >(),
   createAgent: vi.fn(),
 }));
 
@@ -72,10 +75,12 @@ async function executeWithContext<TParams>(
   context: SessionId | Partial<ExecutionContext>,
 ) {
   return collectToolExecution(
-    tool.build(params).execute(
-      new AbortController().signal,
-      typeof context === 'string' ? { sessionId: context } : context,
-    ),
+    tool
+      .build(params)
+      .execute(
+        new AbortController().signal,
+        typeof context === 'string' ? { sessionId: context } : context,
+      ),
   );
 }
 
@@ -99,13 +104,7 @@ describe('task tools', () => {
     const names = tools.map((tool) => tool.name);
 
     expect(names).toEqual(
-      expect.arrayContaining([
-        'TaskCreate',
-        'TaskGet',
-        'TaskUpdate',
-        'TaskList',
-        'TaskStop',
-      ])
+      expect.arrayContaining(['TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList', 'TaskStop']),
     );
   });
 
@@ -132,7 +131,7 @@ describe('task tools', () => {
         activeForm: 'Implementing task tools',
         metadata: { source: 'test' },
       },
-      runtimeSessionId
+      runtimeSessionId,
     );
 
     expect(created.status).toBe('success');
@@ -152,7 +151,7 @@ describe('task tools', () => {
       expect.objectContaining({
         id: taskId,
         subject: 'Implement task tools',
-      })
+      }),
     );
 
     const updated = await executeWithContext(
@@ -163,7 +162,7 @@ describe('task tools', () => {
         owner: 'agent-1',
         addBlockedBy: ['dependency-1'],
       },
-      runtimeSessionId
+      runtimeSessionId,
     );
     expect(updated.status).toBe('success');
     expect(updated.model).toEqual(
@@ -172,7 +171,7 @@ describe('task tools', () => {
         status: 'in_progress',
         owner: 'agent-1',
         blockedBy: ['dependency-1'],
-      })
+      }),
     );
 
     const listed = await executeWithContext(listTool, {}, runtimeSessionId);
@@ -196,13 +195,13 @@ describe('task tools', () => {
         metadata: expect.objectContaining({
           stoppedAt: expect.any(String),
         }),
-      })
+      }),
     );
 
     const deleted = await executeWithContext(
       updateTool,
       { taskId, status: 'deleted' },
-      runtimeSessionId
+      runtimeSessionId,
     );
     expect(deleted.status).toBe('success');
     expect(deleted.model).toEqual({
@@ -216,11 +215,7 @@ describe('task tools', () => {
 
   it('stops a running background agent via TaskStop and keeps it cancelled', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (
-        _message: string,
-        _context: ChatContext,
-        options?: LoopOptions,
-      ) =>
+      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -235,22 +230,20 @@ describe('task tools', () => {
         }),
     );
 
-    const agentId = AgentId(await manager.startBackgroundAgent({
-      config: subagentConfig,
-      bladeConfig,
-      description: 'Inspect repository',
-      prompt: 'inspect',
-    }));
+    const agentId = AgentId(
+      await manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Inspect repository',
+        prompt: 'inspect',
+      }),
+    );
 
     const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
-    const stopped = await executeWithContext(
-      stopTool,
-      { taskId: agentId },
-      {
-        sessionId: SessionId(`runtime-${Date.now()}`),
-        backgroundAgentManager: manager,
-      } as never,
-    );
+    const stopped = await executeWithContext(stopTool, { taskId: agentId }, {
+      sessionId: SessionId(`runtime-${Date.now()}`),
+      backgroundAgentManager: manager,
+    } as never);
 
     expect(stopped.status).toBe('success');
     expect(stopped.metadata).toEqual(
@@ -276,14 +269,10 @@ describe('task tools', () => {
       killAgent: vi.fn(async () => true),
     };
 
-    const stopped = await executeWithContext(
-      stopTool,
-      { taskId: 'agent-1' },
-      {
-        sessionId: SessionId(`runtime-${Date.now()}`),
-        backgroundAgentManager: fakeManager,
-      } as never,
-    );
+    const stopped = await executeWithContext(stopTool, { taskId: 'agent-1' }, {
+      sessionId: SessionId(`runtime-${Date.now()}`),
+      backgroundAgentManager: fakeManager,
+    } as never);
 
     expect(stopped.status).toBe('success');
     expect(fakeManager.getAgent).toHaveBeenCalledWith('agent-1');
@@ -301,14 +290,10 @@ describe('task tools', () => {
       killAgent: vi.fn(async () => false),
     };
 
-    const stopped = await executeWithContext(
-      stopTool,
-      { taskId: session.id },
-      {
-        sessionId: SessionId(`runtime-${Date.now()}`),
-        backgroundAgentManager: fakeManager,
-      } as never,
-    );
+    const stopped = await executeWithContext(stopTool, { taskId: session.id }, {
+      sessionId: SessionId(`runtime-${Date.now()}`),
+      backgroundAgentManager: fakeManager,
+    } as never);
 
     expect(stopped).toMatchObject({
       status: 'error',
@@ -358,15 +343,14 @@ describe('task tools', () => {
     const cancellation = new Error('cancel subagent stop hook');
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const stopHook = vi.spyOn(
-      HookManager.getInstance(),
-      'executeSubagentStopHooks',
-    ).mockImplementation(async (_agentType, context) => {
-      expect(context.abortSignal).toBe(controller.signal);
-      started.resolve();
-      await release.promise;
-      return { shouldStop: true };
-    });
+    const stopHook = vi
+      .spyOn(HookManager.getInstance(), 'executeSubagentStopHooks')
+      .mockImplementation(async (_agentType, context) => {
+        expect(context.abortSignal).toBe(controller.signal);
+        started.resolve();
+        await release.promise;
+        return { shouldStop: true };
+      });
     runAgenticLoop.mockResolvedValueOnce({
       success: true,
       finalMessage: 'done',
@@ -402,16 +386,13 @@ describe('task tools', () => {
     registry.register(subagentConfig);
     const taskTool = createTaskTool({ registry });
     const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
-    const stopHook = vi.spyOn(
-      HookManager.getInstance(),
-      'executeSubagentStopHooks',
-    ).mockImplementation(async () => {
-      controller.abort(new Error('request cancelled'));
-      throw containmentError;
-    });
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
+    const stopHook = vi
+      .spyOn(HookManager.getInstance(), 'executeSubagentStopHooks')
+      .mockImplementation(async () => {
+        controller.abort(new Error('request cancelled'));
+        throw containmentError;
+      });
     runAgenticLoop.mockResolvedValueOnce({
       success: true,
       finalMessage: 'done',

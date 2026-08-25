@@ -1,3 +1,4 @@
+import type { ModelMessage } from '../model/message.js';
 import { AgentProtocolError } from '../protocol/AgentProtocolError.js';
 import type {
   AbortRequestCommand,
@@ -12,32 +13,18 @@ import type {
   ResumeSessionCommand,
   SubmitInputCommand,
 } from '../protocol/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
-import {
-  createSession,
-  forkSession,
-  resumeSession,
-} from '../session/Session.js';
+import { createSession, forkSession, resumeSession } from '../session/Session.js';
 import { isSessionEventStore } from '../session/SessionRepository.js';
 import type {
   ISession,
   PendingSessionInput,
   SessionOptions,
-  StreamMessage,
+  SessionStreamEvent,
 } from '../session/types.js';
-import type {
-  RequestId,
-  SessionId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
-import {
-  getErrorCode,
-  getErrorMessage,
-} from '../utils/errorUtils.js';
-import type {
-  AgentServerSessionRecord,
-  AgentServerStore,
-} from './AgentServerStore.js';
+import type { CommandId, RequestId, SessionId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
+import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
+import type { AgentServerSessionRecord, AgentServerStore } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
 import type { RuntimeTenantStore } from './RuntimeStore.js';
 
@@ -50,7 +37,7 @@ export interface AgentServerSessionContext {
 
 export interface SessionExecutorCommandContext {
   readonly principal: AgentPrincipal;
-  readonly commandId: string;
+  readonly commandId: CommandId;
   readonly signal?: AbortSignal;
   /** Tenant-scoped persistence authority supplied by AgentServer. */
   readonly runtimeStore?: RuntimeTenantStore;
@@ -58,7 +45,7 @@ export interface SessionExecutorCommandContext {
 
 export interface SessionExecutorReadResult {
   readonly session: AgentServerSessionRecord;
-  readonly messages: readonly Message[];
+  readonly messages: readonly ModelMessage[];
   readonly pendingInputs: readonly PendingSessionInput[];
 }
 
@@ -99,10 +86,7 @@ export interface SessionExecutor {
     context: SessionExecutorCommandContext,
     data: SubmitInputCommand['data'],
   ): Promise<AgentInputSubmissionData>;
-  abort(
-    context: SessionExecutorCommandContext,
-    data: AbortRequestCommand['data'],
-  ): Promise<void>;
+  abort(context: SessionExecutorCommandContext, data: AbortRequestCommand['data']): Promise<void>;
   closeSession(
     context: SessionExecutorCommandContext,
     data: CloseSessionCommand['data'],
@@ -145,25 +129,17 @@ export class InProcessSessionExecutor implements SessionExecutor {
   private readonly maxActiveSessionsPerTenant: number;
 
   constructor(private readonly options: InProcessSessionExecutorOptions) {
-    this.maxActiveSessionsPerTenant =
-      options.maxActiveSessionsPerTenant ?? 100;
+    this.maxActiveSessionsPerTenant = options.maxActiveSessionsPerTenant ?? 100;
     if (
-      !Number.isSafeInteger(this.maxActiveSessionsPerTenant)
-      || this.maxActiveSessionsPerTenant < 1
+      !Number.isSafeInteger(this.maxActiveSessionsPerTenant) ||
+      this.maxActiveSessionsPerTenant < 1
     ) {
-      throw new RangeError(
-        'maxActiveSessionsPerTenant must be a positive safe integer',
-      );
+      throw new RangeError('maxActiveSessionsPerTenant must be a positive safe integer');
     }
     this.approvals = new RemoteApprovalBroker({
       timeoutMs: options.approvalTimeoutMs,
       publish: (tenantId, sessionId, request) =>
-        options.publish(
-          tenantId,
-          sessionId,
-          'permission.requested',
-          request,
-        ),
+        options.publish(tenantId, sessionId, 'permission.requested', request),
     });
   }
 
@@ -171,9 +147,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
     context: SessionExecutorCommandContext,
     data: CreateSessionCommand['data'],
   ): Promise<AgentServerSessionRecord> {
-    const releaseCapacity = this.reserveSessionCapacity(
-      context.principal.tenantId,
-    );
+    const releaseCapacity = this.reserveSessionCapacity(context.principal.tenantId);
     try {
       const options = await this.resolveSessionOptions({
         principal: context.principal,
@@ -197,14 +171,11 @@ export class InProcessSessionExecutor implements SessionExecutor {
         await session.close().catch(() => undefined);
         throw error;
       }
-      this.activeSessions.set(
-        sessionKey(context.principal.tenantId, session.sessionId),
-        {
-          tenantId: context.principal.tenantId,
-          session,
-          metadata: data.metadata,
-        },
-      );
+      this.activeSessions.set(sessionKey(context.principal.tenantId, session.sessionId), {
+        tenantId: context.principal.tenantId,
+        session,
+        metadata: data.metadata,
+      });
       return record;
     } finally {
       releaseCapacity();
@@ -216,10 +187,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: ReadSessionCommand['data'],
   ): Promise<SessionExecutorReadResult> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      const record = await this.requireSessionRecord(
-        context.principal.tenantId,
-        data.sessionId,
-      );
+      const record = await this.requireSessionRecord(context.principal.tenantId, data.sessionId);
       const managed = this.activeSessions.get(
         sessionKey(context.principal.tenantId, data.sessionId),
       );
@@ -240,25 +208,13 @@ export class InProcessSessionExecutor implements SessionExecutor {
         sessionKey(context.principal.tenantId, data.sessionId),
       );
       if (existing) {
-        return this.requireSessionRecord(
-          context.principal.tenantId,
-          data.sessionId,
-        );
+        return this.requireSessionRecord(context.principal.tenantId, data.sessionId);
       }
-      const releaseCapacity = this.reserveSessionCapacity(
-        context.principal.tenantId,
-      );
+      const releaseCapacity = this.reserveSessionCapacity(context.principal.tenantId);
       try {
-        const record = await this.requireSessionRecord(
-          context.principal.tenantId,
-          data.sessionId,
-        );
+        const record = await this.requireSessionRecord(context.principal.tenantId, data.sessionId);
         if (record.status === 'closed') {
-          throw new AgentProtocolError(
-            'SESSION_CONFLICT',
-            'Session is closed',
-            409,
-          );
+          throw new AgentProtocolError('SESSION_CONFLICT', 'Session is closed', 409);
         }
         const options = await this.resolveSessionOptions({
           principal: context.principal,
@@ -270,14 +226,11 @@ export class InProcessSessionExecutor implements SessionExecutor {
           ...options,
           sessionId: data.sessionId,
         });
-        this.activeSessions.set(
-          sessionKey(context.principal.tenantId, data.sessionId),
-          {
-            tenantId: context.principal.tenantId,
-            session,
-            metadata: record.metadata,
-          },
-        );
+        this.activeSessions.set(sessionKey(context.principal.tenantId, data.sessionId), {
+          tenantId: context.principal.tenantId,
+          session,
+          metadata: record.metadata,
+        });
         return record;
       } finally {
         releaseCapacity();
@@ -290,9 +243,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: ForkSessionCommand['data'],
   ): Promise<AgentServerSessionRecord> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      const releaseCapacity = this.reserveSessionCapacity(
-        context.principal.tenantId,
-      );
+      const releaseCapacity = this.reserveSessionCapacity(context.principal.tenantId);
       try {
         const sourceRecord = await this.requireSessionRecord(
           context.principal.tenantId,
@@ -333,14 +284,11 @@ export class InProcessSessionExecutor implements SessionExecutor {
           await forked.close().catch(() => undefined);
           throw error;
         }
-        this.activeSessions.set(
-          sessionKey(context.principal.tenantId, forked.sessionId),
-          {
-            tenantId: context.principal.tenantId,
-            session: forked,
-            metadata: record.metadata,
-          },
-        );
+        this.activeSessions.set(sessionKey(context.principal.tenantId, forked.sessionId), {
+          tenantId: context.principal.tenantId,
+          session: forked,
+          metadata: record.metadata,
+        });
         return record;
       } finally {
         releaseCapacity();
@@ -353,10 +301,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: SubmitInputCommand['data'],
   ): Promise<AgentInputSubmissionData> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      const managed = this.requireActiveSession(
-        context.principal.tenantId,
-        data.sessionId,
-      );
+      const managed = this.requireActiveSession(context.principal.tenantId, data.sessionId);
       const submission = await managed.session.send(data.input, {
         priority: data.priority,
         expectedRequestId: data.expectedRequestId,
@@ -373,15 +318,9 @@ export class InProcessSessionExecutor implements SessionExecutor {
     });
   }
 
-  abort(
-    context: SessionExecutorCommandContext,
-    data: AbortRequestCommand['data'],
-  ): Promise<void> {
+  abort(context: SessionExecutorCommandContext, data: AbortRequestCommand['data']): Promise<void> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      const managed = this.requireActiveSession(
-        context.principal.tenantId,
-        data.sessionId,
-      );
+      const managed = this.requireActiveSession(context.principal.tenantId, data.sessionId);
       await managed.session.abort();
     });
   }
@@ -391,10 +330,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: CloseSessionCommand['data'],
   ): Promise<AgentServerSessionRecord> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      const record = await this.requireSessionRecord(
-        context.principal.tenantId,
-        data.sessionId,
-      );
+      const record = await this.requireSessionRecord(context.principal.tenantId, data.sessionId);
       const key = sessionKey(context.principal.tenantId, data.sessionId);
       const managed = this.activeSessions.get(key);
       this.approvals.cancelSession(
@@ -410,12 +346,9 @@ export class InProcessSessionExecutor implements SessionExecutor {
         updatedAt: new Date().toISOString(),
       };
       await this.options.store.putSession(updated);
-      await this.options.publish(
-        context.principal.tenantId,
-        data.sessionId,
-        'session.closed',
-        { reason: 'user' },
-      );
+      await this.options.publish(context.principal.tenantId, data.sessionId, 'session.closed', {
+        reason: 'user',
+      });
       return updated;
     });
   }
@@ -425,30 +358,27 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: ResolvePermissionCommand['data'],
   ): Promise<void> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      this.approvals.resolve(
-        context.principal.tenantId,
-        data.sessionId,
-        data.permissionRequestId,
-        {
-          approved: data.approved,
-          reason: data.reason,
-          scope: data.scope,
-        },
-      );
+      this.approvals.resolve(context.principal.tenantId, data.sessionId, data.permissionRequestId, {
+        approved: data.approved,
+        reason: data.reason,
+        scope: data.scope,
+      });
     });
   }
 
   async shutdown(): Promise<void> {
     const sessions = Array.from(this.activeSessions.values());
     this.activeSessions.clear();
-    await Promise.allSettled(sessions.map(async ({ tenantId, session }) => {
-      this.approvals.cancelSession(
-        tenantId,
-        session.sessionId,
-        new Error('Session executor is shutting down'),
-      );
-      await session.close();
-    }));
+    await Promise.allSettled(
+      sessions.map(async ({ tenantId, session }) => {
+        this.approvals.cancelSession(
+          tenantId,
+          session.sessionId,
+          new Error('Session executor is shutting down'),
+        );
+        await session.close();
+      }),
+    );
   }
 
   private startPump(managed: ManagedSession): void {
@@ -477,12 +407,9 @@ export class InProcessSessionExecutor implements SessionExecutor {
             'requestId' in message ? message.requestId : managed.activeRequestId,
           );
         }
-      } while (
-        !managed.session.isClosed
-        && managed.session.getPendingInputs().length > 0
-      );
+      } while (!managed.session.isClosed && managed.session.getPendingInputs().length > 0);
     } catch (error) {
-      const message: StreamMessage = {
+      const message: SessionStreamEvent = {
         type: 'error',
         message: getErrorMessage(error),
         code: getErrorCode(error),
@@ -498,16 +425,11 @@ export class InProcessSessionExecutor implements SessionExecutor {
     }
   }
 
-  private async resolveSessionOptions(
-    context: AgentServerSessionContext,
-  ): Promise<SessionOptions> {
+  private async resolveSessionOptions(context: AgentServerSessionContext): Promise<SessionOptions> {
     const options = await this.options.resolveSessionOptions(context);
-    const hasEventStore = options.sessionEventStore
-      || isSessionEventStore(options.sessionRepository);
-    if (
-      this.options.requirePersistentSessions
-      && (!options.sessionRepository || !hasEventStore)
-    ) {
+    const hasEventStore =
+      options.sessionEventStore || isSessionEventStore(options.sessionRepository);
+    if (this.options.requirePersistentSessions && (!options.sessionRepository || !hasEventStore)) {
       throw new AgentProtocolError(
         'SESSION_CONFLICT',
         'This executor requires sessionRepository and sessionEventStore',
@@ -520,16 +442,13 @@ export class InProcessSessionExecutor implements SessionExecutor {
       ...options,
       confirmationHandler: undefined,
       confirmationHandlerFactory: (sessionId) =>
-        configuredFactory?.(sessionId)
-        ?? configuredHandler
-        ?? this.approvals.createHandler(context.principal.tenantId, sessionId),
+        configuredFactory?.(sessionId) ??
+        configuredHandler ??
+        this.approvals.createHandler(context.principal.tenantId, sessionId),
     };
   }
 
-  private requireActiveSession(
-    tenantId: string,
-    sessionId: SessionId,
-  ): ManagedSession {
+  private requireActiveSession(tenantId: string, sessionId: SessionId): ManagedSession {
     const session = this.activeSessions.get(sessionKey(tenantId, sessionId));
     if (!session) {
       throw new AgentProtocolError(
@@ -547,18 +466,15 @@ export class InProcessSessionExecutor implements SessionExecutor {
   ): Promise<AgentServerSessionRecord> {
     const record = await this.options.store.getSession(tenantId, sessionId);
     if (!record) {
-      throw new AgentProtocolError(
-        'SESSION_NOT_FOUND',
-        `Session ${sessionId} was not found`,
-        404,
-      );
+      throw new AgentProtocolError('SESSION_NOT_FOUND', `Session ${sessionId} was not found`, 404);
     }
     return record;
   }
 
   private reserveSessionCapacity(tenantId: string): () => void {
-    const active = Array.from(this.activeSessions.values())
-      .filter((session) => session.tenantId === tenantId).length;
+    const active = Array.from(this.activeSessions.values()).filter(
+      (session) => session.tenantId === tenantId,
+    ).length;
     const reserved = this.sessionReservations.get(tenantId) ?? 0;
     if (active + reserved >= this.maxActiveSessionsPerTenant) {
       throw new AgentProtocolError(
@@ -593,7 +509,10 @@ export class InProcessSessionExecutor implements SessionExecutor {
     const key = sessionKey(principal.tenantId, sessionId);
     const previous = this.sessionOperations.get(key) ?? Promise.resolve();
     const current = previous.catch(() => undefined).then(operation);
-    const marker = current.then(() => undefined, () => undefined);
+    const marker = current.then(
+      () => undefined,
+      () => undefined,
+    );
     this.sessionOperations.set(key, marker);
     void marker.finally(() => {
       if (this.sessionOperations.get(key) === marker) {

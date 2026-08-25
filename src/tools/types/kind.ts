@@ -35,9 +35,7 @@ export function createToolBehavior(
   overrides: Partial<ToolBehavior> = {},
 ): ToolBehavior {
   if (!isToolSideEffect(sideEffect)) {
-    throw new TypeError(
-      'Tool sideEffect must be pure, idempotent, or non_idempotent',
-    );
+    throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   return {
     kind,
@@ -88,9 +86,7 @@ export function resolveToolBehaviorHint(tool: {
     ...tool.getBehaviorHint(),
   };
   if (!isToolSideEffect(behavior.sideEffect)) {
-    throw new TypeError(
-      'Resolved tool sideEffect must be pure, idempotent, or non_idempotent',
-    );
+    throw new TypeError('Resolved tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   return behavior;
 }
@@ -117,9 +113,7 @@ export function resolveToolBehavior<TParams>(
     ...tool.resolveBehavior(params),
   };
   if (!isToolSideEffect(behavior.sideEffect)) {
-    throw new TypeError(
-      'Resolved tool sideEffect must be pure, idempotent, or non_idempotent',
-    );
+    throw new TypeError('Resolved tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   return behavior;
 }

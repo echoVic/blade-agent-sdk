@@ -4,23 +4,21 @@
  * 支持重试、自动重连、错误分类、OAuth 认证、健康监控
  */
 
+import { EventEmitter } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { EventEmitter } from 'node:events';
-import type { JsonObject, JsonValue, McpServerConfig } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { toError } from '../utils/errorUtils.js';
+import { toJsonValue } from '../utils/jsonValue.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
 import { OAuthProvider } from './auth/index.js';
 import { OAuthTokenStorage } from './auth/OAuthTokenStorage.js';
+import type { McpServerConfig } from './config.js';
 import { type HealthCheckConfig, HealthMonitor } from './HealthMonitor.js';
 import type { SdkMcpServerHandle } from './SdkMcpServer.js';
-import {
-    McpConnectionStatus,
-    type McpToolCallResponse,
-    type McpToolDefinition,
-} from './types.js';
+import { McpConnectionStatus, type McpToolCallResponse, type McpToolDefinition } from './types.js';
 
 /**
  * 错误类型枚举
@@ -153,7 +151,7 @@ export class McpClient extends EventEmitter {
     serverName?: string,
     healthCheckConfig?: HealthCheckConfig,
     inProcessHandle?: SdkMcpServerHandle,
-    storageRoot?: string
+    storageRoot?: string,
   ) {
     super();
     this.serverName = serverName || 'default';
@@ -164,7 +162,9 @@ export class McpClient extends EventEmitter {
       if (storageRoot) {
         this.oauthProvider = new OAuthProvider(new OAuthTokenStorage(storageRoot));
       } else {
-        console.warn(`[McpClient] OAuth is enabled for "${serverName}" but storageRoot is not configured — OAuth will be skipped`);
+        console.warn(
+          `[McpClient] OAuth is enabled for "${serverName}" but storageRoot is not configured — OAuth will be skipped`,
+        );
       }
     }
 
@@ -255,9 +255,7 @@ export class McpClient extends EventEmitter {
         // 如果还有重试机会，等待后重试
         if (attempt < maxRetries) {
           const delay = initialDelay * 2 ** (attempt - 1); // 指数退避
-          console.warn(
-            `[McpClient] 连接失败（${attempt}/${maxRetries}），${delay}ms 后重试...`
-          );
+          console.warn(`[McpClient] 连接失败（${attempt}/${maxRetries}），${delay}ms 后重试...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -287,7 +285,7 @@ export class McpClient extends EventEmitter {
             },
             sampling: {},
           },
-        }
+        },
       );
 
       // 监听客户端关闭事件
@@ -364,9 +362,7 @@ export class McpClient extends EventEmitter {
     const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
     this.reconnectAttempts++;
 
-    console.log(
-      `[McpClient] 将在 ${delay}ms 后进行第 ${this.reconnectAttempts} 次重连...`
-    );
+    console.log(`[McpClient] 将在 ${delay}ms 后进行第 ${this.reconnectAttempts} 次重连...`);
 
     this.reconnectTimer = setTimeout(async () => {
       try {
@@ -441,10 +437,7 @@ export class McpClient extends EventEmitter {
   /**
    * 调用MCP工具
    */
-  async callTool(
-    name: string,
-    arguments_: JsonObject = {}
-  ): Promise<McpToolCallResponse> {
+  async callTool(name: string, arguments_: JsonObject = {}): Promise<McpToolCallResponse> {
     if (!this.sdkClient) {
       throw new Error('客户端未连接到服务器');
     }
@@ -484,10 +477,7 @@ export class McpClient extends EventEmitter {
         if (!token) {
           // 没有令牌，需要认证
           console.log(`[McpClient] 服务器 "${this.serverName}" 需要 OAuth 认证`);
-          const newToken = await this.oauthProvider.authenticate(
-            this.serverName,
-            oauth
-          );
+          const newToken = await this.oauthProvider.authenticate(this.serverName, oauth);
           finalHeaders.Authorization = `Bearer ${newToken.accessToken}`;
         } else {
           // 有有效令牌
@@ -496,7 +486,7 @@ export class McpClient extends EventEmitter {
       } catch (error) {
         console.error('[McpClient] OAuth 认证失败:', error);
         throw new Error(
-          `OAuth 认证失败: ${error instanceof Error ? error.message : String(error)}`
+          `OAuth 认证失败: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -611,7 +601,7 @@ export class McpClient extends EventEmitter {
     }
     try {
       const response = await this.sdkClient.listResources();
-      return (response.resources || []) as unknown as JsonValue[];
+      return (response.resources ?? []).map(toJsonValue);
     } catch {
       return [];
     }
@@ -626,6 +616,6 @@ export class McpClient extends EventEmitter {
       throw new Error('客户端未连接');
     }
     const response = await this.sdkClient.readResource({ uri });
-    return (response.contents?.[0] || { uri, text: '' }) as unknown as JsonValue;
+    return toJsonValue(response.contents?.[0] ?? { uri, text: '' });
   }
 }

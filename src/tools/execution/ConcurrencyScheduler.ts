@@ -16,7 +16,7 @@
  */
 
 import { getAbortSignalReason } from '../../utils/abortPromise.js';
-import { ToolKind } from '../types/ToolKind.js';
+import { ToolKind } from '../types/kind.js';
 
 export interface ConcurrencyLease {
   release(): void;
@@ -27,7 +27,7 @@ interface PendingLease {
   reject: (reason?: unknown) => void;
   signal?: AbortSignal;
   onAbort?: () => void;
-};
+}
 
 interface BucketState {
   inFlight: number;
@@ -84,10 +84,7 @@ export class ConcurrencyScheduler {
     ConcurrencyScheduler.instance = null;
   }
 
-  async acquire(
-    kind: ToolKind,
-    signal?: AbortSignal,
-  ): Promise<ConcurrencyLease> {
+  async acquire(kind: ToolKind, signal?: AbortSignal): Promise<ConcurrencyLease> {
     signal?.throwIfAborted();
     const bucket = this.buckets[kind];
     if (!bucket) {
@@ -120,11 +117,7 @@ export class ConcurrencyScheduler {
     });
   }
 
-  async schedule<T>(
-    kind: ToolKind,
-    fn: () => Promise<T>,
-    signal?: AbortSignal,
-  ): Promise<T> {
+  async schedule<T>(kind: ToolKind, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const lease = await this.acquire(kind, signal);
     try {
       signal?.throwIfAborted();

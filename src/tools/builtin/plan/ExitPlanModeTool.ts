@@ -2,8 +2,8 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolKind.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
@@ -16,9 +16,11 @@ export const exitPlanModeTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => z.object({
-    plan: z.string().describe('The complete implementation plan in markdown format'),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      plan: z.string().describe('The complete implementation plan in markdown format'),
+    }),
+  ),
 
   // 工具描述
   description: {
@@ -94,16 +96,14 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
             '3. You have seen text explanations from the assistant (not just tool calls)\n\n' +
             'If the assistant only made tool calls without presenting a plan summary,\n' +
             'please reject and ask for a proper plan.',
-          details:
-            'After approval, the assistant will exit Plan mode and begin implementation.',
+          details: 'After approval, the assistant will exit Plan mode and begin implementation.',
           planContent: planContent || undefined, // 传递 plan 内容给 UI
         });
 
         if (response.approved) {
           return {
             status: 'success',
-            model:
-              '✅ Plan approved by user. Plan mode exited; you can proceed to code changes.',
+            model: '✅ Plan approved by user. Plan mode exited; you can proceed to code changes.',
             metadata: {
               summary: '计划已批准',
               approved: true,

@@ -8,8 +8,12 @@ import {
   SessionId,
   ToolAttemptId,
   TurnId,
-} from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+} from '../../types/identifiers.js';
+import type { JsonObject } from '../../types/json.js';
+import {
+  jsonObjectSchema as JsonObjectSchema,
+  jsonValueSchema as JsonValueSchema,
+} from '../../types/jsonSchema.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDataMap,
@@ -22,18 +26,6 @@ import {
 
 export const DURABLE_EVENT_LOG_FORMAT = 'blade.durable-events' as const;
 
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-);
-
-const JsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), JsonValueSchema);
 const NonEmptyStringSchema = z.string().min(1);
 const PositiveIntegerSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const NonNegativeIntegerSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -160,11 +152,14 @@ const DurableEventDataSchemas = {
   [DurableEventTypeValue.MODEL_REQUEST_STARTED]: z
     .object({
       model: NonEmptyStringSchema,
-      modelIdentity: z.object({
-        provider: NonEmptyStringSchema,
-        api: NonEmptyStringSchema,
-        model: NonEmptyStringSchema,
-      }).strict().optional(),
+      modelIdentity: z
+        .object({
+          provider: NonEmptyStringSchema,
+          api: NonEmptyStringSchema,
+          model: NonEmptyStringSchema,
+        })
+        .strict()
+        .optional(),
       streaming: z.boolean(),
     })
     .strict(),
@@ -294,13 +289,11 @@ const DurableEventEnvelopeSchema = z
   .superRefine((value, context) => {
     validateEventScope(value, context);
     if (
-      value.schemaVersion === 2
-      && (
-        value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED
-        || value.type === DurableEventTypeValue.MODEL_REQUEST_COMPLETED
-        || value.type === DurableEventTypeValue.MODEL_REQUEST_FAILED
-        || value.type === DurableEventTypeValue.MODEL_REQUEST_ABORTED
-      )
+      value.schemaVersion === 2 &&
+      (value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED ||
+        value.type === DurableEventTypeValue.MODEL_REQUEST_COMPLETED ||
+        value.type === DurableEventTypeValue.MODEL_REQUEST_FAILED ||
+        value.type === DurableEventTypeValue.MODEL_REQUEST_ABORTED)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -308,10 +301,7 @@ const DurableEventEnvelopeSchema = z
         message: `${value.type} requires durable event schema v3`,
       });
     }
-    if (
-      value.schemaVersion >= 3
-      && value.type === DurableEventTypeValue.TOOL_SCHEDULED
-    ) {
+    if (value.schemaVersion >= 3 && value.type === DurableEventTypeValue.TOOL_SCHEDULED) {
       if (value.modelAttemptId === undefined) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -328,9 +318,9 @@ const DurableEventEnvelopeSchema = z
       }
     }
     if (
-      value.schemaVersion < DURABLE_EVENT_SCHEMA_VERSION
-      && value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED
-      && value.data.modelIdentity !== undefined
+      value.schemaVersion < DURABLE_EVENT_SCHEMA_VERSION &&
+      value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED &&
+      value.data.modelIdentity !== undefined
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -338,10 +328,7 @@ const DurableEventEnvelopeSchema = z
         message: `${value.type} provider identity requires durable event schema v4`,
       });
     }
-    if (
-      value.schemaVersion === 2
-      && value.type === DurableEventTypeValue.TOOL_SCHEDULED
-    ) {
+    if (value.schemaVersion === 2 && value.type === DurableEventTypeValue.TOOL_SCHEDULED) {
       if (value.modelAttemptId !== undefined) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -372,10 +359,10 @@ const PersistedDurableEventBatchSchema = z
   .superRefine((value, context) => {
     for (const [index, event] of value.events.entries()) {
       if (
-        typeof event === 'object'
-        && event !== null
-        && 'schemaVersion' in event
-        && event.schemaVersion !== value.schemaVersion
+        typeof event === 'object' &&
+        event !== null &&
+        'schemaVersion' in event &&
+        event.schemaVersion !== value.schemaVersion
       ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -507,9 +494,7 @@ function toDurableEventDraft(
     ...(parsed.commandId ? { commandId: CommandId(parsed.commandId) } : {}),
     ...(parsed.requestId ? { requestId: RequestId(parsed.requestId) } : {}),
     ...(parsed.turnId ? { turnId: TurnId(parsed.turnId) } : {}),
-    ...(parsed.modelAttemptId
-      ? { modelAttemptId: ModelAttemptId(parsed.modelAttemptId) }
-      : {}),
+    ...(parsed.modelAttemptId ? { modelAttemptId: ModelAttemptId(parsed.modelAttemptId) } : {}),
     ...(parsed.toolAttemptId ? { toolAttemptId: ToolAttemptId(parsed.toolAttemptId) } : {}),
     ...(parsed.causationEventId ? { causationEventId: EventId(parsed.causationEventId) } : {}),
   } as DurableEventDraft;

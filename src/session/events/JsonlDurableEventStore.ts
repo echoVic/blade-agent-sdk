@@ -1,9 +1,9 @@
-import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { mkdir, open, readFile, truncate } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { nanoid } from 'nanoid';
 import writeFileAtomic from 'write-file-atomic';
-import { EventId, EventSequence, FencingToken, type SessionId } from '../../types/branded.js';
+import { EventId, EventSequence, FencingToken, type SessionId } from '../../types/identifiers.js';
 import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
 import {
   type DurableEventOperationOptions,
@@ -26,9 +26,9 @@ import {
   parsePersistedDurableExecutionLeaseState,
 } from './DurableExecutionLeaseStore.js';
 import {
+  awaitDurableStoreOperation,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
   MAX_DURABLE_STORE_TIMEOUT_MS,
-  awaitDurableStoreOperation,
   resolveDurableStoreTimeoutMs,
 } from './DurableStoreOperation.js';
 import {

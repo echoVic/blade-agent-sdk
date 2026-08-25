@@ -1,11 +1,11 @@
 /**
- * Shared utilities for cloning and transforming Message / ContentPart values.
+ * Shared utilities for cloning and transforming ModelMessage / ModelContent values.
  *
  * Extracted from Session.ts and SessionStore.ts to avoid duplication.
  */
 
-import type { ContentPart, Message, ToolCall } from './ChatServiceInterface.js';
-import type { JsonValue } from '../types/common.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import type { JsonValue } from '../types/json.js';
 
 /**
  * Deep-clone a JSON-safe value.
@@ -20,15 +20,15 @@ export function cloneJsonValue<T extends JsonValue | undefined>(value: T): T {
 }
 
 /**
- * Deep-clone a single ContentPart.
+ * Deep-clone a single ModelContent.
  */
-export function cloneContentPart(part: ContentPart): ContentPart {
+export function cloneContentPart(part: ModelContent): ModelContent {
   if (part.type === 'text') {
     return {
       type: 'text',
       text: part.text,
       providerOptions: part.providerOptions
-        ? cloneJsonValue(part.providerOptions as JsonValue) as typeof part.providerOptions
+        ? (cloneJsonValue(part.providerOptions as JsonValue) as typeof part.providerOptions)
         : undefined,
     };
   }
@@ -42,9 +42,9 @@ export function cloneContentPart(part: ContentPart): ContentPart {
 }
 
 /**
- * Deep-clone a ToolCall.
+ * Deep-clone a ModelToolCall.
  */
-export function cloneToolCall(toolCall: ToolCall): ToolCall {
+export function cloneToolCall(toolCall: ModelToolCall): ModelToolCall {
   return {
     id: toolCall.id,
     type: toolCall.type,
@@ -56,9 +56,9 @@ export function cloneToolCall(toolCall: ToolCall): ToolCall {
 }
 
 /**
- * Deep-clone `Message['content']` (string passthrough, array cloned).
+ * Deep-clone `ModelMessage['content']` (string passthrough, array cloned).
  */
-function cloneContent(content: Message['content']): Message['content'] {
+function cloneContent(content: ModelMessage['content']): ModelMessage['content'] {
   if (typeof content === 'string') {
     return content;
   }
@@ -67,9 +67,9 @@ function cloneContent(content: Message['content']): Message['content'] {
 }
 
 /**
- * Deep-clone a full Message.
+ * Deep-clone a full ModelMessage.
  */
-export function cloneMessage(message: Message): Message {
+export function cloneMessage(message: ModelMessage): ModelMessage {
   return {
     ...message,
     content: cloneContent(message.content),

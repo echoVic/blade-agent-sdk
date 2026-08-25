@@ -2,14 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { SessionId } from '../../../types/branded.js';
+import { SessionId } from '../../../types/identifiers.js';
 
 vi.mock('fs-native-extensions', () => {
   throw new Error('native lock addon unavailable');
 });
 
-import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { JSONLStore } from '../../../context/storage/JSONLStore.js';
+import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 
 describe('native file lock availability', () => {
   it('loads the Store module but fails closed on the first operation', async () => {

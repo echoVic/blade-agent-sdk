@@ -1,7 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { ExecutionContext } from '../types/index.js';
+import type { SessionId } from '../../types/identifiers.js';
+import type { ExecutionContext } from '../types/execution.js';
 
 export interface PersistedToolResultArtifact {
   path: string;
@@ -11,7 +12,7 @@ export class ResultArtifactStore {
   async persist(options: {
     executionId: string;
     toolName: string;
-    sessionId?: string;
+    sessionId?: SessionId;
     context: ExecutionContext;
     modelContent?: string;
   }): Promise<PersistedToolResultArtifact> {
@@ -21,12 +22,20 @@ export class ResultArtifactStore {
     const fileName = `${sanitizeSegment(options.sessionId ?? options.executionId)}-${sanitizeSegment(options.toolName)}-${Date.now()}.json`;
     const artifactPath = path.join(baseDir, fileName);
 
-    await fs.writeFile(artifactPath, JSON.stringify({
-      toolName: options.toolName,
-      sessionId: options.sessionId,
-      modelContent: options.modelContent,
-      createdAt: new Date().toISOString(),
-    }, null, 2), 'utf8');
+    await fs.writeFile(
+      artifactPath,
+      JSON.stringify(
+        {
+          toolName: options.toolName,
+          sessionId: options.sessionId,
+          modelContent: options.modelContent,
+          createdAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
     return { path: artifactPath };
   }

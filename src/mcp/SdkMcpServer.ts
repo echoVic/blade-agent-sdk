@@ -11,8 +11,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { JsonObject } from '../types/common.js';
 import type { z } from 'zod';
+import type { JsonObject } from '../types/json.js';
 
 export type ToolResponse = CallToolResult;
 

@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import type { SessionId } from '../../../types/branded.js';
-import { toJsonValue } from '../../../utils/jsonValue.js';
+import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, } from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { TodoManager } from './TodoManager.js';
 import type { TodoItem, TodoStats } from './types.js';
@@ -23,9 +24,11 @@ export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: st
     sideEffect: 'idempotent',
     isConcurrencySafe: false,
 
-    schema: lazySchema(() => z.object({
-      todos: z.array(TodoItemSchema).min(1, 'At least one task is required'),
-    })),
+    schema: lazySchema(() =>
+      z.object({
+        todos: z.array(TodoItemSchema).min(1, 'At least one task is required'),
+      }),
+    ),
 
     // 工具描述（对齐 Claude Code 官方）
     description: {

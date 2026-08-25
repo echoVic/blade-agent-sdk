@@ -1,4 +1,4 @@
-import type { JsonObject } from '../types/common.js';
+import type { JsonObject } from '../types/json.js';
 
 export interface RuntimeContext {
   id?: string;

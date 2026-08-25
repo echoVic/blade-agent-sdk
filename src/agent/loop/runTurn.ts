@@ -3,7 +3,7 @@
  *
  * 职责：
  * - 根据配置选择流式/非流式分支
- * - 将 StreamingToolExecutor / streamChatResponse / ChatService 的事件
+ * - 将 StreamingToolExecutor / streamChatResponse / ModelService 的事件
  *   统一转换成 AgentEvent 流
  * - 返回 chatResponse + 可选的 executionResults（仅流式 + 有工具时）
  *
@@ -12,14 +12,16 @@
 
 import type { JSONSchema7 } from 'json-schema';
 import type { InternalLogger } from '../../logging/Logger.js';
-import type { ChatResponse, Message } from '../../services/ChatServiceInterface.js';
-import { type ModelIdentity, resolveModelIdentity } from '../../services/ModelIdentity.js';
+import { type ModelIdentity, resolveModelIdentity } from '../../model/identity.js';
+import type { ModelMessage, ModelToolCall } from '../../model/message.js';
+import type { ModelResponse } from '../../model/service.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
-import type { PermissionMode } from '../../types/common.js';
+import type { ToolEffect } from '../../tools/types/effects.js';
+import type { ToolResult } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import type { ModelAttemptId } from '../../types/branded.js';
-import type { JsonObject } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
+import type { MessageId, ModelAttemptId } from '../../types/identifiers.js';
+import type { JsonObject } from '../../types/json.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ExecutionEpoch } from '../ExecutionEpoch.js';
 import type { ModelExecutionLifecycle } from '../ModelExecutionLifecycle.js';
@@ -33,22 +35,21 @@ import type {
 } from './runToolCall.js';
 import { streamChatResponse } from './streamChatResponse.js';
 import { toolUpdateToAgentEvent } from './toolUpdateToAgentEvent.js';
-import type { FunctionToolCall } from './types.js';
 
 export interface RunTurnToolHooks {
   onBeforeExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     params: JsonObject;
-  }) => Promise<string | null>;
+  }) => Promise<MessageId | null>;
   onAfterExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: ModelToolCall;
     result: ToolResult;
     effects: ToolEffect[];
-    toolUseUuid: string | null;
+    toolMessageId: MessageId | null;
   }) => Promise<void>;
   onAfterExecEpochDiscard?: (ctx: {
-    toolCall: FunctionToolCall;
-    toolUseUuid: string | null;
+    toolCall: ModelToolCall;
+    toolMessageId: MessageId | null;
     reason: string;
   }) => Promise<void>;
   onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
@@ -56,7 +57,7 @@ export interface RunTurnToolHooks {
 
 export interface RunTurnInput {
   turnState: TurnState;
-  messages: readonly Message[];
+  messages: readonly ModelMessage[];
   executionPipeline: ExecutionPipeline;
   streaming?: boolean;
   signal?: AbortSignal;
@@ -73,7 +74,7 @@ export interface RunTurnInput {
 export type StreamingExecutionResult = ToolExecutionOutcome;
 
 export interface TurnOutcome {
-  chatResponse: ChatResponse;
+  chatResponse: ModelResponse;
   modelIdentity: ModelIdentity;
   modelAttemptId?: ModelAttemptId;
   /** 若走了 streaming+tools 分支，工具已顺带执行完；非流式路径为 undefined */
@@ -85,17 +86,15 @@ type TurnExecutionOutcome = Omit<TurnOutcome, 'modelIdentity'>;
 /**
  * 单回合执行。所有副作用通过 hooks 注入，事件通过 yield 输出。
  */
-export async function* runTurn(
-  input: RunTurnInput,
-): AsyncGenerator<AgentEvent, TurnOutcome> {
+export async function* runTurn(input: RunTurnInput): AsyncGenerator<AgentEvent, TurnOutcome> {
   const { turnState, messages, streaming, signal, logger } = input;
   const tools = turnState.tools as Array<{
     name: string;
     description: string;
     parameters: JSONSchema7;
   }>;
-  const turnChatService = turnState.chatService;
-  const modelIdentity = resolveModelIdentity(turnChatService.getConfig());
+  const turnModelService = turnState.modelService;
+  const modelIdentity = resolveModelIdentity(turnModelService.getConfig());
   const requestLifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
     turn: turnState.turn,
     model: modelIdentity.model,
@@ -105,7 +104,7 @@ export async function* runTurn(
   await turnState.executionContext.assertExecutionLease?.();
 
   let settlementAttempted = false;
-  const settleCompleted = async (response: ChatResponse): Promise<void> => {
+  const settleCompleted = async (response: ModelResponse): Promise<void> => {
     if (!requestLifecycle || settlementAttempted) {
       return;
     }
@@ -125,14 +124,8 @@ export async function* runTurn(
         );
       } else if (streaming) {
         // 分支 2：streaming only — 纯流式，无工具执行
-        const stream = streamChatResponse(
-          () => turnChatService,
-          messages,
-          tools,
-          signal,
-          logger,
-        );
-        let chatResponse: ChatResponse | undefined;
+        const stream = streamChatResponse(() => turnModelService, messages, tools, signal, logger);
+        let chatResponse: ModelResponse | undefined;
         let streamCompleted = false;
         try {
           while (true) {
@@ -157,10 +150,10 @@ export async function* runTurn(
           throw new Error('Stream terminated without chat response');
         }
         outcome = { chatResponse };
-      } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
+      } else if (typeof turnModelService.chatWithRetryEvents === 'function') {
         // 分支 3：非流式 + 带重试事件
-        const retryGen = turnChatService.chatWithRetryEvents(messages, tools, signal);
-        let chatResponse: ChatResponse | undefined;
+        const retryGen = turnModelService.chatWithRetryEvents(messages, tools, signal);
+        let chatResponse: ModelResponse | undefined;
         let retryStreamCompleted = false;
         try {
           while (true) {
@@ -190,7 +183,7 @@ export async function* runTurn(
       } else {
         // 分支 4：纯非流式
         outcome = {
-          chatResponse: await turnChatService.chat(messages, tools, signal),
+          chatResponse: await turnModelService.chat(messages, tools, signal),
         };
       }
     } catch (error) {
@@ -244,18 +237,23 @@ async function* runStreamingWithTools(
   input: RunTurnInput,
   tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   modelAttemptId: ModelAttemptId | undefined,
-  onModelResponse: (response: ChatResponse) => Promise<void>,
+  onModelResponse: (response: ModelResponse) => Promise<void>,
 ): AsyncGenerator<AgentEvent, TurnExecutionOutcome> {
   const {
-    turnState, messages, executionPipeline,
-    signal, requestSignal, steeringSignal, epoch,
-    executionContext, permissionMode, toolHooks, logger,
+    turnState,
+    messages,
+    executionPipeline,
+    signal,
+    requestSignal,
+    steeringSignal,
+    epoch,
+    executionContext,
+    permissionMode,
+    toolHooks,
+    logger,
   } = input;
 
-  const streamingExecutor = new StreamingToolExecutor(
-    () => turnState.chatService,
-    logger,
-  );
+  const streamingExecutor = new StreamingToolExecutor(() => turnState.modelService, logger);
   const closeController = new AbortController();
   const modelSignal = signal
     ? AbortSignal.any([signal, closeController.signal])
@@ -269,36 +267,42 @@ async function* runStreamingWithTools(
   });
   const registry = executionPipeline.getRegistry();
 
-  let chatResponse: ChatResponse | undefined;
+  let chatResponse: ModelResponse | undefined;
   let streamingExecutionResults: StreamingExecutionResult[] | undefined;
   let executionError: unknown;
 
   const executionPromise = streamingExecutor
-    .collectAndExecute(messages, tools, modelSignal, {
-      executionPipeline,
-      executionContext: modelAttemptId
-        ? { ...executionContext, modelAttemptId }
-        : executionContext,
-      logger,
-      permissionMode,
-      requestSignal: toolRequestSignal,
-      steeringSignal,
-      hooks: {
-        onBeforeToolExec: toolHooks.onBeforeExec,
+    .collectAndExecute(
+      messages,
+      tools,
+      modelSignal,
+      {
+        executionPipeline,
+        executionContext: modelAttemptId
+          ? { ...executionContext, modelAttemptId }
+          : executionContext,
+        logger,
+        permissionMode,
+        requestSignal: toolRequestSignal,
+        steeringSignal,
+        hooks: {
+          onBeforeToolExec: toolHooks.onBeforeExec,
+        },
+        onAfterToolExecEpochDiscard: toolHooks.onAfterExecEpochDiscard,
+        onContentDelta: (delta) => queue.enqueue({ type: 'content_delta', delta }),
+        onThinkingDelta: (delta) => queue.enqueue({ type: 'thinking_delta', delta }),
+        onModelResponse,
+        onStreamEnd: () => {
+          if (!signal?.aborted) queue.enqueue({ type: 'stream_end' });
+        },
+        onToolExecutionUpdate: async (update) => {
+          await toolHooks.onUpdate?.(update);
+          const agentEvent = toolUpdateToAgentEvent(update, registry);
+          if (agentEvent) queue.enqueue(agentEvent);
+        },
       },
-      onAfterToolExecEpochDiscard: toolHooks.onAfterExecEpochDiscard,
-      onContentDelta: (delta) => queue.enqueue({ type: 'content_delta', delta }),
-      onThinkingDelta: (delta) => queue.enqueue({ type: 'thinking_delta', delta }),
-      onModelResponse,
-      onStreamEnd: () => {
-        if (!signal?.aborted) queue.enqueue({ type: 'stream_end' });
-      },
-      onToolExecutionUpdate: async (update) => {
-        await toolHooks.onUpdate?.(update);
-        const agentEvent = toolUpdateToAgentEvent(update, registry);
-        if (agentEvent) queue.enqueue(agentEvent);
-      },
-    }, epoch)
+      epoch,
+    )
     .then(({ chatResponse: resp, executionResults }) => {
       chatResponse = resp;
       streamingExecutionResults = executionResults;

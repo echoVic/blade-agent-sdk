@@ -10,10 +10,11 @@ import {
   it,
 } from 'vitest';
 import {
+  CommandId,
   ExecutionLeaseId,
-  type SessionId,
+  SessionId,
   WorkerId,
-} from '../../types/branded.js';
+} from '../../types/identifiers.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { effectLease } from '../WorkerRuntime.js';
 
@@ -170,9 +171,9 @@ describePostgres('Postgres worker crash recovery', () => {
       }
       const suffix = `${crashPoint}-${Date.now()}`;
       const tenantId = `tenant-${suffix}`;
-      const sessionId = `session-${suffix}` as SessionId;
+      const sessionId = SessionId(`session-${suffix}`);
       const effectId = `effect-${suffix}`;
-      const commandId = `command-${suffix}`;
+      const commandId = CommandId(`command-${suffix}`);
       await store.commitRuntimeTransaction({
         tenantId,
         sessionId,

@@ -119,10 +119,10 @@ const session = await createSession(options);
 
 ## Provider 配置
 
-`ProviderConfig` 定义模型提供方的连接信息。
+`ProviderConnectionConfig` 定义模型提供方的连接信息。
 
 ```ts
-interface ProviderConfig {
+interface ProviderConnectionConfig {
   id?: string;              // 逻辑 Provider ID；默认等于 type
   type: ProviderType;
   apiKey?: string;
@@ -255,7 +255,7 @@ session.send(
 ): Promise<InputSubmission>
 
 // stream：异步迭代消费输出
-session.stream(options?: StreamOptions): AsyncGenerator<StreamMessage>
+session.stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>
 ```
 
 每个 pending request 调用一次 `stream()`，正常情况下应消费到结束；如果消费暂停或
@@ -320,12 +320,12 @@ interface StreamOptions {
 }
 ```
 
-### StreamMessage 类型
+### SessionStreamEvent 类型
 
 `stream()` 产出的是判别联合类型：
 
 ```ts
-type StreamMessage =
+type SessionStreamEvent =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
   | { type: 'turn_interrupted'; inputId: InputId; requestId: RequestId; turn: number; sessionId: SessionId }
@@ -501,13 +501,13 @@ function prompt(
 ```ts
 interface PromptResult {
   result: string;              // 模型最终文本回复
-  toolCalls: ToolCallRecord[]; // 所有工具调用记录
+  toolCalls: ToolExecutionRecord[]; // 所有工具调用记录
   usage: TokenUsage;           // Token 用量
   duration: number;            // 总耗时（毫秒）
   turnsCount: number;          // 轮次数
 }
 
-interface ToolCallRecord {
+interface ToolExecutionRecord {
   id: string;
   name: string;
   input: unknown;
@@ -1001,7 +1001,7 @@ Microcompact 是最轻量的压缩方式，不调用 LLM，只替换旧的大型
 4. 如果压缩后仍然超限，抛出原始错误
 
 整个恢复过程对上层透明。`recovery` 是内部 Agent 事件，不属于公开
-`StreamMessage`；调用方通过最终的 `result` 或 `error` 观察结果。
+`SessionStreamEvent`；调用方通过最终的 `result` 或 `error` 观察结果。
 
 ### 动态更新上下文
 
@@ -1749,7 +1749,7 @@ async function analyzeCodeManual() {
 
 | 字段                | 类型                                                      | 必填 | 默认值         | 说明                                                |
 | ----------------- | ------------------------------------------------------- | -- | ----------- | ------------------------------------------------- |
-| `provider`        | `ProviderConfig`                                        | ✅  | —           | 模型提供方配置                                           |
+| `provider`        | `ProviderConnectionConfig`                                        | ✅  | —           | 模型提供方配置                                           |
 | `providerRegistry` | `ProviderRegistry`                                     | —  | —           | 当前 Session 使用的实例级自定义 Provider adapter Registry   |
 | `model`           | `string`                                                | ✅  | —           | 模型 ID（如 `'claude-sonnet-4-20250514'`, `'gpt-4o'`） |
 | `temperature`     | `number`                                                | —  | `0.7`       | 模型采样温度                                            |
@@ -1788,8 +1788,8 @@ async function analyzeCodeManual() {
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |
 | `observability`   | `ObservabilityOptions`                                  | —  | —           | Trace 收集、payload 捕获与 sink 配置                         |
 
-`ProviderConfig.requestTimeoutMs` 默认 `600000`，
-`ProviderConfig.streamIdleTimeoutMs` 默认 `300000`。具体超时语义见
+`ProviderConnectionConfig.requestTimeoutMs` 默认 `600000`，
+`ProviderConnectionConfig.streamIdleTimeoutMs` 默认 `300000`。具体超时语义见
 [Provider 配置](./providers)。
 
 ### SessionHookEvent
@@ -1901,7 +1901,7 @@ interface ISession extends AsyncDisposable {
    * 异步迭代消费 Agent 输出流
    * 必须在 send() 之后调用
    */
-  stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
+  stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>;
 
   /** 关闭会话并释放所有资源 */
   close(): Promise<void>;
@@ -2001,12 +2001,12 @@ export type {
   InputId,
   RequestId,
   StreamOptions,
-  StreamMessage,
+  SessionStreamEvent,
   ISession,
-  ProviderConfig,
+  ProviderConnectionConfig,
   ProviderType,
   PromptResult,
-  ToolCallRecord,
+  ToolExecutionRecord,
   TokenUsage,
   AgentDefinition,
   SubagentInfo,
@@ -2056,7 +2056,7 @@ export {
   PermissionMode,
   InputPriority,
   HookEvent,
-  StreamMessageType,
+  SessionStreamEventType,
   ToolKind,
   MessageRole,
   PermissionDecision,

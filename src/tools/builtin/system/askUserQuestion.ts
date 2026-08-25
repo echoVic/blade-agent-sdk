@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
  * Option schema - 选项定义
@@ -12,12 +12,12 @@ const optionSchema = z.object({
   label: z
     .string()
     .describe(
-      'The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.'
+      'The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.',
     ),
   description: z
     .string()
     .describe(
-      'Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.'
+      'Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.',
     ),
 });
 
@@ -28,24 +28,23 @@ const questionSchema = z.object({
   question: z
     .string()
     .describe(
-      'The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"'
+      'The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"',
     ),
   header: z
     .string()
     .max(12)
     .describe(
-      'Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".'
+      'Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".',
     ),
-  multiSelect: ToolSchemas.semanticBoolean()
-    .describe(
-      'Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'
-    ),
+  multiSelect: ToolSchemas.semanticBoolean().describe(
+    'Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.',
+  ),
   options: z
     .array(optionSchema)
     .min(2)
     .max(4)
     .describe(
-      'The available choices for this question. Must have 2-4 options. Each option should be a distinct, mutually exclusive choice (unless multiSelect is enabled). There should be no "Other" option, that will be provided automatically.'
+      'The available choices for this question. Must have 2-4 options. Each option should be a distinct, mutually exclusive choice (unless multiSelect is enabled). There should be no "Other" option, that will be provided automatically.',
     ),
 });
 

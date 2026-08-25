@@ -27,8 +27,8 @@ export type {
   ToolExecution,
   ToolExposureConfig,
   ToolExposureMode,
-  ToolModelContent,
   ToolMessage,
+  ToolModelContent,
   ToolProgress,
   ToolResult,
   ToolSchema,
@@ -39,4 +39,4 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from './types/index.js';
-export { ToolKind, ToolSideEffect } from './types/ToolKind.js';
+export { ToolKind, ToolSideEffect } from './types/kind.js';

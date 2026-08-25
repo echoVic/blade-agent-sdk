@@ -5,9 +5,10 @@ import {
 } from '../../../hooks/WindowsProcessJob.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
-import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
-import { ModelAttemptId, SessionId } from '../../../types/branded.js';
-import type { JsonObject } from '../../../types/common.js';
+import type { ExecutionContext } from '../../../tools/types/execution.js';
+import { completeToolExecution } from '../../../tools/types/result.js';
+import { ModelAttemptId, SessionId } from '../../../types/identifiers.js';
+import type { JsonObject } from '../../../types/json.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
 describe('executeToolCalls', () => {
@@ -293,9 +294,7 @@ describe('executeToolCalls', () => {
   it('prioritizes a late containment failure across parallel tool calls', async () => {
     const secondStarted = Promise.withResolvers<void>();
     const releaseSecond = Promise.withResolvers<void>();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
 
     const execution = executeToolCalls({
       plan: {
@@ -343,9 +342,7 @@ describe('executeToolCalls', () => {
   });
 
   it('preserves containment failure raised while closing a tool generator', async () => {
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
     const execution = executeToolCalls({
       plan: {
         mode: 'serial',

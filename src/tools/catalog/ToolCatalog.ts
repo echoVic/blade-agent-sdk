@@ -1,7 +1,7 @@
-import type { PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
-import type { FunctionDeclaration, Tool } from '../types/index.js';
+import type { FunctionDeclaration, Tool } from '../types/tool.js';
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
@@ -47,32 +47,41 @@ export class ToolCatalog implements ToolCatalogReadView {
     return this.registry;
   }
 
-  register<TParams>(tool: Tool<TParams>, source: ToolSourceInfo = {
-    kind: 'custom',
-    trustLevel: 'workspace',
-    sourceId: 'custom',
-  }): void {
-    this.registry.register(tool as unknown as Tool);
-    this.entries.set(tool.name, { tool: tool as unknown as Tool, source });
+  register<TParams>(
+    tool: Tool<TParams>,
+    source: ToolSourceInfo = {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'custom',
+    },
+  ): void {
+    this.registry.register(tool);
+    this.entries.set(tool.name, { tool, source });
   }
 
-  registerAll<TParams>(tools: Tool<TParams>[], source: ToolSourceInfo = {
-    kind: 'custom',
-    trustLevel: 'workspace',
-    sourceId: 'custom',
-  }): void {
+  registerAll<TParams>(
+    tools: Tool<TParams>[],
+    source: ToolSourceInfo = {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'custom',
+    },
+  ): void {
     for (const tool of tools) {
       this.register(tool, source);
     }
   }
 
-  registerMcpTool<TParams>(tool: Tool<TParams>, source: ToolSourceInfo = {
-    kind: 'mcp',
-    trustLevel: 'remote',
-    sourceId: 'mcp',
-  }): void {
-    this.registry.registerMcpTool(tool as unknown as Tool);
-    this.entries.set(tool.name, { tool: tool as unknown as Tool, source });
+  registerMcpTool<TParams>(
+    tool: Tool<TParams>,
+    source: ToolSourceInfo = {
+      kind: 'mcp',
+      trustLevel: 'remote',
+      sourceId: 'mcp',
+    },
+  ): void {
+    this.registry.registerMcpTool(tool);
+    this.entries.set(tool.name, { tool, source });
   }
 
   unregister(name: string): boolean {
@@ -85,7 +94,8 @@ export class ToolCatalog implements ToolCatalogReadView {
   }
 
   removeMcpTools(serverName: string): number {
-    const removedNames = this.registry.getMcpTools()
+    const removedNames = this.registry
+      .getMcpTools()
       .filter((tool) => matchesMcpServer(tool, serverName))
       .map((tool) => tool.name);
     const removedCount = this.registry.removeMcpTools(serverName);
@@ -108,7 +118,8 @@ export class ToolCatalog implements ToolCatalogReadView {
   }
 
   getEntries(): ToolCatalogEntry[] {
-    return this.registry.getAll()
+    return this.registry
+      .getAll()
       .map((tool) => this.entries.get(tool.name))
       .filter((entry): entry is ToolCatalogEntry => Boolean(entry));
   }

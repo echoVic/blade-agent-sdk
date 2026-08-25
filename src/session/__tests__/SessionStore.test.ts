@@ -4,45 +4,49 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
-import { NoopPersistentStore, PersistentStore } from '../../context/storage/PersistentStore.js';
+import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
-import type { SessionEvent } from '../../context/types.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ModelContent } from '../../model/message.js';
 import {
+  EventId,
   InputId,
   MessageId,
+  PartId,
   RequestId,
   SessionId,
-} from '../../types/branded.js';
+  ToolUseId,
+} from '../../types/identifiers.js';
+import { NoopSessionRepository } from '../SessionRepository.js';
 import { JsonlSessionStore } from '../SessionStore.js';
+import type { TranscriptEvent } from '../transcript.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
 }
 
-function sessionEvent<T extends SessionEvent['type']>(
+function sessionEvent<T extends TranscriptEvent['type']>(
   sessionId: SessionId,
   timestamp: string,
   id: string,
   type: T,
-  data: Extract<SessionEvent, { type: T }>['data'],
-): Extract<SessionEvent, { type: T }> {
-  return { id, sessionId, timestamp, type, version: '1.1.2', data } as Extract<
-    SessionEvent,
+  data: Extract<TranscriptEvent, { type: T }>['data'],
+): Extract<TranscriptEvent, { type: T }> {
+  return { id: EventId(id), sessionId, timestamp, type, version: '1.1.2', data } as Extract<
+    TranscriptEvent,
     { type: T }
   >;
 }
 
 describe('JsonlSessionStore', () => {
   it('keeps persisted message IDs distinct from provider tool-call IDs', async () => {
-    const store = new NoopPersistentStore();
+    const store = new NoopSessionRepository();
     const toolUse = await store.saveToolUse(
       SessionId('session-noop'),
       'Search',
       { query: 'needle' },
       null,
       undefined,
-      'call-noop',
+      ToolUseId('call-noop'),
     );
     const toolResultMessageId = await store.saveToolResult(
       SessionId('session-noop'),
@@ -64,15 +68,11 @@ describe('JsonlSessionStore', () => {
 
     const sessionId = SessionId('session-1');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolUse = await persistentStore.saveToolUse(
-      sessionId,
-      'Task',
-      {
-        subagent_session_id: 'child-1',
-        subagent_type: 'research',
-        description: 'Inspect repository',
-      },
-    );
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Task', {
+      subagent_session_id: 'child-1',
+      subagent_type: 'research',
+      description: 'Inspect repository',
+    });
     const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
       toolUse.toolCallId,
@@ -82,7 +82,7 @@ describe('JsonlSessionStore', () => {
       undefined,
       undefined,
       {
-        subagentSessionId: 'child-1',
+        subagentSessionId: SessionId('child-1'),
         subagentType: 'research',
         subagentStatus: 'completed',
         subagentSummary: 'Finished inspection',
@@ -129,7 +129,7 @@ describe('JsonlSessionStore', () => {
       { query: 'first' },
       userMessageId,
       undefined,
-      'call-first',
+      ToolUseId('call-first'),
     );
     const firstResultId = await persistentStore.saveToolResult(
       sessionId,
@@ -144,7 +144,7 @@ describe('JsonlSessionStore', () => {
       { query: 'second' },
       firstResultId,
       undefined,
-      'call-second',
+      ToolUseId('call-second'),
     );
     await persistentStore.saveToolResult(
       sessionId,
@@ -214,11 +214,7 @@ describe('JsonlSessionStore', () => {
       priority: 'later',
       acceptedAt: 3,
     });
-    await persistentStore.saveInputCancelled(
-      sessionId,
-      cancelledInputId,
-      'cancelled_by_user',
-    );
+    await persistentStore.saveInputCancelled(sessionId, cancelledInputId, 'cancelled_by_user');
 
     const state = await sessionStore.loadState(sessionId);
 
@@ -266,28 +262,28 @@ describe('JsonlSessionStore', () => {
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'user-text', 'part_created', {
-        partId: 'user-text',
+        partId: PartId('user-text'),
         messageId: MessageId('user-1'),
         partType: 'text',
         payload: { text: 'hello' },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-call', 'part_created', {
-        partId: 'call-first',
+        partId: PartId('call-first'),
         messageId: MessageId('user-1'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-result', 'part_created', {
-        partId: 'call-first',
+        partId: PartId('call-first'),
         messageId: MessageId('call-first'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-first', toolName: 'Search', output: 'first result' },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-call', 'part_created', {
-        partId: 'call-second',
+        partId: PartId('call-second'),
         messageId: MessageId('call-first'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
@@ -299,29 +295,30 @@ describe('JsonlSessionStore', () => {
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'duplicate-first-call', 'part_created', {
-        partId: 'call-first',
+        partId: PartId('call-first'),
         messageId: MessageId('assistant-1'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'duplicate-second-call', 'part_created', {
-        partId: 'call-second',
+        partId: PartId('call-second'),
         messageId: MessageId('assistant-1'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-result', 'part_created', {
-        partId: 'call-second',
+        partId: PartId('call-second'),
         messageId: MessageId('call-second'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-second', toolName: 'Search', output: 'second result' },
         createdAt: now,
       }),
     ];
-    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId))
-      .appendBatch(entries);
+    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId)).appendBatch(
+      entries,
+    );
 
     const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
 
@@ -334,11 +331,14 @@ describe('JsonlSessionStore', () => {
       'tool',
     ]);
     expect(state.messages[0]?.content).toBe('hello');
-    expect(state.messages.flatMap((message) => message.tool_calls ?? []).map((call) => call.id))
-      .toEqual(['call-first', 'call-second']);
-    expect(state.messages.filter((message) => message.role === 'tool').map(
-      (message) => message.tool_call_id,
-    )).toEqual(['call-first', 'call-second']);
+    expect(
+      state.messages.flatMap((message) => message.tool_calls ?? []).map((call) => call.id),
+    ).toEqual(['call-first', 'call-second']);
+    expect(
+      state.messages
+        .filter((message) => message.role === 'tool')
+        .map((message) => message.tool_call_id),
+    ).toEqual(['call-first', 'call-second']);
   });
 
   it('should preserve repeated provider tool-call IDs across legacy turns', async () => {
@@ -359,14 +359,14 @@ describe('JsonlSessionStore', () => {
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-call', 'part_created', {
-        partId: 'call-repeated',
+        partId: PartId('call-repeated'),
         messageId: MessageId('user-1'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-repeated', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'first-result', 'part_created', {
-        partId: 'call-repeated',
+        partId: PartId('call-repeated'),
         messageId: MessageId('call-repeated'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-repeated', toolName: 'Search', output: 'first result' },
@@ -375,33 +375,38 @@ describe('JsonlSessionStore', () => {
       sessionEvent(sessionId, now, 'second-assistant', 'message_created', {
         messageId: MessageId('assistant-2'),
         role: 'assistant',
-        parentMessageId: 'call-repeated',
+        parentMessageId: MessageId('call-repeated'),
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-call', 'part_created', {
-        partId: 'call-repeated',
+        partId: PartId('call-repeated'),
         messageId: MessageId('assistant-2'),
         partType: 'tool_call',
         payload: { toolCallId: 'call-repeated', toolName: 'Search', input: { query: 'second' } },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-result', 'part_created', {
-        partId: 'call-repeated',
+        partId: PartId('call-repeated'),
         messageId: MessageId('call-repeated'),
         partType: 'tool_result',
         payload: { toolCallId: 'call-repeated', toolName: 'Search', output: 'second result' },
         createdAt: now,
       }),
       sessionEvent(sessionId, now, 'second-result-update', 'part_updated', {
-        partId: 'call-repeated',
+        partId: PartId('call-repeated'),
         messageId: MessageId('call-repeated'),
         partType: 'tool_result',
-        payload: { toolCallId: 'call-repeated', toolName: 'Search', output: 'second result updated' },
+        payload: {
+          toolCallId: 'call-repeated',
+          toolName: 'Search',
+          output: 'second result updated',
+        },
         createdAt: now,
       }),
     ];
-    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId))
-      .appendBatch(entries);
+    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId)).appendBatch(
+      entries,
+    );
 
     const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
 
@@ -413,10 +418,12 @@ describe('JsonlSessionStore', () => {
       'assistant',
       'tool',
     ]);
-    expect(state.messages.filter((message) => message.tool_calls?.[0]?.id === 'call-repeated'))
-      .toHaveLength(2);
-    expect(state.messages.filter((message) => message.tool_call_id === 'call-repeated'))
-      .toHaveLength(2);
+    expect(
+      state.messages.filter((message) => message.tool_calls?.[0]?.id === 'call-repeated'),
+    ).toHaveLength(2);
+    expect(
+      state.messages.filter((message) => message.tool_call_id === 'call-repeated'),
+    ).toHaveLength(2);
     expect(state.toolCalls.map((toolCall) => toolCall.output)).toEqual([
       'first result',
       'second result updated',
@@ -481,7 +488,7 @@ describe('JsonlSessionStore', () => {
     );
     await persistentStore.saveToolResult(
       sessionId,
-      'call-search',
+      ToolUseId('call-search'),
       'Search',
       'result',
       assistantMessageId,
@@ -553,11 +560,10 @@ describe('JsonlSessionStore', () => {
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
     await persistentStore.saveMessage(SessionId('session-a'), 'user', 'alpha');
-    await persistentStore.saveCompaction(
-      SessionId('session-a'),
-      'Searchable summary',
-      { trigger: 'auto', preTokens: 10 },
-    );
+    await persistentStore.saveCompaction(SessionId('session-a'), 'Searchable summary', {
+      trigger: 'auto',
+      preTokens: 10,
+    });
     await persistentStore.saveMessage(SessionId('session-b'), 'user', 'beta');
 
     const sessionIds = await sessionStore.listSessions();
@@ -576,7 +582,7 @@ describe('JsonlSessionStore', () => {
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
     const sessionId = SessionId('session-multimodal');
-    const content: ContentPart[] = [
+    const content: ModelContent[] = [
       { type: 'text', text: 'describe this image' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
     ];

@@ -1,31 +1,23 @@
 import { ToolExecutionError } from '../../errors/ToolExecutionError.js';
-import type { JsonObject } from '../../types/common.js';
-import {
-  type ExecutionContext,
-  type ToolExecution,
-  type ToolInvocation,
-  type ToolValidationError,
-  validationErrorToToolResult,
-} from '../types/index.js';
+import type { JsonObject } from '../../types/json.js';
+import type { ExecutionContext } from '../types/execution.js';
+import type { ToolExecution, ToolValidationError } from '../types/result.js';
+import { validationErrorToToolResult } from '../types/result.js';
+import type { ToolInvocation } from '../types/tool.js';
 
-export class UnifiedToolInvocation<
-  TParams = JsonObject,
-> implements ToolInvocation<TParams> {
+export class UnifiedToolInvocation<TParams = JsonObject> implements ToolInvocation<TParams> {
   private validationPassed = false;
 
   constructor(
     public readonly toolName: string,
     public readonly params: TParams,
-    private readonly executeFn: (
-      params: TParams,
-      context: ExecutionContext
-    ) => ToolExecution,
+    private readonly executeFn: (params: TParams, context: ExecutionContext) => ToolExecution,
     private readonly validateFn?: (
       params: TParams,
-      context: ExecutionContext
+      context: ExecutionContext,
     ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError,
     private readonly descriptionFn?: (params: TParams) => string,
-    private readonly affectedPathsFn?: (params: TParams) => string[]
+    private readonly affectedPathsFn?: (params: TParams) => string[],
   ) {}
 
   /**
@@ -49,7 +41,7 @@ export class UnifiedToolInvocation<
   }
 
   async validate(
-    context: Partial<ExecutionContext> = {}
+    context: Partial<ExecutionContext> = {},
   ): Promise<ToolValidationError | undefined> {
     if (this.validationPassed || !this.validateFn) {
       return undefined;
@@ -73,10 +65,7 @@ export class UnifiedToolInvocation<
    * @param signal - 中止信号
    * @param context - 额外的执行上下文（包含 confirmationHandler、permissionMode 等）
    */
-  async *execute(
-    signal: AbortSignal,
-    context?: Partial<ExecutionContext>
-  ): ToolExecution {
+  async *execute(signal: AbortSignal, context?: Partial<ExecutionContext>): ToolExecution {
     // 合并基础 context 和额外字段
     const fullContext: ExecutionContext = {
       signal,
@@ -90,10 +79,7 @@ export class UnifiedToolInvocation<
 
     const execution = this.executeFn(this.params, fullContext);
     if (!isToolExecution(execution)) {
-      throw new ToolExecutionError(
-        this.toolName,
-        'execute() must return an AsyncGenerator',
-      );
+      throw new ToolExecutionError(this.toolName, 'execute() must return an AsyncGenerator');
     }
 
     return yield* execution;
@@ -101,8 +87,10 @@ export class UnifiedToolInvocation<
 }
 
 function isToolExecution(value: unknown): value is ToolExecution {
-  return typeof value === 'object'
-    && value !== null
-    && Symbol.asyncIterator in value
-    && typeof (value as { next?: unknown }).next === 'function';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Symbol.asyncIterator in value &&
+    typeof (value as { next?: unknown }).next === 'function'
+  );
 }

@@ -3,7 +3,7 @@
  * 用于自动检测模型是否支持特定功能（如 thinking/reasoning）
  */
 
-import type { ModelConfig } from '../types/common.js';
+import type { ModelConfig } from '../model/config.js';
 
 /**
  * 支持 thinking/reasoning 的模型名称模式

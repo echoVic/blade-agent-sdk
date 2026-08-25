@@ -1,20 +1,19 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../model/message.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
+import type { ToolEffect } from '../../tools/types/effects.js';
+import type { ToolResult } from '../../tools/types/result.js';
+import { completeToolExecution } from '../../tools/types/result.js';
 import {
-    completeToolExecution,
-    type ToolEffect,
-    type ToolResult,
-} from '../../tools/types/index.js';
-import {
-    InputId,
-    ModelAttemptId,
-    RequestId,
-    SessionId,
-} from '../../types/branded.js';
+  InputId,
+  MessageId,
+  ModelAttemptId,
+  RequestId,
+  SessionId,
+} from '../../types/identifiers.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
@@ -49,16 +48,18 @@ function createMockExecutionPipeline(results?: Record<string, MockToolResult>) {
   } as unknown as AgentLoopConfig['executionPipeline'];
 }
 
-function createMockChatService(responses: Array<{
-  content: string;
-  toolCalls?: Array<{
-    id: string;
-    type: 'function';
-    function: { name: string; arguments: string };
-  }>;
-  reasoningContent?: string;
-  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
-}>) {
+function createMockModelService(
+  responses: Array<{
+    content: string;
+    toolCalls?: Array<{
+      id: string;
+      type: 'function';
+      function: { name: string; arguments: string };
+    }>;
+    reasoningContent?: string;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  }>,
+) {
   let callIndex = 0;
   const chatFn = vi.fn(async () => {
     const resp = responses[callIndex] || responses[responses.length - 1];
@@ -84,27 +85,39 @@ function createMockChatService(responses: Array<{
       model: 'test-model',
       maxContextTokens: 128000,
     }),
-  } as unknown as TurnState['chatService'];
+  } as unknown as TurnState['modelService'];
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>> & {
+type BaseConfigOverrides = Partial<
+  Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>
+> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
-  messages?: Message[];
+  messages?: ModelMessage[];
   // Legacy flat hooks (translated to grouped shape below)
   onBeforeTurn?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['beforeTurn'];
   onBeforeInputApply?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['input']>['beforeApply'];
   onInputApply?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['input']>['apply'];
-  onTurnLimitReached?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitReached'];
-  onTurnLimitCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitCompact'];
+  onTurnLimitReached?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['turn']
+  >['onTurnLimitReached'];
+  onTurnLimitCompact?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['turn']
+  >['onTurnLimitCompact'];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
   onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
-  onAfterToolExecEpochDiscard?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExecEpochDiscard'];
+  onAfterToolExecEpochDiscard?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['tool']
+  >['afterExecEpochDiscard'];
   onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
   onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
-  onReactiveCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['recovery']>['reactiveCompact'];
-  onRecoveryStateChange?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['recovery']>['onStateChange'];
+  onReactiveCompact?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['recovery']
+  >['reactiveCompact'];
+  onRecoveryStateChange?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['recovery']
+  >['onStateChange'];
   onStopCheck?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['stop']>['check'];
 };
 
@@ -133,7 +146,11 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     ...rest
   } = overrides;
 
-  const convState = new ConversationState(null, [], messages[messages.length - 1] || { role: 'user', content: 'Hi' });
+  const convState = new ConversationState(
+    null,
+    [],
+    messages[messages.length - 1] || { role: 'user', content: 'Hi' },
+  );
   // Add all messages except the last (user message) as context
   if (messages.length > 1) {
     for (let i = 0; i < messages.length - 1; i++) {
@@ -143,7 +160,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
 
   const defaultTurnState: Omit<TurnState, 'turn' | 'messages'> = {
     tools: [],
-    chatService: createMockChatService([{ content: 'Hello!' }]),
+    modelService: createMockModelService([{ content: 'Hello!' }]),
     maxContextTokens: 128000,
     permissionMode: undefined,
     executionContext: {
@@ -186,19 +203,21 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     conversationState: convState,
     maxTurns,
     isYoloMode,
-    prepareTurnState: prepareTurnState ?? ((turn) => ({
-      turn,
-      messages: convState.toArray() as Message[],
-      ...defaultTurnState,
-      ...turnState,
-    })),
+    prepareTurnState:
+      prepareTurnState ??
+      ((turn) => ({
+        turn,
+        messages: convState.toArray() as ModelMessage[],
+        ...defaultTurnState,
+        ...turnState,
+      })),
     hooks,
     ...rest,
   };
 }
 
 async function collectEvents(
-  gen: AsyncGenerator<AgentEvent, LoopResult>
+  gen: AsyncGenerator<AgentEvent, LoopResult>,
 ): Promise<{ events: AgentEvent[]; result: LoopResult }> {
   const events: AgentEvent[] = [];
   while (true) {
@@ -213,7 +232,7 @@ async function collectEvents(
 describe('agentLoop', () => {
   describe('basic flow', () => {
     it('checks the execution lease after persisting model start and before provider I/O', async () => {
-      const chatService = createMockChatService([{ content: 'must not run' }]);
+      const modelService = createMockModelService([{ content: 'must not run' }]);
       const onModelRequestStarting = vi.fn(async () => ({
         onCompleted: vi.fn(async () => {}),
         onFailed: vi.fn(async () => {}),
@@ -225,7 +244,7 @@ describe('agentLoop', () => {
       const config = baseConfig({
         modelExecutionLifecycle: { onModelRequestStarting },
         turnState: {
-          chatService,
+          modelService,
           executionContext: {
             sessionId: SessionId('fenced-model-session'),
             userId: 'test-user',
@@ -234,13 +253,11 @@ describe('agentLoop', () => {
         },
       });
 
-      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
-        'execution lease lost',
-      );
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow('execution lease lost');
 
       expect(onModelRequestStarting).toHaveBeenCalledOnce();
       expect(assertExecutionLease).toHaveBeenCalledOnce();
-      expect(chatService.chat).not.toHaveBeenCalled();
+      expect(modelService.chat).not.toHaveBeenCalled();
     });
 
     it('settles the durable model lifecycle around a successful provider call', async () => {
@@ -268,9 +285,7 @@ describe('agentLoop', () => {
         },
         streaming: false,
       });
-      expect(onCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({ content: 'Hello!' }),
-      );
+      expect(onCompleted).toHaveBeenCalledWith(expect.objectContaining({ content: 'Hello!' }));
       expect(onFailed).not.toHaveBeenCalled();
       expect(onAborted).not.toHaveBeenCalled();
     });
@@ -282,15 +297,15 @@ describe('agentLoop', () => {
         toolCalls: [],
         usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       }));
-      const chatService = {
+      const modelService = {
         chat,
         getConfig: () => ({
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
       const config = baseConfig({
-        turnState: { chatService },
+        turnState: { modelService },
         modelExecutionLifecycle: {
           onModelRequestStarting: vi.fn(async () => {
             throw boundaryError;
@@ -308,7 +323,7 @@ describe('agentLoop', () => {
       const onFailed = vi.fn(async () => {});
       const onAborted = vi.fn(async () => {});
       let providerStreamClosed = false;
-      const chatService = {
+      const modelService = {
         streamChat: vi.fn(async function* () {
           try {
             yield { content: 'partial' };
@@ -320,19 +335,21 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
-      const loop = agentLoop(baseConfig({
-        streaming: true,
-        signal: controller.signal,
-        turnState: { chatService },
-        modelExecutionLifecycle: {
-          onModelRequestStarting: vi.fn(async () => ({
-            onCompleted,
-            onFailed,
-            onAborted,
-          })),
-        },
-      }));
+      } as unknown as TurnState['modelService'];
+      const loop = agentLoop(
+        baseConfig({
+          streaming: true,
+          signal: controller.signal,
+          turnState: { modelService },
+          modelExecutionLifecycle: {
+            onModelRequestStarting: vi.fn(async () => ({
+              onCompleted,
+              onFailed,
+              onAborted,
+            })),
+          },
+        }),
+      );
 
       await expect(loop.next()).resolves.toMatchObject({
         value: { type: 'agent_start' },
@@ -358,9 +375,9 @@ describe('agentLoop', () => {
     it('actively cancels a streaming-with-tools provider when the generator closes', async () => {
       const onAborted = vi.fn(async () => {});
       let providerStreamClosed = false;
-      const chatService = {
+      const modelService = {
         streamChat: vi.fn(async function* (
-          _messages: readonly Message[],
+          _messages: readonly ModelMessage[],
           _tools: unknown,
           signal?: AbortSignal,
         ) {
@@ -379,21 +396,23 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
-      const loop = agentLoop(baseConfig({
-        streaming: true,
-        turnState: {
-          chatService,
-          tools: [{ name: 'Read', description: 'read', parameters: {} }],
-        },
-        modelExecutionLifecycle: {
-          onModelRequestStarting: vi.fn(async () => ({
-            onCompleted: vi.fn(async () => {}),
-            onFailed: vi.fn(async () => {}),
-            onAborted,
-          })),
-        },
-      }));
+      } as unknown as TurnState['modelService'];
+      const loop = agentLoop(
+        baseConfig({
+          streaming: true,
+          turnState: {
+            modelService,
+            tools: [{ name: 'Read', description: 'read', parameters: {} }],
+          },
+          modelExecutionLifecycle: {
+            onModelRequestStarting: vi.fn(async () => ({
+              onCompleted: vi.fn(async () => {}),
+              onFailed: vi.fn(async () => {}),
+              onAborted,
+            })),
+          },
+        }),
+      );
 
       await loop.next();
       await loop.next();
@@ -410,7 +429,7 @@ describe('agentLoop', () => {
     it('closes a retry-event provider stream when the consumer stops', async () => {
       let retryStreamClosed = false;
       const onAborted = vi.fn(async () => {});
-      const chatService = {
+      const modelService = {
         chatWithRetryEvents: vi.fn(async function* () {
           try {
             yield {
@@ -428,17 +447,19 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
-      const loop = agentLoop(baseConfig({
-        turnState: { chatService },
-        modelExecutionLifecycle: {
-          onModelRequestStarting: vi.fn(async () => ({
-            onCompleted: vi.fn(async () => {}),
-            onFailed: vi.fn(async () => {}),
-            onAborted,
-          })),
-        },
-      }));
+      } as unknown as TurnState['modelService'];
+      const loop = agentLoop(
+        baseConfig({
+          turnState: { modelService },
+          modelExecutionLifecycle: {
+            onModelRequestStarting: vi.fn(async () => ({
+              onCompleted: vi.fn(async () => {}),
+              onFailed: vi.fn(async () => {}),
+              onAborted,
+            })),
+          },
+        }),
+      );
 
       await loop.next();
       await loop.next();
@@ -456,9 +477,9 @@ describe('agentLoop', () => {
       let streamCalls = 0;
       let fallbackStreamClosed = false;
       const onAborted = vi.fn(async () => {});
-      const chatService = {
+      const modelService = {
         streamChat: vi.fn(async function* (
-          _messages: readonly Message[],
+          _messages: readonly ModelMessage[],
           _tools: unknown,
           signal?: AbortSignal,
         ) {
@@ -485,21 +506,23 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
-      const loop = agentLoop(baseConfig({
-        streaming: true,
-        turnState: {
-          chatService,
-          tools: [{ name: 'Read', description: 'read', parameters: {} }],
-        },
-        modelExecutionLifecycle: {
-          onModelRequestStarting: vi.fn(async () => ({
-            onCompleted: vi.fn(async () => {}),
-            onFailed: vi.fn(async () => {}),
-            onAborted,
-          })),
-        },
-      }));
+      } as unknown as TurnState['modelService'];
+      const loop = agentLoop(
+        baseConfig({
+          streaming: true,
+          turnState: {
+            modelService,
+            tools: [{ name: 'Read', description: 'read', parameters: {} }],
+          },
+          modelExecutionLifecycle: {
+            onModelRequestStarting: vi.fn(async () => ({
+              onCompleted: vi.fn(async () => {}),
+              onFailed: vi.fn(async () => {}),
+              onAborted,
+            })),
+          },
+        }),
+      );
 
       await loop.next();
       await loop.next();
@@ -519,7 +542,7 @@ describe('agentLoop', () => {
       const onCompleted = vi.fn(async () => {});
       const onFailed = vi.fn(async () => {});
       const modelAttemptId = ModelAttemptId('streaming-tool-model-attempt');
-      const chatService = {
+      const modelService = {
         streamChat: vi.fn(async function* () {
           yield {
             toolCalls: [
@@ -539,11 +562,11 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
       const config = baseConfig({
         streaming: true,
         turnState: {
-          chatService,
+          modelService,
           tools: [{ name: 'Write', description: 'write', parameters: {} }],
           executionContext: {
             sessionId: SessionId('streaming-tool-settlement'),
@@ -589,7 +612,7 @@ describe('agentLoop', () => {
         onFailed,
         onAborted,
       }));
-      const chatService = {
+      const modelService = {
         chat: vi.fn(async () => {
           throw modelError;
         }),
@@ -597,10 +620,10 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
       const config = baseConfig({
         modelExecutionLifecycle: { onModelRequestStarting },
-        turnState: { chatService },
+        turnState: { modelService },
       });
 
       await expect(collectEvents(agentLoop(config))).rejects.toBe(modelError);
@@ -625,7 +648,7 @@ describe('agentLoop', () => {
         }),
         execute,
       } as unknown as AgentLoopConfig['executionPipeline'];
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: '',
           toolCalls: [
@@ -642,7 +665,7 @@ describe('agentLoop', () => {
       ]);
       const config = baseConfig({
         executionPipeline,
-        turnState: { chatService },
+        turnState: { modelService },
         modelExecutionLifecycle: {
           onModelRequestStarting: vi.fn(async () => ({
             onCompleted: vi.fn(async () => {
@@ -683,11 +706,13 @@ describe('agentLoop', () => {
     });
 
     it('should include token usage info', async () => {
-      const chatService = createMockChatService([{
-        content: 'Done',
-        usage: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
-      }]);
-      const config = baseConfig({ turnState: { chatService } });
+      const modelService = createMockModelService([
+        {
+          content: 'Done',
+          usage: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
+        },
+      ]);
+      const config = baseConfig({ turnState: { modelService } });
       const { events } = await collectEvents(agentLoop(config));
 
       const usageEvent = events.find((e) => e.type === 'token_usage');
@@ -703,46 +728,52 @@ describe('agentLoop', () => {
         yield* [] as AgentEvent[];
         return false;
       });
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Run a tool',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
 
-      const { result } = await collectEvents(agentLoop(baseConfig({
-        initialInputPreparation: RECONCILED_INITIAL_INPUT,
-        onBeforeTurn: beforeTurn,
-        turnState: { chatService },
-      })));
+      const { result } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            initialInputPreparation: RECONCILED_INITIAL_INPUT,
+            onBeforeTurn: beforeTurn,
+            turnState: { modelService },
+          }),
+        ),
+      );
 
       expect(result.metadata?.turnsCount).toBe(2);
       expect(beforeTurn).toHaveBeenCalledOnce();
-      expect(beforeTurn).toHaveBeenCalledWith(
-        expect.objectContaining({ turn: 1 }),
-      );
+      expect(beforeTurn).toHaveBeenCalledWith(expect.objectContaining({ turn: 1 }));
     });
   });
 
   describe('tool execution', () => {
     it('should execute tools and continue loop', async () => {
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Let me read the file',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+            },
+          ],
         },
         { content: 'Here is the file content.' },
       ]);
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { events, result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -755,17 +786,25 @@ describe('agentLoop', () => {
     });
 
     it('should handle multiple tool calls in one turn', async () => {
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Reading two files',
           toolCalls: [
-            { id: 'call_1', type: 'function', function: { name: 'ReadFile', arguments: '{"path":"a.ts"}' } },
-            { id: 'call_2', type: 'function', function: { name: 'ReadFile', arguments: '{"path":"b.ts"}' } },
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"a.ts"}' },
+            },
+            {
+              id: 'call_2',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"b.ts"}' },
+            },
           ],
         },
         { content: 'Both files read.' },
       ]);
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { events, result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -787,19 +826,19 @@ describe('agentLoop', () => {
           get: (_name: string) => ({ kind: 'readonly', name: _name }),
         }),
         execute: vi.fn(async function* (toolName: string) {
-        executeCount++;
-        yield { kind: 'progress', data: { toolName } };
-        if (toolName === 'ReadA') {
-          await firstExecutionGate;
-        }
-        return {
-          status: 'success',
-          model: `Result of ${toolName}`,
-        } as ToolResult;
-      }),
+          executeCount++;
+          yield { kind: 'progress', data: { toolName } };
+          if (toolName === 'ReadA') {
+            await firstExecutionGate;
+          }
+          return {
+            status: 'success',
+            model: `Result of ${toolName}`,
+          } as ToolResult;
+        }),
       } as unknown as AgentLoopConfig['executionPipeline'];
 
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Reading two files',
           toolCalls: [
@@ -810,10 +849,14 @@ describe('agentLoop', () => {
         { content: 'Both files read.' },
       ]);
 
-      const loopPromise = collectEvents(agentLoop(baseConfig({
-        executionPipeline: pipeline,
-        turnState: { chatService },
-      })));
+      const loopPromise = collectEvents(
+        agentLoop(
+          baseConfig({
+            executionPipeline: pipeline,
+            turnState: { modelService },
+          }),
+        ),
+      );
 
       // Allow enough microtask ticks for the async generator + tool execution to start
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
@@ -833,18 +876,20 @@ describe('agentLoop', () => {
         },
       );
 
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Writing file',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'WriteFile', arguments: '{"path":"x.ts","content":""}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'WriteFile', arguments: '{"path":"x.ts","content":""}' },
+            },
+          ],
         },
         { content: 'Failed to write.' },
       ]);
-      const config = baseConfig({ executionPipeline: pipeline, turnState: { chatService } });
+      const config = baseConfig({ executionPipeline: pipeline, turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       // Loop should continue after tool failure and eventually complete
@@ -861,15 +906,19 @@ describe('agentLoop', () => {
         },
       });
 
-      const chatService = createMockChatService([{
-        content: 'Exiting now',
-        toolCalls: [{
-          id: 'call_1',
-          type: 'function',
-          function: { name: 'ExitTool', arguments: '{}' },
-        }],
-      }]);
-      const config = baseConfig({ executionPipeline: pipeline, turnState: { chatService } });
+      const modelService = createMockModelService([
+        {
+          content: 'Exiting now',
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ExitTool', arguments: '{}' },
+            },
+          ],
+        },
+      ]);
+      const config = baseConfig({ executionPipeline: pipeline, turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -892,14 +941,16 @@ describe('agentLoop', () => {
 
     it('should abort mid-loop when signal fires', async () => {
       const controller = new AbortController();
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Working...',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'SlowTool', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'SlowTool', arguments: '{}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
@@ -914,7 +965,7 @@ describe('agentLoop', () => {
       const config = baseConfig({
         executionPipeline: pipeline,
         signal: controller.signal,
-        turnState: { chatService },
+        turnState: { modelService },
       });
       const { result } = await collectEvents(agentLoop(config));
 
@@ -926,7 +977,8 @@ describe('agentLoop', () => {
   describe('recoverable overflow recovery', () => {
     it('retries the turn after a context length error and reactive compaction succeeds', async () => {
       const contextError = new Error('maximum context length exceeded');
-      const chatFn = vi.fn()
+      const chatFn = vi
+        .fn()
         .mockRejectedValueOnce(contextError)
         .mockResolvedValueOnce({
           content: 'Recovered answer',
@@ -938,19 +990,23 @@ describe('agentLoop', () => {
         return true;
       });
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      const { events, result } = await collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        turnState: { chatService },
-      })));
+      const { events, result } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            onReactiveCompact,
+            turnState: { modelService },
+          }),
+        ),
+      );
 
       expect(result.success).toBe(true);
       expect(result.finalMessage).toBe('Recovered answer');
@@ -961,7 +1017,11 @@ describe('agentLoop', () => {
       expect(turnStartEvents).toHaveLength(1);
       const turnEndEvents = events.filter((e) => e.type === 'turn_end');
       expect(turnEndEvents).toHaveLength(1);
-      expect(events.some((e) => e.type === 'turn_retry' && e.turn === 1 && e.reason === 'reactive_compact')).toBe(true);
+      expect(
+        events.some(
+          (e) => e.type === 'turn_retry' && e.turn === 1 && e.reason === 'reactive_compact',
+        ),
+      ).toBe(true);
     });
 
     it('retries the turn after a CannotRetryError wrapping overflow and reactive compaction succeeds', async () => {
@@ -969,7 +1029,8 @@ describe('agentLoop', () => {
         'input length and `max_tokens` exceed context limit: 199000 + 20000 > 200000',
       );
       const wrappedError = new CannotRetryError(overflowError, { maxTokensOverride: 3000 });
-      const chatFn = vi.fn()
+      const chatFn = vi
+        .fn()
         .mockRejectedValueOnce(wrappedError)
         .mockResolvedValueOnce({
           content: 'Recovered from wrapped overflow',
@@ -981,19 +1042,23 @@ describe('agentLoop', () => {
         return true;
       });
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      const { result } = await collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        turnState: { chatService },
-      })));
+      const { result } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            onReactiveCompact,
+            turnState: { modelService },
+          }),
+        ),
+      );
 
       expect(result.success).toBe(true);
       expect(result.finalMessage).toBe('Recovered from wrapped overflow');
@@ -1003,7 +1068,8 @@ describe('agentLoop', () => {
 
     it('surfaces the error after a second overflow on the same turn', async () => {
       const overflowError = new Error('maximum context length exceeded');
-      const chatFn = vi.fn()
+      const chatFn = vi
+        .fn()
         .mockRejectedValueOnce(overflowError)
         .mockRejectedValueOnce(overflowError)
         .mockResolvedValueOnce({
@@ -1016,19 +1082,25 @@ describe('agentLoop', () => {
         return true;
       });
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      await expect(collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        turnState: { chatService },
-      })))).rejects.toThrow('maximum context length exceeded');
+      await expect(
+        collectEvents(
+          agentLoop(
+            baseConfig({
+              onReactiveCompact,
+              turnState: { modelService },
+            }),
+          ),
+        ),
+      ).rejects.toThrow('maximum context length exceeded');
       expect(chatFn).toHaveBeenCalledTimes(2);
       expect(onReactiveCompact).toHaveBeenCalledTimes(1);
     });
@@ -1040,25 +1112,32 @@ describe('agentLoop', () => {
         return true;
       });
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      await expect(collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        turnState: { chatService },
-      })))).rejects.toThrow('Permission denied');
+      await expect(
+        collectEvents(
+          agentLoop(
+            baseConfig({
+              onReactiveCompact,
+              turnState: { modelService },
+            }),
+          ),
+        ),
+      ).rejects.toThrow('Permission denied');
       expect(onReactiveCompact).not.toHaveBeenCalled();
     });
 
     it('reports recovery state transitions while withholding and retrying a turn', async () => {
       const overflowError = new Error('maximum context length exceeded');
-      const chatFn = vi.fn()
+      const chatFn = vi
+        .fn()
         .mockRejectedValueOnce(overflowError)
         .mockResolvedValueOnce({
           content: 'Recovered answer',
@@ -1071,20 +1150,24 @@ describe('agentLoop', () => {
       });
       const onRecoveryStateChange = vi.fn();
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      const { result } = await collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        onRecoveryStateChange,
-        turnState: { chatService },
-      })));
+      const { result } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            onReactiveCompact,
+            onRecoveryStateChange,
+            turnState: { modelService },
+          }),
+        ),
+      );
 
       expect(result.success).toBe(true);
       expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
@@ -1116,7 +1199,8 @@ describe('agentLoop', () => {
 
     it('reports recovery exhaustion when the retry still overflows', async () => {
       const overflowError = new Error('maximum context length exceeded');
-      const chatFn = vi.fn()
+      const chatFn = vi
+        .fn()
         .mockRejectedValueOnce(overflowError)
         .mockRejectedValueOnce(overflowError);
       const onReactiveCompact = vi.fn(async function* () {
@@ -1125,20 +1209,26 @@ describe('agentLoop', () => {
       });
       const onRecoveryStateChange = vi.fn();
 
-      const chatService = {
+      const modelService = {
         chat: chatFn,
         chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
           yield* [] as never[];
           return await chatFn(...args);
         }),
         getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      await expect(collectEvents(agentLoop(baseConfig({
-        onReactiveCompact,
-        onRecoveryStateChange,
-        turnState: { chatService },
-      })))).rejects.toThrow('maximum context length exceeded');
+      await expect(
+        collectEvents(
+          agentLoop(
+            baseConfig({
+              onReactiveCompact,
+              onRecoveryStateChange,
+              turnState: { modelService },
+            }),
+          ),
+        ),
+      ).rejects.toThrow('maximum context length exceeded');
 
       expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
         1,
@@ -1173,23 +1263,25 @@ describe('agentLoop', () => {
     it('should stop at maxTurns when no handler', async () => {
       // Create a chat service that always returns tool calls
       let callCount = 0;
-      const chatService = {
+      const modelService = {
         chat: vi.fn(async () => {
           callCount++;
           return {
             content: `Turn ${callCount}`,
-            toolCalls: [{
-              id: `call_${callCount}`,
-              type: 'function' as const,
-              function: { name: 'ReadFile', arguments: '{}' },
-            }],
+            toolCalls: [
+              {
+                id: `call_${callCount}`,
+                type: 'function' as const,
+                function: { name: 'ReadFile', arguments: '{}' },
+              },
+            ],
             usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
           };
         }),
         getConfig: () => ({ model: 'test', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
-      const config = baseConfig({ maxTurns: 3, turnState: { chatService } });
+      const config = baseConfig({ maxTurns: 3, turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(false);
@@ -1198,24 +1290,26 @@ describe('agentLoop', () => {
 
     it('should continue when onTurnLimitReached returns continue', async () => {
       let callCount = 0;
-      const chatService = {
+      const modelService = {
         chat: vi.fn(async () => {
           callCount++;
           if (callCount <= 2) {
             return {
               content: `Turn ${callCount}`,
-              toolCalls: [{
-                id: `call_${callCount}`,
-                type: 'function' as const,
-                function: { name: 'ReadFile', arguments: '{}' },
-              }],
+              toolCalls: [
+                {
+                  id: `call_${callCount}`,
+                  type: 'function' as const,
+                  function: { name: 'ReadFile', arguments: '{}' },
+                },
+              ],
               usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
             };
           }
           return { content: 'Final answer', toolCalls: [], usage: { totalTokens: 150 } };
         }),
         getConfig: () => ({ model: 'test', maxContextTokens: 128000 }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
 
       const config = baseConfig({
         maxTurns: 2,
@@ -1224,7 +1318,7 @@ describe('agentLoop', () => {
           success: true,
           compactedMessages: [{ role: 'user' as const, content: 'Continue' }],
         }),
-        turnState: { chatService },
+        turnState: { modelService },
       });
       const { result } = await collectEvents(agentLoop(config));
 
@@ -1236,31 +1330,37 @@ describe('agentLoop', () => {
   describe('hooks', () => {
     it('should call onAssistantMessage hook', async () => {
       const onAssistantMessage = vi.fn(async () => {});
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Using tool',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
 
-      const config = baseConfig({ onAssistantMessage, turnState: { chatService } });
+      const config = baseConfig({ onAssistantMessage, turnState: { modelService } });
       await collectEvents(agentLoop(config));
 
       expect(onAssistantMessage).toHaveBeenCalled();
-      const firstCall = (onAssistantMessage.mock.calls as unknown as [{
-        content: string;
-        modelIdentity: {
-          provider: string;
-          api: string;
-          model: string;
-        };
-        turn: number;
-      }][])[0][0];
+      const firstCall = (
+        onAssistantMessage.mock.calls as unknown as [
+          {
+            content: string;
+            modelIdentity: {
+              provider: string;
+              api: string;
+              model: string;
+            };
+            turn: number;
+          },
+        ][]
+      )[0][0];
       expect(firstCall.content).toBe('Using tool');
       expect(firstCall.modelIdentity).toEqual({
         provider: 'openai-primary',
@@ -1269,9 +1369,7 @@ describe('agentLoop', () => {
       });
       expect(firstCall.turn).toBe(1);
       expect(
-        config.conversationState
-          .toArray()
-          .find((message) => message.role === 'assistant'),
+        config.conversationState.toArray().find((message) => message.role === 'assistant'),
       ).toMatchObject({
         modelIdentity: {
           provider: 'openai-primary',
@@ -1282,33 +1380,39 @@ describe('agentLoop', () => {
     });
 
     it('should call onBeforeToolExec and onAfterToolExec hooks', async () => {
-      const onBeforeToolExec = vi.fn(async () => 'uuid-123');
+      const onBeforeToolExec = vi.fn(async () => MessageId('uuid-123'));
       const onAfterToolExec = vi.fn(async () => {});
 
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Reading',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
 
-      const config = baseConfig({ onBeforeToolExec, onAfterToolExec, turnState: { chatService } });
+      const config = baseConfig({ onBeforeToolExec, onAfterToolExec, turnState: { modelService } });
       await collectEvents(agentLoop(config));
 
       expect(onBeforeToolExec).toHaveBeenCalledTimes(1);
       expect(onAfterToolExec).toHaveBeenCalledTimes(1);
 
-      const afterCtx = (onAfterToolExec.mock.calls as unknown as [{
-        toolCall: { function: { name: string } };
-        toolUseUuid: string | null;
-      }][])[0][0];
+      const afterCtx = (
+        onAfterToolExec.mock.calls as unknown as [
+          {
+            toolCall: { function: { name: string } };
+            toolMessageId: string | null;
+          },
+        ][]
+      )[0][0];
       expect(afterCtx.toolCall.function.name).toBe('ReadFile');
-      expect(afterCtx.toolUseUuid).toBe('uuid-123');
+      expect(afterCtx.toolMessageId).toBe('uuid-123');
     });
 
     it('should call onComplete hook on normal finish', async () => {
@@ -1332,12 +1436,12 @@ describe('agentLoop', () => {
         return { shouldStop: true };
       });
 
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         { content: 'First response' },
         { content: 'Second response' },
       ]);
 
-      const config = baseConfig({ onStopCheck, turnState: { chatService } });
+      const config = baseConfig({ onStopCheck, turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -1347,12 +1451,12 @@ describe('agentLoop', () => {
 
   describe('incomplete intent detection', () => {
     it('should retry when response ends with colon', async () => {
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         { content: '让我来检查一下：' },
         { content: 'Here is the result.' },
       ]);
 
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -1360,12 +1464,12 @@ describe('agentLoop', () => {
     });
 
     it('should retry when response has incomplete intent pattern', async () => {
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         { content: 'Let me first check the file...' },
         { content: 'The file contains valid code.' },
       ]);
 
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       expect(result.success).toBe(true);
@@ -1373,13 +1477,13 @@ describe('agentLoop', () => {
     });
 
     it('should not retry more than 2 times', async () => {
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         { content: '让我先查看：' },
         { content: '让我来检查：' },
         { content: '让我开始修复：' },
       ]);
 
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { result } = await collectEvents(agentLoop(config));
 
       // Should stop after 2 retries (3rd incomplete intent is accepted as final)
@@ -1389,12 +1493,14 @@ describe('agentLoop', () => {
 
   describe('thinking content', () => {
     it('should emit thinking event', async () => {
-      const chatService = createMockChatService([{
-        content: 'Answer',
-        reasoningContent: 'Let me think about this...',
-      }]);
+      const modelService = createMockModelService([
+        {
+          content: 'Answer',
+          reasoningContent: 'Let me think about this...',
+        },
+      ]);
 
-      const config = baseConfig({ turnState: { chatService } });
+      const config = baseConfig({ turnState: { modelService } });
       const { events } = await collectEvents(agentLoop(config));
 
       const thinkingEvent = events.find((e) => e.type === 'thinking');
@@ -1407,39 +1513,43 @@ describe('agentLoop', () => {
 
   describe('message history', () => {
     it('should add tool results to messages', async () => {
-      const messages: Message[] = [{ role: 'user' as const, content: 'Read test.ts' }];
-      const chatService = createMockChatService([
+      const messages: ModelMessage[] = [{ role: 'user' as const, content: 'Read test.ts' }];
+      const modelService = createMockModelService([
         {
           content: 'Reading',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
 
-      const config = baseConfig({ messages, turnState: { chatService } });
+      const config = baseConfig({ messages, turnState: { modelService } });
       await collectEvents(agentLoop(config));
 
       // Messages are now tracked in ConversationState, not the original array
-      const allMessages = config.conversationState.toArray() as Message[];
+      const allMessages = config.conversationState.toArray() as ModelMessage[];
       const toolMsg = allMessages.find((m) => m.role === 'tool');
       expect(toolMsg).toBeDefined();
-      expect((toolMsg as Message & { name?: string }).name).toBe('ReadFile');
+      expect((toolMsg as ModelMessage & { name?: string }).name).toBe('ReadFile');
     });
 
     it('should append yielded newMessages after the tool result message', async () => {
-      const messages: Message[] = [{ role: 'user' as const, content: 'Do the thing' }];
-      const chatService = createMockChatService([
+      const messages: ModelMessage[] = [{ role: 'user' as const, content: 'Do the thing' }];
+      const modelService = createMockModelService([
         {
           content: 'Working',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'Skill', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'Skill', arguments: '{}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
@@ -1463,12 +1573,12 @@ describe('agentLoop', () => {
       const config = baseConfig({
         messages,
         executionPipeline,
-        turnState: { chatService },
+        turnState: { modelService },
       });
       await collectEvents(agentLoop(config));
 
       // Messages are now tracked in ConversationState, not the original array
-      const allMessages = config.conversationState.toArray() as Message[];
+      const allMessages = config.conversationState.toArray() as ModelMessage[];
       const toolIndex = allMessages.findIndex((message) => message.role === 'tool');
       expect(toolIndex).toBeGreaterThan(-1);
       expect(allMessages[toolIndex + 1]).toEqual(
@@ -1496,7 +1606,7 @@ describe('agentLoop', () => {
         inbox,
         InputId('initial-input'),
       );
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         { content: 'First answer' },
         { content: 'Steered answer' },
       ]);
@@ -1504,7 +1614,7 @@ describe('agentLoop', () => {
       const inputApplicationOrder: string[] = [];
       const config = baseConfig({
         runControl,
-        turnState: { chatService },
+        turnState: { modelService },
         onBeforeInputApply: async ({ input }) => {
           inputApplicationOrder.push(`persist:${input.inputId}`);
         },
@@ -1543,9 +1653,8 @@ describe('agentLoop', () => {
       expect(events.findIndex((event) => event.type === 'turn_end')).toBeLessThan(
         events.findIndex((event) => event.type === 'input_applied'),
       );
-      const secondRequestMessages = (
-        chatService.chat as unknown as Mock
-      ).mock.calls[1]?.[0] as Message[];
+      const secondRequestMessages = (modelService.chat as unknown as Mock).mock
+        .calls[1]?.[0] as ModelMessage[];
       expect(secondRequestMessages.slice(-2)).toEqual([
         expect.objectContaining({
           role: 'assistant',
@@ -1557,10 +1666,7 @@ describe('agentLoop', () => {
         }),
       ]);
       expect(inbox.size).toBe(0);
-      expect(inputApplicationOrder).toEqual([
-        'persist:steer-1',
-        'prepare:steer-1',
-      ]);
+      expect(inputApplicationOrder).toEqual(['persist:steer-1', 'prepare:steer-1']);
     });
 
     it('releases a steering claim when its durable application boundary fails', async () => {
@@ -1597,9 +1703,7 @@ describe('agentLoop', () => {
       );
 
       expect(prepareInput).not.toHaveBeenCalled();
-      expect(runControl.claimSteeringInputs()).toEqual([
-        expect.objectContaining({ inputId }),
-      ]);
+      expect(runControl.claimSteeringInputs()).toEqual([expect.objectContaining({ inputId })]);
     });
 
     it('does not requeue a steering input after its durable boundary commits', async () => {
@@ -1628,9 +1732,7 @@ describe('agentLoop', () => {
         },
       });
 
-      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
-        'input preparation failed',
-      );
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow('input preparation failed');
 
       expect(durableBoundary).toHaveBeenCalledOnce();
       expect(inbox.size).toBe(0);
@@ -1646,20 +1748,22 @@ describe('agentLoop', () => {
         inbox,
         InputId('initial-input'),
       );
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Inspecting',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'ReadFile', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'ReadFile', arguments: '{}' },
+            },
+          ],
         },
         { content: 'Done' },
       ]);
       const config = baseConfig({
         runControl,
-        turnState: { chatService },
+        turnState: { modelService },
         onInputApply: async ({ input }) => ({
           role: 'user',
           content: input.content,
@@ -1677,9 +1781,8 @@ describe('agentLoop', () => {
 
       await collectEvents(agentLoop(config));
 
-      const secondRequestMessages = (
-        chatService.chat as unknown as Mock
-      ).mock.calls[1]?.[0] as Message[];
+      const secondRequestMessages = (modelService.chat as unknown as Mock).mock
+        .calls[1]?.[0] as ModelMessage[];
       expect(secondRequestMessages.slice(-3).map((message) => message.role)).toEqual([
         'assistant',
         'tool',
@@ -1695,33 +1798,25 @@ describe('agentLoop', () => {
         resolveStarted = resolve;
       });
       let requestCount = 0;
-      const chat = vi.fn(async (
-        _messages: readonly Message[],
-        _tools: unknown,
-        signal?: AbortSignal,
-      ) => {
-        requestCount += 1;
-        if (requestCount === 1) {
-          resolveStarted();
-          await new Promise<void>((_resolve, reject) => {
-            signal?.addEventListener(
-              'abort',
-              () => reject(signal.reason),
-              { once: true },
-            );
-          });
-        }
-        return {
-          content: 'Redirected answer',
-          toolCalls: [],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-        };
-      });
-      const chatService = {
+      const chat = vi.fn(
+        async (_messages: readonly ModelMessage[], _tools: unknown, signal?: AbortSignal) => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            resolveStarted();
+            await new Promise<void>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+            });
+          }
+          return {
+            content: 'Redirected answer',
+            toolCalls: [],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        },
+      );
+      const modelService = {
         chat,
-        chatWithRetryEvents: vi.fn(async function* (
-          ...args: Parameters<typeof chat>
-        ) {
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chat>) {
           yield* [] as never[];
           return await chat(...args);
         }),
@@ -1729,7 +1824,7 @@ describe('agentLoop', () => {
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
       const inbox = new SessionInputInbox();
       const requestId = RequestId('request-interrupt-model');
       const runControl = new ActiveRequestController(
@@ -1753,7 +1848,7 @@ describe('agentLoop', () => {
       }));
       const config = baseConfig({
         runControl,
-        turnState: { chatService },
+        turnState: { modelService },
         modelExecutionLifecycle: { onModelRequestStarting },
         onAssistantMessage,
         onInputApply: async ({ input }) => ({
@@ -1789,10 +1884,8 @@ describe('agentLoop', () => {
         priority: 'now',
         turn: 2,
       });
-      const secondRequestMessages = chat.mock.calls[1]?.[0] as Message[];
-      expect(secondRequestMessages.at(-1)?.content).toBe(
-        'Stop and use the other approach',
-      );
+      const secondRequestMessages = chat.mock.calls[1]?.[0] as ModelMessage[];
+      expect(secondRequestMessages.at(-1)?.content).toBe('Stop and use the other approach');
       expect(onAssistantMessage).toHaveBeenCalledTimes(1);
       expect(onAssistantMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1809,31 +1902,23 @@ describe('agentLoop', () => {
       const started = new Promise<void>((resolve) => {
         resolveStarted = resolve;
       });
-      const containmentError = new HookProcessContainmentError(
-        'Hook process cleanup failed',
-      );
+      const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
       const settlementError = new Error('durable settlement failed');
-      const chat = vi.fn(async (
-        _messages: readonly Message[],
-        _tools: unknown,
-        signal?: AbortSignal,
-      ) => {
-        resolveStarted();
-        return await new Promise<never>((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => reject(containmentError),
-            { once: true },
-          );
-        });
-      });
-      const chatService = {
+      const chat = vi.fn(
+        async (_messages: readonly ModelMessage[], _tools: unknown, signal?: AbortSignal) => {
+          resolveStarted();
+          return await new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(containmentError), { once: true });
+          });
+        },
+      );
+      const modelService = {
         chat,
         getConfig: () => ({
           model: 'test-model',
           maxContextTokens: 128000,
         }),
-      } as unknown as TurnState['chatService'];
+      } as unknown as TurnState['modelService'];
       const inbox = new SessionInputInbox();
       const requestId = RequestId('request-containment-steering');
       const runControl = new ActiveRequestController(
@@ -1846,20 +1931,24 @@ describe('agentLoop', () => {
         role: 'user' as const,
         content: input.content,
       }));
-      const execution = collectEvents(agentLoop(baseConfig({
-        runControl,
-        turnState: { chatService },
-        modelExecutionLifecycle: {
-          onModelRequestStarting: async () => ({
-            onCompleted: async () => {},
-            onFailed: async () => {},
-            onAborted: async () => {
-              throw settlementError;
+      const execution = collectEvents(
+        agentLoop(
+          baseConfig({
+            runControl,
+            turnState: { modelService },
+            modelExecutionLifecycle: {
+              onModelRequestStarting: async () => ({
+                onCompleted: async () => {},
+                onFailed: async () => {},
+                onAborted: async () => {
+                  throw settlementError;
+                },
+              }),
             },
+            onInputApply,
           }),
-        },
-        onInputApply,
-      })));
+        ),
+      );
       const failure = execution.catch((error: unknown) => error);
 
       await started;
@@ -1874,10 +1963,7 @@ describe('agentLoop', () => {
 
       const error = await failure;
       expect(error).toBeInstanceOf(AggregateError);
-      expect((error as AggregateError).errors).toEqual([
-        containmentError,
-        settlementError,
-      ]);
+      expect((error as AggregateError).errors).toEqual([containmentError, settlementError]);
       expect(onInputApply).not.toHaveBeenCalled();
     });
 
@@ -1927,21 +2013,23 @@ describe('agentLoop', () => {
           };
         }),
       } as unknown as AgentLoopConfig['executionPipeline'];
-      const chatService = createMockChatService([
+      const modelService = createMockModelService([
         {
           content: 'Running tool',
-          toolCalls: [{
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'CancelableTool', arguments: '{}' },
-          }],
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'CancelableTool', arguments: '{}' },
+            },
+          ],
         },
         { content: 'Redirected answer' },
       ]);
       const config = baseConfig({
         runControl,
         executionPipeline,
-        turnState: { chatService },
+        turnState: { modelService },
         onInputApply: async ({ input }) => ({
           role: 'user',
           content: input.content,
@@ -1962,12 +2050,8 @@ describe('agentLoop', () => {
       const { events, result } = await execution;
 
       expect(result.success).toBe(true);
-      const toolResultIndex = events.findIndex(
-        (event) => event.type === 'tool_result',
-      );
-      const inputAppliedIndex = events.findIndex(
-        (event) => event.type === 'input_applied',
-      );
+      const toolResultIndex = events.findIndex((event) => event.type === 'tool_result');
+      const inputAppliedIndex = events.findIndex((event) => event.type === 'input_applied');
       const turnEndIndex = events.findIndex((event) => event.type === 'turn_end');
       expect(toolResultIndex).toBeGreaterThan(-1);
       expect(inputAppliedIndex).toBeGreaterThan(toolResultIndex);
@@ -1982,9 +2066,8 @@ describe('agentLoop', () => {
           },
         },
       });
-      const secondRequestMessages = (
-        chatService.chat as unknown as Mock
-      ).mock.calls[1]?.[0] as Message[];
+      const secondRequestMessages = (modelService.chat as unknown as Mock).mock
+        .calls[1]?.[0] as ModelMessage[];
       expect(secondRequestMessages.slice(-3).map((message) => message.role)).toEqual([
         'assistant',
         'tool',
@@ -2029,18 +2112,14 @@ describe('agentLoop', () => {
         },
       });
 
-      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
-        'input hook failed',
-      );
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow('input hook failed');
 
       expect(applyAttempts).toEqual(['steer-first', 'steer-failing']);
       expect(inbox.getAll().map((input) => input.inputId)).toEqual([
         'steer-failing',
         'steer-remaining',
       ]);
-      expect(
-        runControl.claimSteeringInputs().map((input) => input.inputId),
-      ).toEqual([
+      expect(runControl.claimSteeringInputs().map((input) => input.inputId)).toEqual([
         'steer-failing',
         'steer-remaining',
       ]);

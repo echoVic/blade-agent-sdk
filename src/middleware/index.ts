@@ -18,20 +18,9 @@ export type {
   ModelSideQueryRequest,
   ModelStreamMiddleware,
   ModelStreamRequest,
-  ModelToolDefinition,
 } from './ModelMiddleware.js';
-export { wrapChatService } from './ModelMiddleware.js';
+export { wrapModelService } from './ModelMiddleware.js';
 export type {
   ToolMiddleware,
   ToolMiddlewareRequest,
 } from './ToolMiddleware.js';
-export type {
-  ChatConfig,
-  ChatResponse,
-  IChatService,
-  Message,
-  ModelIdentity,
-  SideQueryOptions,
-  StreamChunk,
-} from '../services/ChatServiceInterface.js';
-export type { RetryEvent } from '../services/RetryPolicy.js';

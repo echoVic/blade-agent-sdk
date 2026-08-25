@@ -1,7 +1,8 @@
 import type { JSONSchema7, JSONSchema7Type } from 'json-schema';
 import { z } from 'zod';
 import { createTool } from '../tools/core/createTool.js';
-import { ToolErrorType, ToolKind } from '../tools/types/index.js';
+import { ToolKind } from '../tools/types/kind.js';
+import { ToolErrorType } from '../tools/types/result.js';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
 import type { McpToolDefinition } from './types.js';
@@ -13,17 +14,14 @@ export function createMcpTool(
   mcpClient: McpClient,
   serverName: string,
   toolDef: McpToolDefinition,
-  customName?: string // 可选的自定义工具名（用于冲突处理）
+  customName?: string, // 可选的自定义工具名（用于冲突处理）
 ) {
   // 1. JSON Schema → Zod Schema 转换（带错误处理）
   let zodSchema: z.ZodSchema;
   try {
     zodSchema = convertJsonSchemaToZod(toolDef.inputSchema);
   } catch (error) {
-    console.warn(
-      `[createMcpTool] Schema 转换失败，使用降级 schema: ${toolDef.name}`,
-      error
-    );
+    console.warn(`[createMcpTool] Schema 转换失败，使用降级 schema: ${toolDef.name}`, error);
     zodSchema = z.record(z.string(), z.unknown());
   }
 
@@ -115,10 +113,7 @@ function convertJsonSchemaToZod(jsonSchema: JSONSchema7): z.ZodSchema {
   return convertSchemaNode(jsonSchema, jsonSchema);
 }
 
-function convertSchemaNode(
-  jsonSchema: JSONSchema7,
-  rootSchema: JSONSchema7,
-): z.ZodTypeAny {
+function convertSchemaNode(jsonSchema: JSONSchema7, rootSchema: JSONSchema7): z.ZodTypeAny {
   if (jsonSchema.$ref) {
     const resolved = resolveSchemaRef(jsonSchema.$ref, rootSchema);
     return convertSchemaNode(resolved, rootSchema);
@@ -174,11 +169,16 @@ function convertSchemaNode(
   }
 
   // 处理 number / integer 类型
-  if (explicitTypes.includes('number') || explicitTypes.includes('integer')
-    || jsonSchema.type === 'number' || jsonSchema.type === 'integer') {
-    let schema = explicitTypes.includes('integer') || jsonSchema.type === 'integer'
-      ? z.number().int()
-      : z.number();
+  if (
+    explicitTypes.includes('number') ||
+    explicitTypes.includes('integer') ||
+    jsonSchema.type === 'number' ||
+    jsonSchema.type === 'integer'
+  ) {
+    let schema =
+      explicitTypes.includes('integer') || jsonSchema.type === 'integer'
+        ? z.number().int()
+        : z.number();
 
     if (jsonSchema.minimum !== undefined) {
       schema = schema.min(jsonSchema.minimum);
@@ -203,9 +203,7 @@ function convertSchemaNode(
   // 处理 oneOf
   if (jsonSchema.oneOf && jsonSchema.oneOf.length > 0) {
     const schemas = jsonSchema.oneOf
-      .filter(
-        (schema): schema is JSONSchema7 => typeof schema === 'object' && schema !== null
-      )
+      .filter((schema): schema is JSONSchema7 => typeof schema === 'object' && schema !== null)
       .map((schema) => convertSchemaNode(schema, rootSchema));
     if (schemas.length >= 2) {
       return z.union(schemas as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
@@ -218,9 +216,7 @@ function convertSchemaNode(
   // 处理 anyOf
   if (jsonSchema.anyOf && jsonSchema.anyOf.length > 0) {
     const schemas = jsonSchema.anyOf
-      .filter(
-        (schema): schema is JSONSchema7 => typeof schema === 'object' && schema !== null
-      )
+      .filter((schema): schema is JSONSchema7 => typeof schema === 'object' && schema !== null)
       .map((schema) => convertSchemaNode(schema, rootSchema));
     if (schemas.length >= 2) {
       return z.union(schemas as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
@@ -233,10 +229,7 @@ function convertSchemaNode(
   return z.unknown();
 }
 
-function buildObjectSchema(
-  jsonSchema: JSONSchema7,
-  rootSchema: JSONSchema7,
-): z.ZodTypeAny {
+function buildObjectSchema(jsonSchema: JSONSchema7, rootSchema: JSONSchema7): z.ZodTypeAny {
   const shape: Record<string, z.ZodTypeAny> = {};
   const required = jsonSchema.required || [];
 
@@ -258,9 +251,9 @@ function buildObjectSchema(
   }
 
   if (
-    typeof jsonSchema.additionalProperties === 'object'
-    && jsonSchema.additionalProperties !== null
-    && !Array.isArray(jsonSchema.additionalProperties)
+    typeof jsonSchema.additionalProperties === 'object' &&
+    jsonSchema.additionalProperties !== null &&
+    !Array.isArray(jsonSchema.additionalProperties)
   ) {
     return objectSchema.catchall(
       convertSchemaNode(jsonSchema.additionalProperties as JSONSchema7, rootSchema),
@@ -274,14 +267,11 @@ function buildObjectSchema(
   return objectSchema;
 }
 
-function buildArraySchema(
-  jsonSchema: JSONSchema7,
-  rootSchema: JSONSchema7,
-): z.ZodTypeAny {
+function buildArraySchema(jsonSchema: JSONSchema7, rootSchema: JSONSchema7): z.ZodTypeAny {
   if (
-    typeof jsonSchema.items === 'object'
-    && !Array.isArray(jsonSchema.items)
-    && jsonSchema.items !== null
+    typeof jsonSchema.items === 'object' &&
+    !Array.isArray(jsonSchema.items) &&
+    jsonSchema.items !== null
   ) {
     return z.array(convertSchemaNode(jsonSchema.items as JSONSchema7, rootSchema));
   }
@@ -303,12 +293,14 @@ function buildEnumSchema(values: JSONSchema7['enum']): z.ZodTypeAny {
   }
 
   const literals = literalValues.map((value) =>
-    z.literal(value as string | number | boolean | null)
+    z.literal(value as string | number | boolean | null),
   );
   if (literals.length === 1) {
     return literals[0];
   }
-  return z.union(literals as [z.ZodLiteral<unknown>, z.ZodLiteral<unknown>, ...z.ZodLiteral<unknown>[]]);
+  return z.union(
+    literals as [z.ZodLiteral<unknown>, z.ZodLiteral<unknown>, ...z.ZodLiteral<unknown>[]],
+  );
 }
 
 function normalizeSchemaTypes(type: JSONSchema7['type']): JSONSchema7['type'][] {
@@ -347,11 +339,11 @@ function resolveSchemaRef(ref: string, rootSchema: JSONSchema7): JSONSchema7 {
   return current as JSONSchema7;
 }
 
-function isLiteralValue(
-  value: JSONSchema7Type,
-): value is string | number | boolean | null {
-  return value === null
-    || typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean';
+function isLiteralValue(value: JSONSchema7Type): value is string | number | boolean | null {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
 }

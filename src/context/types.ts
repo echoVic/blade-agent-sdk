@@ -2,25 +2,20 @@
  * 上下文管理模块的核心类型定义
  */
 
-import type {
-  InputId,
-  MessageId,
-  RequestId,
-  SessionId,
-} from '../types/branded.js';
-import type { ModelIdentity } from '../services/ModelIdentity.js';
-import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
+import type { MessageRole } from '../types/constants.js';
+import type { MessageId, SessionId, ToolUseId } from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 
 export interface ContextMessage {
-  id: string;
+  id: MessageId;
   role: MessageRole;
   content: string;
   timestamp: number;
   metadata?: JsonObject;
 }
 
-export interface ToolCall {
-  id: string;
+export interface ContextToolCall {
+  id: ToolUseId;
   name: string;
   input: JsonValue;
   output?: JsonValue;
@@ -52,7 +47,7 @@ export interface ConversationContext {
 }
 
 interface ToolContext {
-  recentCalls: ToolCall[];
+  recentCalls: ContextToolCall[];
   toolStates: JsonObject;
   dependencies: Record<string, string[]>;
 }
@@ -119,104 +114,3 @@ export interface ContextManagerOptions {
   enableVectorSearch?: boolean;
   projectPath?: string;
 }
-
-/**
- * JSONL 消息类型
- */
-export type JSONLEventType =
-  | 'session_created'
-  | 'session_updated'
-  | 'message_created'
-  | 'part_created'
-  | 'part_updated'
-  | 'input_enqueued'
-  | 'input_applied'
-  | 'input_cancelled';
-
-export type PartType =
-  | 'text'
-  | 'reasoning'
-  | 'image'
-  | 'tool_call'
-  | 'tool_result'
-  | 'diff'
-  | 'patch'
-  | 'summary'
-  | 'subtask_ref';
-
-export interface SessionInfo {
-  sessionId: SessionId;
-  rootId: string;
-  parentId?: string;
-  relationType?: 'subagent';
-  title?: string;
-  status?: 'running' | 'completed' | 'failed';
-  agentType?: string;
-  model?: string;
-  permission?: JsonValue;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MessageInfo {
-  messageId: MessageId;
-  role: MessageRole;
-  parentMessageId?: string;
-  createdAt: string;
-  model?: string;
-  modelIdentity?: ModelIdentity;
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-  };
-  customMetadata?: JsonObject;
-}
-
-export interface PartInfo {
-  partId: string;
-  messageId: MessageId;
-  partType: PartType;
-  payload: JsonValue;
-  createdAt: string;
-}
-
-export interface PendingInputInfo {
-  inputId: InputId;
-  content: JsonValue;
-  priority: 'now' | 'next' | 'later';
-  targetRequestId?: RequestId;
-  acceptedAt: number;
-}
-
-export interface AppliedInputInfo {
-  inputId: InputId;
-  requestId: RequestId;
-  messageId: MessageId;
-  appliedAt: number;
-}
-
-export interface CancelledInputInfo {
-  inputId: InputId;
-  reason: string;
-  cancelledAt: number;
-}
-
-export interface SessionEventBase {
-  id: string;
-  sessionId: SessionId;
-  timestamp: string;
-  type: JSONLEventType;
-  cwd?: string;
-  gitBranch?: string;
-  version: string;
-}
-
-export type SessionEvent =
-  | (SessionEventBase & { type: 'session_created'; data: SessionInfo })
-  | (SessionEventBase & { type: 'session_updated'; data: Partial<SessionInfo> })
-  | (SessionEventBase & { type: 'message_created'; data: MessageInfo })
-  | (SessionEventBase & { type: 'part_created'; data: PartInfo })
-  | (SessionEventBase & { type: 'part_updated'; data: PartInfo })
-  | (SessionEventBase & { type: 'input_enqueued'; data: PendingInputInfo })
-  | (SessionEventBase & { type: 'input_applied'; data: AppliedInputInfo })
-  | (SessionEventBase & { type: 'input_cancelled'; data: CancelledInputInfo });

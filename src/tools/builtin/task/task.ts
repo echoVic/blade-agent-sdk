@@ -12,21 +12,20 @@
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
-import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import { SubagentExecutor } from '../../../agent/subagents/SubagentExecutor.js';
-import type {
-  SubagentContext,
-  SubagentResult,
-} from '../../../agent/subagents/types.js';
+import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
+import type { SubagentContext, SubagentResult } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
 import { isHookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
-import { AgentId, SessionId } from '../../../types/branded.js';
-import { PermissionMode } from '../../../types/common.js';
+import { PermissionMode } from '../../../types/constants.js';
+import { AgentId, SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, ToolResult } from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { ToolResult } from '../../types/result.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
@@ -122,35 +121,36 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     sideEffect: 'non_idempotent',
     isReadOnly: true,
     isConcurrencySafe: false,
-    schema: lazySchema(() => z.object({
-      subagent_type: z
-        .string()
-        .refine((type) => isValidSubagentType(type, registry), (val) => ({
-          message: `Invalid subagent type: "${val}". Available: ${getAvailableSubagentTypesMessage(registry)}`,
-        }))
-        .describe('Subagent type to use (e.g., "Explore", "Plan")'),
-      description: z
-        .string()
-        .min(3)
-        .max(100)
-        .describe('Short task description (3-5 words)'),
-      prompt: z.string().min(10).describe('Detailed task instructions'),
-      run_in_background: ToolSchemas.flag({
-        defaultValue: false,
-        description:
-          'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
+    schema: lazySchema(() =>
+      z.object({
+        subagent_type: z
+          .string()
+          .refine(
+            (type) => isValidSubagentType(type, registry),
+            (val) => ({
+              message: `Invalid subagent type: "${val}". Available: ${getAvailableSubagentTypesMessage(registry)}`,
+            }),
+          )
+          .describe('Subagent type to use (e.g., "Explore", "Plan")'),
+        description: z.string().min(3).max(100).describe('Short task description (3-5 words)'),
+        prompt: z.string().min(10).describe('Detailed task instructions'),
+        run_in_background: ToolSchemas.flag({
+          defaultValue: false,
+          description:
+            'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
+        }),
+        resume: z
+          .string()
+          .optional()
+          .describe(
+            'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.',
+          ),
+        subagent_session_id: z
+          .string()
+          .optional()
+          .describe('Internal subagent session id for tracking'),
       }),
-      resume: z
-        .string()
-        .optional()
-        .describe(
-          'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.'
-        ),
-      subagent_session_id: z
-        .string()
-        .optional()
-        .describe('Internal subagent session id for tracking'),
-    })),
+    ),
     description: {
       short: 'Launch a new agent to handle complex, multi-step tasks autonomously',
       get long() {
@@ -197,7 +197,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           ? subagent_session_id
           : typeof resume === 'string' && resume.length > 0
             ? resume
-            : nanoid()
+            : nanoid(),
       );
 
       try {
@@ -307,7 +307,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
           if (!stopResult.shouldStop && stopResult.continueReason) {
             console.log(
-              `[Task] SubagentStop hook 阻止停止，继续执行: ${stopResult.continueReason}`
+              `[Task] SubagentStop hook 阻止停止，继续执行: ${stopResult.continueReason}`,
             );
 
             const continueContext: SubagentContext = {
@@ -331,10 +331,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
           }
         } catch (hookError) {
-          if (
-            isExecutionLeaseFailure(hookError)
-            || isHookProcessContainmentError(hookError)
-          ) {
+          if (isExecutionLeaseFailure(hookError) || isHookProcessContainmentError(hookError)) {
             throw hookError;
           }
           context.signal?.throwIfAborted();
@@ -343,15 +340,12 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
-        if (
-          isExecutionLeaseFailure(error)
-          || isHookProcessContainmentError(error)
-        ) {
+        if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
           throw error;
         }
         context.signal?.throwIfAborted();
         const _errorMessage = extractUserFriendlyError(
-          error instanceof Error ? error : new Error(getErrorMessage(error))
+          error instanceof Error ? error : new Error(getErrorMessage(error)),
         );
 
         return {
@@ -387,9 +381,7 @@ function buildTaskResult(
 ): ToolResult {
   if (result.success) {
     const _outputPreview =
-      result.message.length > 1000
-        ? `${result.message.slice(0, 1000)}\n...(截断)`
-        : result.message;
+      result.message.length > 1000 ? `${result.message.slice(0, 1000)}\n...(截断)` : result.message;
 
     return {
       status: 'success',

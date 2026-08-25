@@ -130,7 +130,7 @@ const cancelled = await session.cancelInput(queued.inputId);
 
 ## Stream events
 
-`StreamMessage` is a 17-variant discriminated union:
+`SessionStreamEvent` is a 17-variant discriminated union:
 
 | Event | Meaning |
 |-------|---------|
@@ -712,7 +712,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 
 | Option | Type | Notes |
 |--------|------|-------|
-| `provider` | `ProviderConfig` | Required |
+| `provider` | `ProviderConnectionConfig` | Required |
 | `providerRegistry` | `ProviderRegistry` | Instance-scoped custom provider adapters |
 | `model` | `string` | Required |
 | `temperature` | `number` | Sampling temperature |
@@ -747,10 +747,10 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `sandbox` | `SandboxSettings` | Bash sandbox settings |
 | `observability` | `ObservabilityOptions` | Trace collection |
 
-`ProviderConfig.requestTimeoutMs` defaults to `600000`, and
-`ProviderConfig.streamIdleTimeoutMs` defaults to `300000`. See
+`ProviderConnectionConfig.requestTimeoutMs` defaults to `600000`, and
+`ProviderConnectionConfig.streamIdleTimeoutMs` defaults to `300000`. See
 [Providers and Logging](./providers) for timeout semantics.
-`ProviderConfig.id` optionally identifies the logical provider independently
+`ProviderConnectionConfig.id` optionally identifies the logical provider independently
 from its wire-protocol `type`.
 
 ## ISession
@@ -762,7 +762,7 @@ interface ISession extends AsyncDisposable {
   readonly isClosed: boolean;
 
   send(message, options?: SendOptions): Promise<InputSubmission>;
-  stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
+  stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>;
   getPendingInputs(): readonly PendingSessionInput[];
   cancelInput(inputId: InputId): Promise<boolean>;
 

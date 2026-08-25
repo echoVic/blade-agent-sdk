@@ -5,68 +5,68 @@
  */
 
 import { nanoid } from 'nanoid';
-import type { ToolResult } from '../tools/types/ToolResult.js';
-import { SessionId, type ToolUseId } from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+import type { ToolResult } from '../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../types/constants.js';
+import { SessionId, type ToolUseId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
 import { Matcher } from './Matcher.js';
-import {
-    getRecoverableHookErrorMessage,
-    isHookProcessContainmentError,
-} from './WindowsProcessJob.js';
 import type {
-    CompactionHookResult,
-    CompactionInput,
-    ConfigChangeHookResult,
-    ConfigChangeInput,
-    CwdChangedHookResult,
-    CwdChangedInput,
-    ElicitationHookResult,
-    ElicitationInput,
-    ElicitationResultHookResult,
-    ElicitationResultInput,
-    FileChangedHookResult,
-    FileChangedInput,
-    Hook,
-    HookConfig,
-    HookExecutionContext,
-    InstructionsLoadedHookResult,
-    InstructionsLoadedInput,
-    MatchContext,
-    NotificationHookResult,
-    NotificationInput,
-    PermissionRequestHookResult,
-    PermissionRequestInput,
-    PostCompactHookResult,
-    PostCompactInput,
-    PostToolHookResult,
-    PostToolUseFailureHookResult,
-    PostToolUseFailureInput,
-    PostToolUseInput,
-    PreCompactHookResult,
-    PreCompactInput,
-    PreToolHookResult,
-    PreToolUseInput,
-    SessionEndHookResult,
-    SessionEndInput,
-    SessionStartHookResult,
-    SessionStartInput,
-    StopFailureHookResult,
-    StopFailureInput,
-    StopHookResult,
-    StopInput,
-    SubagentStartHookResult,
-    SubagentStartInput,
-    SubagentStopHookResult,
-    SubagentStopInput,
-    TaskCompletedHookResult,
-    TaskCompletedInput,
-    UserPromptSubmitHookResult,
-    UserPromptSubmitInput
-} from './types/HookTypes.js';
+  CompactionHookResult,
+  CompactionInput,
+  ConfigChangeHookResult,
+  ConfigChangeInput,
+  CwdChangedHookResult,
+  CwdChangedInput,
+  ElicitationHookResult,
+  ElicitationInput,
+  ElicitationResultHookResult,
+  ElicitationResultInput,
+  FileChangedHookResult,
+  FileChangedInput,
+  Hook,
+  HookConfig,
+  HookExecutionContext,
+  InstructionsLoadedHookResult,
+  InstructionsLoadedInput,
+  MatchContext,
+  NotificationHookResult,
+  NotificationInput,
+  PermissionRequestHookResult,
+  PermissionRequestInput,
+  PostCompactHookResult,
+  PostCompactInput,
+  PostToolHookResult,
+  PostToolUseFailureHookResult,
+  PostToolUseFailureInput,
+  PostToolUseInput,
+  PreCompactHookResult,
+  PreCompactInput,
+  PreToolHookResult,
+  PreToolUseInput,
+  SessionEndHookResult,
+  SessionEndInput,
+  SessionStartHookResult,
+  SessionStartInput,
+  StopFailureHookResult,
+  StopFailureInput,
+  StopHookResult,
+  StopInput,
+  SubagentStartHookResult,
+  SubagentStartInput,
+  SubagentStopHookResult,
+  SubagentStopInput,
+  TaskCompletedHookResult,
+  TaskCompletedInput,
+  UserPromptSubmitHookResult,
+  UserPromptSubmitInput,
+} from './types.js';
+import {
+  getRecoverableHookErrorMessage,
+  isHookProcessContainmentError,
+} from './WindowsProcessJob.js';
 
 /**
  * Hook Manager
@@ -196,7 +196,7 @@ export class HookManager {
       sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<PreToolHookResult> {
     if (!this.isEnabled()) {
       return { decision: 'allow' };
@@ -247,11 +247,7 @@ export class HookManager {
 
     // 执行 hooks
     try {
-      const result = await this.executor.executePreToolHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const result = await this.executor.executePreToolHooks(hooks, hookInput, execContext);
 
       // 标记已执行
       this.guard.markExecuted(toolUseId, HookEvent.PreToolUse);
@@ -294,7 +290,7 @@ export class HookManager {
       sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<PostToolHookResult> {
     if (!this.isEnabled()) {
       return {};
@@ -346,11 +342,7 @@ export class HookManager {
 
     // 执行 hooks
     try {
-      const result = await this.executor.executePostToolHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const result = await this.executor.executePostToolHooks(hooks, hookInput, execContext);
 
       // 标记已执行
       this.guard.markExecuted(toolUseId, HookEvent.PostToolUse);
@@ -409,11 +401,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeStopHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeStopHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing Stop hooks:', err);
@@ -436,7 +424,7 @@ export class HookManager {
       taskDescription?: string;
       parentAgentId?: string;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<SubagentStartHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -471,11 +459,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeSubagentStartHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeSubagentStartHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing SubagentStart hooks:', err);
@@ -500,7 +484,7 @@ export class HookManager {
       resultSummary?: string;
       error?: string;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<SubagentStopHookResult> {
     if (!this.isEnabled()) {
       return { shouldStop: true };
@@ -538,11 +522,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeSubagentStopHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeSubagentStopHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing SubagentStop hooks:', err);
@@ -566,7 +546,7 @@ export class HookManager {
       resultSummary?: string;
       success: boolean;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<TaskCompletedHookResult> {
     if (!this.isEnabled()) {
       return { allowCompletion: true };
@@ -600,11 +580,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeTaskCompletedHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeTaskCompletedHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing TaskCompleted hooks:', err);
@@ -627,7 +603,7 @@ export class HookManager {
       sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<PermissionRequestHookResult> {
     if (!this.isEnabled()) {
       return { decision: 'ask' };
@@ -667,7 +643,7 @@ export class HookManager {
       const results = await this.executor.executePermissionRequestHooks(
         hooks,
         hookInput,
-        execContext
+        execContext,
       );
       return results;
     } catch (err) {
@@ -691,7 +667,7 @@ export class HookManager {
       hasImages: boolean;
       imageCount: number;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<UserPromptSubmitHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -730,7 +706,7 @@ export class HookManager {
       const results = await this.executor.executeUserPromptSubmitHooks(
         hooks,
         hookInput,
-        execContext
+        execContext,
       );
       return results;
     } catch (err) {
@@ -786,11 +762,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeSessionStartHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeSessionStartHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing SessionStart hooks:', err);
@@ -811,7 +783,7 @@ export class HookManager {
       sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<SessionEndHookResult> {
     if (!this.isEnabled()) {
       return {};
@@ -872,7 +844,7 @@ export class HookManager {
       isInterrupt: boolean;
       isTimeout: boolean;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<PostToolUseFailureHookResult> {
     if (!this.isEnabled()) {
       return {};
@@ -919,7 +891,7 @@ export class HookManager {
       const results = await this.executor.executePostToolUseFailureHooks(
         hooks,
         hookInput,
-        execContext
+        execContext,
       );
       return results;
     } catch (err) {
@@ -942,7 +914,7 @@ export class HookManager {
       permissionMode: PermissionMode;
       title?: string;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<NotificationHookResult> {
     if (!this.isEnabled()) {
       return { suppress: false, message };
@@ -978,11 +950,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeNotificationHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeNotificationHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing Notification hooks:', err);
@@ -1006,7 +974,7 @@ export class HookManager {
       messagesBefore: number;
       tokensBefore: number;
       abortSignal?: AbortSignal;
-    }
+    },
   ): Promise<CompactionHookResult> {
     if (!this.isEnabled()) {
       return { blockCompaction: false };
@@ -1042,11 +1010,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeCompactionHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeCompactionHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing Compaction hooks:', err);
@@ -1065,7 +1029,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<StopFailureHookResult> {
     if (!this.isEnabled()) {
       return { shouldRetry: false };
@@ -1098,11 +1062,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeStopFailureHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeStopFailureHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing StopFailure hooks:', err);
@@ -1121,7 +1081,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<PreCompactHookResult> {
     if (!this.isEnabled()) {
       return { blockCompaction: false };
@@ -1154,11 +1114,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executePreCompactHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executePreCompactHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing PreCompact hooks:', err);
@@ -1184,7 +1140,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<PostCompactHookResult> {
     if (!this.isEnabled()) {
       return {};
@@ -1220,11 +1176,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executePostCompactHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executePostCompactHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing PostCompact hooks:', err);
@@ -1242,7 +1194,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ElicitationHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -1275,11 +1227,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeElicitationHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeElicitationHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing Elicitation hooks:', err);
@@ -1298,7 +1246,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ElicitationResultHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -1334,7 +1282,7 @@ export class HookManager {
       const results = await this.executor.executeElicitationResultHooks(
         hooks,
         hookInput,
-        execContext
+        execContext,
       );
       return results;
     } catch (err) {
@@ -1354,7 +1302,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ConfigChangeHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -1386,11 +1334,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeConfigChangeHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeConfigChangeHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing ConfigChange hooks:', err);
@@ -1409,7 +1353,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<CwdChangedHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -1441,11 +1385,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeCwdChangedHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeCwdChangedHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing CwdChanged hooks:', err);
@@ -1464,7 +1404,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<FileChangedHookResult> {
     if (!this.isEnabled()) {
       return { action: 'reload' };
@@ -1498,11 +1438,7 @@ export class HookManager {
     };
 
     try {
-      const results = await this.executor.executeFileChangedHooks(
-        hooks,
-        hookInput,
-        execContext
-      );
+      const results = await this.executor.executeFileChangedHooks(hooks, hookInput, execContext);
       return results;
     } catch (err) {
       console.error('[HookManager] Error executing FileChanged hooks:', err);
@@ -1521,7 +1457,7 @@ export class HookManager {
     projectDir: string,
     sessionId: SessionId,
     permissionMode: PermissionMode,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<InstructionsLoadedHookResult> {
     if (!this.isEnabled()) {
       return { proceed: true };
@@ -1556,7 +1492,7 @@ export class HookManager {
       const results = await this.executor.executeInstructionsLoadedHooks(
         hooks,
         hookInput,
-        execContext
+        execContext,
       );
       return results;
     } catch (err) {
@@ -1605,10 +1541,7 @@ export class HookManager {
   /**
    * 从工具输入提取命令
    */
-  private extractCommand(
-    toolName: string,
-    toolInput: JsonObject
-  ): string | undefined {
+  private extractCommand(toolName: string, toolInput: JsonObject): string | undefined {
     // Bash 工具的命令
     if (toolName === 'Bash' || toolName === 'BashTool') {
       const cmd = toolInput.command;

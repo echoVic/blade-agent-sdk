@@ -1,12 +1,18 @@
-import type { ToolEffect } from '../tools/types/ToolEffects.js';
-import type { ToolKind, ToolSideEffect } from '../tools/types/ToolKind.js';
-import { ToolKind as ToolKindValue } from '../tools/types/ToolKind.js';
+import type { ToolEffect } from '../tools/types/effects.js';
+import type { ToolKind, ToolSideEffect } from '../tools/types/kind.js';
+import { ToolKind as ToolKindValue } from '../tools/types/kind.js';
 import {
   SensitiveFileDetector,
   SensitivityLevel,
 } from '../tools/validation/SensitiveFileDetector.js';
-import type { JsonObject } from './common.js';
-import { PermissionMode, type PermissionsConfig } from './common.js';
+import { PermissionMode } from './constants.js';
+import type { JsonObject } from './json.js';
+
+export interface PermissionsConfig {
+  allow?: string[];
+  ask?: string[];
+  deny?: string[];
+}
 
 export interface PermissionRuleValue {
   toolName: string;
@@ -51,7 +57,7 @@ export interface CanUseToolOptions {
 export type CanUseTool = (
   toolName: string,
   input: JsonObject,
-  options: CanUseToolOptions
+  options: CanUseToolOptions,
 ) => Promise<PermissionResult>;
 
 export interface PermissionHandlerRequest {
@@ -72,9 +78,7 @@ export interface PermissionHandlerRequest {
   };
 }
 
-export type PermissionHandler = (
-  request: PermissionHandlerRequest
-) => Promise<PermissionResult>;
+export type PermissionHandler = (request: PermissionHandlerRequest) => Promise<PermissionResult>;
 
 interface PathSafetyPermissionOptions {
   explicitAllowRules?: string[];
@@ -82,9 +86,7 @@ interface PathSafetyPermissionOptions {
 
 type CompositePermissionStrategy = 'first-wins' | 'deny-wins';
 
-export function createPermissionHandlerFromCanUseTool(
-  canUseTool: CanUseTool
-): PermissionHandler {
+export function createPermissionHandlerFromCanUseTool(canUseTool: CanUseTool): PermissionHandler {
   return async (request) =>
     canUseTool(request.toolName, request.input, {
       signal: request.signal,
@@ -95,7 +97,7 @@ export function createPermissionHandlerFromCanUseTool(
 }
 
 export function createModePermissionHandler(
-  defaultMode: PermissionMode = PermissionMode.DEFAULT
+  defaultMode: PermissionMode = PermissionMode.DEFAULT,
 ): PermissionHandler {
   return async (request) => {
     const permissionMode = request.permissionMode ?? defaultMode;
@@ -140,7 +142,7 @@ export function createModePermissionHandler(
 }
 
 export function createRuleBasedPermissionHandler(
-  config: PermissionsConfig = {}
+  config: PermissionsConfig = {},
 ): PermissionHandler {
   const allow = config.allow ?? [];
   const ask = config.ask ?? [];
@@ -177,7 +179,7 @@ export function createRuleBasedPermissionHandler(
 }
 
 export function createPathSafetyPermissionHandler(
-  options: PathSafetyPermissionOptions = {}
+  options: PathSafetyPermissionOptions = {},
 ): PermissionHandler {
   return async (request) => {
     if (request.affectedPaths.length === 0) {
@@ -227,25 +229,21 @@ export function createPathSafetyPermissionHandler(
     );
     const signature = request.toolMeta.signature;
     const hasExplicitAllow = Boolean(
-      signature
-      && (options.explicitAllowRules ?? []).some((rule) =>
-        matchPermissionRule(signature, rule),
-      ),
+      signature &&
+        (options.explicitAllowRules ?? []).some((rule) => matchPermissionRule(signature, rule)),
     );
 
     if (hasHighSensitivity && !hasExplicitAllow) {
       return {
         behavior: 'deny',
-        message:
-          `Access to highly sensitive files denied:\n${warnings.join('\n')}\n\nIf access is required, add an explicit allow rule in permissions.`,
+        message: `Access to highly sensitive files denied:\n${warnings.join('\n')}\n\nIf access is required, add an explicit allow rule in permissions.`,
       };
     }
 
     if (hasExplicitAllow) {
       return {
         behavior: 'ask',
-        message:
-          `Sensitive file access detected:\n${warnings.join('\n')}\n\nConfirm to proceed?`,
+        message: `Sensitive file access detected:\n${warnings.join('\n')}\n\nConfirm to proceed?`,
       };
     }
 
@@ -257,7 +255,9 @@ export function createCompositePermissionHandler(
   handlers: Array<PermissionHandler | undefined>,
   strategy: CompositePermissionStrategy = 'first-wins',
 ): PermissionHandler {
-  const activeHandlers = handlers.filter((handler): handler is PermissionHandler => Boolean(handler));
+  const activeHandlers = handlers.filter((handler): handler is PermissionHandler =>
+    Boolean(handler),
+  );
 
   return async (request) => {
     const mergedAllowResult: Extract<PermissionResult, { behavior: 'allow' }> = {
@@ -289,10 +289,7 @@ export function createCompositePermissionHandler(
       }
 
       if (result.effects && result.effects.length > 0) {
-        mergedAllowResult.effects = [
-          ...(mergedAllowResult.effects ?? []),
-          ...result.effects,
-        ];
+        mergedAllowResult.effects = [...(mergedAllowResult.effects ?? []), ...result.effects];
       }
 
       if (result.updatedPermissions && result.updatedPermissions.length > 0) {

@@ -4,7 +4,9 @@ import { NOOP_LOGGER } from '../../logging/Logger.js';
 const mockOpenAIModelFactory = vi.fn((model: string) => ({ provider: 'openai', model }));
 const mockCreateOpenAI = vi.fn((_options?: Record<string, unknown>) => mockOpenAIModelFactory);
 const mockCompatibleModelFactory = vi.fn((model: string) => ({ provider: 'compatible', model }));
-const mockCreateOpenAICompatible = vi.fn((_options?: Record<string, unknown>) => mockCompatibleModelFactory);
+const mockCreateOpenAICompatible = vi.fn(
+  (_options?: Record<string, unknown>) => mockCompatibleModelFactory,
+);
 const mockDeepSeekModelFactory = vi.fn((model: string) => ({ provider: 'deepseek', model }));
 const mockCreateDeepSeek = vi.fn((_options?: Record<string, unknown>) => mockDeepSeekModelFactory);
 const mockGenerateText = vi.fn();
@@ -31,9 +33,9 @@ vi.mock('ai', async (importOriginal) => {
   };
 });
 
-const { VercelAIChatService } = await import('../VercelAIChatService.js');
+const { VercelAIModelService } = await import('../VercelAIModelService.js');
 
-describe('VercelAIChatService', () => {
+describe('VercelAIModelService', () => {
   beforeEach(() => {
     mockCreateOpenAI.mockClear();
     mockOpenAIModelFactory.mockClear();
@@ -46,7 +48,7 @@ describe('VercelAIChatService', () => {
   });
 
   it('uses the native OpenAI provider for openai configs', async () => {
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'openai',
         apiKey: 'test-key',
@@ -73,7 +75,7 @@ describe('VercelAIChatService', () => {
   });
 
   it('uses the native DeepSeek provider for deepseek configs', async () => {
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -95,7 +97,7 @@ describe('VercelAIChatService', () => {
   });
 
   it('does not let a logical provider ID change the configured API adapter', async () => {
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'openai-compatible',
         providerId: 'deepseek',
@@ -135,7 +137,7 @@ describe('VercelAIChatService', () => {
       ],
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -170,23 +172,25 @@ describe('VercelAIChatService', () => {
       baseURL: 'https://api.deepseek.com/beta',
       headers: undefined,
     });
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: { deepseek: { thinking: { type: 'enabled' } } },
-      tools: {
-        Search: expect.objectContaining({
-          strict: true,
-          inputSchema: expect.objectContaining({
-            jsonSchema: expect.objectContaining({
-              required: ['q'],
-              additionalProperties: false,
-              properties: {
-                q: { type: 'string' },
-              },
+    expect(mockGenerateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: { deepseek: { thinking: { type: 'enabled' } } },
+        tools: {
+          Search: expect.objectContaining({
+            strict: true,
+            inputSchema: expect.objectContaining({
+              jsonSchema: expect.objectContaining({
+                required: ['q'],
+                additionalProperties: false,
+                properties: {
+                  q: { type: 'string' },
+                },
+              }),
             }),
           }),
-        }),
-      },
-    }));
+        },
+      }),
+    );
     expect(response.toolCalls?.[0]).toMatchObject({
       id: 'raw-call',
       function: {
@@ -208,7 +212,7 @@ describe('VercelAIChatService', () => {
       text: 'done',
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -304,7 +308,7 @@ describe('VercelAIChatService', () => {
       text: 'done',
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'openai',
         providerId: 'openai-primary',
@@ -433,7 +437,7 @@ describe('VercelAIChatService', () => {
     mockGenerateText.mockResolvedValue({
       text: 'done',
     });
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'openai',
         providerId: 'openai-primary',
@@ -485,7 +489,7 @@ describe('VercelAIChatService', () => {
       ],
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -534,7 +538,7 @@ describe('VercelAIChatService', () => {
       },
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -547,18 +551,18 @@ describe('VercelAIChatService', () => {
     );
 
     await (service as unknown as { initialized: Promise<void> }).initialized;
-    const response = await service.chat([
-      { role: 'user', content: 'hello' },
-    ]);
+    const response = await service.chat([{ role: 'user', content: 'hello' }]);
 
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: {
-        deepseek: {
-          thinking: { type: 'enabled' },
+    expect(mockGenerateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'enabled' },
+          },
         },
-      },
-      temperature: undefined,
-    }));
+        temperature: undefined,
+      }),
+    );
     expect(response.reasoningContent).toBe('think');
     expect(response.usage).toMatchObject({
       promptTokens: 12,
@@ -577,7 +581,7 @@ describe('VercelAIChatService', () => {
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -596,14 +600,16 @@ describe('VercelAIChatService', () => {
     await (service as unknown as { initialized: Promise<void> }).initialized;
     await service.chat([{ role: 'user', content: 'hello' }]);
 
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      temperature: 0.4,
-      providerOptions: {
-        deepseek: {
-          thinking: { type: 'disabled' },
+    expect(mockGenerateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        temperature: 0.4,
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'disabled' },
+          },
         },
-      },
-    }));
+      }),
+    );
   });
 
   it('streams DeepSeek reasoning, tool calls, and cache usage metadata', async () => {
@@ -633,7 +639,7 @@ describe('VercelAIChatService', () => {
     }
     mockStreamText.mockReturnValue({ fullStream: fullStream() });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -669,19 +675,21 @@ describe('VercelAIChatService', () => {
       chunks.push(chunk);
     }
 
-    expect(mockStreamText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: {
-        deepseek: {
-          thinking: { type: 'enabled' },
+    expect(mockStreamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'enabled' },
+          },
         },
-      },
-      temperature: undefined,
-      tools: {
-        Search: expect.objectContaining({
-          strict: true,
-        }),
-      },
-    }));
+        temperature: undefined,
+        tools: {
+          Search: expect.objectContaining({
+            strict: true,
+          }),
+        },
+      }),
+    );
     expect(chunks).toEqual([
       { reasoningContent: 'thinking' },
       {
@@ -727,7 +735,7 @@ describe('VercelAIChatService', () => {
     }
     mockStreamText.mockReturnValue({ fullStream: fullStream() });
 
-    const service = new VercelAIChatService(
+    const service = new VercelAIModelService(
       {
         provider: 'deepseek',
         apiKey: 'test-key',

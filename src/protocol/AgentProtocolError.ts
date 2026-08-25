@@ -1,5 +1,5 @@
 import { SdkError } from '../errors/SdkError.js';
-import type { JsonObject } from '../types/common.js';
+import type { JsonObject } from '../types/json.js';
 import type { AgentProtocolErrorCode } from './types.js';
 
 export class AgentProtocolError extends SdkError {

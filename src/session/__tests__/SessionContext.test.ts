@@ -3,13 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import {
-    InputId,
-    RequestId,
-    SessionId,
-} from '../../types/branded.js';
+import type { ModelContent } from '../../model/message.js';
 import { HookEvent } from '../../types/constants.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 
 const capturedContexts: unknown[] = [];
 const capturedMessages: unknown[] = [];
@@ -159,7 +155,7 @@ describe('Session runtime context', () => {
     await session.send([
       { type: 'text', text: 'original prompt' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
-    ] satisfies ContentPart[]);
+    ] satisfies ModelContent[]);
 
     for await (const _event of session.stream()) {
       // Drain the stream to completion.
@@ -296,15 +292,17 @@ describe('Session runtime context', () => {
       }
     }
 
-    expect(events).toEqual(expect.arrayContaining([
-      'turn_interrupted',
-      'input_applied',
-      'tool_use',
-      'tool_progress',
-      'tool_message',
-      'tool_runtime_patch',
-      'tool_result',
-    ]));
+    expect(events).toEqual(
+      expect.arrayContaining([
+        'turn_interrupted',
+        'input_applied',
+        'tool_use',
+        'tool_progress',
+        'tool_message',
+        'tool_runtime_patch',
+        'tool_result',
+      ]),
+    );
     expect(toolResultDisplay).toEqual({ summary: 'Read completed' });
 
     await session.close();
@@ -439,12 +437,13 @@ describe('Session runtime context', () => {
         }
         return {
           success: requestCount > 1,
-          error: requestCount === 1
-            ? {
-                type: 'aborted',
-                message: 'aborted',
-              }
-            : undefined,
+          error:
+            requestCount === 1
+              ? {
+                  type: 'aborted',
+                  message: 'aborted',
+                }
+              : undefined,
           finalMessage: requestCount > 1 ? 'done' : undefined,
           metadata: {
             turnsCount: requestCount > 1 ? 1 : 0,
@@ -603,8 +602,7 @@ describe('Session runtime context', () => {
     await firstStream.next();
     const queued = await session.send('second', {
       priority: 'later',
-      expectedRequestId:
-        started.status === 'started' ? started.requestId : undefined,
+      expectedRequestId: started.status === 'started' ? started.requestId : undefined,
     });
     expect(queued).toMatchObject({
       status: 'queued',
@@ -701,8 +699,7 @@ describe('Session runtime context', () => {
 
     const steered = await session.send('change direction now', {
       priority: 'now',
-      expectedRequestId:
-        started.status === 'started' ? started.requestId : undefined,
+      expectedRequestId: started.status === 'started' ? started.requestId : undefined,
     });
 
     expect(steered).toMatchObject({
@@ -730,10 +727,12 @@ describe('Session runtime context', () => {
     const started = await session.send('first');
     expect(started.status).toBe('started');
 
-    await expect(session.send('stale steering', {
-      priority: 'next',
-      expectedRequestId: RequestId('stale-request'),
-    })).rejects.toMatchObject({
+    await expect(
+      session.send('stale steering', {
+        priority: 'next',
+        expectedRequestId: RequestId('stale-request'),
+      }),
+    ).rejects.toMatchObject({
       code: 'SESSION_REQUEST_MISMATCH',
     });
 

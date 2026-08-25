@@ -8,23 +8,21 @@
 
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
-import type {
-  ChatResponse,
-  Message,
-  ModelIdentity,
-  ToolCall,
-} from '../services/ChatServiceInterface.js';
+import type { ModelIdentity } from '../model/identity.js';
+import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import type { ModelResponse } from '../model/service.js';
+import type { TokenUsage } from '../model/usage.js';
+import { normalizeModelUsage } from '../model/usage.js';
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolEffect, ToolResult } from '../tools/types/index.js';
+import type { ToolEffect } from '../tools/types/effects.js';
+import type { ToolResult } from '../tools/types/result.js';
 import { getSteeringInterruptInputId } from '../types/abort.js';
-import type { ModelAttemptId } from '../types/branded.js';
-import type { JsonObject, PermissionMode } from '../types/common.js';
-import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
-import type {
-  AgentRunControl,
-  AgentSteeringInput,
-} from './AgentRunControl.js';
+import type { PermissionMode } from '../types/constants.js';
+import type { MessageId, ModelAttemptId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
+import type { AgentEvent } from './AgentEvent.js';
+import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import {
@@ -32,14 +30,13 @@ import {
   RECONCILED_INITIAL_INPUT,
 } from './InitialInputPreparation.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
-import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
-import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
-import type { FunctionToolCall } from './loop/types.js';
+import { runTurn } from './loop/runTurn.js';
+import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
@@ -53,44 +50,36 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
  */
 export interface AgentLoopHooks {
   input?: {
-    beforeApply?: (ctx: {
-      input: AgentSteeringInput;
-      turn: number;
-    }) => Promise<void>;
-    apply?: (ctx: {
-      input: AgentSteeringInput;
-      turn: number;
-    }) => Promise<Message>;
+    beforeApply?: (ctx: { input: AgentSteeringInput; turn: number }) => Promise<void>;
+    apply?: (ctx: { input: AgentSteeringInput; turn: number }) => Promise<ModelMessage>;
   };
   turn?: {
     beforeTurn?: (ctx: {
       turn: number;
-      messages: readonly Message[];
+      messages: readonly ModelMessage[];
       lastPromptTokens?: number;
     }) => AsyncGenerator<AgentEvent, boolean>;
     onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-    onTurnLimitCompact?: (ctx: {
-      contextMessages: readonly Message[];
-    }) => Promise<{
+    onTurnLimitCompact?: (ctx: { contextMessages: readonly ModelMessage[] }) => Promise<{
       success: boolean;
-      compactedMessages?: Message[];
-      continueMessage?: Message;
+      compactedMessages?: ModelMessage[];
+      continueMessage?: ModelMessage;
     }>;
   };
   tool?: {
     beforeExec?: (ctx: {
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       params: JsonObject;
-    }) => Promise<string | null>;
+    }) => Promise<MessageId | null>;
     afterExec?: (ctx: {
-      toolCall: FunctionToolCall;
+      toolCall: ModelToolCall;
       result: ToolResult;
       effects: ToolEffect[];
-      toolUseUuid: string | null;
+      toolMessageId: MessageId | null;
     }) => Promise<void>;
     afterExecEpochDiscard?: (ctx: {
-      toolCall: FunctionToolCall;
-      toolUseUuid: string | null;
+      toolCall: ModelToolCall;
+      toolMessageId: MessageId | null;
       reason: string;
     }) => Promise<void>;
     onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
@@ -99,18 +88,15 @@ export interface AgentLoopHooks {
     onAssistant?: (ctx: {
       content: string;
       reasoningContent?: string;
-      toolCalls?: ToolCall[];
+      toolCalls?: ModelToolCall[];
       modelIdentity: ModelIdentity;
       turn: number;
     }) => Promise<void>;
-    onComplete?: (ctx: {
-      content: string;
-      turn: number;
-    }) => Promise<void>;
+    onComplete?: (ctx: { content: string; turn: number }) => Promise<void>;
   };
   recovery?: {
     reactiveCompact?: (ctx: {
-      messages: readonly Message[];
+      messages: readonly ModelMessage[];
     }) => AsyncGenerator<AgentEvent, boolean>;
     onStateChange?: (ctx: {
       turn: number;
@@ -151,9 +137,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // ===== 核心循环 =====
 
-export async function* agentLoop(
-  config: AgentLoopConfig
-): AsyncGenerator<AgentEvent, LoopResult> {
+export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentEvent, LoopResult> {
   const {
     streaming,
     executionPipeline,
@@ -227,9 +211,9 @@ export async function* agentLoop(
     });
 
     if (
-      recovery.phase !== 'retry_pending'
-      && !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0)
-      && turnHooks?.beforeTurn
+      recovery.phase !== 'retry_pending' &&
+      !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0) &&
+      turnHooks?.beforeTurn
     ) {
       yield* turnHooks.beforeTurn({
         turn: turnsCount,
@@ -263,14 +247,16 @@ export async function* agentLoop(
     const turnExecutionContext = turnState.executionContext;
 
     // === runTurn：单回合 LLM 调用 + 流式事件 ===
-    let turnResult: ChatResponse | undefined;
+    let turnResult: ModelResponse | undefined;
     let modelIdentity: ModelIdentity | undefined;
-    let streamingExecutionResults: Array<{
-      toolCall: FunctionToolCall;
-      result: ToolResult;
-      effects: ToolEffect[];
-      toolUseUuid: string | null;
-    }> | undefined;
+    let streamingExecutionResults:
+      | Array<{
+          toolCall: ModelToolCall;
+          result: ToolResult;
+          effects: ToolEffect[];
+          toolMessageId: MessageId | null;
+        }>
+      | undefined;
     let modelAttemptId: ModelAttemptId | undefined;
 
     const stepSignal = runControl?.stepSignal ?? signal;
@@ -333,9 +319,9 @@ export async function* agentLoop(
 
       // 反应式压缩：context 溢出时尝试恢复（仅从 idle 状态发起）
       if (
-        isOverflowRecoverable(llmError)
-        && recoveryHooks?.reactiveCompact
-        && recovery.phase === 'idle'
+        isOverflowRecoverable(llmError) &&
+        recoveryHooks?.reactiveCompact &&
+        recovery.phase === 'idle'
       ) {
         const attempt = 1;
         recovery = { phase: 'retry_pending', turn: turnsCount, attempt };
@@ -404,16 +390,11 @@ export async function* agentLoop(
       }
       lastPromptTokens = turnResult.usage.promptTokens;
 
-      const usage: TokenUsageInfo = {
-        inputTokens: turnResult.usage.promptTokens ?? 0,
-        outputTokens: turnResult.usage.completionTokens ?? 0,
+      const usage: TokenUsage = normalizeModelUsage(
+        turnResult.usage,
+        turnMaxContextTokens,
         totalTokens,
-        maxContextTokens: turnMaxContextTokens,
-        cacheReadInputTokens: turnResult.usage.cacheReadInputTokens,
-        cacheMissInputTokens: turnResult.usage.cacheMissInputTokens,
-        billableInputTokens: turnResult.usage.billableInputTokens,
-        reasoningTokens: turnResult.usage.reasoningTokens,
-      };
+      );
       yield { type: 'token_usage', usage };
     }
 
@@ -430,7 +411,8 @@ export async function* agentLoop(
           success: false,
           error: {
             type: 'budget_exhausted',
-            message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
+            message:
+              'Stopped due to diminishing returns: consecutive turns produced very few tokens',
           },
           metadata: {
             turnsCount,
@@ -468,19 +450,15 @@ export async function* agentLoop(
 
     const steeringInterruptInputId = getSteeringInterruptInputId(stepSignal);
 
-    if (
-      turnResult.reasoningContent
-      && !signal?.aborted
-      && !steeringInterruptInputId
-    ) {
+    if (turnResult.reasoningContent && !signal?.aborted && !steeringInterruptInputId) {
       yield { type: 'thinking', content: turnResult.reasoningContent };
     }
 
     if (
-      turnResult.content?.trim()
-      && !signal?.aborted
-      && !steeringInterruptInputId
-      && !streamingExecutionResults
+      turnResult.content?.trim() &&
+      !signal?.aborted &&
+      !steeringInterruptInputId &&
+      !streamingExecutionResults
     ) {
       yield { type: 'stream_end' };
     }
@@ -511,9 +489,10 @@ export async function* agentLoop(
           turn: turnsCount,
         };
       }
-      const pendingBeforeDecision = runControl?.claimSteeringInputs({
-        includeNow: true,
-      }) ?? [];
+      const pendingBeforeDecision =
+        runControl?.claimSteeringInputs({
+          includeNow: true,
+        }) ?? [];
       if (pendingBeforeDecision.length > 0) {
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         yield* applyClaimedSteeringInputs({
@@ -538,13 +517,12 @@ export async function* agentLoop(
         continue;
       }
 
-      const completionInterruptInputId =
-        getSteeringInterruptInputId(stepSignal);
+      const completionInterruptInputId = getSteeringInterruptInputId(stepSignal);
       if (
-        !steeringInterruptInputId
-        && !signal?.aborted
-        && completionInterruptInputId
-        && runControl
+        !steeringInterruptInputId &&
+        !signal?.aborted &&
+        completionInterruptInputId &&
+        runControl
       ) {
         yield {
           type: 'turn_interrupted',
@@ -553,10 +531,11 @@ export async function* agentLoop(
           turn: turnsCount,
         };
       }
-      const pendingAtCompletion = runControl?.claimSteeringInputs({
-        includeNow: true,
-        sealIfEmpty: true,
-      }) ?? [];
+      const pendingAtCompletion =
+        runControl?.claimSteeringInputs({
+          includeNow: true,
+          sealIfEmpty: true,
+        }) ?? [];
       if (pendingAtCompletion.length > 0) {
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         yield* applyClaimedSteeringInputs({
@@ -591,12 +570,9 @@ export async function* agentLoop(
 
     if (!executionResults) {
       const functionCalls = turnResult.toolCalls.filter(
-        (tc): tc is FunctionToolCall => tc.type === 'function',
+        (tc): tc is ModelToolCall => tc.type === 'function',
       );
-      const executionPlan = planToolExecution(
-        functionCalls,
-        turnPermissionMode,
-      );
+      const executionPlan = planToolExecution(functionCalls, turnPermissionMode);
 
       for (const toolCall of executionPlan.calls) {
         const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
@@ -635,10 +611,10 @@ export async function* agentLoop(
     });
 
     if (epoch && !epoch.isValid) {
-      for (const { toolCall, toolUseUuid } of orderedExecutionResults) {
+      for (const { toolCall, toolMessageId } of orderedExecutionResults) {
         await toolHooks?.afterExecEpochDiscard?.({
           toolCall,
-          toolUseUuid,
+          toolMessageId,
           reason: 'execution epoch invalidated',
         });
       }
@@ -672,19 +648,19 @@ export async function* agentLoop(
       turn: turnsCount,
     });
 
-    let exitResult: typeof orderedExecutionResults[number] | undefined;
+    let exitResult: (typeof orderedExecutionResults)[number] | undefined;
     // 处理结果
-    for (const { toolCall, result, effects, toolUseUuid } of orderedExecutionResults) {
+    for (const { toolCall, result, effects, toolMessageId } of orderedExecutionResults) {
       recordToolResult(result);
 
       if (result.metadata?.shouldExitLoop && !exitResult) {
-        exitResult = { toolCall, result, effects, toolUseUuid };
+        exitResult = { toolCall, result, effects, toolMessageId };
       }
 
       if (!streamingExecutionResults) {
         yield { type: 'tool_result', toolCall, result };
       }
-      await toolHooks?.afterExec?.({ toolCall, result, effects, toolUseUuid });
+      await toolHooks?.afterExec?.({ toolCall, result, effects, toolMessageId });
 
       // 写入 tool 消息
       let toolResultContent = result.model;
@@ -697,16 +673,17 @@ export async function* agentLoop(
         role: 'tool',
         tool_call_id: toolCall.id,
         name: toolCall.function.name,
-        content: typeof toolResultContent === 'string'
-          ? toolResultContent
-          : JSON.stringify(toolResultContent),
+        content:
+          typeof toolResultContent === 'string'
+            ? toolResultContent
+            : JSON.stringify(toolResultContent),
       });
     }
 
     for (const { effects } of orderedExecutionResults) {
       const newMessages = effects
         .filter((effect) => effect.type === 'newMessages')
-        .flatMap((effect) => effect.type === 'newMessages' ? effect.messages : []);
+        .flatMap((effect) => (effect.type === 'newMessages' ? effect.messages : []));
       if (newMessages.length > 0) {
         convState.append(
           ...newMessages.map((message) => ({
@@ -752,9 +729,7 @@ export async function* agentLoop(
 
     if (exitResult) {
       const finalMessage =
-        typeof exitResult.result.model === 'string'
-          ? exitResult.result.model
-          : '循环已退出';
+        typeof exitResult.result.model === 'string' ? exitResult.result.model : '循环已退出';
       yield { type: 'agent_end' };
       return {
         success: exitResult.result.status === 'success',
@@ -809,9 +784,10 @@ async function* applyPendingSteeringInputs(options: {
   turn: number;
   includeNow?: boolean;
 }): AsyncGenerator<AgentEvent, boolean> {
-  const inputs = options.runControl?.claimSteeringInputs({
-    includeNow: options.includeNow,
-  }) ?? [];
+  const inputs =
+    options.runControl?.claimSteeringInputs({
+      includeNow: options.includeNow,
+    }) ?? [];
   return yield* applyClaimedSteeringInputs({
     ...options,
     inputs,
@@ -825,13 +801,7 @@ async function* applyClaimedSteeringInputs(options: {
   conversationState: ConversationState;
   turn: number;
 }): AsyncGenerator<AgentEvent, boolean> {
-  const {
-    inputs,
-    runControl,
-    inputHooks,
-    conversationState,
-    turn,
-  } = options;
+  const { inputs, runControl, inputHooks, conversationState, turn } = options;
   if (!runControl || inputs.length === 0) {
     return false;
   }
@@ -883,7 +853,7 @@ async function* applyClaimedSteeringInputs(options: {
 function buildAbortResult(
   turnsCount: number,
   toolCallsCount: number,
-  startTime: number
+  startTime: number,
 ): LoopResult {
   return {
     success: false,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
-import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/branded.js';
+import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/identifiers.js';
 
 const runAgenticLoop = vi.fn(async () => ({
   success: true,
@@ -60,9 +60,7 @@ describe('SubagentExecutor', () => {
     );
     const controller = new AbortController();
     const assertExecutionLease = vi.fn(async () => {});
-    const runWithExecutionLease = async <T>(
-      operation: () => Promise<T>,
-    ): Promise<T> => operation();
+    const runWithExecutionLease = async <T>(operation: () => Promise<T>): Promise<T> => operation();
 
     await executor.execute({
       prompt: 'inspect',

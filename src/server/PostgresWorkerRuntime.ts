@@ -14,12 +14,13 @@ import {
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { DurableEventOperationOptions } from '../session/events/DurableEventStore.js';
 import {
+  CommandId,
   ExecutionLeaseId,
   FencingToken,
-  type SessionId,
-  type WorkerId,
-} from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+  SessionId,
+  WorkerId,
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 import type {
   RuntimeEffectRecord,
   RuntimeEffectStatus,
@@ -507,7 +508,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           client,
           tenantId,
           sessionId,
-          current.lease_id as ExecutionLeaseId,
+          ExecutionLeaseId(current.lease_id),
           FencingToken(asNumber(current.fencing_token)),
         );
       }
@@ -572,7 +573,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         [options.tenantId ?? null],
       );
       for (const candidate of candidates.rows) {
-        const sessionId = candidate.session_id as SessionId;
+        const sessionId = SessionId(candidate.session_id);
         await this.lock(
           client,
           `execution:${candidate.tenant_id}:${sessionId}`,
@@ -860,7 +861,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           client,
           tenantId,
           sessionId,
-          current.lease_id as ExecutionLeaseId,
+          ExecutionLeaseId(current.lease_id),
           FencingToken(asNumber(current.fencing_token)),
         );
       }
@@ -1717,7 +1718,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
   private workerRecord(row: WorkerRow): RuntimeWorkerRecord {
     return {
-      workerId: row.worker_id as WorkerId,
+      workerId: WorkerId(row.worker_id),
       status: row.status,
       capacity: row.capacity,
       activeSessions: row.active_sessions,
@@ -1738,13 +1739,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     }
     return {
       tenantId: row.tenant_id,
-      sessionId: row.session_id as SessionId,
+      sessionId: SessionId(row.session_id),
       state: row.state,
       priority: row.priority,
       attempt: row.attempt,
       fencingToken: FencingToken(asNumber(row.fencing_token)),
-      ...(row.worker_id ? { workerId: row.worker_id as WorkerId } : {}),
-      ...(row.lease_id ? { leaseId: row.lease_id as ExecutionLeaseId } : {}),
+      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
+      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
       ...(row.lease_expires_at
         ? { leaseExpiresAt: asIso(row.lease_expires_at) }
         : {}),
@@ -1757,9 +1758,9 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
   private executionLease(row: ExecutionLeaseRow): DurableExecutionLease {
     return {
-      sessionId: row.session_id as SessionId,
-      leaseId: row.lease_id as ExecutionLeaseId,
-      ownerId: row.owner_id as WorkerId,
+      sessionId: SessionId(row.session_id),
+      leaseId: ExecutionLeaseId(row.lease_id),
+      ownerId: WorkerId(row.owner_id),
       fencingToken: FencingToken(asNumber(row.fencing_token)),
       acquiredAt: asIso(row.acquired_at),
       renewedAt: asIso(row.renewed_at),
@@ -1770,8 +1771,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   private effectRecord(row: EffectRow): RuntimeEffectRecord {
     return {
       tenantId: row.tenant_id,
-      sessionId: row.session_id as SessionId,
-      commandId: row.command_id,
+      sessionId: SessionId(row.session_id),
+      commandId: CommandId(row.command_id),
       effectId: row.effect_id,
       type: row.effect_type,
       payload: asJsonObject(row.payload),
@@ -1781,8 +1782,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       attempts: row.attempts,
       availableAt: asIso(row.available_at),
       createdAt: asIso(row.created_at),
-      ...(row.worker_id ? { workerId: row.worker_id as WorkerId } : {}),
-      ...(row.lease_id ? { leaseId: row.lease_id as ExecutionLeaseId } : {}),
+      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
+      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
       ...(asNumber(row.fencing_token) > 0
         ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
         : {}),

@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import {
   AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
   type AgentCommandResult,
+  AgentCommandType,
   type AgentPrincipal,
   type AgentServerEvent,
 } from '../../protocol/index.js';
-import type { ConfirmationHandler } from '../../tools/types/index.js';
-import type { SessionId } from '../../types/branded.js';
+import type { ConfirmationHandler } from '../../tools/types/execution.js';
+import { CommandId, type ExecutionLeaseId, type SessionId } from '../../types/identifiers.js';
 
 const createAgent = vi.fn(async () => ({
   async *streamChat(message: unknown, context: unknown) {
@@ -63,8 +63,8 @@ class FailOnceCompletionStore extends InMemoryAgentServerStore {
 
   override async completeCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
     result: AgentCommandResult,
   ): Promise<void> {
     if (commandId === 'uncertain-create' && !this.failed) {
@@ -78,22 +78,13 @@ class FailOnceCompletionStore extends InMemoryAgentServerStore {
 const principal: AgentPrincipal = {
   tenantId: 'tenant-a',
   subject: 'user-a',
-  scopes: [
-    'session:create',
-    'session:read',
-    'session:write',
-    'permission:resolve',
-  ],
+  scopes: ['session:create', 'session:read', 'session:write', 'permission:resolve'],
 };
 
-function command<TType extends string, TData>(
-  type: TType,
-  commandId: string,
-  data: TData,
-) {
+function command<TType extends string, TData>(type: TType, commandId: string, data: TData) {
   return {
     protocolVersion: AGENT_PROTOCOL_VERSION,
-    commandId,
+    commandId: CommandId(commandId),
     type,
     data,
   };
@@ -106,9 +97,7 @@ function createTestServer() {
   const server = new AgentServer({
     store,
     authenticate: (request) =>
-      request.headers.get('authorization') === 'Bearer test'
-        ? principal
-        : null,
+      request.headers.get('authorization') === 'Bearer test' ? principal : null,
     resolveSessionOptions: () => ({
       provider: {
         type: 'openai-compatible',
@@ -140,10 +129,7 @@ async function collectUntilResult(
   const collected: AgentServerEvent[] = [];
   for await (const event of events) {
     collected.push(event);
-    if (
-      event.type === 'session.stream' &&
-      event.data.type === 'result'
-    ) {
+    if (event.type === 'session.stream' && event.data.type === 'result') {
       break;
     }
   }
@@ -153,20 +139,18 @@ async function collectUntilResult(
 describe('AgentServer', () => {
   it('executes idempotent commands without creating duplicate Sessions', async () => {
     const { server } = createTestServer();
-    const createCommand = command(
-      AgentCommandType.SESSION_CREATE,
-      'idempotent-create',
-      {},
-    );
+    const createCommand = command(AgentCommandType.SESSION_CREATE, 'idempotent-create', {});
     const first = await server.execute(createCommand, principal);
     const second = await server.execute(createCommand, principal);
     expect(second).toEqual(first);
-    await expect(server.execute(
-      command(AgentCommandType.SESSION_CREATE, 'idempotent-create', {
-        metadata: { different: true },
-      }),
-      principal,
-    )).resolves.toMatchObject({
+    await expect(
+      server.execute(
+        command(AgentCommandType.SESSION_CREATE, 'idempotent-create', {
+          metadata: { different: true },
+        }),
+        principal,
+      ),
+    ).resolves.toMatchObject({
       ok: false,
       error: { code: 'COMMAND_CONFLICT', retryable: false },
     });
@@ -252,11 +236,7 @@ describe('AgentServer', () => {
         sessionRepository: new PersistentStore(root),
       }),
     });
-    const createCommand = command(
-      AgentCommandType.SESSION_CREATE,
-      'uncertain-create',
-      {},
-    );
+    const createCommand = command(AgentCommandType.SESSION_CREATE, 'uncertain-create', {});
 
     await expect(server.execute(createCommand, principal)).resolves.toMatchObject({
       ok: false,
@@ -290,16 +270,18 @@ describe('AgentServer', () => {
     expect(submitted.ok).toBe(true);
 
     const events = await collectUntilResult(server.events(principal, sessionId));
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: 'session.stream',
-        data: expect.objectContaining({ type: 'content', delta: 'ok' }),
-      }),
-      expect.objectContaining({
-        type: 'session.stream',
-        data: expect.objectContaining({ type: 'result', subtype: 'success' }),
-      }),
-    ]));
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'session.stream',
+          data: expect.objectContaining({ type: 'content', delta: 'ok' }),
+        }),
+        expect.objectContaining({
+          type: 'session.stream',
+          data: expect.objectContaining({ type: 'result', subtype: 'success' }),
+        }),
+      ]),
+    );
     await server.close();
   });
 
@@ -328,19 +310,22 @@ describe('AgentServer', () => {
     });
 
     const sessionId = await createSession(server);
-    await expect(server.execute(
-      command(AgentCommandType.INPUT_SUBMIT, 'telemetry-submit', {
-        sessionId,
-        input: 'hello',
-      }),
-      principal,
-    )).resolves.toMatchObject({ ok: true });
+    await expect(
+      server.execute(
+        command(AgentCommandType.INPUT_SUBMIT, 'telemetry-submit', {
+          sessionId,
+          input: 'hello',
+        }),
+        principal,
+      ),
+    ).resolves.toMatchObject({ ok: true });
     const events = await collectUntilResult(server.events(principal, sessionId));
-    expect(events.some(
-      (serverEvent) =>
-        serverEvent.type === 'session.stream'
-        && serverEvent.data.type === 'result',
-    )).toBe(true);
+    expect(
+      events.some(
+        (serverEvent) =>
+          serverEvent.type === 'session.stream' && serverEvent.data.type === 'result',
+      ),
+    ).toBe(true);
     await server.close();
   });
 
@@ -362,15 +347,14 @@ describe('AgentServer', () => {
       data: { reason: 'test' },
     });
 
-    const response = await server.handle(new Request(
-      `https://agent.test/v1/agent/sessions/${sessionId}/events`,
-      {
+    const response = await server.handle(
+      new Request(`https://agent.test/v1/agent/sessions/${sessionId}/events`, {
         headers: {
           authorization: 'Bearer test',
           'last-event-id': '1',
         },
-      },
-    ));
+      }),
+    );
     const body = await response.text();
 
     expect(response.status).toBe(200);
@@ -433,18 +417,17 @@ describe('AgentServer', () => {
     );
     expect(submitted.ok).toBe(true);
     const events = await collectUntilResult(second.events(principal, sessionId));
-    expect(events.some(
-      (event) => event.type === 'session.stream' && event.data.type === 'result',
-    )).toBe(true);
+    expect(
+      events.some((event) => event.type === 'session.stream' && event.data.type === 'result'),
+    ).toBe(true);
     await second.close();
   });
 
   it('provides an HTTP and SSE browser-client loop with remote approval', async () => {
     const { server } = createTestServer();
     const fetchImpl: typeof fetch = async (input, init) => {
-      const request = input instanceof Request
-        ? new Request(input, init)
-        : new Request(input, init);
+      const request =
+        input instanceof Request ? new Request(input, init) : new Request(input, init);
       return server.handle(request);
     };
     const client = new AgentClient({
@@ -461,24 +444,25 @@ describe('AgentServer', () => {
     for await (const event of session.events()) {
       events.push(event);
       if (event.type === 'permission.requested') {
-        await client.resolvePermission(
-          session.sessionId,
-          event.data.permissionRequestId,
-          { approved: true, scope: 'once' },
-        );
+        await client.resolvePermission(session.sessionId, event.data.permissionRequestId, {
+          approved: true,
+          scope: 'once',
+        });
       }
       if (event.type === 'session.stream' && event.data.type === 'result') {
         break;
       }
     }
 
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'permission.requested' }),
-      expect.objectContaining({
-        type: 'session.stream',
-        data: expect.objectContaining({ type: 'content', delta: 'approved' }),
-      }),
-    ]));
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'permission.requested' }),
+        expect.objectContaining({
+          type: 'session.stream',
+          data: expect.objectContaining({ type: 'content', delta: 'approved' }),
+        }),
+      ]),
+    );
     await session.close();
     await server.close();
   });

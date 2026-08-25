@@ -1,8 +1,43 @@
 // Browser-safe protocol, constants, and type exports.
 // Keep this entry free of Node-only runtime imports.
 
+export type { ProviderRegistryErrorCode } from '../errors/ProviderRegistryError.js';
+export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
+export type { McpServerConfig } from '../mcp/config.js';
 export * from '../middleware/index.js';
-export * from '../protocol/index.js';
+export type {
+  BuiltinProviderType,
+  ModelConfig,
+  ModelContent,
+  ModelIdentity,
+  ModelImageContent,
+  ModelMessage,
+  ModelProviderOptions,
+  ModelResponse,
+  ModelRetryConfig,
+  ModelRetryEvent,
+  ModelService,
+  ModelServiceConfig,
+  ModelSideQueryOptions,
+  ModelStreamChunk,
+  ModelStreamToolCall,
+  ModelTextContent,
+  ModelToolCall,
+  ModelToolCallDelta,
+  ModelToolDefinition,
+  ModelUsage,
+  OutputFormat,
+  ProviderConnectionConfig,
+  ProviderType,
+  QuerySource,
+  TokenUsage,
+} from '../model/index.js';
+export {
+  isBuiltinProviderType,
+  normalizeModelUsage,
+  PROVIDER_TYPES,
+  resolveModelIdentity,
+} from '../model/index.js';
 export type {
   AgentTrace,
   ObservabilityOptions,
@@ -13,6 +48,7 @@ export type {
   TraceSpanKind,
   TraceStatus,
 } from '../observability/index.js';
+export * from '../protocol/index.js';
 export type {
   ContextSnapshot,
   RuntimeContext,
@@ -26,15 +62,10 @@ export type {
   RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch,
 } from '../runtime/index.js';
+export type { SandboxSettings } from '../sandbox/config.js';
+export type { ProviderAdapter } from '../services/ProviderRegistry.js';
+export { ProviderRegistry } from '../services/ProviderRegistry.js';
 export * from '../session/events/core.js';
-export type {
-  InputSubmission,
-  PendingSessionInput,
-  SendOptions,
-  SessionOptions,
-  StreamMessage,
-  StreamOptions,
-} from '../session/types.js';
 export type {
   PersistedToolUse,
   SessionEventStore,
@@ -47,6 +78,14 @@ export type {
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
+export type {
+  InputSubmission,
+  PendingSessionInput,
+  SendOptions,
+  SessionOptions,
+  SessionStreamEvent,
+  StreamOptions,
+} from '../session/types.js';
 export { InputPriority } from '../session/types.js';
 export type {
   ConfirmationDetails,
@@ -84,8 +123,16 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from '../tools/types/index.js';
-export { ToolKind, ToolSideEffect } from '../tools/types/ToolKind.js';
+export { ToolKind, ToolSideEffect } from '../tools/types/kind.js';
 export {
+  HookEvent,
+  MessageRole,
+  PermissionDecision,
+  PermissionMode,
+  SessionStreamEventType,
+} from '../types/constants.js';
+export {
+  AgentId,
   CommandId,
   CredentialLeaseId,
   EventId,
@@ -95,38 +142,21 @@ export {
   ExecutionLeaseId,
   FencingToken,
   InputId,
+  MessageId,
   ModelAttemptId,
+  PartId,
   PermissionRequestId,
   RequestId,
   SessionId,
+  SpanId,
   ToolAttemptId,
   ToolUseId,
+  TraceEventId,
+  TraceId,
   TurnId,
   WorkerId,
-} from '../types/branded.js';
-export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
-export type { ProviderRegistryErrorCode } from '../errors/ProviderRegistryError.js';
-export { ProviderRegistry } from '../services/ProviderRegistry.js';
-export type { ProviderAdapter } from '../services/ProviderRegistry.js';
-export type {
-  BuiltinProviderType,
-  JsonObject,
-  JsonValue,
-  McpServerConfig,
-  ModelConfig,
-  OutputFormat,
-  PermissionsConfig,
-  ProviderType,
-  SandboxSettings,
-  TokenUsage,
-} from '../types/common.js';
-export {
-  HookEvent,
-  MessageRole,
-  PermissionDecision,
-  PermissionMode,
-  StreamMessageType,
-} from '../types/constants.js';
+} from '../types/identifiers.js';
+export type { JsonObject, JsonValue } from '../types/json.js';
 export type {
   CanUseTool,
   CanUseToolOptions,
@@ -134,5 +164,6 @@ export type {
   PermissionHandlerRequest,
   PermissionResult,
   PermissionRuleValue,
+  PermissionsConfig,
   PermissionUpdate,
 } from '../types/permissions.js';

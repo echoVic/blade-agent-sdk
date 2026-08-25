@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolKind.js';
-import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolErrorType } from '../../types/index.js';
-import type { SessionId } from '../../../types/branded.js';
+import type { SessionId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { createTool } from '../../core/createTool.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { TaskStore } from './TaskStore.js';
 
 export function createTaskGetTool({ sessionId }: { sessionId: SessionId }) {
@@ -22,9 +22,11 @@ Use when:
 - To understand task dependencies (what it blocks, what blocks it)
 - After being assigned a task, to get complete requirements`,
     },
-    schema: lazySchema(() => z.object({
-      taskId: z.string().describe('The ID of the task to retrieve'),
-    })),
+    schema: lazySchema(() =>
+      z.object({
+        taskId: z.string().describe('The ID of the task to retrieve'),
+      }),
+    ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
     async *execute({ taskId }, context) {
       const sid = context?.sessionId ?? sessionId;

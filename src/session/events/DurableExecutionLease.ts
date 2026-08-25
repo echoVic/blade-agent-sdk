@@ -1,20 +1,20 @@
 import { nanoid } from 'nanoid';
-import { ExecutionLeaseId, type SessionId, type WorkerId } from '../../types/branded.js';
+import { ExecutionLeaseId, type SessionId, type WorkerId } from '../../types/identifiers.js';
 import type { DurableEventStore } from './DurableEventStore.js';
 import {
   type DurableExecutionFence,
   DurableExecutionLeaseError,
   type DurableExecutionLeaseOperation,
-  DurableExecutionLeaseTimeoutError,
   type DurableExecutionLease as DurableExecutionLeaseSnapshot,
   type DurableExecutionLeaseStore,
+  DurableExecutionLeaseTimeoutError,
   executionFence,
-  isExecutionLeaseFailure,
   isDurableExecutionLeaseStore,
+  isExecutionLeaseFailure,
 } from './DurableExecutionLeaseStore.js';
 import {
-  MAX_DURABLE_STORE_TIMEOUT_MS,
   awaitDurableStoreOperation,
+  MAX_DURABLE_STORE_TIMEOUT_MS,
   resolveDurableStoreTimeoutMs,
 } from './DurableStoreOperation.js';
 
@@ -200,19 +200,22 @@ function scheduleAcquisitionEviction(
   state: AcquisitionState,
 ): void {
   const remainingMs = state.evictionDeadline - performance.now();
-  state.evictionTimer = setTimeout(() => {
-    state.evictionTimer = null;
-    if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
-      return;
-    }
-    if (state.evictionDeadline > performance.now()) {
-      scheduleAcquisitionEviction(store, sessionId, ownerId, state);
-      return;
-    }
-    if (state.attemptPromise === null) {
-      clearAcquisitionState(store, sessionId, ownerId, state);
-    }
-  }, Math.min(Math.max(0, remainingMs), MAX_DURABLE_STORE_TIMEOUT_MS));
+  state.evictionTimer = setTimeout(
+    () => {
+      state.evictionTimer = null;
+      if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
+        return;
+      }
+      if (state.evictionDeadline > performance.now()) {
+        scheduleAcquisitionEviction(store, sessionId, ownerId, state);
+        return;
+      }
+      if (state.attemptPromise === null) {
+        clearAcquisitionState(store, sessionId, ownerId, state);
+      }
+    },
+    Math.min(Math.max(0, remainingMs), MAX_DURABLE_STORE_TIMEOUT_MS),
+  );
   state.evictionTimer.unref?.();
 }
 

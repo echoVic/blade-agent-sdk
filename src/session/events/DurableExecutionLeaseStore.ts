@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SdkError } from '../../errors/SdkError.js';
-import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/branded.js';
+import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/identifiers.js';
 import type { DurableEventOperationOptions, DurableEventStore } from './DurableEventStore.js';
 
 export const DURABLE_EXECUTION_LEASE_FORMAT = 'blade.durable-execution-lease' as const;

@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
-import { completeToolExecution, type ToolResult } from '../../tools/types/index.js';
+import type { ModelMessage } from '../../model/message.js';
+import type { ToolResult } from '../../tools/types/result.js';
+import { completeToolExecution } from '../../tools/types/result.js';
+import { SessionId } from '../../types/identifiers.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
 import { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
-import { SessionId } from '../../types/branded.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -19,13 +20,17 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>> & {
+type BaseConfigOverrides = Partial<
+  Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>
+> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
-  messages?: Message[];
+  messages?: ModelMessage[];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
   onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
-  onAfterToolExecEpochDiscard?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExecEpochDiscard'];
+  onAfterToolExecEpochDiscard?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['tool']
+  >['afterExecEpochDiscard'];
   onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
   onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
@@ -35,7 +40,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
   const {
     prepareTurnState,
     turnState,
-    messages = [{ role: 'user', content: 'Hi' }] as Message[],
+    messages = [{ role: 'user', content: 'Hi' }] as ModelMessage[],
     executionPipeline = {
       getRegistry: () => ({
         get: (name: string) => ({ kind: 'execute', name }),
@@ -53,7 +58,11 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     ...rest
   } = overrides;
 
-  const convState = new ConversationState(null, [], messages[messages.length - 1] || { role: 'user', content: 'Hi' });
+  const convState = new ConversationState(
+    null,
+    [],
+    messages[messages.length - 1] || { role: 'user', content: 'Hi' },
+  );
   if (messages.length > 1) {
     for (let i = 0; i < messages.length - 1; i++) {
       convState.append(messages[i]);
@@ -62,14 +71,14 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
 
   const defaultTurnState: Omit<TurnState, 'turn' | 'messages'> = {
     tools: [{ name: 'ReadFile', description: 'read', parameters: {} }],
-    chatService: {
+    modelService: {
       chat: vi.fn(),
       streamChat: vi.fn(),
       getConfig: () => ({
         model: 'test-model',
         maxContextTokens: 128000,
       }),
-    } as unknown as TurnState['chatService'],
+    } as unknown as TurnState['modelService'],
     maxContextTokens: 128000,
     permissionMode: undefined,
     executionContext: {
@@ -96,12 +105,14 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     conversationState: convState,
     maxTurns,
     isYoloMode,
-    prepareTurnState: prepareTurnState ?? ((turn) => ({
-      turn,
-      messages: convState.toArray() as Message[],
-      ...defaultTurnState,
-      ...turnState,
-    })),
+    prepareTurnState:
+      prepareTurnState ??
+      ((turn) => ({
+        turn,
+        messages: convState.toArray() as ModelMessage[],
+        ...defaultTurnState,
+        ...turnState,
+      })),
     hooks,
     ...rest,
   };
@@ -183,14 +194,14 @@ describe('agentLoop streaming integration', () => {
           onAssistantMessage,
           onAfterToolExec,
           turnState: {
-            chatService: {
+            modelService: {
               chat: vi.fn(),
               streamChat,
               getConfig: () => ({
                 model: 'test-model',
                 maxContextTokens: 128000,
               }),
-            } as unknown as TurnState['chatService'],
+            } as unknown as TurnState['modelService'],
           },
         }),
       ),
@@ -227,7 +238,8 @@ describe('agentLoop streaming integration', () => {
   });
 
   it('keeps the non-streaming path unchanged when streaming=false', async () => {
-    const chat = vi.fn()
+    const chat = vi
+      .fn()
       .mockResolvedValueOnce({
         content: 'need a tool',
         toolCalls: [
@@ -248,10 +260,12 @@ describe('agentLoop streaming integration', () => {
         usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
       });
     const streamChat = vi.fn();
-    const execute = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'tool output',
-    }));
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'tool output',
+      }),
+    );
 
     const { result } = await collectEvents(
       agentLoop(
@@ -263,14 +277,14 @@ describe('agentLoop streaming integration', () => {
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
           turnState: {
-            chatService: {
+            modelService: {
               chat,
               streamChat,
               getConfig: () => ({
                 model: 'test-model',
                 maxContextTokens: 128000,
               }),
-            } as unknown as TurnState['chatService'],
+            } as unknown as TurnState['modelService'],
           },
         }),
       ),

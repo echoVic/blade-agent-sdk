@@ -3,26 +3,20 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
-import { SessionId } from '../../../types/branded.js';
+import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-  BashBackgroundMetadata,
-  BashForegroundMetadata,
-  ExecutionContext,
-  ToolResult,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
+import type { ToolResult } from '../../types/result.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { OutputTruncator } from './OutputTruncator.js';
-import {
-  isProcessTreeAlive,
-  shellProcessSpawnOptions,
-  signalProcessTree,
-} from './processTree.js';
+import { isProcessTreeAlive, shellProcessSpawnOptions, signalProcessTree } from './processTree.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -51,15 +45,13 @@ export const bashTool = createTool({
       cwd: z
         .string()
         .optional()
-        .describe(
-          'Working directory (optional; applies only to this command). To persist, use cd'
-        ),
+        .describe('Working directory (optional; applies only to this command). To persist, use cd'),
       env: ToolSchemas.environment(),
       run_in_background: ToolSchemas.flag({
         defaultValue: false,
         description: 'Run in background (suitable for long-running commands)',
       }),
-    })
+    }),
   ),
 
   // 工具描述
@@ -225,8 +217,7 @@ Before executing commands:
 
     return {
       message: 'No working directory available',
-      model:
-        'No working directory provided and no filesystem working directory is available.',
+      model: 'No working directory provided and no filesystem working directory is available.',
     };
   },
 
@@ -282,9 +273,9 @@ Before executing commands:
         return executeInBackground(
           effectiveCommand,
           workDir,
-          context.backgroundAgentManager?.getOwnerSessionId?.()
-            ?? context.sessionId
-            ?? SessionId(randomUUID()),
+          context.backgroundAgentManager?.getOwnerSessionId?.() ??
+            context.sessionId ??
+            SessionId(randomUUID()),
           env,
           context.executionFence,
         );
@@ -413,7 +404,7 @@ async function executeWithTimeout(
   cwd: string,
   env: Record<string, string> | undefined,
   timeout: number,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -466,22 +457,13 @@ async function executeWithTimeout(
       clearTimeout(timeoutHandle);
     };
 
-    // 兼容不同版本的 AbortSignal API
-    if (signal.addEventListener) {
-      signal.addEventListener('abort', abortHandler);
-    } else if ('onabort' in signal) {
-      (signal as unknown as { onabort: () => void }).onabort = abortHandler;
-    }
+    signal.addEventListener('abort', abortHandler);
 
     // 监听进程完成事件 - 业界标准做法
     bashProcess.on('close', (code, sig) => {
       clearTimeout(timeoutHandle);
       // 移除中止监听器
-      if (signal.removeEventListener) {
-        signal.removeEventListener('abort', abortHandler);
-      } else if ('onabort' in signal) {
-        (signal as unknown as { onabort: null }).onabort = null;
-      }
+      signal.removeEventListener('abort', abortHandler);
 
       const executionTime = Date.now() - startTime;
 
@@ -527,8 +509,7 @@ async function executeWithTimeout(
 
       // 正常完成
       // 生成 summary 用于流式显示
-      const cmdPreview =
-        command.length > 30 ? `${command.substring(0, 30)}...` : command;
+      const cmdPreview = command.length > 30 ? `${command.substring(0, 30)}...` : command;
       const summary =
         code === 0
           ? `执行命令成功 (${executionTime}ms): ${cmdPreview}`
@@ -545,11 +526,7 @@ async function executeWithTimeout(
         summary,
       };
 
-      const truncated = OutputTruncator.truncateForLLM(
-        stdout.trim(),
-        stderr.trim(),
-        command
-      );
+      const truncated = OutputTruncator.truncateForLLM(stdout.trim(), stderr.trim(), command);
 
       resolve({
         status: 'success',
@@ -571,11 +548,7 @@ async function executeWithTimeout(
     bashProcess.on('error', (error) => {
       clearTimeout(timeoutHandle);
       // 移除中止监听器
-      if (signal.removeEventListener) {
-        signal.removeEventListener('abort', abortHandler);
-      } else if ('onabort' in signal) {
-        (signal as unknown as { onabort: null }).onabort = null;
-      }
+      signal.removeEventListener('abort', abortHandler);
 
       resolve({
         status: 'error',

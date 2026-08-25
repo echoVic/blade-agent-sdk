@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
 import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
-import type { SessionEvent } from '../../context/types.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
-import { SessionId } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
+import { SessionId } from '../../types/identifiers.js';
+import type { TranscriptEvent } from '../transcript.js';
 
 // 每个用例可覆盖的 streamChat 实现；默认产出一条成功事件。
 type StreamChatImpl = (
@@ -25,8 +25,7 @@ let streamChatImpl: StreamChatImpl = async function* defaultStream() {
 };
 
 const createAgent = vi.fn(async () => ({
-  streamChat: (message: unknown, context: unknown) =>
-    streamChatImpl(message, context),
+  streamChat: (message: unknown, context: unknown) => streamChatImpl(message, context),
   async setModel() {},
 }));
 
@@ -48,14 +47,8 @@ function baseOptions(storagePath: string) {
   };
 }
 
-async function readEvents(
-  storagePath: string,
-  sessionId: string,
-): Promise<SessionEvent[]> {
-  const filePath = getSessionFilePathFromStorageRoot(
-    storagePath,
-    SessionId(sessionId),
-  );
+async function readEvents(storagePath: string, sessionId: string): Promise<TranscriptEvent[]> {
+  const filePath = getSessionFilePathFromStorageRoot(storagePath, SessionId(sessionId));
   return new JSONLStore(filePath).readAll();
 }
 
@@ -159,13 +152,8 @@ describe('Session steering resilience', () => {
 
   it('does not hide a containment failure behind request cancellation', async () => {
     const started = Promise.withResolvers<void>();
-    const containmentError = new HookProcessContainmentError(
-      'Hook process cleanup failed',
-    );
-    streamChatImpl = async function* containmentFailureStream(
-      _message,
-      context,
-    ) {
+    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
+    streamChatImpl = async function* containmentFailureStream(_message, context) {
       const signal = (context as { signal: AbortSignal }).signal;
       started.resolve();
       await new Promise<void>((resolve) => {
@@ -234,9 +222,7 @@ describe('Session steering resilience', () => {
     expect(session.getPendingInputs()).toHaveLength(0);
 
     const events = await readEvents(storagePath, sessionId);
-    const appliedForInput = events.filter(
-      (event) => event.type === 'input_applied',
-    );
+    const appliedForInput = events.filter((event) => event.type === 'input_applied');
     // 同一初始输入至多写入一次 input_applied，绝不能重复。
     expect(appliedForInput.length).toBeLessThanOrEqual(1);
 

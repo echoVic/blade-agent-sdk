@@ -7,18 +7,18 @@ import { join, relative } from 'node:path';
 // ESM-safe require for optional CJS packages (e.g. @vscode/ripgrep).
 // Bare `require()` is undefined in Node ESM; createRequire provides it.
 const _require = createRequire(import.meta.url);
+
 import picomatch from 'picomatch';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
-import { toJsonValue } from '../../../utils/jsonValue.js';
 import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type {
-  ExecutionContext,
-  GrepMetadata,
-} from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import type { GrepMetadata } from '../../types/metadata.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
@@ -68,10 +68,8 @@ function getPlatformRipgrepPath(): string | null {
 
   // 尝试从模块安装目录查找（用于 npm 包）
   try {
-    const moduleDir = new URL(
-      `../../../../vendor/ripgrep/${relativePath}`,
-      import.meta.url
-    ).pathname;
+    const moduleDir = new URL(`../../../../vendor/ripgrep/${relativePath}`, import.meta.url)
+      .pathname;
     if (existsSync(moduleDir)) {
       return moduleDir;
     }
@@ -165,7 +163,7 @@ function isSystemGrepAvailable(): boolean {
 async function executeRipgrep(
   args: string[],
   _outputMode: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const rgPath = getRipgrepPath();
   if (!rgPath) {
@@ -225,7 +223,7 @@ async function executeGitGrep(
     glob?: string;
     contextLines?: number;
   },
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const args = ['grep', '-n']; // -n 显示行号
 
@@ -296,7 +294,7 @@ async function executeSystemGrep(
     caseInsensitive?: boolean;
     contextLines?: number;
   },
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const args = ['-rn']; // -r 递归, -n 显示行号
 
@@ -367,7 +365,7 @@ async function executeFallbackGrep(
     glob?: string;
     multiline?: boolean;
   },
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<{ matches: GrepMatch[]; totalFiles: number }> {
   const matches: GrepMatch[] = [];
   const regex = new RegExp(pattern, options.caseInsensitive ? 'gi' : 'g');
@@ -404,8 +402,7 @@ async function executeFallbackGrep(
       });
 
       processedFiles++;
-    } catch (_error) {
-    }
+    } catch (_error) {}
   }
 
   return { matches, totalFiles: processedFiles };
@@ -605,10 +602,7 @@ function parseContentLine(line: string): GrepMatch | null {
 
   // 检查是否有行号
   const secondColonIndex = remainder.indexOf(':');
-  if (
-    secondColonIndex !== -1 &&
-    /^\d+$/.test(remainder.substring(0, secondColonIndex))
-  ) {
+  if (secondColonIndex !== -1 && /^\d+$/.test(remainder.substring(0, secondColonIndex))) {
     // 有行号的格式
     const lineNumber = parseInt(remainder.substring(0, secondColonIndex), 10);
     const content = remainder.substring(secondColonIndex + 1);
@@ -640,73 +634,73 @@ export const grepTool = createTool({
   maxResultSizeChars: 100_000, // ~100KB before externalization
 
   // Zod Schema 定义
-  schema: lazySchema(() => z.object({
-    pattern: ToolSchemas.pattern({
-      description: 'The regular expression pattern to search for in file contents',
+  schema: lazySchema(() =>
+    z.object({
+      pattern: ToolSchemas.pattern({
+        description: 'The regular expression pattern to search for in file contents',
+      }),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'File or directory to search in (rg PATH). Defaults to current working directory',
+        ),
+      glob: z
+        .string()
+        .optional()
+        .describe('Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob'),
+      type: z
+        .string()
+        .optional()
+        .describe(
+          'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types',
+        ),
+      output_mode: z
+        .enum(['content', 'files_with_matches', 'count'])
+        .default('files_with_matches')
+        .describe(
+          'Output mode: "content" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), "files_with_matches" shows file paths (supports head_limit), "count" shows match counts (supports head_limit). Defaults to "files_with_matches"',
+        ),
+      '-i': z.boolean().optional().describe('Case insensitive search (rg -i)'),
+      '-n': z
+        .boolean()
+        .default(true)
+        .describe(
+          'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true',
+        ),
+      '-B': ToolSchemas.nonNegativeInt()
+        .optional()
+        .describe(
+          'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise',
+        ),
+      '-A': ToolSchemas.nonNegativeInt()
+        .optional()
+        .describe(
+          'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise',
+        ),
+      '-C': ToolSchemas.nonNegativeInt()
+        .optional()
+        .describe(
+          'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise',
+        ),
+      head_limit: ToolSchemas.positiveInt()
+        .optional()
+        .describe(
+          'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on "cap" experiment value: 0 (unlimited), 20, or 100',
+        ),
+      offset: ToolSchemas.nonNegativeInt()
+        .optional()
+        .describe(
+          'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0',
+        ),
+      multiline: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false',
+        ),
     }),
-    path: z
-      .string()
-      .optional()
-      .describe(
-        'File or directory to search in (rg PATH). Defaults to current working directory'
-      ),
-    glob: z
-      .string()
-      .optional()
-      .describe(
-        'Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob'
-      ),
-    type: z
-      .string()
-      .optional()
-      .describe(
-        'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types'
-      ),
-    output_mode: z
-      .enum(['content', 'files_with_matches', 'count'])
-      .default('files_with_matches')
-      .describe(
-        'Output mode: "content" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), "files_with_matches" shows file paths (supports head_limit), "count" shows match counts (supports head_limit). Defaults to "files_with_matches"'
-      ),
-    '-i': z.boolean().optional().describe('Case insensitive search (rg -i)'),
-    '-n': z
-      .boolean()
-      .default(true)
-      .describe(
-        'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true'
-      ),
-    '-B': ToolSchemas.nonNegativeInt()
-      .optional()
-      .describe(
-        'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise'
-      ),
-    '-A': ToolSchemas.nonNegativeInt()
-      .optional()
-      .describe(
-        'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise'
-      ),
-    '-C': ToolSchemas.nonNegativeInt()
-      .optional()
-      .describe(
-        'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise'
-      ),
-    head_limit: ToolSchemas.positiveInt()
-      .optional()
-      .describe(
-        'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on "cap" experiment value: 0 (unlimited), 20, or 100'
-      ),
-    offset: ToolSchemas.nonNegativeInt()
-      .optional()
-      .describe(
-        'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0'
-      ),
-    multiline: z
-      .boolean()
-      .default(false)
-      .describe(
-        'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false'
-      ),
-  })),
+  ),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {
@@ -829,7 +823,7 @@ export const grepTool = createTool({
               glob,
               contextLines,
             },
-            signal
+            signal,
           );
           strategy = SearchStrategy.GIT_GREP;
         } catch {
@@ -856,7 +850,7 @@ export const grepTool = createTool({
               caseInsensitive: caseInsensitive ?? false,
               contextLines,
             },
-            signal
+            signal,
           );
           strategy = SearchStrategy.SYSTEM_GREP;
         } catch {
@@ -883,7 +877,7 @@ export const grepTool = createTool({
             glob,
             multiline: multiline ?? false,
           },
-          signal
+          signal,
         );
 
         matches = fallbackResult.matches;

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../../../model/message.js';
 import { microcompact } from '../MicrocompactStrategy.js';
 
 describe('microcompact', () => {
   it('replaces older oversized tool outputs with compact placeholders', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(2400) },
       { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(2300) },
       { role: 'tool', tool_call_id: 'call-3', content: 'c'.repeat(2200) },
@@ -36,7 +36,7 @@ describe('microcompact', () => {
   });
 
   it('reports tool messages skipped because their content is not a string', () => {
-    const messages: Message[] = [
+    const messages: ModelMessage[] = [
       {
         role: 'tool',
         tool_call_id: 'call-1',

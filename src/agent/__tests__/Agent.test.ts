@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Agent } from '../Agent.js';
-import { RECONCILED_INITIAL_INPUT } from '../InitialInputPreparation.js';
-import type {
-  ChatContext,
-  LoopOptions,
-  UserMessageContent,
-} from '../types.js';
-import type { BladeConfig } from '../../types/common.js';
 import type { InternalLogger } from '../../logging/Logger.js';
-import { SessionId } from '../../types/branded.js';
+import { SessionId, TurnId } from '../../types/identifiers.js';
+import { Agent } from '../Agent.js';
+import type { BladeConfig } from '../config.js';
+import { RECONCILED_INITIAL_INPUT } from '../InitialInputPreparation.js';
+import type { ChatContext, LoopOptions, UserMessageContent } from '../types.js';
 
 function createExecutionPipeline() {
   return {
@@ -60,10 +56,14 @@ describe('Agent.initializeSystemPrompt', () => {
       },
     );
 
-    await (agent as unknown as { initializeSystemPrompt(): Promise<void> }).initializeSystemPrompt();
+    await (
+      agent as unknown as { initializeSystemPrompt(): Promise<void> }
+    ).initializeSystemPrompt();
 
     expect(
-      logger.messages.some((message) => message.includes('[SystemPrompt] 可用来源: base_prompt, append'))
+      logger.messages.some((message) =>
+        message.includes('[SystemPrompt] 可用来源: base_prompt, append'),
+      ),
     ).toBe(true);
   });
 });
@@ -95,16 +95,14 @@ describe('Agent input preparation', () => {
     const prepare = vi
       .spyOn(testable, 'prepareMessageForContext')
       .mockResolvedValue('prepared again');
-    const discover = vi
-      .spyOn(testable, 'discoverSkillsForCwd')
-      .mockResolvedValue();
+    const discover = vi.spyOn(testable, 'discoverSkillsForCwd').mockResolvedValue();
     const context: ChatContext = {
       messages: [],
       userId: 'test-user',
       sessionId: SessionId('recovered-session'),
       snapshot: {
         sessionId: SessionId('recovered-session'),
-        turnId: 'recovered-turn',
+        turnId: TurnId('recovered-turn'),
         context: {
           capabilities: {
             filesystem: {

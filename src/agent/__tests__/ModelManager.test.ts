@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { ModelConfig } from '../../model/config.js';
+import type { BladeConfig } from '../config.js';
 import { ModelManager } from '../ModelManager.js';
-import type { BladeConfig, ModelConfig } from '../../types/common.js';
 
 // ===== Mock Helpers =====
 

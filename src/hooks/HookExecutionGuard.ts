@@ -4,7 +4,7 @@
  * 保证单次工具调用只触发一次 Hook
  */
 
-import type { ToolUseId } from '../types/branded.js';
+import type { ToolUseId } from '../types/identifiers.js';
 
 export class HookExecutionGuard {
   // toolUseId -> Set<hookEventName>
@@ -22,7 +22,7 @@ export class HookExecutionGuard {
 
     if (executed.has(eventName)) {
       console.warn(
-        `[HookGuard] Hook ${eventName} for tool ${toolUseId} already executed, skipping`
+        `[HookGuard] Hook ${eventName} for tool ${toolUseId} already executed, skipping`,
       );
       return false;
     }

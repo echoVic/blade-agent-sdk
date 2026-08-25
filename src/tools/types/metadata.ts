@@ -1,4 +1,4 @@
-import type { PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/constants.js';
 
 interface BaseMetadataFields {
   summary?: string;

@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
-import type { ChatResponse, StreamChunk } from '../../services/ChatServiceInterface.js';
+import type { ModelResponse, ModelStreamChunk } from '../../model/service.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
-import type { ToolExecution, ToolResult } from '../../tools/types/index.js';
-import {
-    InputId,
-    RequestId,
-    SessionId,
-} from '../../types/branded.js';
-import { PermissionMode } from '../../types/common.js';
+import type { ToolExecution, ToolResult } from '../../tools/types/result.js';
+import { PermissionMode } from '../../types/constants.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
 
 function deferred<T>() {
@@ -30,8 +26,8 @@ function createExecutor(options: {
     messages?: unknown,
     tools?: unknown,
     signal?: AbortSignal,
-  ) => AsyncGenerator<StreamChunk, void, unknown>;
-  fallbackChat?: () => Promise<ChatResponse>;
+  ) => AsyncGenerator<ModelStreamChunk, void, unknown>;
+  fallbackChat?: () => Promise<ModelResponse>;
   execute?: (
     toolName: string,
     params: unknown,
@@ -41,14 +37,14 @@ function createExecutor(options: {
   toolInterruptBehaviors?: Record<string, 'cancel' | 'block'>;
 }) {
   const execute = vi.fn(
-    options.execute
-      ?? (async (toolName: string) => ({
+    options.execute ??
+      (async (toolName: string) => ({
         status: 'success',
         model: `result:${toolName}`,
       })),
   );
 
-  const chatService = {
+  const modelService = {
     streamChat: vi.fn(options.streamChat),
     chat: vi.fn(options.fallbackChat ?? (async () => ({ content: '', toolCalls: [] }))),
     getConfig: () => ({
@@ -67,11 +63,9 @@ function createExecutor(options: {
     execute,
   };
 
-  const executor = new StreamingToolExecutor(
-    () => chatService as never,
-  );
+  const executor = new StreamingToolExecutor(() => modelService as never);
 
-  return { executor, chatService, executionPipeline, execute };
+  return { executor, modelService, executionPipeline, execute };
 }
 
 describe('StreamingToolExecutor', () => {
@@ -138,13 +132,7 @@ describe('StreamingToolExecutor', () => {
 
     scheduleGate.resolve();
     await promise;
-    expect(order).toEqual([
-      'schedule-start',
-      'schedule-end',
-      'ready',
-      'execute',
-      'settled',
-    ]);
+    expect(order).toEqual(['schedule-start', 'schedule-end', 'ready', 'execute', 'settled']);
   });
 
   it('fails the streaming turn before publishing a terminal result when durable settlement fails', async () => {
@@ -703,7 +691,7 @@ describe('StreamingToolExecutor', () => {
     const started: string[] = [];
     const onReady = vi.fn();
 
-    const { executor, chatService, execute } = createExecutor({
+    const { executor, modelService, execute } = createExecutor({
       // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('stream not supported');
@@ -761,7 +749,7 @@ describe('StreamingToolExecutor', () => {
 
     await tick();
 
-    expect(chatService.chat).toHaveBeenCalledTimes(1);
+    expect(modelService.chat).toHaveBeenCalledTimes(1);
     expect(onReady).toHaveBeenCalledTimes(1);
     expect(started).toEqual(['WriteA']);
 
@@ -781,7 +769,7 @@ describe('StreamingToolExecutor', () => {
   });
 
   it('falls back to the wrapped handler when the stream returns zero chunks', async () => {
-    const { executor, chatService, execute } = createExecutor({
+    const { executor, modelService, execute } = createExecutor({
       streamChat: async function* () {},
       fallbackChat: async () => ({
         content: 'fallback content',
@@ -805,13 +793,13 @@ describe('StreamingToolExecutor', () => {
       },
     );
 
-    expect(chatService.chat).toHaveBeenCalledTimes(1);
+    expect(modelService.chat).toHaveBeenCalledTimes(1);
     expect(result.chatResponse.content).toBe('fallback content');
     expect(result.executionResults).toEqual([]);
   });
 
   it('propagates context-length errors directly when no tools were dispatched', async () => {
-    const { executor, chatService, execute } = createExecutor({
+    const { executor, modelService, execute } = createExecutor({
       // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('maximum context length exceeded');
@@ -836,7 +824,7 @@ describe('StreamingToolExecutor', () => {
       ),
     ).rejects.toThrow('maximum context length exceeded');
 
-    expect(chatService.chat).not.toHaveBeenCalled();
+    expect(modelService.chat).not.toHaveBeenCalled();
   });
 
   it('waits for in-flight tools before rethrowing a context-length error after dispatch', async () => {
@@ -989,11 +977,7 @@ describe('StreamingToolExecutor', () => {
         const signal = (context as { signal?: AbortSignal } | undefined)?.signal;
         toolStarted.resolve();
         await new Promise<void>((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => reject(new Error('cancelled')),
-            { once: true },
-          );
+          signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
         });
         return {
           status: 'success',
@@ -1039,9 +1023,7 @@ describe('StreamingToolExecutor', () => {
   it('does not downgrade containment failure during a steering interrupt', async () => {
     const toolStarted = deferred<void>();
     const runControl = new ActiveRequestController(RequestId('request-containment'));
-    const containmentError = new HookProcessContainmentError(
-      'Windows Job Object cleanup failed',
-    );
+    const containmentError = new HookProcessContainmentError('Windows Job Object cleanup failed');
     const { executor, execute } = createExecutor({
       streamChat: async function* () {
         yield {
@@ -1097,17 +1079,16 @@ describe('StreamingToolExecutor', () => {
   });
 
   it('forwards skillActivationPaths through the streaming execution path', async () => {
-    const execute = vi.fn(async (
-      _toolName: string,
-      _params: unknown,
-      context?: unknown,
-    ): Promise<ToolResult> => ({
-      status: 'success',
-      model: 'done',
-      metadata: {
-        observedSkillActivationPaths: (context as { skillActivationPaths?: string[] } | undefined)?.skillActivationPaths,
-      },
-    }));
+    const execute = vi.fn(
+      async (_toolName: string, _params: unknown, context?: unknown): Promise<ToolResult> => ({
+        status: 'success',
+        model: 'done',
+        metadata: {
+          observedSkillActivationPaths: (context as { skillActivationPaths?: string[] } | undefined)
+            ?.skillActivationPaths,
+        },
+      }),
+    );
 
     const { executor } = createExecutor({
       streamChat: async function* () {
@@ -1150,9 +1131,7 @@ describe('StreamingToolExecutor', () => {
 
   it('synthesizes terminal tool results when steering interrupts model streaming', async () => {
     const streamStarted = deferred<void>();
-    const runControl = new ActiveRequestController(
-      RequestId('request-1'),
-    );
+    const runControl = new ActiveRequestController(RequestId('request-1'));
     const { executor, execute } = createExecutor({
       streamChat: async function* (_messages, _tools, signal) {
         yield {
@@ -1177,11 +1156,7 @@ describe('StreamingToolExecutor', () => {
         };
         streamStarted.resolve();
         await new Promise<void>((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => reject(signal.reason),
-            { once: true },
-          );
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
         });
       },
     });
@@ -1227,7 +1202,10 @@ describe('StreamingToolExecutor', () => {
 
 function executionPipelineFromMock(
   execute: ReturnType<typeof vi.fn>,
-  toolConfigs?: Record<string, { kind?: 'readonly' | 'write' | 'execute'; interruptBehavior?: 'cancel' | 'block' }>,
+  toolConfigs?: Record<
+    string,
+    { kind?: 'readonly' | 'write' | 'execute'; interruptBehavior?: 'cancel' | 'block' }
+  >,
 ) {
   return {
     getRegistry: () => ({
@@ -1246,14 +1224,10 @@ function executionPipelineFromMock(
 }
 
 // biome-ignore lint/correctness/useYield: adapts promise-based test gates, not production tools
-async function* completeAsyncToolExecution(
-  result: Promise<ToolResult>,
-): ToolExecution {
+async function* completeAsyncToolExecution(result: Promise<ToolResult>): ToolExecution {
   return await result;
 }
 
 function isToolExecution(value: unknown): value is ToolExecution {
-  return typeof value === 'object'
-    && value !== null
-    && Symbol.asyncIterator in value;
+  return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
 }

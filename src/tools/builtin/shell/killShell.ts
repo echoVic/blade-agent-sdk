@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, } from '../../types/index.js';
-import { ToolErrorType, ToolKind } from '../../types/index.js';
+import type { ExecutionContext } from '../../types/execution.js';
+import { ToolKind } from '../../types/kind.js';
+import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 
@@ -12,9 +13,11 @@ export const killShellTool = createTool({
   kind: ToolKind.Execute,
   sideEffect: 'idempotent',
 
-  schema: lazySchema(() => z.object({
-    shell_id: z.string().min(1).describe('Background Shell ID to terminate'),
-  })),
+  schema: lazySchema(() =>
+    z.object({
+      shell_id: z.string().min(1).describe('Background Shell ID to terminate'),
+    }),
+  ),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

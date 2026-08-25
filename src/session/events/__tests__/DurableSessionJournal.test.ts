@@ -11,8 +11,8 @@ import {
   RequestId,
   SessionId,
   TurnId,
-} from '../../../types/branded.js';
-import type { JsonValue } from '../../../types/common.js';
+} from '../../../types/identifiers.js';
+import type { JsonValue } from '../../../types/json.js';
 import {
   DurableEventSequenceConflictError,
   type DurableEventStore,

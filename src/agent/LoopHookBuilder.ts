@@ -13,14 +13,19 @@ import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { ModelMessage } from '../model/message.js';
 import {
   isExecutionLeaseFailure,
   runWithExecutionLeaseBoundary,
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolEffect } from '../tools/types/index.js';
-import type { SessionId } from '../types/branded.js';
+import type { ToolEffect } from '../tools/types/effects.js';
+import {
+  type MessageId,
+  SessionId,
+  type SessionId as SessionIdType,
+  ToolUseId,
+} from '../types/identifiers.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
 import type { AgentRunControl } from './AgentRunControl.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
@@ -28,10 +33,7 @@ import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
 import type { TokenBudget } from './TokenBudget.js';
-import type {
-  ChatContext,
-  LoopOptions,
-} from './types.js';
+import type { ChatContext, LoopOptions } from './types.js';
 
 export interface LoopHookBuilderDeps {
   context: ChatContext;
@@ -39,8 +41,8 @@ export interface LoopHookBuilderDeps {
   loopState: LoopState;
   maxTurns: number;
   isYoloMode: boolean;
-  getLastUuid: () => string | null;
-  setLastUuid: (uuid: string | null) => void;
+  getLastUuid: () => MessageId | null;
+  setLastUuid: (uuid: MessageId | null) => void;
   streaming?: boolean;
   executionPipeline: ExecutionPipeline;
   logger: InternalLogger;
@@ -56,9 +58,9 @@ export interface LoopHookBuilderDeps {
 // ===== JSONL 持久化辅助 =====
 async function persistToJsonl<T>(
   modelManager: ModelManager,
-  sessionId: SessionId | undefined,
+  sessionId: SessionIdType | undefined,
   logger: InternalLogger,
-  callback: (contextManager: ContextManager, sessionId: SessionId) => Promise<T>,
+  callback: (contextManager: ContextManager, sessionId: SessionIdType) => Promise<T>,
   assertExecutionLease?: () => Promise<void>,
   signal?: AbortSignal,
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
@@ -89,18 +91,29 @@ async function persistToJsonl<T>(
 
 export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   const {
-    context, options, loopState, maxTurns, isYoloMode,
-    getLastUuid, setLastUuid,
-    streaming, executionPipeline, logger, tokenBudget,
-    compactionHandler, hookRuntime, modelManager,
-    runtimePatchManager, defaultProjectPath,
+    context,
+    options,
+    loopState,
+    maxTurns,
+    isYoloMode,
+    getLastUuid,
+    setLastUuid,
+    streaming,
+    executionPipeline,
+    logger,
+    tokenBudget,
+    compactionHandler,
+    hookRuntime,
+    modelManager,
+    runtimePatchManager,
+    defaultProjectPath,
     runControl,
   } = deps;
 
   let progressToolUseCount = 0;
   let pendingToolResultCount = 0;
-  let pendingInjectedMessages: Message[] = [];
-  let currentAssistantMessageId: string | null = null;
+  let pendingInjectedMessages: ModelMessage[] = [];
+  let currentAssistantMessageId: MessageId | null = null;
   const inputApplicationLifecycle = options?.inputApplicationLifecycle;
   const requestSignal = options?.signal ?? context.signal;
 
@@ -171,7 +184,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           hookRuntime,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
-          loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
+          loopState.conversationState,
+          runtimeCtx,
+          ctx.turn,
+          ctx.lastPromptTokens,
         );
         return yield* compactionStream;
       },
@@ -181,7 +197,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       async onTurnLimitCompact(_ctx) {
         await context.assertExecutionLease?.();
         try {
-          const cs = loopState.getChatService().getConfig();
+          const cs = loopState.getModelService().getConfig();
           const compactResult = await CompactionService.compact(
             loopState.conversationState.getContextMessages(),
             {
@@ -202,12 +218,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           );
           requestSignal?.throwIfAborted();
           await context.assertExecutionLease?.();
-          const continueMessage: Message = {
+          const continueMessage: ModelMessage = {
             role: 'user',
-            content: 'This session is being continued from a previous conversation. '
-              + 'The conversation is summarized above.\n\n'
-              + 'Please continue the conversation from where we left it off without asking the user any further questions. '
-              + 'Continue with the last task that you were asked to work on.',
+            content:
+              'This session is being continued from a previous conversation. ' +
+              'The conversation is summarized above.\n\n' +
+              'Please continue the conversation from where we left it off without asking the user any further questions. ' +
+              'Continue with the last task that you were asked to work on.',
           };
 
           await persistToJsonl(
@@ -216,9 +233,14 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             logger,
             async (contextMgr, sessionId) => {
               await contextMgr.saveCompaction(
-                sessionId, compactResult.summary,
-                { trigger: 'auto', preTokens: compactResult.preTokens,
-                  postTokens: compactResult.postTokens, filesIncluded: compactResult.filesIncluded },
+                sessionId,
+                compactResult.summary,
+                {
+                  trigger: 'auto',
+                  preTokens: compactResult.preTokens,
+                  postTokens: compactResult.postTokens,
+                  filesIncluded: compactResult.filesIncluded,
+                },
                 null,
               );
             },
@@ -234,10 +256,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           };
         } catch (compactError) {
           if (
-            requestSignal?.aborted
-            || isExecutionLeaseFailure(compactError)
-            || isHookProcessContainmentError(compactError)
-            || compactError instanceof ProviderRegistryError
+            requestSignal?.aborted ||
+            isExecutionLeaseFailure(compactError) ||
+            isHookProcessContainmentError(compactError) ||
+            compactError instanceof ProviderRegistryError
           ) {
             throw compactError;
           }
@@ -254,10 +276,12 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       },
 
       async afterExec(ctx) {
-        const { toolCall, result, effects, toolUseUuid } = ctx;
+        const { toolCall, result, effects, toolMessageId } = ctx;
         const injectedMessages = effects
-          .filter((effect): effect is Extract<ToolEffect, { type: 'newMessages' }> =>
-            effect.type === 'newMessages')
+          .filter(
+            (effect): effect is Extract<ToolEffect, { type: 'newMessages' }> =>
+              effect.type === 'newMessages',
+          )
           .flatMap((effect) => effect.messages);
         pendingInjectedMessages.push(...injectedMessages);
 
@@ -267,25 +291,37 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           logger,
           async (contextMgr, sessionId) => {
             const metadata = result.metadata;
-            const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
+            const isSubagentStatus = (
+              v: unknown,
+            ): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
               v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
             const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
-              ? metadata.subagentStatus : 'completed';
-            const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
-              ? {
-                  subagentSessionId: metadata.subagentSessionId,
-                  subagentType: typeof metadata.subagentType === 'string'
-                    ? metadata.subagentType : toolCall.function.name,
-                  subagentStatus,
-                  subagentSummary: typeof metadata.subagentSummary === 'string'
-                    ? metadata.subagentSummary : undefined,
-                }
-              : undefined;
+              ? metadata.subagentStatus
+              : 'completed';
+            const subagentRef =
+              metadata && typeof metadata.subagentSessionId === 'string'
+                ? {
+                    subagentSessionId: SessionId(metadata.subagentSessionId),
+                    subagentType:
+                      typeof metadata.subagentType === 'string'
+                        ? metadata.subagentType
+                        : toolCall.function.name,
+                    subagentStatus,
+                    subagentSummary:
+                      typeof metadata.subagentSummary === 'string'
+                        ? metadata.subagentSummary
+                        : undefined,
+                  }
+                : undefined;
             const uuid = await contextMgr.saveToolResult(
-              sessionId, toolCall.id, toolCall.function.name,
+              sessionId,
+              ToolUseId(toolCall.id),
+              toolCall.function.name,
               result.status === 'success' ? result.model : null,
-              getLastUuid(), result.status === 'success' ? undefined : result.error.message,
-              context.subagentInfo, subagentRef,
+              getLastUuid(),
+              result.status === 'success' ? undefined : result.error.message,
+              context.subagentInfo,
+              subagentRef,
             );
             setLastUuid(uuid);
           },
@@ -347,8 +383,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         if (runtimePatch) {
           runtimePatchManager.applyRuntimePatch(runtimePatch, loopState, {
             toolName: toolCall.function.name,
-            toolCallId: toolCall.id,
-            toolUseUuid: currentAssistantMessageId ?? toolUseUuid,
+            toolCallId: ToolUseId(toolCall.id),
+            toolMessageId: currentAssistantMessageId ?? toolMessageId,
           });
         }
 
@@ -387,9 +423,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           logger,
           async (contextMgr, sessionId) => {
             if (
-              ctx.content.trim() !== ''
-              || ctx.reasoningContent
-              || (ctx.toolCalls?.length ?? 0) > 0
+              ctx.content.trim() !== '' ||
+              ctx.reasoningContent ||
+              (ctx.toolCalls?.length ?? 0) > 0
             ) {
               const uuid = await contextMgr.saveMessage(
                 sessionId,
@@ -412,7 +448,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           context.runWithExecutionLease,
         );
       },
-
     },
 
     recovery: {
@@ -426,7 +461,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               runWithExecutionLease: context.runWithExecutionLease,
               hookRuntime,
             };
-            const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
+            const compactStream = compactionHandler?.reactiveCompact(
+              loopState.conversationState,
+              runtimeCtx,
+            );
             if (!compactStream) return false;
             return yield* compactStream;
           }
@@ -449,10 +487,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             warning: stopResult.warning,
           };
         } catch (error) {
-          if (
-            isExecutionLeaseFailure(error)
-            || isHookProcessContainmentError(error)
-          ) {
+          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
             throw error;
           }
           requestSignal?.throwIfAborted();

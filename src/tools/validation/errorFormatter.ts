@@ -1,7 +1,7 @@
 import { isPlainObject } from 'lodash-es';
 import type { ZodError, ZodIssue, z } from 'zod';
 import { SdkError } from '../../errors/SdkError.js';
-import { ToolErrorType } from '../types/index.js';
+import { ToolErrorType } from '../types/result.js';
 
 type ZodIssueExtra = ZodIssue & {
   received?: unknown;

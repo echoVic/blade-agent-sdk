@@ -4,11 +4,11 @@
  * 定义 Blade Hooks System 的核心类型
  */
 
-import type { ToolResult } from '../../tools/types/ToolResult.js';
-import type { SessionId } from '../../types/branded.js';
-import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
-import type { HookEvent } from '../../types/constants.js';
-import type { Assert, Extends } from '../../types/typeAssertions.js';
+import type { ToolResult } from '../tools/types/result.js';
+import type { HookEvent, PermissionMode } from '../types/constants.js';
+import type { SessionId } from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
+import type { Assert, Extends } from '../types/typeAssertions.js';
 
 // ============================================================================
 // Hook Input
@@ -839,7 +839,10 @@ export interface HookConfig {
   InstructionsLoaded?: HookMatcher[];
 }
 
-type HookConfigEventKeys = Exclude<keyof HookConfig, 'enabled' | 'defaultTimeout' | 'timeoutBehavior' | 'failureBehavior' | 'maxConcurrentHooks'>;
+type HookConfigEventKeys = Exclude<
+  keyof HookConfig,
+  'enabled' | 'defaultTimeout' | 'timeoutBehavior' | 'failureBehavior' | 'maxConcurrentHooks'
+>;
 type _AssertHookConfigComplete = Assert<Extends<HookEvent, HookConfigEventKeys>>;
 type _AssertNoExtraKeys = Assert<Extends<HookConfigEventKeys, HookEvent>>;
 
@@ -906,12 +909,13 @@ interface HookExecutionResultBase {
  * - needs_confirmation: 需要用户确认后继续
  * - warning: 非阻塞警告，记录后继续
  */
-export type HookExecutionResult = HookExecutionResultBase & (
-  | { status: 'success'; output?: HookOutput }
-  | { status: 'blocked'; error: string }
-  | { status: 'needs_confirmation'; warning: string }
-  | { status: 'warning'; warning: string }
-);
+export type HookExecutionResult = HookExecutionResultBase &
+  (
+    | { status: 'success'; output?: HookOutput }
+    | { status: 'blocked'; error: string }
+    | { status: 'needs_confirmation'; warning: string }
+    | { status: 'warning'; warning: string }
+  );
 
 /**
  * PreToolUse Hook 执行结果

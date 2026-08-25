@@ -9,7 +9,7 @@ import {
   ToolAttemptId,
   ToolUseId,
   TurnId,
-} from '../../../types/branded.js';
+} from '../../../types/identifiers.js';
 import {
   DURABLE_EVENT_LOG_FORMAT,
   parseDurableEventDraft,
@@ -474,9 +474,7 @@ describe('durable event schemas', () => {
 
     expect(() =>
       parseDurableEventEnvelope({
-        ...validDrafts.find(
-          (draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED,
-        ),
+        ...validDrafts.find((draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED),
         schemaVersion: 2,
         eventId: EventId('invalid-v2-model-event'),
         sequence: 1,

@@ -1,20 +1,26 @@
 import { nanoid } from 'nanoid';
-import type { ContentPart, Message, ModelIdentity, ToolCall } from '../services/ChatServiceInterface.js';
-import type { InputId, RequestId, SessionId } from '../types/branded.js';
-import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
-import type {
-  ContextData,
-  PendingInputInfo,
-} from '../context/types.js';
+import type { ContextData } from '../context/types.js';
+import type { ModelIdentity } from '../model/identity.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import type { MessageRole } from '../types/constants.js';
+import {
+  type InputId,
+  MessageId,
+  type RequestId,
+  type SessionId,
+  ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import type {
   SessionSnapshot,
   SessionState,
-  SessionSummary,
   SessionStore,
+  SessionSummary,
 } from './SessionStore.js';
+import type { PersistedPendingInput } from './transcript.js';
 
 export interface SessionRepositorySubagentInfo {
-  parentSessionId: string;
+  parentSessionId: SessionId;
   subagentType: string;
   isSidechain: boolean;
 }
@@ -25,11 +31,11 @@ export interface SessionRepositoryMessageMetadata {
   usage?: { input_tokens: number; output_tokens: number };
   customMetadata?: JsonObject;
   reasoningContent?: string;
-  toolCalls?: ToolCall[];
+  toolCalls?: ModelToolCall[];
 }
 
 export interface SessionRepositorySubagentRef {
-  subagentSessionId: string;
+  subagentSessionId: SessionId;
   subagentType: string;
   subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
   subagentSummary?: string;
@@ -43,8 +49,8 @@ export interface SessionRepositoryCompactionMetadata {
 }
 
 export interface PersistedToolUse {
-  messageId: string;
-  toolCallId: string;
+  messageId: MessageId;
+  toolCallId: ToolUseId;
 }
 
 export interface SessionRepositoryStorageStats {
@@ -70,62 +76,54 @@ export interface SessionRepository extends SessionStore {
 
 /** Append-only transcript event port used to update Session projections. */
 export interface SessionEventStore {
-  createSession(
-    sessionId: SessionId,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void>;
+  createSession(sessionId: SessionId, subagentInfo?: SessionRepositorySubagentInfo): Promise<void>;
   saveMessage(
     sessionId: SessionId,
     messageRole: MessageRole,
-    content: string | ContentPart[],
-    parentUuid?: string | null,
+    content: string | ModelContent[],
+    parentMessageId?: MessageId | null,
     metadata?: SessionRepositoryMessageMetadata,
     subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string>;
-  saveInputEnqueued(sessionId: SessionId, input: PendingInputInfo): Promise<void>;
+  ): Promise<MessageId>;
+  saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void>;
   saveAppliedInputMessage(
     sessionId: SessionId,
     inputId: InputId,
     requestId: RequestId,
-    content: string | ContentPart[],
-    parentUuid?: string | null,
+    content: string | ModelContent[],
+    parentMessageId?: MessageId | null,
     subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string>;
-  saveInputCancelled(
-    sessionId: SessionId,
-    inputId: InputId,
-    reason: string,
-  ): Promise<void>;
+  ): Promise<MessageId>;
+  saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void>;
   saveToolUse(
     sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
-    parentUuid?: string | null,
+    parentMessageId?: MessageId | null,
     subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: string,
+    requestedToolCallId?: ToolUseId,
   ): Promise<PersistedToolUse>;
   saveToolResult(
     sessionId: SessionId,
-    toolId: string,
+    toolId: ToolUseId,
     toolName: string,
     toolOutput: JsonValue,
-    parentUuid?: string | null,
+    parentMessageId?: MessageId | null,
     error?: string,
     subagentInfo?: SessionRepositorySubagentInfo,
     subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<string>;
+  ): Promise<MessageId>;
   saveCompaction(
     sessionId: SessionId,
     summary: string,
     metadata: SessionRepositoryCompactionMetadata,
-    parentUuid?: string | null,
-  ): Promise<string>;
+    parentMessageId?: MessageId | null,
+  ): Promise<MessageId>;
   saveContext(sessionId: SessionId, contextData: ContextData): Promise<void>;
 }
 
 /** Compatibility port for backends that expose reads and appends together. */
-export interface SessionPersistence
-  extends SessionRepository, SessionEventStore {}
+export interface SessionPersistence extends SessionRepository, SessionEventStore {}
 
 export function isSessionEventStore(
   value: SessionRepository | SessionEventStore | undefined,
@@ -133,7 +131,6 @@ export function isSessionEventStore(
   if (!value) {
     return false;
   }
-  const candidate = value as unknown as Record<string, unknown>;
   return [
     'createSession',
     'saveMessage',
@@ -144,7 +141,7 @@ export function isSessionEventStore(
     'saveToolResult',
     'saveCompaction',
     'saveContext',
-  ].every((method) => typeof candidate[method] === 'function');
+  ].every((method) => typeof Reflect.get(value, method) === 'function');
 }
 
 /**
@@ -162,28 +159,25 @@ export class NoopSessionRepository implements SessionPersistence {
   async saveMessage(
     _sessionId: SessionId,
     _messageRole: MessageRole,
-    _content: string | ContentPart[],
-    _parentUuid: string | null = null,
+    _content: string | ModelContent[],
+    _parentMessageId: MessageId | null = null,
     _metadata?: SessionRepositoryMessageMetadata,
     _subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string> {
-    return nanoid();
+  ): Promise<MessageId> {
+    return MessageId(nanoid());
   }
 
-  async saveInputEnqueued(
-    _sessionId: SessionId,
-    _input: PendingInputInfo,
-  ): Promise<void> {}
+  async saveInputEnqueued(_sessionId: SessionId, _input: PersistedPendingInput): Promise<void> {}
 
   async saveAppliedInputMessage(
     _sessionId: SessionId,
     _inputId: InputId,
     _requestId: RequestId,
-    _content: string | ContentPart[],
-    _parentUuid: string | null = null,
+    _content: string | ModelContent[],
+    _parentMessageId: MessageId | null = null,
     _subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<string> {
-    return nanoid();
+  ): Promise<MessageId> {
+    return MessageId(nanoid());
   }
 
   async saveInputCancelled(
@@ -196,36 +190,36 @@ export class NoopSessionRepository implements SessionPersistence {
     _sessionId: SessionId,
     _toolName: string,
     _toolInput: JsonValue,
-    _parentUuid: string | null = null,
+    _parentMessageId: MessageId | null = null,
     _subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: string,
+    requestedToolCallId?: ToolUseId,
   ): Promise<PersistedToolUse> {
     return {
-      messageId: nanoid(),
-      toolCallId: requestedToolCallId ?? nanoid(),
+      messageId: MessageId(nanoid()),
+      toolCallId: requestedToolCallId ?? ToolUseId(nanoid()),
     };
   }
 
   async saveToolResult(
     _sessionId: SessionId,
-    _toolId: string,
+    _toolId: ToolUseId,
     _toolName: string,
     _toolOutput: JsonValue,
-    _parentUuid: string | null = null,
+    _parentMessageId: MessageId | null = null,
     _error?: string,
     _subagentInfo?: SessionRepositorySubagentInfo,
     _subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<string> {
-    return nanoid();
+  ): Promise<MessageId> {
+    return MessageId(nanoid());
   }
 
   async saveCompaction(
     _sessionId: SessionId,
     _summary: string,
     _metadata: SessionRepositoryCompactionMetadata,
-    _parentUuid: string | null = null,
-  ): Promise<string> {
-    return nanoid();
+    _parentMessageId: MessageId | null = null,
+  ): Promise<MessageId> {
+    return MessageId(nanoid());
   }
 
   async saveContext(_sessionId: SessionId, _contextData: ContextData): Promise<void> {}
@@ -234,18 +228,18 @@ export class NoopSessionRepository implements SessionPersistence {
     return null;
   }
 
-  async loadMessages(_sessionId: SessionId): Promise<Message[]> {
+  async loadMessages(_sessionId: SessionId): Promise<ModelMessage[]> {
     return [];
   }
 
   async forkState(
     _sessionId: SessionId,
-    _options?: { messageId?: string },
+    _options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null> {
     return null;
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     return [];
   }
 

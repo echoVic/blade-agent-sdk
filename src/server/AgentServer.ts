@@ -1,43 +1,43 @@
 import { createHash } from 'node:crypto';
 import {
   AGENT_PROTOCOL_VERSION,
-  AgentCommandType,
-  AgentProtocolError,
-  parseAgentCommand,
   type AgentCommand,
   type AgentCommandFailure,
   type AgentCommandResult,
+  AgentCommandType,
   type AgentEventPage,
   type AgentPrincipal,
   type AgentProtocolCapabilities,
+  AgentProtocolError,
   type AgentProtocolErrorCode,
   type AgentServerEvent,
   type AgentServerScope,
+  type AgentSessionDescriptor,
+  parseAgentCommand,
 } from '../protocol/index.js';
 import { canonicalJson } from '../session/events/canonicalJson.js';
 import type { SessionOptions } from '../session/types.js';
 import {
-  SessionId,
+  CommandId,
+  type CommandId as CommandIdType,
   type RequestId,
-} from '../types/branded.js';
+  SessionId,
+} from '../types/identifiers.js';
 import { getErrorName } from '../utils/errorUtils.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import {
-  InMemoryAgentServerStore,
   type AgentServerSessionRecord,
   type AgentServerStore,
+  InMemoryAgentServerStore,
 } from './AgentServerStore.js';
-import {
-  NOOP_AGENT_SERVER_TELEMETRY,
-  type AgentServerTelemetry,
-} from './AgentServerTelemetry.js';
+import { type AgentServerTelemetry, NOOP_AGENT_SERVER_TELEMETRY } from './AgentServerTelemetry.js';
+import type { RuntimeStore } from './RuntimeStore.js';
 import {
   type AgentServerSessionContext,
   InProcessSessionExecutor,
   type SessionExecutor,
   type SessionExecutorCommandContext,
 } from './SessionExecutor.js';
-import type { RuntimeStore } from './RuntimeStore.js';
 import {
   TenantAdmissionController,
   type TenantAdmissionLimits,
@@ -47,6 +47,16 @@ const DEFAULT_COMMAND_LEASE_TTL_MS = 30_000;
 const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
+
+function toSessionDescriptor(record: AgentServerSessionRecord): AgentSessionDescriptor {
+  return {
+    sessionId: record.sessionId,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    ...(record.metadata ? { metadata: record.metadata } : {}),
+  };
+}
 
 export interface AgentServerOptions {
   readonly resolveSessionOptions?: (
@@ -72,9 +82,9 @@ export interface AgentServerOptions {
 }
 
 function commandSessionId(command: AgentCommand): SessionId | undefined {
-  return command.type === AgentCommandType.SESSION_CREATE
-    || command.type === AgentCommandType.SESSION_LIST
-    || command.type === AgentCommandType.INITIALIZE
+  return command.type === AgentCommandType.SESSION_CREATE ||
+    command.type === AgentCommandType.SESSION_LIST ||
+    command.type === AgentCommandType.INITIALIZE
     ? undefined
     : command.data.sessionId;
 }
@@ -123,11 +133,7 @@ function statusForCode(code: AgentProtocolErrorCode): number {
   }
 }
 
-function json(
-  data: unknown,
-  status = 200,
-  headers?: Record<string, string>,
-): Response {
+function json(data: unknown, status = 200, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -162,25 +168,15 @@ export class AgentServer {
   private readonly basePath: string;
 
   constructor(private readonly options: AgentServerOptions) {
-    if (
-      options.runtimeStore
-      && options.store
-      && options.runtimeStore !== options.store
-    ) {
-      throw new TypeError(
-        'AgentServer store and runtimeStore must reference the same backend',
-      );
+    if (options.runtimeStore && options.store && options.runtimeStore !== options.store) {
+      throw new TypeError('AgentServer store and runtimeStore must reference the same backend');
     }
-    this.store =
-      options.runtimeStore ?? options.store ?? new InMemoryAgentServerStore();
+    this.store = options.runtimeStore ?? options.store ?? new InMemoryAgentServerStore();
     this.telemetry = options.telemetry ?? NOOP_AGENT_SERVER_TELEMETRY;
     this.admission = new TenantAdmissionController(options.admission);
-    this.commandLeaseTtlMs =
-      options.commandLeaseTtlMs ?? DEFAULT_COMMAND_LEASE_TTL_MS;
-    this.eventPollIntervalMs =
-      options.eventPollIntervalMs ?? DEFAULT_EVENT_POLL_INTERVAL_MS;
-    this.heartbeatIntervalMs =
-      options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+    this.commandLeaseTtlMs = options.commandLeaseTtlMs ?? DEFAULT_COMMAND_LEASE_TTL_MS;
+    this.eventPollIntervalMs = options.eventPollIntervalMs ?? DEFAULT_EVENT_POLL_INTERVAL_MS;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.maxRequestBytes = options.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
     for (const [name, value] of [
       ['commandLeaseTtlMs', this.commandLeaseTtlMs],
@@ -195,37 +191,32 @@ export class AgentServer {
     this.basePath = `/${(options.basePath ?? 'v1/agent').replace(/^\/+|\/+$/g, '')}`;
     const resolveSessionOptions = options.resolveSessionOptions;
     if (!options.sessionExecutor && !resolveSessionOptions) {
-      throw new TypeError(
-        'AgentServer requires sessionExecutor or resolveSessionOptions',
-      );
+      throw new TypeError('AgentServer requires sessionExecutor or resolveSessionOptions');
     }
-    this.sessionExecutor = options.sessionExecutor
-      ?? new InProcessSessionExecutor({
+    this.sessionExecutor =
+      options.sessionExecutor ??
+      new InProcessSessionExecutor({
         store: this.store,
         resolveSessionOptions: async (context) => {
           const sessionOptions = await (
-            resolveSessionOptions as NonNullable<
-              AgentServerOptions['resolveSessionOptions']
-            >
+            resolveSessionOptions as NonNullable<AgentServerOptions['resolveSessionOptions']>
           )(context);
           if (!options.runtimeStore) {
             return sessionOptions;
           }
           if (
-            sessionOptions.sessionRepository
-            || sessionOptions.sessionEventStore
-            || sessionOptions.durableEventStore
+            sessionOptions.sessionRepository ||
+            sessionOptions.sessionEventStore ||
+            sessionOptions.durableEventStore
           ) {
             throw new AgentProtocolError(
               'SESSION_CONFLICT',
-              'runtimeStore is authoritative; Session-level persistence '
-                + 'overrides are not allowed',
+              'runtimeStore is authoritative; Session-level persistence ' +
+                'overrides are not allowed',
               409,
             );
           }
-          const tenantStore = options.runtimeStore.forTenant(
-            context.principal.tenantId,
-          );
+          const tenantStore = options.runtimeStore.forTenant(context.principal.tenantId);
           return {
             ...sessionOptions,
             sessionRepository: tenantStore,
@@ -235,8 +226,7 @@ export class AgentServer {
         },
         publish: (tenantId, sessionId, type, data, requestId) =>
           this.publish(tenantId, sessionId, type, data, requestId),
-        maxActiveSessionsPerTenant:
-          options.admission?.maxActiveSessionsPerTenant,
+        maxActiveSessionsPerTenant: options.admission?.maxActiveSessionsPerTenant,
         approvalTimeoutMs: options.approvalTimeoutMs,
         requirePersistentSessions: options.requirePersistentSessions,
       });
@@ -260,31 +250,33 @@ export class AgentServer {
       return claim.result;
     }
     if (claim.status === 'conflict') {
-      return this.failure(command.commandId, new AgentProtocolError(
-        'COMMAND_CONFLICT',
-        'This commandId was already used for a different command',
-        409,
-      ));
+      return this.failure(
+        command.commandId,
+        new AgentProtocolError(
+          'COMMAND_CONFLICT',
+          'This commandId was already used for a different command',
+          409,
+        ),
+      );
     }
     if (claim.status === 'in_progress') {
-      return this.failure(command.commandId, new AgentProtocolError(
-        'COMMAND_IN_PROGRESS',
-        'A command with this commandId is already in progress',
-        409,
-        true,
-        claim.retryAfterMs,
-      ));
+      return this.failure(
+        command.commandId,
+        new AgentProtocolError(
+          'COMMAND_IN_PROGRESS',
+          'A command with this commandId is already in progress',
+          409,
+          true,
+          claim.retryAfterMs,
+        ),
+      );
     }
 
     const startedAt = Date.now();
     let releaseAdmission: (() => void) | undefined;
     try {
       releaseAdmission = await this.admission.acquire(principal.tenantId, signal);
-      await this.store.sealCommand(
-        principal.tenantId,
-        command.commandId,
-        claim.leaseId,
-      );
+      await this.store.sealCommand(principal.tenantId, command.commandId, claim.leaseId);
       let result: AgentCommandResult;
       try {
         result = await this.dispatch(command, principal, signal);
@@ -299,25 +291,26 @@ export class AgentServer {
           result,
         );
       } catch (error) {
-        result = this.failure(command.commandId, new AgentProtocolError(
-          'COMMAND_IN_PROGRESS',
-          'Command outcome is uncertain because idempotency completion failed',
-          503,
-          true,
-          this.commandLeaseTtlMs,
-          undefined,
-          { cause: error },
-        ));
+        result = this.failure(
+          command.commandId,
+          new AgentProtocolError(
+            'COMMAND_IN_PROGRESS',
+            'Command outcome is uncertain because idempotency completion failed',
+            503,
+            true,
+            this.commandLeaseTtlMs,
+            undefined,
+            { cause: error },
+          ),
+        );
       }
       await this.recordCommand(command, principal, startedAt, result);
       return result;
     } catch (error) {
       const result = this.failure(command.commandId, error);
-      await this.store.releaseCommand(
-        principal.tenantId,
-        command.commandId,
-        claim.leaseId,
-      ).catch(() => undefined);
+      await this.store
+        .releaseCommand(principal.tenantId, command.commandId, claim.leaseId)
+        .catch(() => undefined);
       await this.recordCommand(command, principal, startedAt, result);
       return result;
     } finally {
@@ -406,11 +399,7 @@ export class AgentServer {
           !result.ok && result.error.retryAfterMs
             ? { 'retry-after': String(Math.ceil(result.error.retryAfterMs / 1000)) }
             : undefined;
-        return json(
-          result,
-          result.ok ? 200 : statusForCode(result.error.code),
-          retryHeaders,
-        );
+        return json(result, result.ok ? 200 : statusForCode(result.error.code), retryHeaders);
       } catch (error) {
         return this.errorResponse('invalid', error);
       }
@@ -442,16 +431,19 @@ export class AgentServer {
       }
     }
 
-    return json({
-      protocolVersion: AGENT_PROTOCOL_VERSION,
-      commandId: 'routing',
-      ok: false,
-      error: {
-        code: 'INVALID_COMMAND',
-        message: 'Route not found',
-        retryable: false,
-      },
-    } satisfies AgentCommandFailure, 404);
+    return json(
+      {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: CommandId('routing'),
+        ok: false,
+        error: {
+          code: 'INVALID_COMMAND',
+          message: 'Route not found',
+          retryable: false,
+        },
+      } satisfies AgentCommandFailure,
+      404,
+    );
   }
 
   async close(): Promise<void> {
@@ -469,9 +461,7 @@ export class AgentServer {
       ...(signal ? { signal } : {}),
       ...(this.options.runtimeStore
         ? {
-            runtimeStore: this.options.runtimeStore.forTenant(
-              principal.tenantId,
-            ),
+            runtimeStore: this.options.runtimeStore.forTenant(principal.tenantId),
           }
         : {}),
     };
@@ -483,29 +473,28 @@ export class AgentServer {
         });
       case AgentCommandType.SESSION_CREATE: {
         const session = await this.sessionExecutor.create(context, command.data);
-        return this.success(command.commandId, { session });
+        return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
-      case AgentCommandType.SESSION_READ:
-        return this.success(
-          command.commandId,
-          await this.sessionExecutor.read(context, command.data),
-        );
+      case AgentCommandType.SESSION_READ: {
+        const result = await this.sessionExecutor.read(context, command.data);
+        return this.success(command.commandId, {
+          ...result,
+          session: toSessionDescriptor(result.session),
+        });
+      }
       case AgentCommandType.SESSION_LIST:
         return this.list(command.commandId, principal, command.data);
       case AgentCommandType.SESSION_RESUME: {
         const session = await this.sessionExecutor.resume(context, command.data);
-        return this.success(command.commandId, { session });
+        return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_FORK: {
         const session = await this.sessionExecutor.fork(context, command.data);
-        return this.success(command.commandId, { session });
+        return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_CLOSE: {
-        const session = await this.sessionExecutor.closeSession(
-          context,
-          command.data,
-        );
-        return this.success(command.commandId, { session });
+        const session = await this.sessionExecutor.closeSession(context, command.data);
+        return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.INPUT_SUBMIT:
         return this.success(
@@ -529,13 +518,13 @@ export class AgentServer {
   }
 
   private async list(
-    commandId: string,
+    commandId: CommandIdType,
     principal: AgentPrincipal,
     options: { cursor?: string; limit?: number },
   ): Promise<AgentCommandResult> {
     const page = await this.store.listSessions(principal.tenantId, options);
     return this.success(commandId, {
-      sessions: page.sessions,
+      sessions: page.sessions.map(toSessionDescriptor),
       ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
     });
   }
@@ -573,11 +562,7 @@ export class AgentServer {
   ): Promise<AgentServerSessionRecord> {
     const record = await this.store.getSession(tenantId, sessionId);
     if (!record) {
-      throw new AgentProtocolError(
-        'SESSION_NOT_FOUND',
-        `Session ${sessionId} was not found`,
-        404,
-      );
+      throw new AgentProtocolError('SESSION_NOT_FOUND', `Session ${sessionId} was not found`, 404);
     }
     return record;
   }
@@ -589,15 +574,8 @@ export class AgentServer {
   }
 
   private authorizeScope(principal: AgentPrincipal, scope: AgentServerScope): void {
-    if (
-      !principal.scopes.includes('session:admin') &&
-      !principal.scopes.includes(scope)
-    ) {
-      throw new AgentProtocolError(
-        'FORBIDDEN',
-        `Missing required scope: ${scope}`,
-        403,
-      );
+    if (!principal.scopes.includes('session:admin') && !principal.scopes.includes(scope)) {
+      throw new AgentProtocolError('FORBIDDEN', `Missing required scope: ${scope}`, 403);
     }
   }
 
@@ -647,10 +625,7 @@ export class AgentServer {
     requestSignal: AbortSignal,
   ): Promise<Response> {
     const cursor = url.searchParams.get('after') ?? lastEventId ?? '0';
-    const afterValue =
-      requestSignal.aborted
-        ? 0
-        : Number(cursor);
+    const afterValue = requestSignal.aborted ? 0 : Number(cursor);
     if (!Number.isSafeInteger(afterValue) || afterValue < 0) {
       return this.errorResponse(
         'events',
@@ -681,52 +656,57 @@ export class AgentServer {
     })[Symbol.asyncIterator]();
     let pending: Promise<IteratorResult<AgentServerEvent>> | undefined;
     let closed = false;
-    const stream = new ReadableStream<Uint8Array>({
-      pull: async (output) => {
-        if (closed) {
-          return;
-        }
-        pending ??= iterator.next();
-        let timeout: ReturnType<typeof setTimeout> | undefined;
-        try {
-          const outcome = await Promise.race([
-            pending.then((step) => ({ kind: 'event' as const, step })),
-            new Promise<{ kind: 'heartbeat' }>((resolve) => {
-              timeout = setTimeout(
-                () => resolve({ kind: 'heartbeat' }),
-                this.heartbeatIntervalMs,
-              );
-            }),
-          ]);
-          if (outcome.kind === 'heartbeat') {
-            output.enqueue(encoder.encode(': heartbeat\n\n'));
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull: async (output) => {
+          if (closed) {
             return;
           }
-          pending = undefined;
-          if (outcome.step.done) {
+          pending ??= iterator.next();
+          let timeout: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const outcome = await Promise.race([
+              pending.then((step) => ({ kind: 'event' as const, step })),
+              new Promise<{ kind: 'heartbeat' }>((resolve) => {
+                timeout = setTimeout(
+                  () => resolve({ kind: 'heartbeat' }),
+                  this.heartbeatIntervalMs,
+                );
+              }),
+            ]);
+            if (outcome.kind === 'heartbeat') {
+              output.enqueue(encoder.encode(': heartbeat\n\n'));
+              return;
+            }
+            pending = undefined;
+            if (outcome.step.done) {
+              closed = true;
+              output.close();
+              return;
+            }
+            const event = outcome.step.value;
+            output.enqueue(
+              encoder.encode(
+                `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+              ),
+            );
+          } catch (error) {
             closed = true;
-            output.close();
-            return;
+            output.error(error);
+          } finally {
+            if (timeout) {
+              clearTimeout(timeout);
+            }
           }
-          const event = outcome.step.value;
-          output.enqueue(encoder.encode(
-            `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-          ));
-        } catch (error) {
+        },
+        cancel: async (reason) => {
           closed = true;
-          output.error(error);
-        } finally {
-          if (timeout) {
-            clearTimeout(timeout);
-          }
-        }
+          controller.abort(reason);
+          await iterator.return?.(undefined as never);
+        },
       },
-      cancel: async (reason) => {
-        closed = true;
-        controller.abort(reason);
-        await iterator.return?.(undefined as never);
-      },
-    }, { highWaterMark: 1 });
+      { highWaterMark: 1 },
+    );
     return new Response(stream, {
       status: 200,
       headers: {
@@ -738,10 +718,7 @@ export class AgentServer {
     });
   }
 
-  private success<TData>(
-    commandId: string,
-    data: TData,
-  ): AgentCommandResult<TData> {
+  private success<TData>(commandId: CommandIdType, data: TData): AgentCommandResult<TData> {
     return {
       protocolVersion: AGENT_PROTOCOL_VERSION,
       commandId,
@@ -750,7 +727,7 @@ export class AgentServer {
     };
   }
 
-  private failure(commandId: string, error: unknown): AgentCommandFailure {
+  private failure(commandId: CommandIdType, error: unknown): AgentCommandFailure {
     const protocolError =
       error instanceof AgentProtocolError
         ? error
@@ -778,25 +755,22 @@ export class AgentServer {
   }
 
   private errorResponse(commandId: string, error: unknown): Response {
+    const typedCommandId = CommandId(commandId);
     const failure =
       error instanceof SyntaxError
-        ? this.failure(commandId, new AgentProtocolError(
-            'INVALID_COMMAND',
-            'Command body is not valid JSON',
-            400,
-          ))
+        ? this.failure(
+            typedCommandId,
+            new AgentProtocolError('INVALID_COMMAND', 'Command body is not valid JSON', 400),
+          )
         : getErrorName(error) === 'ZodError'
-          ? this.failure(commandId, new AgentProtocolError(
-              'INVALID_COMMAND',
-              'Command validation failed',
-              400,
-            ))
-        : this.failure(commandId, error);
+          ? this.failure(
+              typedCommandId,
+              new AgentProtocolError('INVALID_COMMAND', 'Command validation failed', 400),
+            )
+          : this.failure(typedCommandId, error);
     return json(
       failure,
-      error instanceof AgentProtocolError
-        ? error.status
-        : statusForCode(failure.error.code),
+      error instanceof AgentProtocolError ? error.status : statusForCode(failure.error.code),
     );
   }
 
@@ -816,7 +790,8 @@ export class AgentServer {
           durationMs: Date.now() - startedAt,
           outcome: result.ok ? 'success' : 'error',
           errorCode: result.ok ? undefined : result.error.code,
-        })),
+        }),
+      ),
       Promise.resolve().then(() =>
         this.telemetry.writeAudit?.({
           occurredAt: new Date().toISOString(),
@@ -827,7 +802,8 @@ export class AgentServer {
           sessionId,
           outcome: result.ok ? 'success' : 'error',
           errorCode: result.ok ? undefined : result.error.code,
-        })),
+        }),
+      ),
     ]);
   }
 }

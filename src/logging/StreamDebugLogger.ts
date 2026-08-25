@@ -8,7 +8,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import type { JsonObject } from '../types/common.js';
+import type { JsonObject } from '../types/json.js';
 
 let logFile: string | undefined;
 let initialized = false;
@@ -26,18 +26,11 @@ function ensureLogFile(): void {
   if (initialized || !logFile) return;
   const logDir = path.dirname(logFile);
   mkdirSync(logDir, { recursive: true, mode: 0o755 });
-  writeFileSync(
-    logFile,
-    `=== Stream Debug Log Started: ${new Date().toISOString()} ===\n`
-  );
+  writeFileSync(logFile, `=== Stream Debug Log Started: ${new Date().toISOString()} ===\n`);
   initialized = true;
 }
 
-export function streamDebug(
-  source: string,
-  message: string,
-  data?: JsonObject
-): void {
+export function streamDebug(source: string, message: string, data?: JsonObject): void {
   if (!logFile) return;
   ensureLogFile();
   const timestamp = new Date().toISOString();

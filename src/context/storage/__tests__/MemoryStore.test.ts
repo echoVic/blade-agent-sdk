@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MemoryStore } from '../MemoryStore.js';
-import { SessionId } from '../../../types/branded.js';
-import type { ContextData, ContextMessage, ToolCall, } from '../../types.js';
 import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
+import { MessageId, SessionId, ToolUseId } from '../../../types/identifiers.js';
+import type { ContextData, ContextMessage, ContextToolCall } from '../../types.js';
+import { MemoryStore } from '../MemoryStore.js';
 
 /**
  * Helper: create a minimal valid ContextData object
@@ -49,7 +49,7 @@ function createContextData(overrides?: Partial<ContextData>): ContextData {
 
 function createMessage(overrides?: Partial<ContextMessage>): ContextMessage {
   return {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: MessageId(`msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
     role: 'user',
     content: 'Hello',
     timestamp: Date.now(),
@@ -57,9 +57,9 @@ function createMessage(overrides?: Partial<ContextMessage>): ContextMessage {
   };
 }
 
-function createToolCall(overrides?: Partial<ToolCall>): ToolCall {
+function createToolCall(overrides?: Partial<ContextToolCall>): ContextToolCall {
   return {
-    id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: ToolUseId(`tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
     name: 'search',
     input: { query: 'test' },
     timestamp: Date.now(),
@@ -350,9 +350,7 @@ describe('MemoryStore', () => {
     });
 
     it('should throw if context is not initialized', () => {
-      expect(() => store.updateWorkspace({ projectPath: '/test' })).toThrow(
-        '上下文数据未初始化'
-      );
+      expect(() => store.updateWorkspace({ projectPath: '/test' })).toThrow('上下文数据未初始化');
     });
 
     it('should merge partial updates without overwriting other fields', () => {

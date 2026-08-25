@@ -5,7 +5,7 @@
  * 使用 Progressive Disclosure：仅注入元数据（name + description），不注入完整内容。
  */
 
-import type { FunctionDeclaration } from '../tools/types/index.js';
+import type { FunctionDeclaration } from '../tools/types/tool.js';
 import { getSkillRegistry } from './SkillRegistry.js';
 import type { SkillActivationContext } from './types.js';
 
@@ -45,7 +45,7 @@ export function injectSkillsMetadata(
     // 替换 available_skills 占位符
     const newDescription = tool.description.replace(
       AVAILABLE_SKILLS_REGEX,
-      `<available_skills>\n${skillsList}\n</available_skills>`
+      `<available_skills>\n${skillsList}\n</available_skills>`,
     );
 
     // 如果描述没有变化，返回原对象

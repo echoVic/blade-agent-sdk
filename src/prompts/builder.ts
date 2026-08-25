@@ -15,7 +15,7 @@
 
 import { getSkillRegistry } from '../skills/index.js';
 import type { SkillActivationContext } from '../skills/types.js';
-import { PermissionMode } from '../types/common.js';
+import { PermissionMode } from '../types/constants.js';
 import { getEnvironmentContext } from '../utils/environment.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from './default.js';
 
@@ -115,7 +115,7 @@ export interface BuildSystemPromptResult {
  * });
  */
 export async function buildSystemPrompt(
-  options: BuildSystemPromptOptions = {}
+  options: BuildSystemPromptOptions = {},
 ): Promise<BuildSystemPromptResult> {
   const {
     projectPath,
@@ -176,10 +176,7 @@ export async function buildSystemPrompt(
 /**
  * 注入 Skills 列表到系统提示的 <available_skills> 占位符
  */
-function injectSkillsToPrompt(
-  prompt: string,
-  activationContext?: SkillActivationContext,
-): string {
+function injectSkillsToPrompt(prompt: string, activationContext?: SkillActivationContext): string {
   const registry = getSkillRegistry();
   const skillsList = registry.generateAvailableSkillsList(activationContext);
 
@@ -191,7 +188,7 @@ function injectSkillsToPrompt(
   // 替换占位符
   return prompt.replace(
     AVAILABLE_SKILLS_REGEX,
-    `<available_skills>\n${skillsList}\n</available_skills>`
+    `<available_skills>\n${skillsList}\n</available_skills>`,
   );
 }
 
@@ -212,8 +209,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
 function injectLanguageInstruction(prompt: string, language?: string): string {
   const lang = language || 'zh-CN';
   const langName = LANGUAGE_NAMES[lang] || lang;
-  
+
   const instruction = `IMPORTANT: Always respond in ${langName}. All your responses must be in ${langName}.`;
-  
+
   return prompt.replace('{{LANGUAGE_INSTRUCTION}}', instruction);
 }

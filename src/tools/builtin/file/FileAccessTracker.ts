@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../../logging/Logger.js';
-import type { SessionId } from '../../../types/branded.js';
+import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorCode, getErrorMessage } from '../../../utils/errorUtils.js';
 
 /**
@@ -87,7 +87,7 @@ export class FileAccessTracker {
   async recordFileEdit(
     filePath: string,
     sessionId: SessionId,
-    operation: 'edit' | 'write' = 'edit'
+    operation: 'edit' | 'write' = 'edit',
   ): Promise<void> {
     try {
       // 获取文件的当前修改时间
@@ -105,10 +105,7 @@ export class FileAccessTracker {
 
       this.logger.debug(`记录文件${operation === 'edit' ? '编辑' : '写入'}: ${filePath}`);
     } catch (error) {
-      this.logger.warn(
-        `记录文件${operation === 'edit' ? '编辑' : '写入'}失败: ${filePath}`,
-        error
-      );
+      this.logger.warn(`记录文件${operation === 'edit' ? '编辑' : '写入'}失败: ${filePath}`, error);
     }
   }
 
@@ -140,9 +137,7 @@ export class FileAccessTracker {
    * @param filePath 文件绝对路径
    * @returns { modified: boolean, message?: string }
    */
-  async checkFileModification(
-    filePath: string
-  ): Promise<{ modified: boolean; message?: string }> {
+  async checkFileModification(filePath: string): Promise<{ modified: boolean; message?: string }> {
     const record = this.accessedFiles.get(filePath);
 
     if (!record) {
@@ -189,7 +184,7 @@ export class FileAccessTracker {
    * @returns { isExternal: boolean, message?: string }
    */
   async checkExternalModification(
-    filePath: string
+    filePath: string,
   ): Promise<{ isExternal: boolean; message?: string }> {
     const record = this.accessedFiles.get(filePath);
 

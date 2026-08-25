@@ -6,8 +6,14 @@ import type {
   AgentSessionDescriptor,
 } from '../protocol/index.js';
 import { AGENT_PROTOCOL_VERSION } from '../protocol/index.js';
-import { EventId, type SessionId } from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
+import {
+  type CommandId,
+  EventId,
+  EventSequence,
+  ExecutionLeaseId,
+  type SessionId,
+} from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
 
 export interface AgentServerSessionRecord extends AgentSessionDescriptor {
   readonly tenantId: string;
@@ -17,7 +23,7 @@ export interface AgentServerSessionRecord extends AgentSessionDescriptor {
 export type AgentCommandClaim =
   | {
       readonly status: 'claimed';
-      readonly leaseId: string;
+      readonly leaseId: ExecutionLeaseId;
     }
   | {
       readonly status: 'completed';
@@ -35,7 +41,7 @@ export interface AgentServerStore {
   healthCheck(): Promise<{ readonly ready: boolean; readonly details?: JsonObject }>;
   claimCommand(
     tenantId: string,
-    commandId: string,
+    commandId: CommandId,
     commandFingerprint: string,
     ttlMs: number,
   ): Promise<AgentCommandClaim>;
@@ -43,27 +49,16 @@ export interface AgentServerStore {
    * Makes a claimed command non-expiring before it crosses a side-effect
    * boundary. A failed completion then remains fail-closed instead of replaying.
    */
-  sealCommand(
-    tenantId: string,
-    commandId: string,
-    leaseId: string,
-  ): Promise<void>;
+  sealCommand(tenantId: string, commandId: CommandId, leaseId: ExecutionLeaseId): Promise<void>;
   completeCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
     result: AgentCommandResult,
   ): Promise<void>;
-  releaseCommand(
-    tenantId: string,
-    commandId: string,
-    leaseId: string,
-  ): Promise<void>;
+  releaseCommand(tenantId: string, commandId: CommandId, leaseId: ExecutionLeaseId): Promise<void>;
   putSession(record: AgentServerSessionRecord): Promise<void>;
-  getSession(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<AgentServerSessionRecord | null>;
+  getSession(tenantId: string, sessionId: SessionId): Promise<AgentServerSessionRecord | null>;
   listSessions(
     tenantId: string,
     options?: { cursor?: string; limit?: number },
@@ -87,7 +82,7 @@ export interface AgentServerStore {
 }
 
 interface CommandLease {
-  leaseId: string;
+  leaseId: ExecutionLeaseId;
   commandFingerprint: string;
   expiresAt: number;
   sealed: boolean;
@@ -124,10 +119,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
   constructor(options: InMemoryAgentServerStoreOptions = {}) {
     this.maxEventsPerSession = options.maxEventsPerSession ?? 1000;
     this.now = options.now ?? Date.now;
-    if (
-      !Number.isSafeInteger(this.maxEventsPerSession) ||
-      this.maxEventsPerSession < 1
-    ) {
+    if (!Number.isSafeInteger(this.maxEventsPerSession) || this.maxEventsPerSession < 1) {
       throw new RangeError('maxEventsPerSession must be a positive safe integer');
     }
   }
@@ -138,7 +130,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
 
   async claimCommand(
     tenantId: string,
-    commandId: string,
+    commandId: CommandId,
     commandFingerprint: string,
     ttlMs: number,
   ): Promise<AgentCommandClaim> {
@@ -160,7 +152,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       };
     }
 
-    const leaseId = nanoid();
+    const leaseId = ExecutionLeaseId(nanoid());
     this.commandLeases.set(key, {
       leaseId,
       commandFingerprint,
@@ -172,8 +164,8 @@ export class InMemoryAgentServerStore implements AgentServerStore {
 
   async completeCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
     result: AgentCommandResult,
   ): Promise<void> {
     const key = scopedKey(tenantId, commandId);
@@ -191,8 +183,8 @@ export class InMemoryAgentServerStore implements AgentServerStore {
 
   async sealCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
   ): Promise<void> {
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
@@ -205,8 +197,8 @@ export class InMemoryAgentServerStore implements AgentServerStore {
 
   async releaseCommand(
     tenantId: string,
-    commandId: string,
-    leaseId: string,
+    commandId: CommandId,
+    leaseId: ExecutionLeaseId,
   ): Promise<void> {
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
@@ -216,10 +208,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
   }
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
-    this.sessions.set(
-      scopedKey(record.tenantId, record.sessionId),
-      structuredClone(record),
-    );
+    this.sessions.set(scopedKey(record.tenantId, record.sessionId), structuredClone(record));
   }
 
   async getSession(
@@ -242,8 +231,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     const sessions = Array.from(this.sessions.values())
       .filter((record) => record.tenantId === tenantId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    const page = sessions.slice(offset, offset + limit).map((record) =>
-      structuredClone(record));
+    const page = sessions.slice(offset, offset + limit).map((record) => structuredClone(record));
     const nextOffset = offset + page.length;
     return {
       sessions: page,
@@ -265,7 +253,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       ...event,
       protocolVersion: AGENT_PROTOCOL_VERSION,
       eventId: EventId(nanoid()),
-      sequence: log.nextSequence++,
+      sequence: EventSequence(log.nextSequence++),
     } as AgentServerEvent;
     log.events.push(structuredClone(stored));
     if (log.events.length > this.maxEventsPerSession) {
@@ -326,9 +314,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
             eventId: last.eventId,
           }
         : null,
-      hasMore:
-        last !== undefined &&
-        log.events.some((event) => event.sequence > last.sequence),
+      hasMore: last !== undefined && log.events.some((event) => event.sequence > last.sequence),
     };
   }
 

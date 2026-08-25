@@ -1,26 +1,28 @@
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type {
-  Message,
-  ModelIdentity,
-  ToolCall as ChatToolCall,
-} from '../services/ChatServiceInterface.js';
 import { ConfigError } from '../errors/ConfigError.js';
-import type { SessionState, SessionSummary } from '../session/SessionStore.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
 import {
   isSessionEventStore,
   NoopSessionRepository,
   type PersistedToolUse,
   type SessionEventStore,
   type SessionRepository,
+  type SessionRepositoryCompactionMetadata,
+  type SessionRepositoryMessageMetadata,
+  type SessionRepositorySubagentInfo,
+  type SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
-import type { ContentPart } from '../services/ChatServiceInterface.js';
+import type { SessionState, SessionSummary } from '../session/SessionStore.js';
+import type { PersistedPendingInput } from '../session/transcript.js';
 import {
   type InputId,
+  MessageId,
   type RequestId,
   SessionId,
-} from '../types/branded.js';
-import type { JsonObject, JsonValue } from '../types/common.js';
+  type ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
@@ -30,10 +32,9 @@ import type {
   ContextData,
   ContextManagerOptions,
   ContextMessage,
+  ContextToolCall,
   ContextFilter as FilterOptions,
-  PendingInputInfo,
   SystemContext,
-  ToolCall,
   WorkspaceContext,
 } from './types.js';
 
@@ -43,12 +44,12 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isUsageMetadata(
-  value: unknown,
-): value is { input_tokens: number; output_tokens: number } {
-  return isJsonObject(value)
-    && typeof value.input_tokens === 'number'
-    && typeof value.output_tokens === 'number';
+function isUsageMetadata(value: unknown): value is { input_tokens: number; output_tokens: number } {
+  return (
+    isJsonObject(value) &&
+    typeof value.input_tokens === 'number' &&
+    typeof value.output_tokens === 'number'
+  );
 }
 
 /**
@@ -65,7 +66,7 @@ export class ContextManager {
   private readonly projectPath?: string;
 
   private currentSessionId: SessionId | null = null;
-  private readonly pendingToolUses = new Map<string, string[]>();
+  private readonly pendingToolUses = new Map<string, MessageId[]>();
   private initialized = false;
 
   constructor(
@@ -74,12 +75,11 @@ export class ContextManager {
     eventStore?: SessionEventStore,
   ) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
-    const compatibleEventStore = eventStore
-      ?? (isSessionEventStore(repository) ? repository : undefined);
+    const compatibleEventStore =
+      eventStore ?? (isSessionEventStore(repository) ? repository : undefined);
     if (
-      persistenceEnabled
-      && ((repository && !compatibleEventStore)
-        || (!repository && compatibleEventStore))
+      persistenceEnabled &&
+      ((repository && !compatibleEventStore) || (!repository && compatibleEventStore))
     ) {
       throw new ConfigError(
         'Persistent context requires both SessionRepository and SessionEventStore.',
@@ -87,8 +87,7 @@ export class ContextManager {
     }
     const noopRepository = new NoopSessionRepository();
     // 持久化路径必须由调用方显式提供；未提供时禁用持久化
-    const defaultPersistentPath =
-      persistenceEnabled ? options.storage?.persistentPath : undefined;
+    const defaultPersistentPath = persistenceEnabled ? options.storage?.persistentPath : undefined;
 
     this.options = {
       storage: {
@@ -113,15 +112,12 @@ export class ContextManager {
 
     // Session selects explicit read projection and event append ports.
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    this.repository = persistenceEnabled && repository
-      ? repository
-      : noopRepository;
-    this.eventStore = persistenceEnabled && compatibleEventStore
-      ? compatibleEventStore
-      : noopRepository;
+    this.repository = persistenceEnabled && repository ? repository : noopRepository;
+    this.eventStore =
+      persistenceEnabled && compatibleEventStore ? compatibleEventStore : noopRepository;
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
-      5 * 60 * 1000 // 5分钟默认TTL
+      5 * 60 * 1000, // 5分钟默认TTL
     );
 
     // 初始化处理器
@@ -164,8 +160,8 @@ export class ContextManager {
   async createSession(
     userId?: string,
     preferences: JsonObject = {},
-    configuration: SessionConfiguration = {}
-  ): Promise<string> {
+    configuration: SessionConfiguration = {},
+  ): Promise<SessionId> {
     // 优先使用配置中的sessionId，否则生成新的
     const sessionId = configuration.sessionId || this.generateSessionId();
     const now = Date.now();
@@ -237,8 +233,8 @@ export class ContextManager {
    */
   async addMessage(
     role: ContextMessage['role'],
-    content: Message['content'],
-    metadata?: JsonObject
+    content: ModelMessage['content'],
+    metadata?: JsonObject,
   ): Promise<void> {
     if (!this.currentSessionId) {
       throw new Error('没有活动会话');
@@ -272,13 +268,12 @@ export class ContextManager {
     if (contextData && this.shouldCompress(contextData)) {
       await this.compressCurrentContext();
     }
-
   }
 
   /**
    * 添加工具调用记录
    */
-  async addToolCall(toolCall: ToolCall): Promise<void> {
+  async addToolCall(toolCall: ContextToolCall): Promise<void> {
     if (!this.currentSessionId) {
       throw new Error('没有活动会话');
     }
@@ -325,37 +320,23 @@ export class ContextManager {
   /** 保存消息到 repository，不依赖 currentSessionId。 */
   async saveMessage(
     sessionId: SessionId,
-    role: Message['role'],
-    content: Message['content'],
-    parentUuid: string | null = null,
-    metadata?: {
-      model?: string;
-      modelIdentity?: ModelIdentity;
-      usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: JsonObject;
-      reasoningContent?: string;
-      toolCalls?: ChatToolCall[];
-    },
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    }
-  ): Promise<string> {
+    role: ModelMessage['role'],
+    content: ModelMessage['content'],
+    parentMessageId: MessageId | null = null,
+    metadata?: SessionRepositoryMessageMetadata,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
     return this.eventStore.saveMessage(
       sessionId,
       role,
       content,
-      parentUuid,
+      parentMessageId,
       metadata,
-      subagentInfo
+      subagentInfo,
     );
   }
 
-  async saveInputEnqueued(
-    sessionId: SessionId,
-    input: PendingInputInfo,
-  ): Promise<void> {
+  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
     return this.eventStore.saveInputEnqueued(sessionId, input);
   }
 
@@ -363,29 +344,21 @@ export class ContextManager {
     sessionId: SessionId,
     inputId: InputId,
     requestId: RequestId,
-    content: string | ContentPart[],
-    parentUuid: string | null = null,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-  ): Promise<string> {
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
     return this.eventStore.saveAppliedInputMessage(
       sessionId,
       inputId,
       requestId,
       content,
-      parentUuid,
+      parentMessageId,
       subagentInfo,
     );
   }
 
-  async saveInputCancelled(
-    sessionId: SessionId,
-    inputId: InputId,
-    reason: string,
-  ): Promise<void> {
+  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
     return this.eventStore.saveInputCancelled(sessionId, inputId, reason);
   }
 
@@ -394,19 +367,15 @@ export class ContextManager {
     sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
-    parentUuid: string | null = null,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    requestedToolCallId?: string,
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    requestedToolCallId?: ToolUseId,
   ): Promise<PersistedToolUse> {
     return this.eventStore.saveToolUse(
       sessionId,
       toolName,
       toolInput,
-      parentUuid,
+      parentMessageId,
       subagentInfo,
       requestedToolCallId,
     );
@@ -415,32 +384,23 @@ export class ContextManager {
   /** 保存工具结果到 repository。 */
   async saveToolResult(
     sessionId: SessionId,
-    toolId: string,
+    toolId: ToolUseId,
     toolName: string,
     toolOutput: JsonValue,
-    parentUuid: string | null = null,
+    parentMessageId: MessageId | null = null,
     error?: string,
-    subagentInfo?: {
-      parentSessionId: string;
-      subagentType: string;
-      isSidechain: boolean;
-    },
-    subagentRef?: {
-      subagentSessionId: string;
-      subagentType: string;
-      subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
-      subagentSummary?: string;
-    }
-  ): Promise<string> {
+    subagentInfo?: SessionRepositorySubagentInfo,
+    subagentRef?: SessionRepositorySubagentRef,
+  ): Promise<MessageId> {
     return this.eventStore.saveToolResult(
       sessionId,
       toolId,
       toolName,
       toolOutput,
-      parentUuid,
+      parentMessageId,
       error,
       subagentInfo,
-      subagentRef
+      subagentRef,
     );
   }
 
@@ -448,15 +408,10 @@ export class ContextManager {
   async saveCompaction(
     sessionId: SessionId,
     summary: string,
-    metadata: {
-      trigger: 'auto' | 'manual';
-      preTokens: number;
-      postTokens?: number;
-      filesIncluded?: string[];
-    },
-    parentUuid: string | null = null
-  ): Promise<string> {
-    return this.eventStore.saveCompaction(sessionId, summary, metadata, parentUuid);
+    metadata: SessionRepositoryCompactionMetadata,
+    parentMessageId: MessageId | null = null,
+  ): Promise<MessageId> {
+    return this.eventStore.saveCompaction(sessionId, summary, metadata, parentMessageId);
   }
 
   /**
@@ -515,9 +470,7 @@ export class ContextManager {
     return {
       context: filteredContext,
       compressed,
-      tokenCount: compressed
-        ? compressed.tokenCount
-        : filteredContext.metadata.totalTokens,
+      tokenCount: compressed ? compressed.tokenCount : filteredContext.metadata.totalTokens,
     };
   }
 
@@ -526,14 +479,14 @@ export class ContextManager {
    */
   async searchSessions(
     query: string,
-    limit = 10
+    limit = 10,
   ): Promise<
     Array<{
       sessionId: SessionId;
       summary: string;
       lastActivity: number;
       relevanceScore: number;
-      }>
+    }>
   > {
     const sessions = await this.repository.listSessions();
     const results: Array<{
@@ -685,10 +638,7 @@ export class ContextManager {
     let score = 0;
 
     for (const topic of topics) {
-      if (
-        queryLower.includes(topic.toLowerCase()) ||
-        topic.toLowerCase().includes(queryLower)
-      ) {
+      if (queryLower.includes(topic.toLowerCase()) || topic.toLowerCase().includes(queryLower)) {
         score += 1;
       }
     }
@@ -721,7 +671,9 @@ export class ContextManager {
           startTime: state.createdAt,
         },
         conversation: {
-          messages: state.timeline.map((entry) => this.toContextMessage(entry.message, entry.createdAt)),
+          messages: state.timeline.map((entry) =>
+            this.toContextMessage(entry.message, entry.createdAt),
+          ),
           summary: state.summary,
           topics: [],
           lastActivity: state.lastActivity,
@@ -749,9 +701,9 @@ export class ContextManager {
     };
   }
 
-  private toContextMessage(message: Message, createdAt: number): ContextMessage {
+  private toContextMessage(message: ModelMessage, createdAt: number): ContextMessage {
     return {
-      id: message.id ?? nanoid(),
+      id: MessageId(message.id ?? nanoid()),
       role: message.role,
       content: this.stringifyMessageContent(message.content),
       timestamp: createdAt,
@@ -759,7 +711,7 @@ export class ContextManager {
     };
   }
 
-  private stringifyMessageContent(content: Message['content']): string {
+  private stringifyMessageContent(content: ModelMessage['content']): string {
     if (typeof content === 'string') {
       return content;
     }
