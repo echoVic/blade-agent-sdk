@@ -248,6 +248,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `BuiltinProviderType` | 内置 Provider adapter 类型字面量 |
 | `ProviderType` | 内置或自定义 Provider adapter 类型 |
 | `ChatConfig` | 传给 Provider adapter 的模型请求配置 |
+| `IChatService` | Provider adapter 返回的聊天服务契约 |
 | `ModelIdentity` | 生成 assistant 消息的 Provider、API adapter 与模型身份 |
 | `ModelInfo` | 模型信息 |
 | `TokenUsage` | Token 用量 |

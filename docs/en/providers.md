@@ -204,6 +204,7 @@ the same `type`.
 
 ```ts
 import {
+  createSession,
   ProviderRegistry,
   type ChatConfig,
   type IChatService,

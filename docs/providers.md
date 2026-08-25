@@ -68,6 +68,7 @@ Provider、adapter、模型，或恢复不含来源信息的旧历史时，reaso
 
 ```ts
 import {
+  createSession,
   ProviderRegistry,
   type ChatConfig,
   type IChatService,
