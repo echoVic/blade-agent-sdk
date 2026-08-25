@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.13] - 2026-08-25
+
+### 重构
+
+- 新增 PostgreSQL Runtime Store，原子提交 command、event、effect 与 projection，并提供公开 conformance suite。
+
 ## [5.3.12] - 2026-08-25
 
 ### 重构

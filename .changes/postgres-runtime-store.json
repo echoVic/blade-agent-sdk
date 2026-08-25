@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Add a PostgreSQL Runtime Store with atomic command, event, effect, and projection commits plus a public conformance suite.",
-  "zh-CN": "新增 PostgreSQL Runtime Store，原子提交 command、event、effect 与 projection，并提供公开 conformance suite。"
-}

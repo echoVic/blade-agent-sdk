@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.13] - 2026-08-25
+
+### Refactoring
+
+- Add a PostgreSQL Runtime Store with atomic command, event, effect, and projection commits plus a public conformance suite.
+
 ## [5.3.12] - 2026-08-25
 
 ### Refactoring
