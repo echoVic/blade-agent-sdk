@@ -21,6 +21,7 @@ export default defineConfig({
     'core/index': 'src/core/index.ts',
     'middleware/index': 'src/middleware/index.ts',
     'node/index': 'src/node/index.ts',
+    'protocol/index': 'src/protocol/index.ts',
     'server/index': 'src/server/index.ts',
     'session/index': 'src/session/index.ts',
     'tools/index': 'src/tools/index.ts',

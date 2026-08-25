@@ -76,6 +76,8 @@ export type {
   TraceSpanKind,
   TraceStatus,
 } from './observability/index.js';
+// --- Remote protocol ---
+export * from './protocol/index.js';
 export type {
   ContextSnapshot,
   RuntimeContext,
@@ -160,6 +162,13 @@ export type {
   SendOptions,
   SessionHandoffResult,
   SessionOptions,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
   SessionTool,
   StreamMessage,
   StreamOptions,
