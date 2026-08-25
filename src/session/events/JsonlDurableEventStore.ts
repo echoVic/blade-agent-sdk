@@ -85,7 +85,7 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
   constructor(storageRoot: string, options: JsonlDurableEventStoreOptions = {}) {
     if (storageRoot.trim() === '') {
       throw new DurableEventStoreError(
-        'DURABLE_EVENT_INVALID_APPEND',
+        'DURABLE_EVENT_INVALID_OPTIONS',
         'Durable event storage root must not be empty',
       );
     }
@@ -99,7 +99,7 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
       this.lockTimeoutMs > MAX_DURABLE_STORE_TIMEOUT_MS
     ) {
       throw new DurableEventStoreError(
-        'DURABLE_EVENT_LOCK_FAILED',
+        'DURABLE_EVENT_INVALID_OPTIONS',
         'Durable event lockTimeoutMs must be a non-negative safe integer',
       );
     }
@@ -107,14 +107,22 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
       MAX_DURABLE_STORE_TIMEOUT_MS,
       this.lockTimeoutMs + DEFAULT_DURABLE_STORE_TIMEOUT_MS,
     );
-    this.operationTimeoutMs = resolveDurableStoreTimeoutMs(
-      options.operationTimeoutMs,
-      defaultOperationTimeoutMs,
-      'Durable event operationTimeoutMs',
-    );
+    try {
+      this.operationTimeoutMs = resolveDurableStoreTimeoutMs(
+        options.operationTimeoutMs,
+        defaultOperationTimeoutMs,
+        'Durable event operationTimeoutMs',
+      );
+    } catch (cause) {
+      throw new DurableEventStoreError(
+        'DURABLE_EVENT_INVALID_OPTIONS',
+        'Durable event operationTimeoutMs is invalid',
+        { cause },
+      );
+    }
     if (this.operationTimeoutMs < this.lockTimeoutMs) {
       throw new DurableEventStoreError(
-        'DURABLE_EVENT_INVALID_APPEND',
+        'DURABLE_EVENT_INVALID_OPTIONS',
         'Durable event operationTimeoutMs must be greater than or equal to lockTimeoutMs',
       );
     }
