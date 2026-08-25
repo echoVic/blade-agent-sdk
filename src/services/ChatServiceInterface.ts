@@ -4,9 +4,17 @@
  */
 
 import type { JSONSchema7 } from 'json-schema';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
+import {
+  isBuiltinProviderType,
+  type JsonValue,
+  type MessageRole,
+  type OutputFormat,
+  type ProviderType,
+} from '../types/common.js';
 import type { ModelIdentity } from './ModelIdentity.js';
+import type { ProviderRegistry } from './ProviderRegistry.js';
 import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
@@ -260,6 +268,7 @@ export interface IChatService {
 export async function createChatServiceAsync(
   config: ChatConfig,
   logger: InternalLogger = NOOP_LOGGER,
+  registry?: ProviderRegistry,
 ): Promise<IChatService> {
   let resolvedConfig = config;
 
@@ -280,13 +289,24 @@ export async function createChatServiceAsync(
     }
   }
 
-  return await createChatServiceInternal(resolvedConfig, logger);
+  return await createChatServiceInternal(resolvedConfig, logger, registry);
 }
 
 async function createChatServiceInternal(
   config: ChatConfig,
   logger: InternalLogger,
+  registry?: ProviderRegistry,
 ): Promise<IChatService> {
+  if (registry?.has(config.provider)) {
+    return await registry.create(config);
+  }
+  if (!isBuiltinProviderType(config.provider)) {
+    throw new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      `No provider adapter is registered for "${config.provider}"`,
+      { providerType: config.provider },
+    );
+  }
   const service = new VercelAIChatService(config, logger);
   await service.ready();
   return service;

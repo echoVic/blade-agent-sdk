@@ -10,6 +10,7 @@ import { type ModelMiddleware, wrapChatService } from '../middleware/ModelMiddle
 import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import { withDeepSeekDefaults } from '../services/deepseek.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { BladeConfig, ModelConfig, OutputFormat } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';
 
@@ -27,6 +28,7 @@ export class ModelManager {
     projectPath?: string,
     logger?: InternalLogger,
     private readonly modelMiddleware: readonly ModelMiddleware[] = [],
+    private readonly providerRegistry?: ProviderRegistry,
   ) {
     this.contextManager = contextManager || new ContextManager({ projectPath });
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
@@ -48,6 +50,10 @@ export class ModelManager {
 
   getMaxContextTokens(): number {
     return this.currentModelMaxContextTokens;
+  }
+
+  getProviderRegistry(): ProviderRegistry | undefined {
+    return this.providerRegistry;
   }
 
   // ===== 模型解析 =====
@@ -84,22 +90,26 @@ export class ModelManager {
     const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
     this.currentModelMaxContextTokens = maxContextTokens;
 
-    const chatService = await createChatServiceAsync({
-      provider: modelConfig.provider,
-      providerId: modelConfig.providerId?.trim() || modelConfig.provider,
-      apiKey: modelConfig.apiKey || '',
-      model: modelConfig.model,
-      baseUrl: modelConfig.baseUrl || '',
-      customHeaders: modelConfig.headers,
-      temperature: modelConfig.temperature ?? this.config.temperature,
-      maxContextTokens: this.currentModelMaxContextTokens,
-      maxOutputTokens: modelConfig.maxOutputTokens,
-      requestTimeoutMs: modelConfig.requestTimeoutMs,
-      streamIdleTimeoutMs: modelConfig.streamIdleTimeoutMs,
-      supportsThinking,
-      providerOptions: modelConfig.providerOptions as never,
-      outputFormat: this.outputFormat,
-    });
+    const chatService = await createChatServiceAsync(
+      {
+        provider: modelConfig.provider,
+        providerId: modelConfig.providerId?.trim() || modelConfig.provider,
+        apiKey: modelConfig.apiKey || '',
+        model: modelConfig.model,
+        baseUrl: modelConfig.baseUrl || '',
+        customHeaders: modelConfig.headers,
+        temperature: modelConfig.temperature ?? this.config.temperature,
+        maxContextTokens: this.currentModelMaxContextTokens,
+        maxOutputTokens: modelConfig.maxOutputTokens,
+        requestTimeoutMs: modelConfig.requestTimeoutMs,
+        streamIdleTimeoutMs: modelConfig.streamIdleTimeoutMs,
+        supportsThinking,
+        providerOptions: modelConfig.providerOptions as never,
+        outputFormat: this.outputFormat,
+      },
+      this.logger,
+      this.providerRegistry,
+    );
     this.chatService = wrapChatServiceWithTimeouts(
       wrapChatService(chatService, this.modelMiddleware),
     );

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 
-const createAgent = vi.fn(async (_config: unknown, _options?: unknown) => ({
+const createAgent = vi.fn(async (_config: unknown, _options?: unknown, _deps?: unknown) => ({
   async setModel() {},
 }));
 
@@ -86,6 +87,32 @@ describe('Session model config', () => {
         tokenBudget,
       }),
     );
+
+    await session.close();
+  });
+
+  it('passes an instance-scoped provider registry to the Agent runtime', async () => {
+    const providerRegistry = new ProviderRegistry();
+    const session = await createSession({
+      provider: {
+        id: 'custom-provider',
+        type: 'custom-api',
+        apiKey: 'test-key',
+      },
+      providerRegistry,
+      model: 'custom-model',
+    });
+
+    const [config, , deps] = createAgent.mock.calls.at(-1) ?? [];
+    expect(config).toMatchObject({
+      models: [
+        expect.objectContaining({
+          provider: 'custom-api',
+          providerId: 'custom-provider',
+        }),
+      ],
+    });
+    expect(deps).toMatchObject({ providerRegistry });
 
     await session.close();
   });

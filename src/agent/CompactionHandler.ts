@@ -2,11 +2,13 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import {
   isExecutionLeaseFailure,
   runWithExecutionLeaseBoundary,
@@ -31,6 +33,7 @@ export class CompactionHandler {
     private getChatService: () => IChatService,
     private getContextManager: () => ContextManager | undefined,
     logger?: InternalLogger,
+    private getProviderRegistry: () => ProviderRegistry | undefined = () => undefined,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
@@ -122,6 +125,8 @@ export class CompactionHandler {
         const result = await CompactionService.compact(convState.getContextMessages(), {
           trigger: 'auto',
           provider: chatConfig.provider,
+          providerId: chatConfig.providerId,
+          providerRegistry: this.getProviderRegistry(),
           modelName,
           maxContextTokens,
           apiKey: chatConfig.apiKey,
@@ -188,6 +193,7 @@ export class CompactionHandler {
           runtimeCtx.signal?.aborted ||
           isExecutionLeaseFailure(error)
           || isHookProcessContainmentError(error)
+          || error instanceof ProviderRegistryError
         ) {
           throw error;
         }
@@ -266,6 +272,8 @@ export class CompactionHandler {
       const result = await CompactionService.compact(workingMessages, {
         trigger: 'auto',
         provider: chatConfig.provider,
+        providerId: chatConfig.providerId,
+        providerRegistry: this.getProviderRegistry(),
         modelName: chatConfig.model,
         maxContextTokens: chatConfig.maxContextTokens ?? 128000,
         apiKey: chatConfig.apiKey,
@@ -318,6 +326,7 @@ export class CompactionHandler {
         runtimeCtx.signal?.aborted ||
         isExecutionLeaseFailure(error)
         || isHookProcessContainmentError(error)
+        || error instanceof ProviderRegistryError
       ) {
         throw error;
       }

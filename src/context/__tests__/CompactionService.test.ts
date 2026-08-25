@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
@@ -49,6 +51,7 @@ describe('CompactionService', () => {
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
     const messages: Message[] = [{ role: 'user', content: 'hello' }];
     const controller = new AbortController();
+    const providerRegistry = new ProviderRegistry();
 
     await compact(messages, {
       trigger: 'manual',
@@ -56,6 +59,7 @@ describe('CompactionService', () => {
       maxContextTokens: 128000,
       apiKey: 'test-key',
       baseURL: 'https://api.openai.com/v1',
+      providerRegistry,
       signal: controller.signal,
     });
 
@@ -67,6 +71,7 @@ describe('CompactionService', () => {
         timeout: 60_000,
       }),
       expect.anything(),
+      providerRegistry,
     );
     expect(mockSideQuery).toHaveBeenCalledWith(
       expect.anything(),
@@ -94,6 +99,25 @@ describe('CompactionService', () => {
         signal: controller.signal,
       }),
     ).rejects.toBe(abortError);
+  });
+
+  it('does not convert a missing provider adapter into fallback compaction', async () => {
+    const registryError = new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      'No provider adapter is registered for "custom-api"',
+      { providerType: 'custom-api' },
+    );
+    mockCreateChatServiceAsync.mockRejectedValueOnce(registryError);
+
+    await expect(
+      compact([{ role: 'user', content: 'hello' }], {
+        trigger: 'auto',
+        provider: 'custom-api',
+        modelName: 'custom-model',
+        maxContextTokens: 128000,
+        providerRegistry: new ProviderRegistry(),
+      }),
+    ).rejects.toBe(registryError);
   });
 
   it('preserves a hook containment failure when cancellation races cleanup', async () => {

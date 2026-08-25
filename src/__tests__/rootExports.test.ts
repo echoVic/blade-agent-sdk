@@ -2,6 +2,8 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   AgentMiddlewareConfig,
   AgentPlugin,
+  BuiltinProviderType,
+  ChatConfig,
   ConfirmationDetails,
   ConfirmationHandler,
   DurableAcceptedRequestRecovery,
@@ -37,6 +39,9 @@ import type {
   ISession,
   ModelIdentity,
   PendingSessionInput,
+  ProviderAdapter,
+  ProviderRegistryErrorCode,
+  ProviderType,
   RuntimePatch,
   SessionHandoffErrorCode,
   SessionHandoffResult,
@@ -100,6 +105,8 @@ import {
   ModelAttemptId,
   ModelTimeoutError,
   PermissionRequestId,
+  ProviderRegistry,
+  ProviderRegistryError,
   projectDurableSession,
   RequestId,
   SessionId,
@@ -129,6 +136,17 @@ describe('root exports', () => {
     expect(completeToolExecution).toBeTypeOf('function');
     expect(composeMiddleware).toBeTypeOf('function');
     expect(definePlugin({ name: 'test' })).toEqual({ name: 'test' });
+    expect(ProviderRegistry).toBeDefined();
+    expect(
+      new ProviderRegistryError(
+        'PROVIDER_ADAPTER_NOT_FOUND',
+        'missing',
+        { providerType: 'custom-api' },
+      ),
+    ).toMatchObject({
+      code: 'PROVIDER_ADAPTER_NOT_FOUND',
+      providerType: 'custom-api',
+    });
     expect(new ModelTimeoutError('MODEL_REQUEST_TIMEOUT', 1000)).toMatchObject({
       code: 'MODEL_REQUEST_TIMEOUT',
       timeoutMs: 1000,
@@ -231,8 +249,19 @@ describe('root exports', () => {
     expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
-    expectTypeOf<ModelIdentity['api']>().toEqualTypeOf<
+    expectTypeOf<ModelIdentity['api']>().toEqualTypeOf<ProviderType>();
+    expectTypeOf<BuiltinProviderType>().toEqualTypeOf<
       'anthropic' | 'openai' | 'azure-openai' | 'gemini' | 'deepseek' | 'openai-compatible'
+    >();
+    expectTypeOf<'custom-api'>().toMatchTypeOf<ProviderType>();
+    expectTypeOf<ProviderAdapter['type']>().toEqualTypeOf<ProviderType>();
+    expectTypeOf<Parameters<ProviderAdapter['create']>[0]>().toEqualTypeOf<
+      Readonly<ChatConfig>
+    >();
+    expectTypeOf<ProviderRegistryErrorCode>().toEqualTypeOf<
+      | 'PROVIDER_ADAPTER_INVALID'
+      | 'PROVIDER_ADAPTER_DUPLICATE'
+      | 'PROVIDER_ADAPTER_NOT_FOUND'
     >();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();

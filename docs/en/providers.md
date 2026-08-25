@@ -16,15 +16,17 @@ Provider adapters are loaded lazily. Optional adapters only need to be installed
 ## ProviderConfig
 
 ```ts
+type BuiltinProviderType =
+  | 'openai'
+  | 'anthropic'
+  | 'azure-openai'
+  | 'gemini'
+  | 'deepseek'
+  | 'openai-compatible';
+
 interface ProviderConfig {
   id?: string;
-  type:
-    | 'openai'
-    | 'anthropic'
-    | 'azure-openai'
-    | 'gemini'
-    | 'deepseek'
-    | 'openai-compatible';
+  type: BuiltinProviderType | (string & {});
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
@@ -193,6 +195,46 @@ provider, adapter, and model. When any identity component changes, or when
 legacy history has no identity, reasoning is converted to ordinary assistant
 text while tool-call relationships are preserved. This prevents
 provider-specific reasoning payloads from being sent to an incompatible API.
+
+## Custom provider adapters
+
+`ProviderRegistry` is an instance-scoped registry. It has no process-global
+registration state, so separate Sessions can safely use different adapters for
+the same `type`.
+
+```ts
+import {
+  createSession,
+  ProviderRegistry,
+  type ChatConfig,
+  type IChatService,
+  type ProviderAdapter,
+} from '@blade-ai/agent-sdk';
+
+const adapter = {
+  type: 'acme-chat',
+  async create(config: Readonly<ChatConfig>): Promise<IChatService> {
+    return new AcmeChatService(config);
+  },
+} satisfies ProviderAdapter;
+
+const session = await createSession({
+  provider: {
+    id: 'acme-production',
+    type: 'acme-chat',
+    apiKey: process.env.ACME_API_KEY!,
+  },
+  providerRegistry: new ProviderRegistry([adapter]),
+  model: 'acme-reasoner',
+});
+```
+
+An adapter returns the existing `IChatService` contract, so model middleware,
+request and stream-idle deadlines, durable model-attempt tracking, subagents,
+and compaction continue to use the same runtime path. A custom adapter may also
+override a built-in `type` for one Registry instance. Duplicate or malformed
+registrations and unknown unregistered adapter types fail with
+`ProviderRegistryError`.
 
 ## Logging
 

@@ -87,7 +87,12 @@ export {
   TurnId,
   WorkerId,
 } from '../types/branded.js';
+export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
+export type { ProviderRegistryErrorCode } from '../errors/ProviderRegistryError.js';
+export { ProviderRegistry } from '../services/ProviderRegistry.js';
+export type { ProviderAdapter } from '../services/ProviderRegistry.js';
 export type {
+  BuiltinProviderType,
   JsonObject,
   JsonValue,
   McpServerConfig,

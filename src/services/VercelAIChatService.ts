@@ -6,6 +6,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonObject, JsonValue, OutputFormat } from '../types/common.js';
 import type {
@@ -336,7 +337,7 @@ export class VercelAIChatService implements IChatService {
         return deepseek(normalizeDeepSeekModel(model));
       }
 
-      default: {
+      case 'openai-compatible': {
         const compatible = createOpenAICompatible({
           name: providerId || 'custom',
           apiKey,
@@ -345,6 +346,13 @@ export class VercelAIChatService implements IChatService {
         });
         return compatible(model);
       }
+
+      default:
+        throw new ProviderRegistryError(
+          'PROVIDER_ADAPTER_NOT_FOUND',
+          `No built-in provider adapter is registered for "${provider}"`,
+          { providerType: provider },
+        );
     }
   }
 

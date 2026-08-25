@@ -26,6 +26,7 @@ export type {
   ToolMiddlewareRequest,
 } from './ToolMiddleware.js';
 export type {
+  ChatConfig,
   ChatResponse,
   IChatService,
   Message,

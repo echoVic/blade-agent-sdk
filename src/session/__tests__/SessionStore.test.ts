@@ -462,9 +462,9 @@ describe('JsonlSessionStore', () => {
       userMessageId,
       {
         modelIdentity: {
-          provider: 'anthropic',
-          api: 'anthropic',
-          model: 'claude-sonnet-4-5',
+          provider: 'custom-provider',
+          api: 'custom-wire-api',
+          model: 'custom-model',
         },
         reasoningContent: 'Need to inspect first.',
         toolCalls: [
@@ -497,9 +497,9 @@ describe('JsonlSessionStore', () => {
       role: 'assistant',
       content: '',
       modelIdentity: {
-        provider: 'anthropic',
-        api: 'anthropic',
-        model: 'claude-sonnet-4-5',
+        provider: 'custom-provider',
+        api: 'custom-wire-api',
+        model: 'custom-model',
       },
       reasoningContent: 'Need to inspect first.',
       tool_calls: [

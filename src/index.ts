@@ -13,6 +13,7 @@ export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget
 export type {
   HookTimeoutErrorCode,
   ModelTimeoutErrorCode,
+  ProviderRegistryErrorCode,
   SdkErrorOptions,
   SessionHandoffErrorCode,
   SessionInputErrorCode,
@@ -24,6 +25,7 @@ export {
   HookTimeoutError,
   ModelTimeoutError,
   PermissionDeniedError,
+  ProviderRegistryError,
   SdkError,
   SessionHandoffError,
   SessionInputError,
@@ -62,6 +64,8 @@ export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/inde
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 // --- Middleware and plugins ---
 export * from './middleware/index.js';
+export { ProviderRegistry } from './services/ProviderRegistry.js';
+export type { ProviderAdapter } from './services/ProviderRegistry.js';
 // --- Observability ---
 export type {
   AgentTrace,
@@ -136,6 +140,7 @@ export {
 export * from './session/events/index.js';
 export type {
   AgentDefinition,
+  BuiltinProviderType,
   ExecutionContext,
   ForkOptions,
   ForkSessionOptions,

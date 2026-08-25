@@ -15,6 +15,7 @@ import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Log
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import {
   type DurableExecutionFence,
   DurableExecutionLeaseError,
@@ -123,6 +124,7 @@ export class BackgroundAgentManager {
     logger?: InternalLogger,
     private readonly ownerSessionId?: SessionId,
     middleware: AgentMiddlewareConfig = {},
+    private readonly providerRegistry?: ProviderRegistry,
   ) {
     this.sessionStore = sessionStore;
     this.middleware = {
@@ -149,12 +151,14 @@ export class BackgroundAgentManager {
     sessionStore: AgentSessionStore,
     ownerSessionId?: SessionId,
     middleware?: AgentMiddlewareConfig,
+    providerRegistry?: ProviderRegistry,
   ): BackgroundAgentManager {
     return new BackgroundAgentManager(
       sessionStore,
       logger,
       ownerSessionId,
       middleware,
+      providerRegistry,
     );
   }
 
@@ -165,6 +169,10 @@ export class BackgroundAgentManager {
 
   getMiddleware(): AgentMiddlewareConfig {
     return this.middleware;
+  }
+
+  getProviderRegistry(): ProviderRegistry | undefined {
+    return this.providerRegistry;
   }
 
   private async cleanupOrphanedSessions(): Promise<void> {
@@ -365,6 +373,7 @@ export class BackgroundAgentManager {
         assertExecutionLease,
         runWithExecutionLease,
         middleware: this.middleware,
+        providerRegistry: this.providerRegistry,
         onProgress: async (progress) => {
           await this.runOwnedPersistence(
             executionFence,

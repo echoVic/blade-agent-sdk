@@ -2,6 +2,7 @@ import { SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { Agent } from '../Agent.js';
@@ -28,6 +29,7 @@ export interface RunSubagentOptions {
   omitEnvironment?: boolean;
   onProgress?: (progress: AgentProgress) => void | Promise<void>;
   middleware?: AgentMiddlewareConfig;
+  providerRegistry?: ProviderRegistry;
 }
 
 function resolveModelId(config: SubagentConfig): string | undefined {
@@ -60,6 +62,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     omitEnvironment,
     onProgress,
     middleware,
+    providerRegistry,
   } = options;
 
   const agent = await Agent.create(
@@ -74,6 +77,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
       defaultContext: snapshot ? snapshot.context : {},
       modelMiddleware: middleware?.model,
       toolMiddleware: middleware?.tool,
+      providerRegistry,
     },
   );
 

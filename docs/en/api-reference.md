@@ -30,10 +30,12 @@ Functions:
 
 Types:
 
-`AgentDefinition`, `ExecutionContext`, `ForkOptions`, `ForkSessionOptions`,
+`AgentDefinition`, `BuiltinProviderType`, `ChatConfig`, `ExecutionContext`,
+`ForkOptions`, `ForkSessionOptions`,
 `ForkSessionResult`, `HookCallback`, `HookInput`, `HookOutput`,
 `InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelIdentity`, `ModelInfo`,
-`PendingSessionInput`, `PromptResult`, `ProviderConfig`, `ProviderType`,
+`PendingSessionInput`, `PromptResult`, `ProviderAdapter`, `ProviderConfig`,
+`ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionTool`, `StreamMessage`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
@@ -274,6 +276,27 @@ Memory tools are opt-in.
 `createMemoryReadTool()` and `createMemoryWriteTool()` return complete `Tool`
 instances that can be passed directly to `SessionOptions.tools`.
 
+## Providers
+
+Runtime:
+
+- `ProviderRegistry`
+- `ProviderRegistryError`
+
+Types:
+
+- `BuiltinProviderType`
+- `ProviderType`
+- `ProviderConfig`
+- `ProviderAdapter`
+- `ProviderRegistryErrorCode`
+- `ChatConfig`
+- `IChatService`
+- `ModelIdentity`
+
+See [Providers and Logging](./providers) for adapter registration and routing
+semantics.
+
 ## Permissions
 
 Helpers:
@@ -443,6 +466,7 @@ Classes:
 - `HookTimeoutError`
 - `ModelTimeoutError`
 - `PermissionDeniedError`
+- `ProviderRegistryError`
 - `SessionInputError`
 - `ToolExecutionError`
 

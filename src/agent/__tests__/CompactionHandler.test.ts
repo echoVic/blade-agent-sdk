@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  CompactionOptions,
+  CompactionResult,
+} from '../../context/CompactionService.js';
+import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
-const mockCompact = vi.fn(async () => ({
+const mockCompact = vi.fn(async (
+  _messages: Message[],
+  _options: CompactionOptions,
+): Promise<CompactionResult> => ({
   success: true,
   summary: 'summary',
   preTokens: 700,
@@ -172,6 +181,99 @@ describe('CompactionHandler', () => {
     await expect(stream.next()).rejects.toBe(leaseLost);
     expect(mockCompact).toHaveBeenCalledOnce();
     expect(convState.getContextMessages()).toEqual(originalMessages);
+  });
+
+  it('propagates the active provider registry to automatic and reactive compaction', async () => {
+    const providerRegistry = new ProviderRegistry();
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+          apiKey: 'test-key',
+          baseUrl: 'https://example.com',
+        }),
+      }) as never,
+      () => undefined,
+      undefined,
+      () => providerRegistry,
+    );
+    const automaticState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const automaticStream = handler.checkAndCompactInLoop(
+      automaticState,
+      { sessionId: SessionId('provider-registry-auto-session') },
+      2,
+      700,
+    );
+
+    await automaticStream.next();
+    await automaticStream.next();
+
+    const reactiveState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const reactiveStream = handler.reactiveCompact(
+      reactiveState,
+      { sessionId: SessionId('provider-registry-reactive-session') },
+    );
+
+    await reactiveStream.next();
+    await reactiveStream.next();
+
+    expect(mockCompact).toHaveBeenCalledTimes(2);
+    for (const [, options] of mockCompact.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ providerRegistry }));
+    }
+  });
+
+  it('fails closed when automatic or reactive compaction cannot resolve an adapter', async () => {
+    const registryError = new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      'No provider adapter is registered for "custom-api"',
+      { providerType: 'custom-api' },
+    );
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'custom-model',
+          provider: 'custom-api',
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const createState = () => new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+
+    mockCompact.mockRejectedValueOnce(registryError);
+    const automaticStream = handler.checkAndCompactInLoop(
+      createState(),
+      { sessionId: SessionId('missing-adapter-auto-session') },
+      2,
+      700,
+    );
+    await automaticStream.next();
+    await expect(automaticStream.next()).rejects.toBe(registryError);
+
+    mockCompact.mockRejectedValueOnce(registryError);
+    const reactiveStream = handler.reactiveCompact(
+      createState(),
+      { sessionId: SessionId('missing-adapter-reactive-session') },
+    );
+    await reactiveStream.next();
+    await expect(reactiveStream.next()).rejects.toBe(registryError);
   });
 
   it('propagates process-containment failures from automatic compaction hooks', async () => {

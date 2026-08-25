@@ -114,8 +114,8 @@ const validDrafts: readonly DurableEventDraft[] = [
     data: {
       model: 'claude-sonnet',
       modelIdentity: {
-        provider: 'anthropic-primary',
-        api: 'anthropic',
+        provider: 'custom-provider',
+        api: 'custom-wire-api',
         model: 'claude-sonnet',
       },
       streaming: true,
