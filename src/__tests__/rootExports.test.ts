@@ -65,6 +65,7 @@ import {
   composeMiddleware,
   createMemoryReadTool,
   createMemoryWriteTool,
+  DEFAULT_DURABLE_STORE_TIMEOUT_MS,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
   DURABLE_EXECUTION_LEASE_FORMAT,
@@ -72,9 +73,11 @@ import {
   DurableCommandOutcomeUnknownError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
+  DurableEventStoreTimeoutError,
   DurableEventType,
   DurableExecutionLease,
   DurableExecutionLeaseError,
+  DurableExecutionLeaseTimeoutError,
   DurableSessionJournal,
   DurableSessionProjector,
   DurableSessionRecoveryCoordinator,
@@ -98,6 +101,7 @@ import {
   PermissionRequestId,
   projectDurableSession,
   RequestId,
+  SessionId,
   SessionDurableRecorderError,
   SessionHandoffError,
   SessionInputError,
@@ -145,6 +149,18 @@ describe('root exports', () => {
     expect(DurableEventType.MODEL_REQUEST_STARTED).toBe('model_request_started');
     expect(DurableEventSubscription.open).toBeTypeOf('function');
     expect(DurableEventSubscriptionError).toBeDefined();
+    expect(DEFAULT_DURABLE_STORE_TIMEOUT_MS).toBe(15_000);
+    expect(
+      new DurableEventStoreTimeoutError(
+        'read',
+        SessionId('timeout-session'),
+        100,
+      ),
+    ).toMatchObject({
+      code: 'DURABLE_EVENT_IO_TIMEOUT',
+      operation: 'read',
+      timeoutMs: 100,
+    });
     expect(durableEventCursor).toBeTypeOf('function');
     expect(JsonlDurableEventStore).toBeDefined();
     expect(CommandId('command-1')).toBe('command-1');
@@ -159,6 +175,15 @@ describe('root exports', () => {
     expect(DurableExecutionLease.acquire).toBeTypeOf('function');
     expect(DurableExecutionLease.prototype.runFenced).toBeTypeOf('function');
     expect(DurableExecutionLeaseError).toBeDefined();
+    expect(
+      new DurableExecutionLeaseTimeoutError('renew', 100, {
+        sessionId: SessionId('timeout-session'),
+      }),
+    ).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'renew',
+      timeoutMs: 100,
+    });
     expect(DURABLE_EXECUTION_LEASE_FORMAT).toBe('blade.durable-execution-lease');
     expect(ExecutionLeaseId('lease-1')).toBe('lease-1');
     expect(FencingToken(1)).toBe(1);
@@ -210,6 +235,7 @@ describe('root exports', () => {
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
     expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<'event' | 'caught_up'>();
     expectTypeOf<DurableEventSubscriptionOptions['follow']>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<SessionOptions['durableStoreTimeoutMs']>().toEqualTypeOf<number | undefined>();
     expectTypeOf<
       DurableEventOfType<typeof DurableEventType.REQUEST_ACCEPTED>['data']['inputId']
     >().toEqualTypeOf<InputId>();

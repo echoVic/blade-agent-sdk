@@ -281,6 +281,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
     ttlMs: 30_000,
@@ -298,6 +299,14 @@ state and output writes carry and validate the same fence. The Session heartbeat
 stops admitting new work and aborts the root execution, foreground/background
 subagents, and complete process groups for Session-owned shells when ownership
 cannot be renewed.
+
+Every durable Journal, subscription, and lease Store call has the
+`durableStoreTimeoutMs` host deadline. The SDK forwards a cooperative
+`AbortSignal`, but still fails closed with a typed timeout if a custom Store
+does not honor it. Timed-out appends enter command-outcome reconciliation;
+heartbeat or fenced-operation timeouts abort the execution lease. A monotonic
+local expiry watchdog also closes the lease if heartbeat scheduling stalls; a
+stricter `executionLease.storeTimeoutMs` is preserved under the Session limit.
 
 Once a Session enables an execution lease, its fencing requirement is
 permanent. After the old lease expires or is released, `resumeSession()` without
@@ -726,6 +735,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `storagePath` | `string` | Enables JSONL persistence |
 | `persistSession` | `boolean` | Disable persistence explicitly |
 | `durableEventStore` | `DurableEventStore` | Opt-in durable execution journal |
+| `durableStoreTimeoutMs` | `number` | Per-call durable Store deadline; defaults to `15000` |
 | `executionLease` | `DurableExecutionLeaseOptions` | Opt-in worker ownership, heartbeat, and fencing |
 | `outputFormat` | `OutputFormat` | Structured output schema |
 | `sandbox` | `SandboxSettings` | Bash sandbox settings |

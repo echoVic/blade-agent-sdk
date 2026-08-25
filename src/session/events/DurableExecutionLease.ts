@@ -4,12 +4,19 @@ import type { DurableEventStore } from './DurableEventStore.js';
 import {
   type DurableExecutionFence,
   DurableExecutionLeaseError,
+  type DurableExecutionLeaseOperation,
+  DurableExecutionLeaseTimeoutError,
   type DurableExecutionLease as DurableExecutionLeaseSnapshot,
   type DurableExecutionLeaseStore,
   executionFence,
   isExecutionLeaseFailure,
   isDurableExecutionLeaseStore,
 } from './DurableExecutionLeaseStore.js';
+import {
+  MAX_DURABLE_STORE_TIMEOUT_MS,
+  awaitDurableStoreOperation,
+  resolveDurableStoreTimeoutMs,
+} from './DurableStoreOperation.js';
 
 export const DEFAULT_EXECUTION_LEASE_TTL_MS = 30_000;
 export const DEFAULT_EXECUTION_LEASE_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -19,9 +26,195 @@ export interface DurableExecutionLeaseOptions {
   readonly leaseId?: ExecutionLeaseId;
   readonly ttlMs?: number;
   readonly heartbeatIntervalMs?: number;
+  /** Maximum wall-clock duration of one Store call. Defaults to 15000ms. */
+  readonly storeTimeoutMs?: number;
 }
 
 type LeaseLostListener = (error: DurableExecutionLeaseError) => void;
+
+interface AcquisitionState {
+  readonly leaseId: ExecutionLeaseId;
+  attemptPromise: Promise<DurableExecutionLease> | null;
+  readonly ttlMs: number;
+  readonly heartbeatIntervalMs: number;
+  readonly storeTimeoutMs: number;
+  uncertain: boolean;
+  resolved: boolean;
+  evictionDeadline: number;
+  evictionTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const ACQUISITION_STATES = new WeakMap<
+  DurableExecutionLeaseStore,
+  Map<SessionId, Map<WorkerId, AcquisitionState>>
+>();
+
+function getAcquisitionState(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+): AcquisitionState | undefined {
+  return ACQUISITION_STATES.get(store)?.get(sessionId)?.get(ownerId);
+}
+
+function setAcquisitionState(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  state: AcquisitionState,
+): void {
+  let sessions = ACQUISITION_STATES.get(store);
+  if (!sessions) {
+    sessions = new Map();
+    ACQUISITION_STATES.set(store, sessions);
+  }
+  let owners = sessions.get(sessionId);
+  if (!owners) {
+    owners = new Map();
+    sessions.set(sessionId, owners);
+  }
+  owners.set(ownerId, state);
+}
+
+function clearAcquisitionState(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  state: AcquisitionState,
+): void {
+  const sessions = ACQUISITION_STATES.get(store);
+  const owners = sessions?.get(sessionId);
+  if (owners?.get(ownerId) !== state) {
+    return;
+  }
+  if (state.evictionTimer) {
+    clearTimeout(state.evictionTimer);
+    state.evictionTimer = null;
+  }
+  owners.delete(ownerId);
+  if (owners.size === 0) {
+    sessions?.delete(sessionId);
+  }
+  if (sessions?.size === 0) {
+    ACQUISITION_STATES.delete(store);
+  }
+}
+
+function beginAcquisition(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  requestedLeaseId: ExecutionLeaseId | undefined,
+  ttlMs: number,
+  heartbeatIntervalMs: number,
+  storeTimeoutMs: number,
+): AcquisitionState {
+  const existing = getAcquisitionState(store, sessionId, ownerId);
+  if (existing) {
+    if (requestedLeaseId !== undefined && requestedLeaseId !== existing.leaseId) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Execution lease retry identity differs for Session ${sessionId}`,
+        {
+          sessionId,
+          leaseId: existing.leaseId,
+        },
+      );
+    }
+    if (
+      existing.ttlMs !== ttlMs ||
+      existing.heartbeatIntervalMs !== heartbeatIntervalMs ||
+      existing.storeTimeoutMs !== storeTimeoutMs
+    ) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Execution lease retry options differ for Session ${sessionId}`,
+        {
+          sessionId,
+          leaseId: existing.leaseId,
+        },
+      );
+    }
+    if (existing.evictionTimer) {
+      clearTimeout(existing.evictionTimer);
+      existing.evictionTimer = null;
+    }
+    return existing;
+  }
+  const state: AcquisitionState = {
+    leaseId: requestedLeaseId ?? ExecutionLeaseId(nanoid()),
+    attemptPromise: null,
+    ttlMs,
+    heartbeatIntervalMs,
+    storeTimeoutMs,
+    uncertain: false,
+    resolved: false,
+    evictionDeadline: 0,
+    evictionTimer: null,
+  };
+  setAcquisitionState(store, sessionId, ownerId, state);
+  return state;
+}
+
+function completeAcquisition(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  state: AcquisitionState,
+): void {
+  state.resolved = true;
+  clearAcquisitionState(store, sessionId, ownerId, state);
+}
+
+function failAcquisition(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  state: AcquisitionState,
+  outcomeUnknown: boolean,
+  retentionMs: number,
+): void {
+  if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
+    return;
+  }
+  state.uncertain ||= outcomeUnknown;
+  if (!state.uncertain) {
+    clearAcquisitionState(store, sessionId, ownerId, state);
+    return;
+  }
+  if (state.evictionTimer) {
+    clearTimeout(state.evictionTimer);
+  }
+  const now = performance.now();
+  state.evictionDeadline = Math.max(
+    state.evictionDeadline,
+    now + Math.min(retentionMs, Number.MAX_SAFE_INTEGER - now),
+  );
+  scheduleAcquisitionEviction(store, sessionId, ownerId, state);
+}
+
+function scheduleAcquisitionEviction(
+  store: DurableExecutionLeaseStore,
+  sessionId: SessionId,
+  ownerId: WorkerId,
+  state: AcquisitionState,
+): void {
+  const remainingMs = state.evictionDeadline - performance.now();
+  state.evictionTimer = setTimeout(() => {
+    state.evictionTimer = null;
+    if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
+      return;
+    }
+    if (state.evictionDeadline > performance.now()) {
+      scheduleAcquisitionEviction(store, sessionId, ownerId, state);
+      return;
+    }
+    if (state.attemptPromise === null) {
+      clearAcquisitionState(store, sessionId, ownerId, state);
+    }
+  }, Math.min(Math.max(0, remainingMs), MAX_DURABLE_STORE_TIMEOUT_MS));
+  state.evictionTimer.unref?.();
+}
 
 /**
  * Process-local handle for a Store-backed execution lease.
@@ -34,6 +227,7 @@ export class DurableExecutionLease {
   private readonly controller = new AbortController();
   private readonly listeners = new Set<LeaseLostListener>();
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private renewalPromise: Promise<void> | null = null;
   private releasePromise: Promise<void> | null = null;
   private released = false;
@@ -44,8 +238,11 @@ export class DurableExecutionLease {
     lease: DurableExecutionLeaseSnapshot,
     private readonly ttlMs: number,
     private readonly heartbeatIntervalMs: number,
+    private readonly storeTimeoutMs: number,
+    private localExpiresAt: number,
   ) {
     this.current = lease;
+    this.scheduleExpiry();
     this.scheduleHeartbeat();
   }
 
@@ -83,12 +280,107 @@ export class DurableExecutionLease {
         { sessionId },
       );
     }
-    const lease = await store.acquireExecutionLease(sessionId, {
-      ownerId: options.ownerId,
-      leaseId: options.leaseId ?? ExecutionLeaseId(nanoid()),
+    let configuredStoreTimeoutMs: number;
+    try {
+      configuredStoreTimeoutMs = resolveDurableStoreTimeoutMs(
+        options.storeTimeoutMs,
+        undefined,
+        'Execution lease storeTimeoutMs',
+      );
+    } catch (cause) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        'Execution lease storeTimeoutMs is invalid',
+        { sessionId, cause },
+      );
+    }
+    const acquisitionState = beginAcquisition(
+      store,
+      sessionId,
+      options.ownerId,
+      options.leaseId,
       ttlMs,
-    });
-    return new DurableExecutionLease(store, lease, ttlMs, heartbeatIntervalMs);
+      heartbeatIntervalMs,
+      configuredStoreTimeoutMs,
+    );
+    if (acquisitionState.attemptPromise) {
+      return acquisitionState.attemptPromise;
+    }
+    const { leaseId } = acquisitionState;
+    const attempt = (async (): Promise<DurableExecutionLease> => {
+      const acquisitionStartedAt = performance.now();
+      try {
+        const lease = await awaitDurableStoreOperation(
+          {
+            timeoutMs: configuredStoreTimeoutMs,
+            createTimeoutError: () =>
+              new DurableExecutionLeaseTimeoutError('acquire', configuredStoreTimeoutMs, {
+                sessionId,
+                leaseId,
+              }),
+          },
+          (signal) =>
+            store.acquireExecutionLease(sessionId, {
+              ownerId: options.ownerId,
+              leaseId,
+              ttlMs,
+              signal,
+            }),
+        );
+        const handle = new DurableExecutionLease(
+          store,
+          lease,
+          ttlMs,
+          heartbeatIntervalMs,
+          configuredStoreTimeoutMs,
+          acquisitionStartedAt + DurableExecutionLease.resolveLeaseDurationMs(lease, ttlMs),
+        );
+        handle.throwIfUnavailable();
+        completeAcquisition(store, sessionId, options.ownerId, acquisitionState);
+        return handle;
+      } catch (error) {
+        let reportedError = error;
+        if (
+          isExecutionLeaseFailure(error) &&
+          error.code === 'DURABLE_EXECUTION_LEASE_TIMEOUT' &&
+          error.leaseId === undefined
+        ) {
+          reportedError = new DurableExecutionLeaseTimeoutError(
+            'acquire',
+            error instanceof DurableExecutionLeaseTimeoutError
+              ? error.timeoutMs
+              : configuredStoreTimeoutMs,
+            {
+              sessionId,
+              leaseId,
+              cause: error,
+            },
+          );
+        }
+        const outcomeUnknown =
+          isExecutionLeaseFailure(reportedError) &&
+          (reportedError.code === 'DURABLE_EXECUTION_LEASE_TIMEOUT' ||
+            reportedError.code === 'DURABLE_EXECUTION_LEASE_WRITE_FAILED' ||
+            reportedError.code === 'DURABLE_EXECUTION_LEASE_LOST');
+        failAcquisition(
+          store,
+          sessionId,
+          options.ownerId,
+          acquisitionState,
+          outcomeUnknown,
+          ttlMs + configuredStoreTimeoutMs,
+        );
+        throw reportedError;
+      }
+    })();
+    acquisitionState.attemptPromise = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (acquisitionState.attemptPromise === attempt) {
+        acquisitionState.attemptPromise = null;
+      }
+    }
   }
 
   get snapshot(): DurableExecutionLeaseSnapshot {
@@ -122,7 +414,9 @@ export class DurableExecutionLease {
   async assertActive(): Promise<void> {
     this.throwIfUnavailable();
     try {
-      await this.store.assertExecutionLease(this.current);
+      await this.runStoreOperation('assert', (signal) =>
+        this.store.assertExecutionLease(this.current, { signal }),
+      );
     } catch (cause) {
       const error = this.toLeaseLostError(cause);
       this.markLost(error);
@@ -134,7 +428,18 @@ export class DurableExecutionLease {
   async runFenced<T>(operation: () => Promise<T>): Promise<T> {
     this.throwIfUnavailable();
     try {
-      return await this.store.withExecutionLease(this.current, operation);
+      return await this.runStoreOperation('with', (signal) =>
+        this.store.withExecutionLease(
+          this.current,
+          async () => {
+            signal.throwIfAborted();
+            const result = await operation();
+            signal.throwIfAborted();
+            return result;
+          },
+          { signal },
+        ),
+      );
     } catch (error) {
       this.observeStoreFailure(error);
       throw error;
@@ -195,8 +500,11 @@ export class DurableExecutionLease {
       this.clearHeartbeat();
     }
     try {
-      await this.store.releaseExecutionLease(this.current);
+      await this.runStoreOperation('release', (signal) =>
+        this.store.releaseExecutionLease(this.current, { signal }),
+      );
       this.released = true;
+      this.clearExpiry();
     } catch (cause) {
       if (
         isExecutionLeaseFailure(cause) &&
@@ -207,6 +515,7 @@ export class DurableExecutionLease {
           cause.code === 'DURABLE_EXECUTION_LEASE_CONFLICT')
       ) {
         this.released = true;
+        this.clearExpiry();
         return;
       }
       this.scheduleHeartbeat();
@@ -234,7 +543,14 @@ export class DurableExecutionLease {
 
   private async renew(): Promise<void> {
     try {
-      this.current = await this.store.renewExecutionLease(this.current, this.ttlMs);
+      const renewalStartedAt = performance.now();
+      const renewed = await this.runStoreOperation('renew', (signal) =>
+        this.store.renewExecutionLease(this.current, this.ttlMs, { signal }),
+      );
+      this.current = renewed;
+      this.localExpiresAt =
+        renewalStartedAt + DurableExecutionLease.resolveLeaseDurationMs(renewed, this.ttlMs);
+      this.scheduleExpiry();
     } catch (cause) {
       this.markLost(this.toLeaseLostError(cause));
     }
@@ -246,6 +562,7 @@ export class DurableExecutionLease {
     }
     this.loss = error;
     this.clearHeartbeat();
+    this.clearExpiry();
     this.controller.abort(error);
     for (const listener of this.listeners) {
       try {
@@ -261,6 +578,52 @@ export class DurableExecutionLease {
       clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private scheduleExpiry(): void {
+    this.clearExpiry();
+    if (this.released || this.loss) {
+      return;
+    }
+    const remainingMs = this.localExpiresAt - performance.now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      this.markLost(this.createExpiredError());
+      return;
+    }
+    this.expiryTimer = setTimeout(
+      () => {
+        this.expiryTimer = null;
+        if (this.released || this.loss) {
+          return;
+        }
+        if (this.localExpiresAt > performance.now()) {
+          this.scheduleExpiry();
+          return;
+        }
+        this.markLost(this.createExpiredError());
+      },
+      Math.min(remainingMs, MAX_DURABLE_STORE_TIMEOUT_MS),
+    );
+    this.expiryTimer.unref?.();
+  }
+
+  private clearExpiry(): void {
+    if (this.expiryTimer) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+    }
+  }
+
+  private createExpiredError(): DurableExecutionLeaseError {
+    return new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      `Execution lease ${this.current.leaseId} reached its local expiry boundary`,
+      {
+        sessionId: this.current.sessionId,
+        leaseId: this.current.leaseId,
+        fencingToken: this.current.fencingToken,
+      },
+    );
   }
 
   private throwIfUnavailable(): void {
@@ -295,4 +658,65 @@ export class DurableExecutionLease {
         );
   }
 
+  private async runStoreOperation<T>(
+    operation: Exclude<DurableExecutionLeaseOperation, 'requires' | 'acquire'>,
+    execute: (signal: AbortSignal) => PromiseLike<T>,
+  ): Promise<T> {
+    const timeoutMs =
+      operation === 'release' ? this.storeTimeoutMs : this.resolveActiveStoreTimeoutMs();
+    try {
+      return await awaitDurableStoreOperation(
+        {
+          timeoutMs,
+          ...(operation === 'release' ? {} : { signal: this.controller.signal }),
+          createTimeoutError: () =>
+            new DurableExecutionLeaseTimeoutError(operation, timeoutMs, {
+              sessionId: this.current.sessionId,
+              leaseId: this.current.leaseId,
+              fencingToken: this.current.fencingToken,
+            }),
+        },
+        execute,
+      );
+    } catch (error) {
+      if (
+        isExecutionLeaseFailure(error) &&
+        error.code === 'DURABLE_EXECUTION_LEASE_TIMEOUT' &&
+        (error.leaseId === undefined || error.fencingToken === undefined)
+      ) {
+        throw new DurableExecutionLeaseTimeoutError(
+          operation,
+          error instanceof DurableExecutionLeaseTimeoutError ? error.timeoutMs : timeoutMs,
+          {
+            sessionId: this.current.sessionId,
+            leaseId: this.current.leaseId,
+            fencingToken: this.current.fencingToken,
+            cause: error,
+          },
+        );
+      }
+      throw error;
+    }
+  }
+
+  private resolveActiveStoreTimeoutMs(): number {
+    const remainingMs = Math.floor(this.localExpiresAt - performance.now() - 1);
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      const error = this.createExpiredError();
+      this.markLost(error);
+      throw error;
+    }
+    return Math.min(this.storeTimeoutMs, remainingMs);
+  }
+
+  private static resolveLeaseDurationMs(
+    lease: DurableExecutionLeaseSnapshot,
+    ttlMs: number,
+  ): number {
+    const durationMs = Date.parse(lease.expiresAt) - Date.parse(lease.renewedAt);
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      return 0;
+    }
+    return Math.min(ttlMs, durationMs);
+  }
 }

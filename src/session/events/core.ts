@@ -10,7 +10,9 @@ export {
   type DurableExecutionLeaseAcquireOptions,
   DurableExecutionLeaseError,
   type DurableExecutionLeaseErrorCode,
+  type DurableExecutionLeaseOperation,
   type DurableExecutionLeaseStore,
+  DurableExecutionLeaseTimeoutError,
   DURABLE_EXECUTION_LEASE_FORMAT,
   DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
   executionFence,
@@ -20,10 +22,17 @@ export {
 } from './DurableExecutionLeaseStore.js';
 export {
   DurableEventSequenceConflictError,
+  type DurableEventOperationOptions,
   type DurableEventStore,
   DurableEventStoreError,
   type DurableEventStoreErrorCode,
+  type DurableEventStoreOperation,
+  DurableEventStoreTimeoutError,
 } from './DurableEventStore.js';
+export {
+  DEFAULT_DURABLE_STORE_TIMEOUT_MS,
+  MAX_DURABLE_STORE_TIMEOUT_MS,
+} from './DurableStoreOperation.js';
 export {
   DURABLE_EVENT_CURSOR_VERSION,
   durableEventCursor,

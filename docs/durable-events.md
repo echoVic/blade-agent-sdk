@@ -106,9 +106,10 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
-// 可选：本进程队列或另一个进程占锁时最多等待 15 秒。
+// 可选：分别限制锁获取和完整 Store 调用。
 const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
   lockTimeoutMs: 15_000,
+  operationTimeoutMs: 30_000,
 });
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
@@ -575,6 +576,33 @@ v3 batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 
 伪装包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前
 runtime 恢复。
 
+### Store deadline 与协作取消
+
+`SessionOptions.durableStoreTimeoutMs` 默认对每次 Journal、subscription 和
+execution lease Store 调用施加 15 秒 deadline。SDK 同时会通过 `append`、
+`read`、`getHeadSequence` 及可选 lease 方法传递 `AbortSignal`。自定义 Store
+应在 signal 中止后停止等待，并且不得再开始新的提交型写入。
+
+即使 Store 忽略取消，SDK 的 host watchdog 仍是权威边界。append timeout 会被
+视为 command outcome unknown：原 `commandId` 完成对账前，Journal 会拒绝其他
+command。lease 获取、heartbeat、校验、fenced operation 或释放超时会抛出
+`DurableExecutionLeaseTimeoutError`；heartbeat 与活动 fenced operation 超时还会
+中止 `lease.signal`，阻止新的副作用。活动 lease 调用的实际 timeout 还会被限制
+在 heartbeat 到 lease expiry 的剩余安全窗口内；即使 heartbeat 调度延迟，基于
+单调时钟的本地 expiry watchdog 也会 fail-closed。Session 与 lease 同时配置 Store
+deadline 时，以更严格的值为准。
+
+lease acquire 超时且结果未知后，同一进程内针对相同 Store、Session 和 owner 的
+重试会自动复用之前生成的 `leaseId`。timeout error 也会暴露该 ID，跨进程重试可
+显式传入它，对账同一次 acquire。在不确定窗口完成对账或过期前，同一 identity
+必须继续使用相同的 TTL、heartbeat interval 和 Store deadline。
+
+独立使用 Journal、subscription 和 lease API 时可设置 `storeTimeoutMs`。
+`JsonlDurableEventStore` 提供 `operationTimeoutMs`；默认值为
+`Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`。取消会移除
+进程内排队的锁 waiter 并停止跨进程锁轮询；已经开始的 callback 仍持有锁，直到
+清理完成。
+
 ### 执行租约与 fencing
 
 `DurableExecutionLease` 在 Journal CAS 之上提供 opt-in worker 所有权：
@@ -584,9 +612,11 @@ const lease = await DurableExecutionLease.acquire(store, sessionId, {
   ownerId: WorkerId('worker-a'),
   ttlMs: 30_000,
   heartbeatIntervalMs: 10_000,
+  storeTimeoutMs: 15_000,
 });
 const journal = await DurableSessionJournal.open(store, sessionId, {
   executionLease: lease,
+  storeTimeoutMs: 15_000,
 });
 ```
 
@@ -651,10 +681,13 @@ Request 前拒绝；同时要求 durable journal 与 transcript storage 都已�
 4. 调用文件 `fsync` 后才返回成功。
 
 `read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
-追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。跨进程
-锁使用操作系统 advisory lock：进程退出或崩溃时由内核立即释放，暂停但仍存活的
-进程会继续持锁，不会因 wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0`
-表示只立即尝试一次；锁已被占用时不会排队或重试。
+追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。完整的
+直接 Store 调用还受 `operationTimeoutMs` 限制；默认值为
+`Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`，显式
+operation timeout 不能小于 lock timeout。跨进程锁使用操作系统 advisory lock：
+进程退出或崩溃时由内核立即释放，暂停但仍存活的进程会继续持锁，不会因
+wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0` 表示只立即尝试一次；锁已
+被占用时不会排队或重试。
 
 每个事件文件旁会保留一个 `*.jsonl.lock` sidecar。它的存在不表示锁当前被占用；
 锁状态属于打开的文件描述符。只要仍有进程使用该 Store，就不能手动删除、替换或
@@ -701,11 +734,14 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DURABLE_EXECUTION_LEASE_CONFLICT` | 另一个未过期的 worker lease 正持有 Session |
 | `DURABLE_EXECUTION_LEASE_REQUIRED` | 活动 lease 存在，但 append 未携带对应 fence |
 | `DURABLE_EXECUTION_LEASE_LOST` | lease 已过期、释放或被更高 token 替换 |
+| `DURABLE_EXECUTION_LEASE_TIMEOUT` | lease Store 调用超过 deadline |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
+| `DURABLE_EVENT_INVALID_OPTIONS` | JSONL Store 构造参数无效 |
 | `DURABLE_EVENT_LOCK_FAILED` | Session 文件锁初始化或获取失败 |
 | `DURABLE_EVENT_LOCK_TIMEOUT` | 在 `lockTimeoutMs` 内未能获得 Session 文件锁 |
+| `DURABLE_EVENT_IO_TIMEOUT` | durable Store append、read 或 head 查询超过 deadline |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |
 
 完整、已换行但 schema 错误或 sequence 不连续的记录被视为损坏日志；Store

@@ -2,11 +2,18 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CommandId, ExecutionLeaseId, SessionId, WorkerId } from '../../../types/branded.js';
+import {
+  CommandId,
+  ExecutionLeaseId,
+  FencingToken,
+  SessionId,
+  WorkerId,
+} from '../../../types/branded.js';
 import type { DurableEventStore } from '../DurableEventStore.js';
 import { DurableExecutionLease } from '../DurableExecutionLease.js';
 import {
   DurableExecutionLeaseError,
+  DurableExecutionLeaseTimeoutError,
   type DurableExecutionLeaseStore,
   isDurableExecutionLeaseStore,
 } from '../DurableExecutionLeaseStore.js';
@@ -24,11 +31,444 @@ async function createStore(): Promise<JsonlDurableEventStore> {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe('DurableExecutionLease', () => {
+  it('bounds lease acquisition and aborts the Store signal', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    let storeSignal: AbortSignal | undefined;
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (_sessionId, options) => {
+      storeSignal = options.signal;
+      return await new Promise<never>(() => {});
+    });
+    const acquiring = DurableExecutionLease.acquire(store, SessionId('lease-acquire-timeout'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    });
+    const rejection = expect(acquiring).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'acquire',
+      timeoutMs: 25,
+      sessionId: 'lease-acquire-timeout',
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(storeSignal?.aborted).toBe(true);
+    expect(storeSignal?.reason).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+  });
+
+  it('reuses the generated lease identity after an uncertain acquisition', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const acquireNormally = store.acquireExecutionLease.bind(store);
+    const firstCommitted = Promise.withResolvers<void>();
+    const releaseFirstResponse = Promise.withResolvers<void>();
+    const leaseIds: ExecutionLeaseId[] = [];
+    let callCount = 0;
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (...args) => {
+      callCount += 1;
+      leaseIds.push(args[1].leaseId);
+      const lease = await acquireNormally(...args);
+      if (callCount === 1) {
+        firstCommitted.resolve();
+        await releaseFirstResponse.promise;
+      }
+      return lease;
+    });
+    const sessionId = SessionId('lease-acquire-retry');
+    const acquireOptions = {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    } as const;
+    const first = DurableExecutionLease.acquire(store, sessionId, acquireOptions);
+    const firstRejection = expect(first).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'acquire',
+    });
+    await firstCommitted.promise;
+    await vi.advanceTimersByTimeAsync(25);
+    await firstRejection;
+
+    const retry = await DurableExecutionLease.acquire(store, sessionId, acquireOptions);
+
+    expect(leaseIds).toHaveLength(2);
+    expect(leaseIds[1]).toBe(leaseIds[0]);
+    releaseFirstResponse.resolve();
+    await retry.release();
+  });
+
+  it('coordinates concurrent implicit acquisition identities', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const leaseIds: ExecutionLeaseId[] = [];
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (_sessionId, options) => {
+      leaseIds.push(options.leaseId);
+      return await new Promise<never>(() => {});
+    });
+    const sessionId = SessionId('lease-concurrent-acquire-timeout');
+    const acquireOptions = {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    } as const;
+    const outcomes = Promise.allSettled([
+      DurableExecutionLease.acquire(store, sessionId, acquireOptions),
+      DurableExecutionLease.acquire(store, sessionId, acquireOptions),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(outcomes).resolves.toEqual([
+      expect.objectContaining({ status: 'rejected' }),
+      expect.objectContaining({ status: 'rejected' }),
+    ]);
+    expect(leaseIds).toHaveLength(1);
+  });
+
+  it('rejects conflicting options for one in-flight acquisition identity', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(
+      async () => await new Promise<never>(() => {}),
+    );
+    const sessionId = SessionId('lease-concurrent-options');
+    const first = DurableExecutionLease.acquire(store, sessionId, {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    });
+    const firstRejection = expect(first).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+
+    await expect(
+      DurableExecutionLease.acquire(store, sessionId, {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+        storeTimeoutMs: 10,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_INVALID',
+    });
+    await vi.advanceTimersByTimeAsync(25);
+    await firstRejection;
+  });
+
+  it('evicts an abandoned uncertain acquisition identity after its lease window', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const leaseIds: ExecutionLeaseId[] = [];
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (_sessionId, options) => {
+      leaseIds.push(options.leaseId);
+      return await new Promise<never>(() => {});
+    });
+    const sessionId = SessionId('lease-acquire-timeout-eviction');
+    const acquireOptions = {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 100,
+      heartbeatIntervalMs: 50,
+      storeTimeoutMs: 25,
+    } as const;
+    const first = DurableExecutionLease.acquire(store, sessionId, acquireOptions);
+    const firstRejection = expect(first).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+    await vi.advanceTimersByTimeAsync(25);
+    await firstRejection;
+
+    await expect(
+      DurableExecutionLease.acquire(store, sessionId, {
+        ...acquireOptions,
+        leaseId: ExecutionLeaseId('different-retry-identity'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_INVALID',
+    });
+    const shorterRetryOptions = {
+      ...acquireOptions,
+      ttlMs: 20,
+      heartbeatIntervalMs: 10,
+      storeTimeoutMs: 5,
+    } as const;
+    await expect(
+      DurableExecutionLease.acquire(store, sessionId, shorterRetryOptions),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_INVALID',
+    });
+
+    await vi.advanceTimersByTimeAsync(125);
+    const afterEviction = DurableExecutionLease.acquire(store, sessionId, acquireOptions);
+    const afterEvictionRejection = expect(afterEviction).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+    await vi.advanceTimersByTimeAsync(25);
+    await afterEvictionRejection;
+
+    expect(leaseIds).toHaveLength(2);
+    expect(leaseIds[1]).not.toBe(leaseIds[0]);
+  });
+
+  it('adds the local lease identity to a Store-originated acquisition timeout', async () => {
+    const store = await createStore();
+    let leaseId: ExecutionLeaseId | undefined;
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (sessionId, options) => {
+      leaseId = options.leaseId;
+      throw new DurableExecutionLeaseTimeoutError('acquire', 10, { sessionId });
+    });
+
+    const error = await DurableExecutionLease.acquire(store, SessionId('lease-store-timeout'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'acquire',
+      timeoutMs: 10,
+      leaseId,
+    });
+  });
+
+  it('fails closed at the Store-reported lease expiry', async () => {
+    const store = await createStore();
+    const acquireNormally = store.acquireExecutionLease.bind(store);
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (...args) => {
+      const lease = await acquireNormally(...args);
+      return {
+        ...lease,
+        expiresAt: new Date(Date.now() + 25).toISOString(),
+      };
+    });
+    const lease = await DurableExecutionLease.acquire(store, SessionId('lease-local-expiry'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 1_000,
+    });
+
+    await vi.waitFor(() => expect(lease.signal.aborted).toBe(true), {
+      timeout: 1_000,
+    });
+
+    expect(lease.signal.reason).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+      sessionId: 'lease-local-expiry',
+    });
+    await lease.release();
+  });
+
+  it('bounds active Store calls by the current lease expiry', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const acquireNormally = store.acquireExecutionLease.bind(store);
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (...args) => {
+      const lease = await acquireNormally(...args);
+      return {
+        ...lease,
+        expiresAt: new Date(Date.now() + 100).toISOString(),
+      };
+    });
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('lease-current-expiry-timeout'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+        storeTimeoutMs: 1_000,
+      },
+    );
+    vi.spyOn(store, 'assertExecutionLease').mockImplementation(
+      async () => await new Promise<never>(() => {}),
+    );
+    const assertion = lease.assertActive();
+    const rejection = expect(assertion).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'assert',
+      sessionId: 'lease-current-expiry-timeout',
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await rejection;
+    expect(lease.signal.aborted).toBe(true);
+    expect(
+      (lease.signal.reason as DurableExecutionLeaseTimeoutError).timeoutMs,
+    ).toBeLessThan(1_000);
+    await lease.release();
+  });
+
+  it('adds active lease identity to a Store-originated timeout', async () => {
+    const store = await createStore();
+    const sessionId = SessionId('lease-active-store-timeout');
+    const lease = await DurableExecutionLease.acquire(store, sessionId, {
+      ownerId: WorkerId('worker-a'),
+      leaseId: ExecutionLeaseId('lease-active'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 1_000,
+    });
+    vi.spyOn(store, 'assertExecutionLease').mockRejectedValueOnce(
+      new DurableExecutionLeaseTimeoutError('assert', 10, { sessionId }),
+    );
+
+    const error = await lease.assertActive().catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'assert',
+      timeoutMs: 10,
+      sessionId,
+      leaseId: 'lease-active',
+      fencingToken: 1,
+    });
+    expect(lease.signal.reason).toBe(error);
+    await lease.release();
+  });
+
+  it('serializes lease timeout identity', () => {
+    const error = new DurableExecutionLeaseTimeoutError('renew', 25, {
+      sessionId: SessionId('lease-timeout-json'),
+      leaseId: ExecutionLeaseId('lease-a'),
+      fencingToken: FencingToken(7),
+    });
+
+    expect(error.toJSON()).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'renew',
+      timeoutMs: 25,
+      sessionId: 'lease-timeout-json',
+      leaseId: 'lease-a',
+      fencingToken: 7,
+    });
+  });
+
+  it('fails closed when heartbeat renewal exceeds the Store deadline', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    let renewalSignal: AbortSignal | undefined;
+    const lease = await DurableExecutionLease.acquire(store, SessionId('lease-renew-timeout'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 1_000,
+      heartbeatIntervalMs: 100,
+      storeTimeoutMs: 25,
+    });
+    vi.spyOn(store, 'renewExecutionLease').mockImplementation(async (_lease, _ttlMs, options) => {
+      renewalSignal = options?.signal;
+      return await new Promise<never>(() => {});
+    });
+
+    await vi.advanceTimersByTimeAsync(125);
+
+    expect(lease.signal.aborted).toBe(true);
+    expect(lease.signal.reason).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'renew',
+      timeoutMs: 25,
+    });
+    expect(renewalSignal?.aborted).toBe(true);
+    await lease.release();
+  });
+
+  it('keeps a timed-out release retryable', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const releaseNormally = store.releaseExecutionLease.bind(store);
+    let releaseSignal: AbortSignal | undefined;
+    const lease = await DurableExecutionLease.acquire(store, SessionId('lease-release-timeout'), {
+      ownerId: WorkerId('worker-a'),
+      ttlMs: 10_000,
+      heartbeatIntervalMs: 5_000,
+      storeTimeoutMs: 25,
+    });
+    vi.spyOn(store, 'releaseExecutionLease')
+      .mockImplementationOnce(async (_lease, options) => {
+        releaseSignal = options?.signal;
+        return await new Promise<never>(() => {});
+      })
+      .mockImplementation(releaseNormally);
+    const firstRelease = lease.release();
+    const rejection = expect(firstRelease).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'release',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(releaseSignal?.aborted).toBe(true);
+    await expect(lease.release()).resolves.toBeUndefined();
+  });
+
+  it('fails closed when fenced persistence exceeds the Store deadline', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('lease-fenced-store-timeout'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+        storeTimeoutMs: 25,
+      },
+    );
+    let storeSignal: AbortSignal | undefined;
+    let lateOperation: (() => Promise<unknown>) | undefined;
+    let persistenceRan = false;
+    vi.spyOn(store, 'withExecutionLease').mockImplementation(
+      async (_lease, operation, options) => {
+        storeSignal = options?.signal;
+        lateOperation = operation;
+        return await new Promise<never>(() => {});
+      },
+    );
+    const persistence = lease.runFenced(async () => {
+      persistenceRan = true;
+      return 'unreachable';
+    });
+    const rejection = expect(persistence).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'with',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(storeSignal?.aborted).toBe(true);
+    expect(lease.signal.aborted).toBe(true);
+    expect(lease.signal.reason).toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+    if (!lateOperation) {
+      throw new Error('Store did not capture the fenced operation');
+    }
+    await expect(lateOperation()).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+    });
+    expect(persistenceRan).toBe(false);
+    await lease.release();
+  });
+
   it('heartbeats the lease and releases it idempotently', async () => {
     const store = await createStore();
     const renew = vi.spyOn(store, 'renewExecutionLease');

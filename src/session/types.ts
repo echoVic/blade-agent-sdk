@@ -307,6 +307,8 @@ export interface SessionOptions {
   storagePath?: string;
   persistSession?: boolean;
   durableEventStore?: DurableEventStore;
+  /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
+  durableStoreTimeoutMs?: number;
   executionLease?: DurableExecutionLeaseOptions;
 
   outputFormat?: OutputFormat;

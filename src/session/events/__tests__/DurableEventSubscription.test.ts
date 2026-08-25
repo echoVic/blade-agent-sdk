@@ -27,7 +27,10 @@ import {
   type DurableEventSubscriptionMessage,
   parseDurableEventCursor,
 } from '../DurableEventSubscription.js';
-import type { DurableEventStore } from '../DurableEventStore.js';
+import type {
+  DurableEventOperationOptions,
+  DurableEventStore,
+} from '../DurableEventStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DurableEventType } from '../types.js';
@@ -174,7 +177,33 @@ class CountingStore implements DurableEventStore {
   }
 }
 
+class HangingReadStore extends CountingStore {
+  signal: AbortSignal | undefined;
+
+  override read(
+    _requestedSessionId: SessionId,
+    options?: DurableEventReadOptions,
+  ): Promise<DurableEventPage> {
+    this.reads += 1;
+    this.signal = options?.signal;
+    return new Promise<DurableEventPage>(() => {});
+  }
+}
+
+class HangingHeadStore extends CountingStore {
+  signal: AbortSignal | undefined;
+
+  override getHeadSequence(
+    _requestedSessionId: SessionId,
+    options?: DurableEventOperationOptions,
+  ): Promise<EventSequence | null> {
+    this.signal = options?.signal;
+    return new Promise<EventSequence | null>(() => {});
+  }
+}
+
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -465,12 +494,88 @@ describe('DurableEventSubscription', () => {
     { pageSize: 1001 },
     { pollIntervalMs: 0 },
     { pollIntervalMs: 60_001 },
+    { storeTimeoutMs: 0 },
   ])('rejects invalid options %#', async (options) => {
     await expect(
       DurableEventSubscription.open(createStore(), sessionId, options),
     ).rejects.toMatchObject({
       code: 'DURABLE_EVENT_SUBSCRIPTION_INVALID_OPTIONS',
     });
+  });
+
+  it('bounds a live Store read and closes the subscription', async () => {
+    vi.useFakeTimers();
+    const store = new HangingReadStore(createStore());
+    const subscription = await DurableEventSubscription.open(store, sessionId, {
+      storeTimeoutMs: 25,
+    });
+    await expect(subscription.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'caught_up' },
+    });
+    const next = subscription.next();
+    const rejection = expect(next).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_IO_TIMEOUT',
+      operation: 'read',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(store.signal?.aborted).toBe(true);
+    expect(subscription.isClosed).toBe(true);
+  });
+
+  it('cancels an in-flight Store read when the subscription closes', async () => {
+    const store = new HangingReadStore(createStore());
+    const subscription = await DurableEventSubscription.open(store, sessionId);
+    await expect(subscription.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'caught_up' },
+    });
+    const pending = subscription.next();
+    await vi.waitFor(() => expect(store.signal).toBeDefined());
+
+    subscription.close();
+
+    expect(store.signal?.aborted).toBe(true);
+    await expect(pending).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it('normalizes external cancellation during a Store read to AbortError', async () => {
+    const store = new HangingReadStore(createStore());
+    const controller = new AbortController();
+    const subscription = await DurableEventSubscription.open(store, sessionId, {
+      signal: controller.signal,
+    });
+    await expect(subscription.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'caught_up' },
+    });
+    const pending = subscription.next();
+    await vi.waitFor(() => expect(store.signal).toBeDefined());
+
+    controller.abort('disconnect');
+
+    await expect(pending).rejects.toBeInstanceOf(AbortError);
+    expect(subscription.isClosed).toBe(true);
+  });
+
+  it('normalizes external cancellation while opening to AbortError', async () => {
+    const store = new HangingHeadStore(createStore());
+    const controller = new AbortController();
+    const opening = DurableEventSubscription.open(store, sessionId, {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(store.signal).toBeDefined());
+
+    controller.abort('disconnect');
+
+    await expect(opening).rejects.toBeInstanceOf(AbortError);
   });
 
   it('aborts a pending live read and removes its abort listener', async () => {

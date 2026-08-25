@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CommandId,
   EventId,
@@ -157,6 +157,43 @@ class InvalidPageStore extends DelegatingStore {
   }
 }
 
+class HangingReadStore extends DelegatingStore {
+  signal: AbortSignal | undefined;
+
+  override read(
+    _targetSessionId: SessionId,
+    options?: DurableEventReadOptions,
+  ): Promise<DurableEventPage> {
+    this.signal = options?.signal;
+    return new Promise<DurableEventPage>(() => {});
+  }
+}
+
+class LateAppendStore extends DelegatingStore {
+  readonly release = Promise.withResolvers<void>();
+  readonly settled = Promise.withResolvers<void>();
+  signal: AbortSignal | undefined;
+  hang = false;
+
+  override async append(
+    targetSessionId: SessionId,
+    events: readonly DurableEventDraft[],
+    options?: DurableEventAppendOptions,
+  ): Promise<DurableEventAppendResult> {
+    if (!this.hang) {
+      return super.append(targetSessionId, events, options);
+    }
+    this.signal = options?.signal;
+    try {
+      await this.release.promise;
+      const { signal: _ignoredSignal, ...lateOptions } = options ?? {};
+      return await super.append(targetSessionId, events, lateOptions);
+    } finally {
+      this.settled.resolve();
+    }
+  }
+}
+
 describe('DurableSessionJournal', () => {
   let storageRoot: string;
   let nextEventId: number;
@@ -172,7 +209,76 @@ describe('DurableSessionJournal', () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await rm(storageRoot, { recursive: true, force: true });
+  });
+
+  it('bounds a Store read and aborts the cooperative signal', async () => {
+    vi.useFakeTimers();
+    const hangingStore = new HangingReadStore(store);
+    const opening = DurableSessionJournal.open(hangingStore, sessionId, {
+      storeTimeoutMs: 25,
+    });
+    const rejection = expect(opening).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_IO_TIMEOUT',
+      operation: 'read',
+      sessionId,
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(hangingStore.signal?.aborted).toBe(true);
+    expect(hangingStore.signal?.reason).toMatchObject({
+      code: 'DURABLE_EVENT_IO_TIMEOUT',
+    });
+  });
+
+  it('reconciles the same command after an append completes past its deadline', async () => {
+    vi.useFakeTimers();
+    const lateStore = new LateAppendStore(store);
+    const journal = await DurableSessionJournal.open(lateStore, sessionId, {
+      storeTimeoutMs: 25,
+    });
+    await journal.commit({
+      commandId: CommandId('command-create-before-timeout'),
+      events: [sessionCreated()],
+    });
+    lateStore.hang = true;
+    const command = {
+      commandId: CommandId('command-late-append'),
+      events: [requestAccepted()],
+    } as const;
+    const commit = journal.commit(command);
+    const rejection = expect(commit).rejects.toMatchObject({
+      code: 'DURABLE_COMMAND_OUTCOME_UNKNOWN',
+      commandId: command.commandId,
+      cause: expect.objectContaining({
+        code: 'DURABLE_EVENT_IO_TIMEOUT',
+        operation: 'append',
+      }),
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(lateStore.signal?.aborted).toBe(true);
+    await expect(
+      journal.commit({
+        commandId: CommandId('different-command-while-unknown'),
+        events: [requestAccepted('different')],
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_COMMAND_OUTCOME_UNKNOWN',
+      commandId: command.commandId,
+    });
+
+    lateStore.release.resolve();
+    await lateStore.settled.promise;
+    await expect(journal.commit(command)).resolves.toMatchObject({
+      status: 'reconciled',
+      commandId: command.commandId,
+    });
   });
 
   it('commits commands with CAS and stamps every event with the command ID', async () => {

@@ -1,13 +1,17 @@
-import { Mutex, withTimeout } from 'async-mutex';
 import { type FileHandle, mkdir, open, realpath } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { getAbortSignalReason } from './abortPromise.js';
 
 const LOCK_RETRY_DELAY_MS = 25;
 
 interface FileMutexEntry {
-  mutex: Mutex;
-  users: number;
+  locked: boolean;
+  waiters: FileMutexWaiter[];
+}
+
+interface FileMutexWaiter {
+  grant(): boolean;
 }
 
 const FILE_MUTEXES = new Map<string, FileMutexEntry>();
@@ -34,7 +38,106 @@ export interface AdvisoryFileLockErrors {
 
 export interface AdvisoryFileLockOptions {
   timeoutMs: number;
+  signal?: AbortSignal;
   errors: AdvisoryFileLockErrors;
+}
+
+function cleanupFileMutex(filePath: string, entry: FileMutexEntry): void {
+  if (!entry.locked && entry.waiters.length === 0 && FILE_MUTEXES.get(filePath) === entry) {
+    FILE_MUTEXES.delete(filePath);
+  }
+}
+
+function dispatchFileMutex(filePath: string, entry: FileMutexEntry): void {
+  entry.locked = false;
+  while (entry.waiters.length > 0) {
+    const waiter = entry.waiters.shift();
+    if (waiter?.grant()) {
+      return;
+    }
+  }
+  cleanupFileMutex(filePath, entry);
+}
+
+function acquireFileMutex(
+  filePath: string,
+  timeoutMs: number,
+  timeoutError: Error,
+  signal?: AbortSignal,
+): Promise<() => void> {
+  if (signal?.aborted) {
+    return Promise.reject(getAbortSignalReason(signal));
+  }
+  let entry = FILE_MUTEXES.get(filePath);
+  if (!entry) {
+    entry = { locked: false, waiters: [] };
+    FILE_MUTEXES.set(filePath, entry);
+  }
+
+  return new Promise<() => void>((resolve, reject) => {
+    let deadline: number | undefined;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = (): void => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const cancel = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      const index = entry.waiters.indexOf(waiter);
+      if (index !== -1) {
+        entry.waiters.splice(index, 1);
+      }
+      cleanupFileMutex(filePath, entry);
+      reject(error);
+    };
+    const onAbort = (): void => cancel(getAbortSignalReason(signal as AbortSignal));
+    const waiter: FileMutexWaiter = {
+      grant: () => {
+        if (settled) {
+          return false;
+        }
+        if (deadline !== undefined && performance.now() >= deadline) {
+          cancel(timeoutError);
+          return false;
+        }
+        settled = true;
+        cleanup();
+        entry.locked = true;
+        let released = false;
+        resolve(() => {
+          if (released) {
+            return;
+          }
+          released = true;
+          dispatchFileMutex(filePath, entry);
+        });
+        return true;
+      },
+    };
+
+    if (!entry.locked && entry.waiters.length === 0) {
+      waiter.grant();
+      return;
+    }
+    if (timeoutMs <= 0) {
+      cancel(timeoutError);
+      return;
+    }
+    deadline = performance.now() + timeoutMs;
+    entry.waiters.push(waiter);
+    timer = setTimeout(() => cancel(timeoutError), timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+    }
+  });
 }
 
 async function runWithFileMutex<T>(
@@ -42,20 +145,14 @@ async function runWithFileMutex<T>(
   timeoutMs: number,
   timeoutError: Error,
   callback: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
-  let entry = FILE_MUTEXES.get(filePath);
-  if (!entry) {
-    entry = { mutex: new Mutex(), users: 0 };
-    FILE_MUTEXES.set(filePath, entry);
-  }
-  entry.users += 1;
+  const release = await acquireFileMutex(filePath, timeoutMs, timeoutError, signal);
   try {
-    return await withTimeout(entry.mutex, timeoutMs, timeoutError).runExclusive(callback);
+    signal?.throwIfAborted();
+    return await callback();
   } finally {
-    entry.users -= 1;
-    if (entry.users === 0) {
-      FILE_MUTEXES.delete(filePath);
-    }
+    release();
   }
 }
 
@@ -84,19 +181,41 @@ async function acquireProcessLock(
   timeoutMs: number,
   deadline: number,
   errors: AdvisoryFileLockErrors,
+  signal?: AbortSignal,
 ): Promise<() => Promise<void>> {
   let nativeFileLock: NativeFileLock;
-  let lockFile: FileHandle;
   try {
+    signal?.throwIfAborted();
     nativeFileLock = await loadNativeFileLock();
-    lockFile = await open(`${filePath}.lock`, 'a+', 0o600);
+    signal?.throwIfAborted();
   } catch (error) {
+    if (signal?.aborted) {
+      throw getAbortSignalReason(signal);
+    }
     throw errors.initialize(error);
   }
 
+  let lockFile: FileHandle | undefined;
+  try {
+    lockFile = await open(`${filePath}.lock`, 'a+', 0o600);
+    signal?.throwIfAborted();
+  } catch (error) {
+    try {
+      await lockFile?.close();
+    } catch {
+      // Preserve the initialization or cancellation error.
+    }
+    if (signal?.aborted) {
+      throw getAbortSignalReason(signal);
+    }
+    throw errors.initialize(error);
+  }
+
+  let acquiredRelease: (() => Promise<void>) | undefined;
   try {
     let attempted = false;
     while (true) {
+      signal?.throwIfAborted();
       const remainingMs = deadline - performance.now();
       if (remainingMs <= 0 && (attempted || timeoutMs > 0)) {
         throw errors.timeout();
@@ -111,28 +230,53 @@ async function acquireProcessLock(
       }
       if (acquired) {
         let released = false;
-        return async () => {
+        acquiredRelease = async () => {
           if (released) {
             return;
           }
           released = true;
           await releaseProcessLock(lockFile, nativeFileLock.unlock);
         };
+        signal?.throwIfAborted();
+        return acquiredRelease;
       }
 
       const retryWaitMs = deadline - performance.now();
       if (retryWaitMs <= 0) {
         throw errors.timeout();
       }
-      await new Promise<void>((resolveDelay) => {
-        setTimeout(resolveDelay, Math.min(LOCK_RETRY_DELAY_MS, retryWaitMs));
+      await new Promise<void>((resolveDelay, rejectDelay) => {
+        let settled = false;
+        const finish = (callback: () => void): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+          callback();
+        };
+        const onAbort = (): void =>
+          finish(() => rejectDelay(getAbortSignalReason(signal as AbortSignal)));
+        const timer = setTimeout(
+          () => finish(resolveDelay),
+          Math.min(LOCK_RETRY_DELAY_MS, retryWaitMs),
+        );
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted) {
+          onAbort();
+        }
       });
     }
   } catch (error) {
     try {
-      await lockFile.close();
+      if (acquiredRelease) {
+        await acquiredRelease();
+      } else {
+        await lockFile.close();
+      }
     } catch {
-      // Preserve the acquisition error; no lock was acquired.
+      // Preserve the acquisition or cancellation error.
     }
     throw error;
   }
@@ -146,10 +290,16 @@ export async function withAdvisoryFileLock<T>(
   const deadline = performance.now() + options.timeoutMs;
   let lockTarget: string;
   try {
+    options.signal?.throwIfAborted();
     await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
+    options.signal?.throwIfAborted();
     const canonicalDirectory = await realpath(dirname(filePath));
+    options.signal?.throwIfAborted();
     lockTarget = join(canonicalDirectory, basename(filePath));
   } catch (error) {
+    if (options.signal?.aborted) {
+      throw getAbortSignalReason(options.signal);
+    }
     throw options.errors.prepare(error);
   }
 
@@ -159,15 +309,18 @@ export async function withAdvisoryFileLock<T>(
     localWaitMs,
     options.errors.timeout(),
     async () => {
+      options.signal?.throwIfAborted();
       const release = await acquireProcessLock(
         lockTarget,
         options.timeoutMs,
         deadline,
         options.errors,
+        options.signal,
       );
 
       let result: T;
       try {
+        options.signal?.throwIfAborted();
         result = await callback();
       } catch (error) {
         try {
@@ -185,6 +338,7 @@ export async function withAdvisoryFileLock<T>(
       }
       return result;
     },
+    options.signal,
   );
 }
 

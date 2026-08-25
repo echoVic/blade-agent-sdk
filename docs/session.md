@@ -1493,6 +1493,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
     ttlMs: 30_000,
@@ -1508,6 +1509,14 @@ event append；SDK 自身的短时 transcript 写入通过 `withExecutionLease()
 串行化，后台子 Agent 的状态与 output 写入也会携带并校验 fence。heartbeat
 无法续租时，Session 会停止接收新工作，并取消根执行、前台/后台子 Agent 及归属
 该 Session 的后台 shell 完整进程组。
+
+每次 durable Journal、subscription 和 lease Store 调用都受
+`durableStoreTimeoutMs` host deadline 限制。SDK 会向 Store 传递协作式
+`AbortSignal`；自定义 Store 即使忽略 signal，SDK 仍会用 typed timeout
+fail-closed。append timeout 会进入 command outcome 对账，heartbeat 或 fenced
+operation timeout 会中止 execution lease。即使 heartbeat 调度停滞，基于单调
+时钟的本地 expiry watchdog 也会关闭 lease；更严格的
+`executionLease.storeTimeoutMs` 不会被 Session 上限覆盖。
 
 Session 一旦启用过 execution lease，fencing 要求会永久保留。旧租约过期或释放
 后，未配置 `executionLease` 的 `resumeSession()` 仍会收到
@@ -1767,6 +1776,7 @@ async function analyzeCodeManual() {
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
 | `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用消息历史持久化                         |
 | `durableEventStore` | `DurableEventStore`                                  | —  | —           | opt-in durable 执行事件 Store                                 |
+| `durableStoreTimeoutMs` | `number`                                         | —  | `15000`     | 单次 durable Store 调用 deadline（毫秒）                         |
 | `executionLease` | `DurableExecutionLeaseOptions`                         | —  | —           | opt-in worker 所有权、heartbeat 与 fencing                     |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |

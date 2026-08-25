@@ -164,6 +164,23 @@ class InjectInputBeforeTurnStore implements DurableEventStore {
   }
 }
 
+class HangingReadStore implements DurableEventStore {
+  signal: AbortSignal | undefined;
+
+  append(): Promise<DurableEventAppendResult> {
+    throw new Error('append should not run');
+  }
+
+  read(_sessionId: SessionId, options?: DurableEventReadOptions): Promise<DurableEventPage> {
+    this.signal = options?.signal;
+    return new Promise<DurableEventPage>(() => {});
+  }
+
+  getHeadSequence(): Promise<null> {
+    return Promise.resolve(null);
+  }
+}
+
 const tempRoots: string[] = [];
 
 function createStore() {
@@ -189,6 +206,7 @@ function options(store: DurableEventStore) {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   BackgroundShellManager.getInstance().killAll();
   streamChat = async function* defaultStream() {
@@ -204,6 +222,89 @@ afterEach(async () => {
 });
 
 describe('Session durable events', () => {
+  it('applies the Session durable Store deadline during initialization', async () => {
+    vi.useFakeTimers();
+    const store = new HangingReadStore();
+    const creating = createSession({
+      ...options(store),
+      durableStoreTimeoutMs: 25,
+    });
+    const rejection = expect(creating).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_IO_TIMEOUT',
+      operation: 'read',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(store.signal?.aborted).toBe(true);
+  });
+
+  it('preserves a stricter execution lease Store deadline', async () => {
+    vi.useFakeTimers();
+    const { root, store } = createStore();
+    let leaseSignal: AbortSignal | undefined;
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (_sessionId, leaseOptions) => {
+      leaseSignal = leaseOptions.signal;
+      return await new Promise<never>(() => {});
+    });
+    const creating = createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      durableStoreTimeoutMs: 1_000,
+      executionLease: {
+        ownerId: WorkerId('worker-strict-lease-timeout'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+        storeTimeoutMs: 25,
+      },
+    });
+    const rejection = expect(creating).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
+      operation: 'acquire',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    expect(leaseSignal?.aborted).toBe(true);
+  });
+
+  it('keeps a lease-only Store deadline scoped to the lease', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-lease-only-timeout'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+        storeTimeoutMs: 1_000,
+      },
+    });
+
+    const subscription = await session.subscribeDurableEvents();
+
+    expect(
+      (subscription as unknown as { storeTimeoutMs: number }).storeTimeoutMs,
+    ).toBe(15_000);
+    await subscription.return();
+    await session.close();
+  });
+
+  it('rejects an invalid Session durable Store deadline', async () => {
+    await expect(
+      createSession({
+        ...options(createStore().store),
+        durableStoreTimeoutMs: 0,
+      }),
+    ).rejects.toThrow(/durableStoreTimeoutMs/);
+  });
+
   it('persists request and turn boundaries before exposing stream events', async () => {
     const { store } = createStore();
     const session = await createSession(options(store));
@@ -2126,8 +2227,8 @@ describe('Session durable events', () => {
         storagePath: root,
         executionLease: {
           ownerId: WorkerId('worker-abandoned-initialization'),
-          ttlMs: 100,
-          heartbeatIntervalMs: 20,
+          ttlMs: 10_000,
+          heartbeatIntervalMs: 5_000,
         },
       }),
     ).rejects.toBeInstanceOf(AggregateError);
@@ -2149,7 +2250,7 @@ describe('Session durable events', () => {
       code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
     });
 
-    now += 101;
+    now += 10_001;
     const successor = await store.acquireExecutionLease(sessionId, {
       ownerId: WorkerId('worker-after-expiry'),
       leaseId: ExecutionLeaseId('lease-after-expiry'),

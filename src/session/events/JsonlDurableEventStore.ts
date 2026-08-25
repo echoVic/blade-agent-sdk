@@ -5,7 +5,13 @@ import { join, resolve } from 'node:path';
 import writeFileAtomic from 'write-file-atomic';
 import { EventId, EventSequence, FencingToken, type SessionId } from '../../types/branded.js';
 import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
-import { DurableEventSequenceConflictError, DurableEventStoreError } from './DurableEventStore.js';
+import {
+  type DurableEventOperationOptions,
+  DurableEventSequenceConflictError,
+  DurableEventStoreError,
+  type DurableEventStoreOperation,
+  DurableEventStoreTimeoutError,
+} from './DurableEventStore.js';
 import {
   DURABLE_EXECUTION_LEASE_FORMAT,
   DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
@@ -13,10 +19,18 @@ import {
   type DurableExecutionLease,
   type DurableExecutionLeaseAcquireOptions,
   DurableExecutionLeaseError,
+  type DurableExecutionLeaseOperation,
   type DurableExecutionLeaseStore,
+  DurableExecutionLeaseTimeoutError,
   type PersistedDurableExecutionLeaseState,
   parsePersistedDurableExecutionLeaseState,
 } from './DurableExecutionLeaseStore.js';
+import {
+  DEFAULT_DURABLE_STORE_TIMEOUT_MS,
+  MAX_DURABLE_STORE_TIMEOUT_MS,
+  awaitDurableStoreOperation,
+  resolveDurableStoreTimeoutMs,
+} from './DurableStoreOperation.js';
 import {
   DURABLE_EVENT_LOG_FORMAT,
   type PersistedDurableEventBatch,
@@ -45,6 +59,8 @@ export interface JsonlDurableEventStoreOptions {
   eventIdFactory?: () => EventId;
   /** Maximum total time to wait for local or cross-process Session lock ownership. */
   lockTimeoutMs?: number;
+  /** Maximum wall-clock duration of one Store call. Defaults to at least 15000ms. */
+  operationTimeoutMs?: number;
 }
 
 interface LoadedLog {
@@ -64,11 +80,12 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
   private readonly clock: () => Date;
   private readonly eventIdFactory: () => EventId;
   private readonly lockTimeoutMs: number;
+  private readonly operationTimeoutMs: number;
 
   constructor(storageRoot: string, options: JsonlDurableEventStoreOptions = {}) {
     if (storageRoot.trim() === '') {
       throw new DurableEventStoreError(
-        'DURABLE_EVENT_INVALID_APPEND',
+        'DURABLE_EVENT_INVALID_OPTIONS',
         'Durable event storage root must not be empty',
       );
     }
@@ -76,10 +93,37 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     this.clock = options.clock ?? (() => new Date());
     this.eventIdFactory = options.eventIdFactory ?? (() => EventId(nanoid()));
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
-    if (!Number.isSafeInteger(this.lockTimeoutMs) || this.lockTimeoutMs < 0) {
+    if (
+      !Number.isSafeInteger(this.lockTimeoutMs) ||
+      this.lockTimeoutMs < 0 ||
+      this.lockTimeoutMs > MAX_DURABLE_STORE_TIMEOUT_MS
+    ) {
       throw new DurableEventStoreError(
-        'DURABLE_EVENT_LOCK_FAILED',
+        'DURABLE_EVENT_INVALID_OPTIONS',
         'Durable event lockTimeoutMs must be a non-negative safe integer',
+      );
+    }
+    const defaultOperationTimeoutMs = Math.min(
+      MAX_DURABLE_STORE_TIMEOUT_MS,
+      this.lockTimeoutMs + DEFAULT_DURABLE_STORE_TIMEOUT_MS,
+    );
+    try {
+      this.operationTimeoutMs = resolveDurableStoreTimeoutMs(
+        options.operationTimeoutMs,
+        defaultOperationTimeoutMs,
+        'Durable event operationTimeoutMs',
+      );
+    } catch (cause) {
+      throw new DurableEventStoreError(
+        'DURABLE_EVENT_INVALID_OPTIONS',
+        'Durable event operationTimeoutMs is invalid',
+        { cause },
+      );
+    }
+    if (this.operationTimeoutMs < this.lockTimeoutMs) {
+      throw new DurableEventStoreError(
+        'DURABLE_EVENT_INVALID_OPTIONS',
+        'Durable event operationTimeoutMs must be greater than or equal to lockTimeoutMs',
       );
     }
   }
@@ -108,72 +152,79 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
       }
     });
 
-    return this.runWithSessionLock(sessionId, 'write', async () => {
-      const loaded = await this.loadLog(sessionId);
-      const previousSequence = loaded.events.at(-1)?.sequence ?? null;
-      this.assertExpectedSequence(options.expectedLastSequence, previousSequence);
-
-      const eventIds = new Set<string>(loaded.events.map((event) => event.eventId));
-      const now = this.clock();
-      await this.assertExecutionFenceUnlocked(sessionId, options.executionFence, now);
-      const recordedAt = now.toISOString();
-      const firstSequenceValue = Number(previousSequence ?? 0) + 1;
-      const events = parsedDrafts.map((draft, index): DurableEventEnvelope => {
-        const eventId = this.eventIdFactory();
-        if (eventIds.has(eventId)) {
-          throw new DurableEventStoreError(
-            'DURABLE_EVENT_INVALID_APPEND',
-            `Duplicate generated durable event ID: ${eventId}`,
-          );
-        }
-        eventIds.add(eventId);
-        return {
-          ...draft,
-          schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
-          eventId,
-          sequence: EventSequence(firstSequenceValue + index),
-          sessionId,
-          recordedAt,
-          occurredAt: draft.occurredAt ?? recordedAt,
-        };
-      });
-      const firstEvent = events[0];
-      const lastEvent = events.at(-1);
-      if (!firstEvent || !lastEvent) {
-        throw new DurableEventStoreError(
-          'DURABLE_EVENT_INVALID_APPEND',
-          'A durable event append produced no events',
-        );
-      }
-      const lastSequence = lastEvent.sequence;
-
-      const batch: PersistedDurableEventBatch = {
-        format: DURABLE_EVENT_LOG_FORMAT,
-        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+    return this.runEventOperation(sessionId, 'append', options.signal, (signal) =>
+      this.runWithSessionLock(
         sessionId,
-        firstSequence: firstEvent.sequence,
-        lastSequence,
-        events,
-      };
+        'write',
+        async () => {
+          const loaded = await this.loadLog(sessionId, signal);
+          const previousSequence = loaded.events.at(-1)?.sequence ?? null;
+          this.assertExpectedSequence(options.expectedLastSequence, previousSequence);
 
-      let validatedBatch: PersistedDurableEventBatch;
-      try {
-        validatedBatch = parsePersistedDurableEventBatch(batch);
-      } catch (error) {
-        throw new DurableEventStoreError(
-          'DURABLE_EVENT_INVALID_APPEND',
-          'Generated durable event batch is invalid',
-          { cause: error },
-        );
-      }
+          const eventIds = new Set<string>(loaded.events.map((event) => event.eventId));
+          const now = this.clock();
+          await this.assertExecutionFenceUnlocked(sessionId, options.executionFence, now, signal);
+          const recordedAt = now.toISOString();
+          const firstSequenceValue = Number(previousSequence ?? 0) + 1;
+          const events = parsedDrafts.map((draft, index): DurableEventEnvelope => {
+            const eventId = this.eventIdFactory();
+            if (eventIds.has(eventId)) {
+              throw new DurableEventStoreError(
+                'DURABLE_EVENT_INVALID_APPEND',
+                `Duplicate generated durable event ID: ${eventId}`,
+              );
+            }
+            eventIds.add(eventId);
+            return {
+              ...draft,
+              schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+              eventId,
+              sequence: EventSequence(firstSequenceValue + index),
+              sessionId,
+              recordedAt,
+              occurredAt: draft.occurredAt ?? recordedAt,
+            };
+          });
+          const firstEvent = events[0];
+          const lastEvent = events.at(-1);
+          if (!firstEvent || !lastEvent) {
+            throw new DurableEventStoreError(
+              'DURABLE_EVENT_INVALID_APPEND',
+              'A durable event append produced no events',
+            );
+          }
+          const lastSequence = lastEvent.sequence;
 
-      await this.writeBatch(sessionId, validatedBatch, loaded);
-      return {
-        events: structuredClone(validatedBatch.events),
-        previousSequence,
-        lastSequence,
-      };
-    });
+          const batch: PersistedDurableEventBatch = {
+            format: DURABLE_EVENT_LOG_FORMAT,
+            schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+            sessionId,
+            firstSequence: firstEvent.sequence,
+            lastSequence,
+            events,
+          };
+
+          let validatedBatch: PersistedDurableEventBatch;
+          try {
+            validatedBatch = parsePersistedDurableEventBatch(batch);
+          } catch (error) {
+            throw new DurableEventStoreError(
+              'DURABLE_EVENT_INVALID_APPEND',
+              'Generated durable event batch is invalid',
+              { cause: error },
+            );
+          }
+
+          await this.writeBatch(sessionId, validatedBatch, loaded, signal);
+          return {
+            events: structuredClone(validatedBatch.events),
+            previousSequence,
+            lastSequence,
+          };
+        },
+        signal,
+      ),
+    );
   }
 
   async read(
@@ -188,40 +239,57 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
       );
     }
 
-    return this.runWithSessionLock(sessionId, 'read', async () => {
-      const { events } = await this.loadLog(sessionId);
-      const headSequence = events.at(-1)?.sequence ?? null;
-      const after = options.after;
-      if (after !== undefined && (!Number.isSafeInteger(after) || after < 0)) {
-        throw new DurableEventStoreError(
-          'DURABLE_EVENT_INVALID_CURSOR',
-          `Invalid durable event cursor: ${String(after)}`,
-        );
-      }
-      if (after !== undefined && after > (headSequence ?? 0)) {
-        throw new DurableEventStoreError(
-          'DURABLE_EVENT_INVALID_CURSOR',
-          `Durable event cursor ${after} is ahead of head ${headSequence}`,
-        );
-      }
+    return this.runEventOperation(sessionId, 'read', options.signal, (signal) =>
+      this.runWithSessionLock(
+        sessionId,
+        'read',
+        async () => {
+          const { events } = await this.loadLog(sessionId, signal);
+          const headSequence = events.at(-1)?.sequence ?? null;
+          const after = options.after;
+          if (after !== undefined && (!Number.isSafeInteger(after) || after < 0)) {
+            throw new DurableEventStoreError(
+              'DURABLE_EVENT_INVALID_CURSOR',
+              `Invalid durable event cursor: ${String(after)}`,
+            );
+          }
+          if (after !== undefined && after > (headSequence ?? 0)) {
+            throw new DurableEventStoreError(
+              'DURABLE_EVENT_INVALID_CURSOR',
+              `Durable event cursor ${after} is ahead of head ${headSequence}`,
+            );
+          }
 
-      const unread =
-        after === undefined ? events : events.filter((event) => event.sequence > after);
-      const pageEvents = unread.slice(0, limit);
-      return {
-        events: structuredClone(pageEvents),
-        headSequence,
-        nextCursor: pageEvents.at(-1)?.sequence ?? after ?? null,
-        hasMore: unread.length > pageEvents.length,
-      };
-    });
+          const unread =
+            after === undefined ? events : events.filter((event) => event.sequence > after);
+          const pageEvents = unread.slice(0, limit);
+          return {
+            events: structuredClone(pageEvents),
+            headSequence,
+            nextCursor: pageEvents.at(-1)?.sequence ?? after ?? null,
+            hasMore: unread.length > pageEvents.length,
+          };
+        },
+        signal,
+      ),
+    );
   }
 
-  async getHeadSequence(sessionId: SessionId): Promise<EventSequence | null> {
-    return this.runWithSessionLock(sessionId, 'read', async () => {
-      const { events } = await this.loadLog(sessionId);
-      return events.at(-1)?.sequence ?? null;
-    });
+  async getHeadSequence(
+    sessionId: SessionId,
+    options: DurableEventOperationOptions = {},
+  ): Promise<EventSequence | null> {
+    return this.runEventOperation(sessionId, 'get_head_sequence', options.signal, (signal) =>
+      this.runWithSessionLock(
+        sessionId,
+        'read',
+        async () => {
+          const { events } = await this.loadLog(sessionId, signal);
+          return events.at(-1)?.sequence ?? null;
+        },
+        signal,
+      ),
+    );
   }
 
   getFilePath(sessionId: SessionId): string {
@@ -234,10 +302,20 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     return join(this.rootDirectory, filename);
   }
 
-  async requiresExecutionLease(sessionId: SessionId): Promise<boolean> {
-    return this.runWithExecutionLeaseLock(sessionId, 'read', async () => {
-      return (await this.loadExecutionLeaseState(sessionId)) !== null;
-    });
+  async requiresExecutionLease(
+    sessionId: SessionId,
+    options: DurableEventOperationOptions = {},
+  ): Promise<boolean> {
+    return this.runLeaseOperation(sessionId, 'requires', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
+        sessionId,
+        'read',
+        async () => {
+          return (await this.loadExecutionLeaseState(sessionId, signal)) !== null;
+        },
+        signal,
+      ),
+    );
   }
 
   async acquireExecutionLease(
@@ -246,127 +324,213 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
   ): Promise<DurableExecutionLease> {
     this.assertLeaseIdentity(sessionId, options);
     this.assertLeaseTtl(options.ttlMs);
-    return this.runWithExecutionLeaseLock(sessionId, 'write', async () => {
-      const current = await this.loadExecutionLeaseState(sessionId);
-      const now = this.clock();
-      if (current && this.isLeaseActive(current, now)) {
-        if (current.leaseId !== options.leaseId || current.ownerId !== options.ownerId) {
-          throw new DurableExecutionLeaseError(
-            'DURABLE_EXECUTION_LEASE_CONFLICT',
-            `Session ${sessionId} is leased by worker ${current.ownerId}`,
-            {
-              sessionId,
-              leaseId: options.leaseId,
-              fencingToken: current.fencingToken,
-              activeLease: this.toExecutionLease(current),
-            },
-          );
-        }
-      }
-
-      const reusesActiveLease =
-        current !== null &&
-        this.isLeaseActive(current, now) &&
-        current.leaseId === options.leaseId &&
-        current.ownerId === options.ownerId;
-      const fencingToken = reusesActiveLease
-        ? current.fencingToken
-        : this.nextFencingToken(sessionId, current?.fencingToken);
-      const timestamp = now.toISOString();
-      const state: PersistedDurableExecutionLeaseState = {
-        format: DURABLE_EXECUTION_LEASE_FORMAT,
-        version: DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
+    return this.runLeaseOperation(sessionId, 'acquire', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
         sessionId,
-        fencingToken,
-        leaseId: options.leaseId,
-        ownerId: options.ownerId,
-        acquiredAt: reusesActiveLease ? current.acquiredAt : timestamp,
-        renewedAt: timestamp,
-        expiresAt: this.expiresAt(sessionId, now, options.ttlMs),
-      };
-      await this.writeExecutionLeaseState(state);
-      return this.toExecutionLease(state);
-    });
+        'write',
+        async () => {
+          const current = await this.loadExecutionLeaseState(sessionId, signal);
+          const now = this.clock();
+          if (current && this.isLeaseActive(current, now)) {
+            if (current.leaseId !== options.leaseId || current.ownerId !== options.ownerId) {
+              throw new DurableExecutionLeaseError(
+                'DURABLE_EXECUTION_LEASE_CONFLICT',
+                `Session ${sessionId} is leased by worker ${current.ownerId}`,
+                {
+                  sessionId,
+                  leaseId: options.leaseId,
+                  fencingToken: current.fencingToken,
+                  activeLease: this.toExecutionLease(current),
+                },
+              );
+            }
+          }
+
+          const reusesActiveLease =
+            current !== null &&
+            this.isLeaseActive(current, now) &&
+            current.leaseId === options.leaseId &&
+            current.ownerId === options.ownerId;
+          const fencingToken = reusesActiveLease
+            ? current.fencingToken
+            : this.nextFencingToken(sessionId, current?.fencingToken);
+          const timestamp = now.toISOString();
+          const state: PersistedDurableExecutionLeaseState = {
+            format: DURABLE_EXECUTION_LEASE_FORMAT,
+            version: DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
+            sessionId,
+            fencingToken,
+            leaseId: options.leaseId,
+            ownerId: options.ownerId,
+            acquiredAt: reusesActiveLease ? current.acquiredAt : timestamp,
+            renewedAt: timestamp,
+            expiresAt: this.expiresAt(sessionId, now, options.ttlMs),
+          };
+          await this.writeExecutionLeaseState(state, signal);
+          return this.toExecutionLease(state);
+        },
+        signal,
+      ),
+    );
   }
 
   async renewExecutionLease(
     lease: DurableExecutionLease,
     ttlMs: number,
+    options: DurableEventOperationOptions = {},
   ): Promise<DurableExecutionLease> {
     this.assertLeaseIdentity(lease.sessionId, lease);
     this.assertLeaseTtl(ttlMs);
-    return this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
-      const current = await this.loadExecutionLeaseState(lease.sessionId);
-      const now = this.clock();
-      this.assertLeaseMatches(lease, current, now);
-      if (!current) {
-        throw this.createLeaseLostError(lease, 'no lease state exists');
-      }
-      const timestamp = now.toISOString();
-      const renewed: PersistedDurableExecutionLeaseState = {
-        ...current,
-        renewedAt: timestamp,
-        expiresAt: this.expiresAt(lease.sessionId, now, ttlMs),
-      };
-      await this.writeExecutionLeaseState(renewed);
-      return this.toExecutionLease(renewed);
-    });
+    return this.runLeaseOperation(lease.sessionId, 'renew', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
+        lease.sessionId,
+        'write',
+        async () => {
+          const current = await this.loadExecutionLeaseState(lease.sessionId, signal);
+          const now = this.clock();
+          this.assertLeaseMatches(lease, current, now);
+          if (!current) {
+            throw this.createLeaseLostError(lease, 'no lease state exists');
+          }
+          const timestamp = now.toISOString();
+          const renewed: PersistedDurableExecutionLeaseState = {
+            ...current,
+            renewedAt: timestamp,
+            expiresAt: this.expiresAt(lease.sessionId, now, ttlMs),
+          };
+          await this.writeExecutionLeaseState(renewed, signal);
+          return this.toExecutionLease(renewed);
+        },
+        signal,
+      ),
+    );
   }
 
-  async assertExecutionLease(lease: DurableExecutionLease): Promise<void> {
+  async assertExecutionLease(
+    lease: DurableExecutionLease,
+    options: DurableEventOperationOptions = {},
+  ): Promise<void> {
     this.assertLeaseIdentity(lease.sessionId, lease);
-    await this.runWithExecutionLeaseLock(lease.sessionId, 'read', async () => {
-      const current = await this.loadExecutionLeaseState(lease.sessionId);
-      this.assertLeaseMatches(lease, current, this.clock());
-    });
+    await this.runLeaseOperation(lease.sessionId, 'assert', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
+        lease.sessionId,
+        'read',
+        async () => {
+          const current = await this.loadExecutionLeaseState(lease.sessionId, signal);
+          this.assertLeaseMatches(lease, current, this.clock());
+        },
+        signal,
+      ),
+    );
   }
 
   async withExecutionLease<T>(
     lease: DurableExecutionLease,
     operation: () => Promise<T>,
+    options: DurableEventOperationOptions = {},
   ): Promise<T> {
     this.assertLeaseIdentity(lease.sessionId, lease);
-    return this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
-      const current = await this.loadExecutionLeaseState(lease.sessionId);
-      this.assertLeaseMatches(lease, current, this.clock());
-      return operation();
-    });
+    return this.runLeaseOperation(lease.sessionId, 'with', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
+        lease.sessionId,
+        'write',
+        async () => {
+          const current = await this.loadExecutionLeaseState(lease.sessionId, signal);
+          this.assertLeaseMatches(lease, current, this.clock());
+          signal.throwIfAborted();
+          const result = await operation();
+          signal.throwIfAborted();
+          return result;
+        },
+        signal,
+      ),
+    );
   }
 
-  async releaseExecutionLease(lease: DurableExecutionLease): Promise<void> {
+  async releaseExecutionLease(
+    lease: DurableExecutionLease,
+    options: DurableEventOperationOptions = {},
+  ): Promise<void> {
     this.assertLeaseIdentity(lease.sessionId, lease);
-    await this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
-      const current = await this.loadExecutionLeaseState(lease.sessionId);
-      const now = this.clock();
-      if (
-        current?.releasedAt &&
-        current.leaseId === lease.leaseId &&
-        current.fencingToken === lease.fencingToken
-      ) {
-        return;
-      }
-      this.assertLeaseMatches(lease, current, now, false);
-      if (!current) {
-        throw this.createLeaseLostError(lease, 'no lease state exists');
-      }
-      await this.writeExecutionLeaseState({
-        ...current,
-        releasedAt: now.toISOString(),
-      });
-    });
+    await this.runLeaseOperation(lease.sessionId, 'release', options.signal, (signal) =>
+      this.runWithExecutionLeaseLock(
+        lease.sessionId,
+        'write',
+        async () => {
+          const current = await this.loadExecutionLeaseState(lease.sessionId, signal);
+          const now = this.clock();
+          if (
+            current?.releasedAt &&
+            current.leaseId === lease.leaseId &&
+            current.fencingToken === lease.fencingToken
+          ) {
+            return;
+          }
+          this.assertLeaseMatches(lease, current, now, false);
+          if (!current) {
+            throw this.createLeaseLostError(lease, 'no lease state exists');
+          }
+          await this.writeExecutionLeaseState(
+            {
+              ...current,
+              releasedAt: now.toISOString(),
+            },
+            signal,
+          );
+        },
+        signal,
+      ),
+    );
+  }
+
+  private runEventOperation<T>(
+    sessionId: SessionId,
+    operation: DurableEventStoreOperation,
+    signal: AbortSignal | undefined,
+    execute: (signal: AbortSignal) => PromiseLike<T>,
+  ): Promise<T> {
+    return awaitDurableStoreOperation(
+      {
+        timeoutMs: this.operationTimeoutMs,
+        signal,
+        createTimeoutError: () =>
+          new DurableEventStoreTimeoutError(operation, sessionId, this.operationTimeoutMs),
+      },
+      execute,
+    );
+  }
+
+  private runLeaseOperation<T>(
+    sessionId: SessionId,
+    operation: DurableExecutionLeaseOperation,
+    signal: AbortSignal | undefined,
+    execute: (signal: AbortSignal) => PromiseLike<T>,
+  ): Promise<T> {
+    return awaitDurableStoreOperation(
+      {
+        timeoutMs: this.operationTimeoutMs,
+        signal,
+        createTimeoutError: () =>
+          new DurableExecutionLeaseTimeoutError(operation, this.operationTimeoutMs, { sessionId }),
+      },
+      execute,
+    );
   }
 
   private async runWithSessionLock<T>(
     sessionId: SessionId,
     operation: 'read' | 'write',
     callback: () => Promise<T>,
+    signal: AbortSignal,
   ): Promise<T> {
+    signal.throwIfAborted();
     const operationErrorCode =
       operation === 'write' ? 'DURABLE_EVENT_WRITE_FAILED' : 'DURABLE_EVENT_READ_FAILED';
     return withAdvisoryFileLock(
       this.getFilePath(sessionId),
       {
         timeoutMs: this.lockTimeoutMs,
+        signal,
         errors: {
           prepare: (cause) =>
             new DurableEventStoreError(
@@ -395,7 +559,12 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
             ),
         },
       },
-      callback,
+      async () => {
+        signal.throwIfAborted();
+        const result = await callback();
+        signal.throwIfAborted();
+        return result;
+      },
     );
   }
 
@@ -419,11 +588,14 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     sessionId: SessionId,
     operation: 'read' | 'write',
     callback: () => Promise<T>,
+    signal: AbortSignal,
   ): Promise<T> {
+    signal.throwIfAborted();
     return withAdvisoryFileLock(
       this.getFilePath(sessionId),
       {
         timeoutMs: this.lockTimeoutMs,
+        signal,
         errors: {
           prepare: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
           initialize: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
@@ -437,7 +609,12 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
           release: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
         },
       },
-      callback,
+      async () => {
+        signal.throwIfAborted();
+        const result = await callback();
+        signal.throwIfAborted();
+        return result;
+      },
     );
   }
 
@@ -457,11 +634,12 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
 
   private async loadExecutionLeaseState(
     sessionId: SessionId,
+    signal: AbortSignal,
   ): Promise<PersistedDurableExecutionLeaseState | null> {
     const filePath = this.getExecutionLeaseFilePath(sessionId);
     let content: string;
     try {
-      content = await readFile(filePath, 'utf8');
+      content = await readFile(filePath, { encoding: 'utf8', signal });
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         return null;
@@ -488,17 +666,22 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
 
   private async writeExecutionLeaseState(
     state: PersistedDurableExecutionLeaseState,
+    signal: AbortSignal,
   ): Promise<void> {
     const filePath = this.getExecutionLeaseFilePath(state.sessionId);
     try {
       const validated = parsePersistedDurableExecutionLeaseState(state);
+      signal.throwIfAborted();
       await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
+      signal.throwIfAborted();
       await writeFileAtomic(filePath, `${JSON.stringify(validated)}\n`, {
         encoding: 'utf8',
         fsync: true,
         mode: 0o600,
       });
+      signal.throwIfAborted();
       await syncParentDirectory(filePath);
+      signal.throwIfAborted();
     } catch (error) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_WRITE_FAILED',
@@ -512,8 +695,9 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     sessionId: SessionId,
     fence: DurableExecutionFence | undefined,
     now: Date,
+    signal: AbortSignal,
   ): Promise<void> {
-    const current = await this.loadExecutionLeaseState(sessionId);
+    const current = await this.loadExecutionLeaseState(sessionId, signal);
     if (!current) {
       if (fence) {
         throw new DurableExecutionLeaseError(
@@ -686,22 +870,33 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     sessionId: SessionId,
     batch: PersistedDurableEventBatch,
     loaded: LoadedLog,
+    signal: AbortSignal,
   ): Promise<void> {
     const filePath = this.getFilePath(sessionId);
     try {
+      signal.throwIfAborted();
       await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
       if (loaded.totalBytes > loaded.committedBytes) {
+        signal.throwIfAborted();
         await truncate(filePath, loaded.committedBytes);
       }
+      signal.throwIfAborted();
       const file = await open(filePath, 'a', 0o600);
       try {
-        await file.writeFile(`${JSON.stringify(batch)}\n`, 'utf8');
+        await file.writeFile(`${JSON.stringify(batch)}\n`, {
+          encoding: 'utf8',
+          signal,
+        });
+        signal.throwIfAborted();
         await file.sync();
+        signal.throwIfAborted();
       } finally {
         await file.close();
       }
       if (!loaded.exists) {
+        signal.throwIfAborted();
         await syncParentDirectory(filePath);
+        signal.throwIfAborted();
       }
     } catch (error) {
       if (error instanceof DurableEventStoreError) {
@@ -715,11 +910,11 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     }
   }
 
-  private async loadLog(sessionId: SessionId): Promise<LoadedLog> {
+  private async loadLog(sessionId: SessionId, signal: AbortSignal): Promise<LoadedLog> {
     const filePath = this.getFilePath(sessionId);
     let bytes: Buffer;
     try {
-      bytes = await readFile(filePath);
+      bytes = await readFile(filePath, { signal });
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         return {

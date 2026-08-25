@@ -139,7 +139,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
 | `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
-| `JsonlDurableEventStoreOptions` | JSONL Store 时钟、事件 ID factory 与 `lockTimeoutMs` |
+| `JsonlDurableEventStoreOptions` | JSONL Store 时钟、事件 ID factory、`lockTimeoutMs` 与 `operationTimeoutMs` |
+| `DurableEventStoreTimeoutError` | durable append/read/head 调用超过 deadline |
+| `DurableExecutionLeaseTimeoutError` | lease Store 调用超过 deadline |
 | `DurableEventCursor` / `DURABLE_EVENT_CURSOR_VERSION` | 绑定 Session、sequence 和 event ID 的 cursor |
 | `DurableEventSubscriptionOptions` / `DurableEventSubscriptionMessage` | 订阅配置与 event/caught-up 消息 |
 | `DurableEventSubscriptionError` / `DurableEventSubscriptionErrorCode` | cursor、分页或订阅配置错误 |
