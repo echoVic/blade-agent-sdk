@@ -798,6 +798,7 @@ describe('JsonlDurableEventStore', () => {
       lockTimeoutMs: 10,
       operationTimeoutMs: 50,
     });
+    await timedStore.assertExecutionLease(lease);
     const entered = Promise.withResolvers<void>();
     const releaseOperation = Promise.withResolvers<void>();
     const operationSettled = Promise.withResolvers<void>();
@@ -814,7 +815,14 @@ describe('JsonlDurableEventStore', () => {
       (error: unknown) => ({ status: 'rejected' as const, error }),
     );
 
-    await entered.promise;
+    await Promise.race([
+      entered.promise,
+      outcome.then((result) => {
+        throw new Error('Fenced operation settled before its callback started', {
+          cause: result.status === 'rejected' ? result.error : undefined,
+        });
+      }),
+    ]);
     await expect(outcome).resolves.toMatchObject({
       status: 'rejected',
       error: {
