@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.12] - 2026-08-25
+
+### Refactoring
+
+- Extract Session execution behind injectable SessionExecutor and InProcessSessionExecutor contracts.
+
 ## [5.3.11] - 2026-08-25
 
 ### Refactoring

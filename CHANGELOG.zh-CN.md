@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.12] - 2026-08-25
+
+### 重构
+
+- 将 Session 执行提取为可注入的 SessionExecutor 与 InProcessSessionExecutor 契约。
+
 ## [5.3.11] - 2026-08-25
 
 ### 重构
