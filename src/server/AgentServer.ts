@@ -14,27 +14,13 @@ import {
   type AgentServerEvent,
   type AgentServerScope,
 } from '../protocol/index.js';
-import {
-  createSession,
-  forkSession,
-  resumeSession,
-} from '../session/Session.js';
 import { canonicalJson } from '../session/events/canonicalJson.js';
-import type {
-  ISession,
-  SessionOptions,
-  StreamMessage,
-} from '../session/types.js';
+import type { SessionOptions } from '../session/types.js';
 import {
   SessionId,
   type RequestId,
 } from '../types/branded.js';
-import type { JsonObject } from '../types/common.js';
-import {
-  getErrorCode,
-  getErrorMessage,
-  getErrorName,
-} from '../utils/errorUtils.js';
+import { getErrorName } from '../utils/errorUtils.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import {
   InMemoryAgentServerStore,
@@ -45,7 +31,12 @@ import {
   NOOP_AGENT_SERVER_TELEMETRY,
   type AgentServerTelemetry,
 } from './AgentServerTelemetry.js';
-import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
+import {
+  type AgentServerSessionContext,
+  InProcessSessionExecutor,
+  type SessionExecutor,
+  type SessionExecutorCommandContext,
+} from './SessionExecutor.js';
 import {
   TenantAdmissionController,
   type TenantAdmissionLimits,
@@ -56,17 +47,11 @@ const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 
-export interface AgentServerSessionContext {
-  readonly principal: AgentPrincipal;
-  readonly operation: 'create' | 'resume' | 'fork';
-  readonly sessionId?: SessionId;
-  readonly metadata?: JsonObject;
-}
-
 export interface AgentServerOptions {
-  readonly resolveSessionOptions: (
+  readonly resolveSessionOptions?: (
     context: AgentServerSessionContext,
   ) => SessionOptions | Promise<SessionOptions>;
+  readonly sessionExecutor?: SessionExecutor;
   readonly authenticate?: (
     request: Request,
   ) => AgentPrincipal | null | Promise<AgentPrincipal | null>;
@@ -82,18 +67,6 @@ export interface AgentServerOptions {
   readonly maxRequestBytes?: number;
   readonly basePath?: string;
   readonly requirePersistentSessions?: boolean;
-}
-
-interface ManagedSession {
-  readonly tenantId: string;
-  readonly session: ISession;
-  readonly metadata?: JsonObject;
-  pump?: Promise<void>;
-  activeRequestId?: RequestId;
-}
-
-function sessionKey(tenantId: string, sessionId: SessionId): string {
-  return `${tenantId}\0${sessionId}`;
 }
 
 function commandSessionId(command: AgentCommand): SessionId | undefined {
@@ -176,14 +149,10 @@ export class AgentServer {
     },
   };
 
-  private readonly activeSessions = new Map<string, ManagedSession>();
-  private readonly sessionReservations = new Map<string, number>();
-  private readonly sessionOperations = new Map<string, Promise<void>>();
   private readonly store: AgentServerStore;
   private readonly telemetry: AgentServerTelemetry;
   private readonly admission: TenantAdmissionController;
-  private readonly approvals: RemoteApprovalBroker;
-  private readonly maxActiveSessionsPerTenant: number;
+  private readonly sessionExecutor: SessionExecutor;
   private readonly commandLeaseTtlMs: number;
   private readonly eventPollIntervalMs: number;
   private readonly heartbeatIntervalMs: number;
@@ -194,8 +163,6 @@ export class AgentServer {
     this.store = options.store ?? new InMemoryAgentServerStore();
     this.telemetry = options.telemetry ?? NOOP_AGENT_SERVER_TELEMETRY;
     this.admission = new TenantAdmissionController(options.admission);
-    this.maxActiveSessionsPerTenant =
-      options.admission?.maxActiveSessionsPerTenant ?? 100;
     this.commandLeaseTtlMs =
       options.commandLeaseTtlMs ?? DEFAULT_COMMAND_LEASE_TTL_MS;
     this.eventPollIntervalMs =
@@ -204,7 +171,6 @@ export class AgentServer {
       options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.maxRequestBytes = options.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
     for (const [name, value] of [
-      ['maxActiveSessionsPerTenant', this.maxActiveSessionsPerTenant],
       ['commandLeaseTtlMs', this.commandLeaseTtlMs],
       ['eventPollIntervalMs', this.eventPollIntervalMs],
       ['heartbeatIntervalMs', this.heartbeatIntervalMs],
@@ -215,11 +181,25 @@ export class AgentServer {
       }
     }
     this.basePath = `/${(options.basePath ?? 'v1/agent').replace(/^\/+|\/+$/g, '')}`;
-    this.approvals = new RemoteApprovalBroker({
-      timeoutMs: options.approvalTimeoutMs,
-      publish: (tenantId, sessionId, request) =>
-        this.publish(tenantId, sessionId, 'permission.requested', request),
-    });
+    const resolveSessionOptions = options.resolveSessionOptions;
+    if (!options.sessionExecutor && !resolveSessionOptions) {
+      throw new TypeError(
+        'AgentServer requires sessionExecutor or resolveSessionOptions',
+      );
+    }
+    this.sessionExecutor = options.sessionExecutor
+      ?? new InProcessSessionExecutor({
+        store: this.store,
+        resolveSessionOptions: resolveSessionOptions as NonNullable<
+          AgentServerOptions['resolveSessionOptions']
+        >,
+        publish: (tenantId, sessionId, type, data, requestId) =>
+          this.publish(tenantId, sessionId, type, data, requestId),
+        maxActiveSessionsPerTenant:
+          options.admission?.maxActiveSessionsPerTenant,
+        approvalTimeoutMs: options.approvalTimeoutMs,
+        requirePersistentSessions: options.requirePersistentSessions,
+      });
   }
 
   async execute(
@@ -265,13 +245,9 @@ export class AgentServer {
         command.commandId,
         claim.leaseId,
       );
-      const sessionId = commandSessionId(command);
       let result: AgentCommandResult;
       try {
-        result = sessionId
-          ? await this.runForSession(principal, sessionId, () =>
-              this.dispatch(command, principal, signal))
-          : await this.dispatch(command, principal, signal);
+        result = await this.dispatch(command, principal, signal);
       } catch (error) {
         result = this.failure(command.commandId, error);
       }
@@ -439,116 +415,70 @@ export class AgentServer {
   }
 
   async close(): Promise<void> {
-    const sessions = Array.from(this.activeSessions.values());
-    this.activeSessions.clear();
-    await Promise.allSettled(sessions.map(async ({ tenantId, session }) => {
-      this.approvals.cancelSession(
-        tenantId,
-        session.sessionId,
-        new Error('Agent server is closing'),
-      );
-      await session.close();
-    }));
+    await this.sessionExecutor.shutdown();
   }
 
   private async dispatch(
     command: AgentCommand,
     principal: AgentPrincipal,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<AgentCommandResult> {
+    const context: SessionExecutorCommandContext = {
+      principal,
+      commandId: command.commandId,
+      ...(signal ? { signal } : {}),
+    };
     switch (command.type) {
       case AgentCommandType.INITIALIZE:
         return this.success(command.commandId, {
           ...this.capabilities,
           serverTime: new Date().toISOString(),
         });
-      case AgentCommandType.SESSION_CREATE:
-        return this.create(command.commandId, principal, command.data.metadata);
+      case AgentCommandType.SESSION_CREATE: {
+        const session = await this.sessionExecutor.create(context, command.data);
+        return this.success(command.commandId, { session });
+      }
       case AgentCommandType.SESSION_READ:
-        return this.read(command.commandId, principal, command.data.sessionId);
+        return this.success(
+          command.commandId,
+          await this.sessionExecutor.read(context, command.data),
+        );
       case AgentCommandType.SESSION_LIST:
         return this.list(command.commandId, principal, command.data);
-      case AgentCommandType.SESSION_RESUME:
-        return this.resume(command.commandId, principal, command.data.sessionId);
-      case AgentCommandType.SESSION_FORK:
-        return this.fork(command.commandId, principal, command.data);
-      case AgentCommandType.SESSION_CLOSE:
-        return this.closeSession(command.commandId, principal, command.data.sessionId);
-      case AgentCommandType.INPUT_SUBMIT:
-        return this.submit(command.commandId, principal, command.data);
-      case AgentCommandType.REQUEST_ABORT:
-        return this.abort(command.commandId, principal, command.data.sessionId);
-      case AgentCommandType.PERMISSION_RESOLVE:
-        this.approvals.resolve(
-          principal.tenantId,
-          command.data.sessionId,
-          command.data.permissionRequestId,
-          {
-            approved: command.data.approved,
-            reason: command.data.reason,
-            scope: command.data.scope,
-          },
+      case AgentCommandType.SESSION_RESUME: {
+        const session = await this.sessionExecutor.resume(context, command.data);
+        return this.success(command.commandId, { session });
+      }
+      case AgentCommandType.SESSION_FORK: {
+        const session = await this.sessionExecutor.fork(context, command.data);
+        return this.success(command.commandId, { session });
+      }
+      case AgentCommandType.SESSION_CLOSE: {
+        const session = await this.sessionExecutor.closeSession(
+          context,
+          command.data,
         );
+        return this.success(command.commandId, { session });
+      }
+      case AgentCommandType.INPUT_SUBMIT:
+        return this.success(
+          command.commandId,
+          await this.sessionExecutor.submit(context, command.data),
+        );
+      case AgentCommandType.REQUEST_ABORT:
+        await this.sessionExecutor.abort(context, command.data);
+        return this.success(command.commandId, {
+          sessionId: command.data.sessionId,
+          aborted: true,
+        });
+      case AgentCommandType.PERMISSION_RESOLVE:
+        await this.sessionExecutor.resolvePermission(context, command.data);
         return this.success(command.commandId, {
           sessionId: command.data.sessionId,
           permissionRequestId: command.data.permissionRequestId,
           resolved: true,
         });
     }
-  }
-
-  private async create(
-    commandId: string,
-    principal: AgentPrincipal,
-    metadata?: JsonObject,
-  ): Promise<AgentCommandResult> {
-    const releaseCapacity = this.reserveSessionCapacity(principal.tenantId);
-    try {
-      const options = await this.resolveSessionOptions({
-        principal,
-        operation: 'create',
-        metadata,
-      });
-      const session = await createSession(options);
-      const now = new Date().toISOString();
-      const record: AgentServerSessionRecord = {
-        tenantId: principal.tenantId,
-        createdBy: principal.subject,
-        sessionId: session.sessionId,
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-        metadata,
-      };
-      try {
-        await this.store.putSession(record);
-      } catch (error) {
-        await session.close().catch(() => undefined);
-        throw error;
-      }
-      this.activeSessions.set(sessionKey(principal.tenantId, session.sessionId), {
-        tenantId: principal.tenantId,
-        session,
-        metadata,
-      });
-      return this.success(commandId, { session: record });
-    } finally {
-      releaseCapacity();
-    }
-  }
-
-  private async read(
-    commandId: string,
-    principal: AgentPrincipal,
-    sessionId: SessionId,
-  ): Promise<AgentCommandResult> {
-    const record = await this.requireSessionRecord(principal.tenantId, sessionId);
-    const managed = this.activeSessions.get(sessionKey(principal.tenantId, sessionId));
-    return this.success(commandId, {
-      session: record,
-      messages: managed?.session.messages ?? [],
-      pendingInputs: managed?.session.getPendingInputs() ?? [],
-    });
   }
 
   private async list(
@@ -561,207 +491,6 @@ export class AgentServer {
       sessions: page.sessions,
       ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
     });
-  }
-
-  private async resume(
-    commandId: string,
-    principal: AgentPrincipal,
-    sessionId: SessionId,
-  ): Promise<AgentCommandResult> {
-    const existing = this.activeSessions.get(sessionKey(principal.tenantId, sessionId));
-    if (existing) {
-      return this.success(commandId, {
-        session: await this.requireSessionRecord(principal.tenantId, sessionId),
-      });
-    }
-    const releaseCapacity = this.reserveSessionCapacity(principal.tenantId);
-    try {
-      const record = await this.requireSessionRecord(principal.tenantId, sessionId);
-      if (record.status === 'closed') {
-        throw new AgentProtocolError('SESSION_CONFLICT', 'Session is closed', 409);
-      }
-      const options = await this.resolveSessionOptions({
-        principal,
-        operation: 'resume',
-        sessionId,
-        metadata: record.metadata,
-      });
-      const session = await resumeSession({ ...options, sessionId });
-      this.activeSessions.set(sessionKey(principal.tenantId, sessionId), {
-        tenantId: principal.tenantId,
-        session,
-        metadata: record.metadata,
-      });
-      return this.success(commandId, { session: record });
-    } finally {
-      releaseCapacity();
-    }
-  }
-
-  private async fork(
-    commandId: string,
-    principal: AgentPrincipal,
-    data: {
-      sessionId: SessionId;
-      messageId?: string;
-      metadata?: JsonObject;
-    },
-  ): Promise<AgentCommandResult> {
-    const releaseCapacity = this.reserveSessionCapacity(principal.tenantId);
-    try {
-      const sourceRecord = await this.requireSessionRecord(
-        principal.tenantId,
-        data.sessionId,
-      );
-      const source = this.activeSessions.get(
-        sessionKey(principal.tenantId, data.sessionId),
-      );
-      let forked: ISession;
-      if (source) {
-        forked = await source.session.fork({ messageId: data.messageId });
-      } else {
-        const options = await this.resolveSessionOptions({
-          principal,
-          operation: 'fork',
-          sessionId: data.sessionId,
-          metadata: sourceRecord.metadata,
-        });
-        forked = await forkSession({
-          ...options,
-          sessionId: data.sessionId,
-          messageId: data.messageId,
-        });
-      }
-      const now = new Date().toISOString();
-      const record: AgentServerSessionRecord = {
-        tenantId: principal.tenantId,
-        createdBy: principal.subject,
-        sessionId: forked.sessionId,
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-        metadata: data.metadata ?? sourceRecord.metadata,
-      };
-      try {
-        await this.store.putSession(record);
-      } catch (error) {
-        await forked.close().catch(() => undefined);
-        throw error;
-      }
-      this.activeSessions.set(sessionKey(principal.tenantId, forked.sessionId), {
-        tenantId: principal.tenantId,
-        session: forked,
-        metadata: record.metadata,
-      });
-      return this.success(commandId, { session: record });
-    } finally {
-      releaseCapacity();
-    }
-  }
-
-  private async submit(
-    commandId: string,
-    principal: AgentPrincipal,
-    data: Extract<AgentCommand, { type: 'input.submit' }>['data'],
-  ): Promise<AgentCommandResult> {
-    const managed = this.requireActiveSession(principal.tenantId, data.sessionId);
-    const submission = await managed.session.send(data.input, {
-      priority: data.priority,
-      expectedRequestId: data.expectedRequestId,
-      maxTurns: data.maxTurns,
-    });
-    if (submission.status === 'started') {
-      managed.activeRequestId = submission.requestId;
-      this.startPump(managed);
-    }
-    return this.success(commandId, {
-      sessionId: data.sessionId,
-      ...submission,
-    });
-  }
-
-  private async abort(
-    commandId: string,
-    principal: AgentPrincipal,
-    sessionId: SessionId,
-  ): Promise<AgentCommandResult> {
-    const managed = this.requireActiveSession(principal.tenantId, sessionId);
-    await managed.session.abort();
-    return this.success(commandId, { sessionId, aborted: true });
-  }
-
-  private async closeSession(
-    commandId: string,
-    principal: AgentPrincipal,
-    sessionId: SessionId,
-  ): Promise<AgentCommandResult> {
-    const record = await this.requireSessionRecord(principal.tenantId, sessionId);
-    const key = sessionKey(principal.tenantId, sessionId);
-    const managed = this.activeSessions.get(key);
-    this.approvals.cancelSession(
-      principal.tenantId,
-      sessionId,
-      new Error('Session closed'),
-    );
-    await managed?.session.close();
-    this.activeSessions.delete(key);
-    const updated: AgentServerSessionRecord = {
-      ...record,
-      status: 'closed',
-      updatedAt: new Date().toISOString(),
-    };
-    await this.store.putSession(updated);
-    await this.publish(principal.tenantId, sessionId, 'session.closed', {
-      reason: 'user',
-    });
-    return this.success(commandId, { session: updated });
-  }
-
-  private startPump(managed: ManagedSession): void {
-    if (managed.pump) {
-      return;
-    }
-    managed.pump = this.pump(managed)
-      .catch(async () => {
-        await managed.session.abort().catch(() => undefined);
-      })
-      .finally(() => {
-        managed.pump = undefined;
-        managed.activeRequestId = undefined;
-      });
-  }
-
-  private async pump(managed: ManagedSession): Promise<void> {
-    try {
-      do {
-        for await (const message of managed.session.stream()) {
-          await this.publish(
-            managed.tenantId,
-            managed.session.sessionId,
-            'session.stream',
-            message,
-            'requestId' in message ? message.requestId : managed.activeRequestId,
-          );
-        }
-      } while (
-        !managed.session.isClosed &&
-        managed.session.getPendingInputs().length > 0
-      );
-    } catch (error) {
-      const message: StreamMessage = {
-        type: 'error',
-        message: getErrorMessage(error),
-        code: getErrorCode(error),
-        sessionId: managed.session.sessionId,
-      };
-      await this.publish(
-        managed.tenantId,
-        managed.session.sessionId,
-        'session.stream',
-        message,
-        managed.activeRequestId,
-      );
-    }
   }
 
   private async publish(
@@ -791,44 +520,6 @@ export class AgentServer {
     }
   }
 
-  private async resolveSessionOptions(
-    context: AgentServerSessionContext,
-  ): Promise<SessionOptions> {
-    const options = await this.options.resolveSessionOptions(context);
-    if (this.options.requirePersistentSessions && !options.sessionRepository) {
-      throw new AgentProtocolError(
-        'SESSION_CONFLICT',
-        'This server requires a persistent sessionRepository',
-        409,
-      );
-    }
-    const configuredFactory = options.confirmationHandlerFactory;
-    const configuredHandler = options.confirmationHandler;
-    return {
-      ...options,
-      confirmationHandler: undefined,
-      confirmationHandlerFactory: (sessionId) =>
-        configuredFactory?.(sessionId)
-        ?? configuredHandler
-        ?? this.approvals.createHandler(context.principal.tenantId, sessionId),
-    };
-  }
-
-  private requireActiveSession(
-    tenantId: string,
-    sessionId: SessionId,
-  ): ManagedSession {
-    const session = this.activeSessions.get(sessionKey(tenantId, sessionId));
-    if (!session) {
-      throw new AgentProtocolError(
-        'SESSION_NOT_FOUND',
-        `Session ${sessionId} is not active; resume it before issuing this command`,
-        404,
-      );
-    }
-    return session;
-  }
-
   private async requireSessionRecord(
     tenantId: string,
     sessionId: SessionId,
@@ -842,35 +533,6 @@ export class AgentServer {
       );
     }
     return record;
-  }
-
-  private reserveSessionCapacity(tenantId: string): () => void {
-    const active = Array.from(this.activeSessions.values())
-      .filter((session) => session.tenantId === tenantId).length;
-    const reserved = this.sessionReservations.get(tenantId) ?? 0;
-    if (active + reserved >= this.maxActiveSessionsPerTenant) {
-      throw new AgentProtocolError(
-        'OVERLOADED',
-        'Tenant active Session limit exceeded',
-        503,
-        true,
-        1000,
-      );
-    }
-    this.sessionReservations.set(tenantId, reserved + 1);
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      const remaining = (this.sessionReservations.get(tenantId) ?? 1) - 1;
-      if (remaining === 0) {
-        this.sessionReservations.delete(tenantId);
-      } else {
-        this.sessionReservations.set(tenantId, remaining);
-      }
-    };
   }
 
   private authorize(principal: AgentPrincipal, command: AgentCommand): void {
@@ -900,24 +562,6 @@ export class AgentServer {
         401,
       );
     }
-  }
-
-  private runForSession<T>(
-    principal: AgentPrincipal,
-    sessionId: SessionId,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const key = sessionKey(principal.tenantId, sessionId);
-    const previous = this.sessionOperations.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(operation);
-    const marker = current.then(() => undefined, () => undefined);
-    this.sessionOperations.set(key, marker);
-    void marker.finally(() => {
-      if (this.sessionOperations.get(key) === marker) {
-        this.sessionOperations.delete(key);
-      }
-    });
-    return current;
   }
 
   private async waitForEvents(

@@ -70,6 +70,12 @@ export class AgentServer {
   }
 }
 
+export class InProcessSessionExecutor {
+  constructor(..._args: unknown[]) {
+    serverOnly('InProcessSessionExecutor');
+  }
+}
+
 export class InMemoryAgentServerStore {
   constructor(..._args: unknown[]) {
     serverOnly('InMemoryAgentServerStore');
