@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
@@ -98,6 +99,25 @@ describe('CompactionService', () => {
         signal: controller.signal,
       }),
     ).rejects.toBe(abortError);
+  });
+
+  it('does not convert a missing provider adapter into fallback compaction', async () => {
+    const registryError = new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      'No provider adapter is registered for "custom-api"',
+      { providerType: 'custom-api' },
+    );
+    mockCreateChatServiceAsync.mockRejectedValueOnce(registryError);
+
+    await expect(
+      compact([{ role: 'user', content: 'hello' }], {
+        trigger: 'auto',
+        provider: 'custom-api',
+        modelName: 'custom-model',
+        maxContextTokens: 128000,
+        providerRegistry: new ProviderRegistry(),
+      }),
+    ).rejects.toBe(registryError);
   });
 
   it('preserves a hook containment failure when cancellation races cleanup', async () => {

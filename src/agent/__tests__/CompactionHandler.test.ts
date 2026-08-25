@@ -3,6 +3,7 @@ import type {
   CompactionOptions,
   CompactionResult,
 } from '../../context/CompactionService.js';
+import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
@@ -231,6 +232,48 @@ describe('CompactionHandler', () => {
     for (const [, options] of mockCompact.mock.calls) {
       expect(options).toEqual(expect.objectContaining({ providerRegistry }));
     }
+  });
+
+  it('fails closed when automatic or reactive compaction cannot resolve an adapter', async () => {
+    const registryError = new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      'No provider adapter is registered for "custom-api"',
+      { providerType: 'custom-api' },
+    );
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'custom-model',
+          provider: 'custom-api',
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const createState = () => new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+
+    mockCompact.mockRejectedValueOnce(registryError);
+    const automaticStream = handler.checkAndCompactInLoop(
+      createState(),
+      { sessionId: SessionId('missing-adapter-auto-session') },
+      2,
+      700,
+    );
+    await automaticStream.next();
+    await expect(automaticStream.next()).rejects.toBe(registryError);
+
+    mockCompact.mockRejectedValueOnce(registryError);
+    const reactiveStream = handler.reactiveCompact(
+      createState(),
+      { sessionId: SessionId('missing-adapter-reactive-session') },
+    );
+    await reactiveStream.next();
+    await expect(reactiveStream.next()).rejects.toBe(registryError);
   });
 
   it('propagates process-containment failures from automatic compaction hooks', async () => {

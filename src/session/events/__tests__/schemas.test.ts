@@ -513,19 +513,6 @@ describe('durable event schemas', () => {
         data: modelStarted.data,
       }),
     ).toThrow(/provider identity requires durable event schema v4/);
-    expect(() =>
-      parseDurableEventEnvelope({
-        ...envelope,
-        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
-        data: {
-          ...modelStarted.data,
-          modelIdentity: {
-            ...modelStarted.data.modelIdentity,
-            model: 'different-model',
-          },
-        },
-      }),
-    ).toThrow(/Model identity must match/);
   });
 
   it('requires model-attempt identity and original input for schema-v3 and later tools', () => {

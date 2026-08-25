@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CompactionService } from '../../context/CompactionService.js';
+import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
@@ -260,6 +261,17 @@ describe('LoopHookBuilder request signal', () => {
       requestController.signal,
     ]);
     expect(observedRegistries).toEqual([providerRegistry]);
+
+    const registryError = new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      'No provider adapter is registered for "custom-api"',
+      { providerType: 'custom-api' },
+    );
+    compact.mockRejectedValueOnce(registryError);
+    await expect(
+      turnLimitCompact({ contextMessages: [] }),
+    ).rejects.toBe(registryError);
+
     compact.mockRestore();
   });
 });
