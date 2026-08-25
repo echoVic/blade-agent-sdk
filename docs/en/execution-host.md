@@ -160,9 +160,8 @@ credentials that outlive the requested TTL.
 
 ## Checkpoint boundary
 
-The Docker host pauses the primary container and lets a temporary sidecar with
-no network, a read-only root filesystem, and no capabilities read the same
-workspace volume. It then writes a versioned manifest. Restore runs the
+The Docker host pauses the primary container, copies the workspace volume
+through the Docker daemon, and writes a versioned manifest. Restore runs the
 complete provision validation again before loading the workspace through a
 bounded tar stream into a new container. A checkpoint contains no process,
 memory, network connection, or credential state.

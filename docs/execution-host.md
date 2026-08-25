@@ -149,10 +149,9 @@ issuer 返回超过请求 TTL 的凭据会被拒绝。
 
 ## Checkpoint 边界
 
-Docker 参考实现暂停主容器，由无网络、只读 rootfs、drop-all-capabilities 的临时
-sidecar 读取同一个 workspace volume，再写入版本化 manifest。restore 会重新
-执行完整 provision 校验，再通过有界 tar stream 把 workspace 放入新容器。
-checkpoint 不包含进程、内存、网络连接或凭据。
+Docker 参考实现暂停主容器，通过 Docker daemon 复制 workspace volume，并写入
+版本化 manifest。restore 会重新执行完整 provision 校验，再通过有界 tar stream
+把 workspace 放入新容器。checkpoint 不包含进程、内存、网络连接或凭据。
 
 默认 checkpoint 位于本机 `checkpointDirectory`，适合单机恢复和交接。跨 worker
 调度必须实现共享 `ExecutionHost`，或把 checkpoint 上传到受控对象存储；不要把

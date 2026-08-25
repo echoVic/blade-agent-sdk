@@ -657,10 +657,11 @@ export class DockerExecutionHost implements ExecutionHost {
         await mkdir(workspacePath, { recursive: true });
         await this.runControl(['pause', record.containerName]);
         paused = true;
-        await this.copyDirectoryFromContainer(
-          record,
+        await this.runControl([
+          'cp',
+          `${record.containerName}:/workspace/.`,
           workspacePath,
-        );
+        ]);
         const sizeBytes = await this.directorySize(workspacePath);
         if (
           sizeBytes
@@ -1613,97 +1614,6 @@ export class DockerExecutionHost implements ExecutionHost {
       ),
       signal,
     );
-  }
-
-  private async copyDirectoryFromContainer(
-    record: ExecutionRecord,
-    destinationPath: string,
-  ): Promise<void> {
-    const limits = this.workspaceLimits(record.handle.resources);
-    const sidecarName =
-      `blade-checkpoint-${record.handle.executionId}-${nanoid(8)}`;
-    let transferError: unknown;
-    try {
-      await this.pipeProcesses(
-        {
-          command: this.runtimeBinary,
-          args: [
-            'run',
-            '--name',
-            sidecarName,
-            '--rm',
-            '--label',
-            'com.blade.managed=true',
-            '--label',
-            `com.blade.execution-id=${record.handle.executionId}`,
-            '--network',
-            'none',
-            '--read-only',
-            '--cap-drop',
-            'ALL',
-            '--security-opt',
-            'no-new-privileges',
-            '--cpus',
-            String(record.handle.resources.cpus),
-            '--memory',
-            String(record.handle.resources.memoryBytes),
-            '--memory-swap',
-            String(record.handle.resources.memoryBytes),
-            '--pids-limit',
-            String(record.handle.resources.pids),
-            '--shm-size',
-            String(MIN_SHM_BYTES),
-            '--user',
-            this.containerUser,
-            '--volumes-from',
-            `${record.containerName}:ro`,
-            '--entrypoint',
-            'tar',
-            record.handle.image,
-            '-cf',
-            '-',
-            '-C',
-            '/workspace',
-            '.',
-          ],
-        },
-        {
-          command: 'tar',
-          args: ['-C', destinationPath, '-xf', '-'],
-          environment: {
-            ...process.env,
-            COPYFILE_DISABLE: '1',
-          },
-        },
-        Math.max(
-          1,
-          Math.min(
-            this.transferTimeout(limits.workspaceBytes),
-            record.expiresAtMs - Date.now(),
-          ),
-        ),
-        limits.workspaceBytes + 16 * 1024 * 1024,
-      );
-    } catch (error) {
-      transferError = error;
-    }
-    try {
-      await this.removeContainer(sidecarName);
-    } catch (cleanupError) {
-      throw new ExecutionHostError(
-        'EXECUTION_RUNTIME_ERROR',
-        'Checkpoint sidecar cleanup was incomplete',
-        {
-          cause: new AggregateError([
-            ...(transferError === undefined ? [] : [transferError]),
-            cleanupError,
-          ]),
-        },
-      );
-    }
-    if (transferError !== undefined) {
-      throw transferError;
-    }
   }
 
   private transferTimeout(maxBytes: number): number {
