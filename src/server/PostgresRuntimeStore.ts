@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import {
   Pool,
@@ -165,6 +166,20 @@ function asJsonObject(value: unknown): JsonObject {
 
 function asSessionState(value: unknown): SessionState {
   return structuredClone(value) as SessionState;
+}
+
+function advisoryLockKey(key: string): readonly [number, number] {
+  const digest = createHash('sha256').update(key).digest();
+  return [digest.readInt32BE(0), digest.readInt32BE(4)];
+}
+
+function isPostgresUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === '23505'
+  );
 }
 
 function assertStrictJsonValue(
@@ -700,90 +715,101 @@ export class PostgresRuntimeStore implements RuntimeStore {
         'Projection offset must reference a committed event',
       );
     }
-    return this.transaction(async (client) => {
-      await this.lock(
-        client,
-        `command:${commit.tenantId}:${commit.command.commandId}`,
-      );
-      const commandResult = await client.query<CommandRow>(
-        `SELECT command_fingerprint, lease_id, status, expires_at, result
-           FROM ${this.table('commands')}
-          WHERE tenant_id = $1 AND command_id = $2
-          FOR UPDATE`,
-        [commit.tenantId, commit.command.commandId],
-      );
-      const existing = commandResult.rows[0];
-      if (
-        existing
-        && existing.command_fingerprint !== commit.command.fingerprint
-      ) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_COMMAND_CONFLICT',
-          `Command ${commit.command.commandId} has a different fingerprint`,
+    try {
+      return await this.transaction(async (client) => {
+        await this.lock(
+          client,
+          `command:${commit.tenantId}:${commit.command.commandId}`,
         );
-      }
-      if (existing?.result !== null && existing?.result !== undefined) {
-        return this.loadCommittedRuntimeResult(client, commit);
-      }
-      if (commit.command.leaseId) {
-        if (!existing || existing.lease_id !== commit.command.leaseId) {
+        const commandResult = await client.query<CommandRow>(
+          `SELECT command_fingerprint, lease_id, status, expires_at, result
+             FROM ${this.table('commands')}
+            WHERE tenant_id = $1 AND command_id = $2
+            FOR UPDATE`,
+          [commit.tenantId, commit.command.commandId],
+        );
+        const existing = commandResult.rows[0];
+        if (
+          existing
+          && existing.command_fingerprint !== commit.command.fingerprint
+        ) {
           throw new RuntimeStoreError(
-            'RUNTIME_STORE_LEASE_LOST',
-            `Command lease ${commit.command.commandId}/${commit.command.leaseId} is not active`,
+            'RUNTIME_STORE_COMMAND_CONFLICT',
+            `Command ${commit.command.commandId} has a different fingerprint`,
           );
         }
-      } else if (existing) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_LEASE_LOST',
-          `Command ${commit.command.commandId} already has an active receipt`,
-        );
-      } else {
-        await client.query(
-          `INSERT INTO ${this.table('commands')} (
-             tenant_id, command_id, command_fingerprint, lease_id,
-             status, expires_at, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, 'sealed', 'infinity', NOW(), NOW())`,
+        if (existing?.result !== null && existing?.result !== undefined) {
+          return this.loadCommittedRuntimeResult(client, commit);
+        }
+        if (commit.command.leaseId) {
+          if (!existing || existing.lease_id !== commit.command.leaseId) {
+            throw new RuntimeStoreError(
+              'RUNTIME_STORE_LEASE_LOST',
+              `Command lease ${commit.command.commandId}/${commit.command.leaseId} is not active`,
+            );
+          }
+        } else if (existing) {
+          throw new RuntimeStoreError(
+            'RUNTIME_STORE_LEASE_LOST',
+            `Command ${commit.command.commandId} already has an active receipt`,
+          );
+        } else {
+          await client.query(
+            `INSERT INTO ${this.table('commands')} (
+               tenant_id, command_id, command_fingerprint, lease_id,
+               status, expires_at, created_at, updated_at
+             ) VALUES ($1, $2, $3, $4, 'sealed', 'infinity', NOW(), NOW())`,
+            [
+              commit.tenantId,
+              commit.command.commandId,
+              commit.command.fingerprint,
+              `atomic:${commit.command.commandId}`,
+            ],
+          );
+        }
+
+        const storedEvents = await this.appendDomainEvents(client, commit);
+        const effects = await this.insertEffects(client, commit);
+        const projection = commit.projection
+          ? await this.writeProjection(client, commit)
+          : undefined;
+
+        const completed = await client.query(
+          `UPDATE ${this.table('commands')}
+              SET status = 'completed', expires_at = 'infinity',
+                  result = $4::jsonb, updated_at = NOW()
+            WHERE tenant_id = $1 AND command_id = $2
+              AND command_fingerprint = $3`,
           [
             commit.tenantId,
             commit.command.commandId,
             commit.command.fingerprint,
-            `atomic:${commit.command.commandId}`,
+            JSON.stringify(commit.command.result),
           ],
         );
-      }
-
-      const storedEvents = await this.appendDomainEvents(client, commit);
-      const effects = await this.insertEffects(client, commit);
-      const projection = commit.projection
-        ? await this.writeProjection(client, commit)
-        : undefined;
-
-      const completed = await client.query(
-        `UPDATE ${this.table('commands')}
-            SET status = 'completed', expires_at = 'infinity',
-                result = $4::jsonb, updated_at = NOW()
-          WHERE tenant_id = $1 AND command_id = $2
-            AND command_fingerprint = $3`,
-        [
-          commit.tenantId,
-          commit.command.commandId,
-          commit.command.fingerprint,
-          JSON.stringify(commit.command.result),
-        ],
-      );
-      if (completed.rowCount !== 1) {
+        if (completed.rowCount !== 1) {
+          throw new RuntimeStoreError(
+            'RUNTIME_STORE_LEASE_LOST',
+            `Command ${commit.command.commandId} could not be completed`,
+          );
+        }
+        return {
+          status: 'committed',
+          events: storedEvents,
+          effects,
+          ...(projection ? { projection } : {}),
+        };
+      });
+    } catch (error) {
+      if (isPostgresUniqueViolation(error)) {
         throw new RuntimeStoreError(
-          'RUNTIME_STORE_LEASE_LOST',
-          `Command ${commit.command.commandId} could not be completed`,
+          'RUNTIME_STORE_COMMAND_CONFLICT',
+          `Runtime transaction ${commit.command.commandId} reuses an event or effect identity`,
+          { cause: error },
         );
       }
-      return {
-        status: 'committed',
-        events: storedEvents,
-        effects,
-        ...(projection ? { projection } : {}),
-      };
-    });
+      throw error;
+    }
   }
 
   async readDomainEvents(
@@ -1013,9 +1039,37 @@ export class PostgresRuntimeStore implements RuntimeStore {
     mutate: (state: SessionState, now: number) => T,
     subagentInfo?: SessionRepositorySubagentInfo,
   ): Promise<T> {
+    return this.mutateSessionStateBatch(
+      tenantId,
+      sessionId,
+      [{ type: eventType, data: eventData }],
+      mutate,
+      subagentInfo,
+    );
+  }
+
+  async mutateSessionStateBatch<T>(
+    tenantId: string,
+    sessionId: SessionId,
+    events: readonly {
+      readonly type: string;
+      readonly data: JsonObject;
+    }[],
+    mutate: (state: SessionState, now: number) => T,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<T> {
+    if (events.length === 0) {
+      throw new RuntimeStoreError(
+        'RUNTIME_STORE_INVALID_TRANSACTION',
+        'A Session projection mutation requires at least one event',
+      );
+    }
     await this.initialize();
     return this.transaction(async (client) => {
-      await this.lock(client, `projection:${tenantId}:${sessionId}`);
+      await this.lock(
+        client,
+        `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`,
+      );
       const projectionResult = await client.query<ProjectionRow>(
         `SELECT projection_offset, state, updated_at
            FROM ${this.table('projections')}
@@ -1029,26 +1083,32 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ? asSessionState(projectionResult.rows[0].state)
         : initialSessionState(sessionId, now, subagentInfo);
       const result = mutate(state, now);
-      const [stored] = await this.appendStream(
+      const stored = await this.appendStream(
         client,
         tenantId,
         sessionId,
         'transcript',
         undefined,
-        [({ sequence, eventId, recordedAt }) => ({
+        events.map((event) => ({ sequence, eventId, recordedAt }) => ({
           schemaVersion: RUNTIME_STORE_SCHEMA_VERSION,
           eventId,
           sequence,
           tenantId,
           sessionId,
           commandId: `transcript:${eventId}`,
-          type: eventType,
-          data: eventData,
+          type: event.type,
+          data: event.data,
           occurredAt: recordedAt,
           recordedAt,
-        })],
+        })),
       );
-      const offset = stored.sequence;
+      const offset = stored.at(-1)?.sequence;
+      if (offset === undefined) {
+        throw new RuntimeStoreError(
+          'RUNTIME_STORE_INVALID_TRANSACTION',
+          'A Session projection mutation produced no events',
+        );
+      }
       await client.query(
         `INSERT INTO ${this.table('projections')} (
            tenant_id, session_id, projection_name, projection_offset, state, updated_at
@@ -1075,6 +1135,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<void> {
     await this.initialize();
     await this.transaction(async (client) => {
+      await this.lock(
+        client,
+        `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`,
+      );
+      await this.lock(
+        client,
+        `stream:${tenantId}:${sessionId}:transcript`,
+      );
       await client.query(
         `DELETE FROM ${this.table('events')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
@@ -1112,7 +1180,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       `SELECT session_id
          FROM ${this.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2
-        ORDER BY (state->>'lastActivity')::bigint DESC
+        ORDER BY (state->>'lastActivity')::bigint DESC, session_id ASC
         OFFSET $3`,
       [tenantId, SESSION_PROJECTION, this.maxSessionsPerTenant],
     );
@@ -1272,8 +1340,19 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }
 
   private async createSchema(): Promise<void> {
-    await this.pool.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
-    await this.pool.query(`
+    const client = await this.pool.connect();
+    const lockKey = advisoryLockKey(
+      `runtime-store-schema:${this.schema}:${this.prefix}`,
+    );
+    let lockAcquired = false;
+    try {
+      await client.query(
+        'SELECT pg_advisory_lock($1, $2)',
+        [lockKey[0], lockKey[1]],
+      );
+      lockAcquired = true;
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
+      await client.query(`
       CREATE TABLE IF NOT EXISTS ${this.table('metadata')} (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -1302,6 +1381,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
         metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
         PRIMARY KEY (tenant_id, session_id)
       );
+
+      CREATE INDEX IF NOT EXISTS ${this.prefix}_sessions_listing_idx
+        ON ${this.table('sessions')} (
+          tenant_id, updated_at DESC, session_id ASC
+        );
 
       CREATE TABLE IF NOT EXISTS ${this.table('stream_heads')} (
         tenant_id TEXT NOT NULL,
@@ -1363,26 +1447,35 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, projection_name)
       );
     `);
-    await this.pool.query(
-      `INSERT INTO ${this.table('metadata')} (key, value)
-       VALUES ('schema_version', $1)
-       ON CONFLICT (key) DO NOTHING`,
-      [String(RUNTIME_STORE_SCHEMA_VERSION)],
-    );
-    const version = await this.pool.query(
-      `SELECT value
-         FROM ${this.table('metadata')}
-        WHERE key = 'schema_version'`,
-    );
-    if (
-      Number(version.rows[0]?.value) !== RUNTIME_STORE_SCHEMA_VERSION
-    ) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        `Unsupported Runtime Store schema version: ${String(
-          version.rows[0]?.value,
-        )}`,
+      await client.query(
+        `INSERT INTO ${this.table('metadata')} (key, value)
+         VALUES ('schema_version', $1)
+         ON CONFLICT (key) DO NOTHING`,
+        [String(RUNTIME_STORE_SCHEMA_VERSION)],
       );
+      const version = await client.query(
+        `SELECT value
+           FROM ${this.table('metadata')}
+          WHERE key = 'schema_version'`,
+      );
+      if (
+        Number(version.rows[0]?.value) !== RUNTIME_STORE_SCHEMA_VERSION
+      ) {
+        throw new RuntimeStoreError(
+          'RUNTIME_STORE_INVALID_TRANSACTION',
+          `Unsupported Runtime Store schema version: ${String(
+            version.rows[0]?.value,
+          )}`,
+        );
+      }
+    } finally {
+      if (lockAcquired) {
+        await client.query(
+          'SELECT pg_advisory_unlock($1, $2)',
+          [lockKey[0], lockKey[1]],
+        ).catch(() => undefined);
+      }
+      client.release();
     }
   }
 
@@ -1408,9 +1501,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }
 
   private async lock(client: PoolClient, key: string): Promise<void> {
+    const lockKey = advisoryLockKey(key);
     await client.query(
-      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [key],
+      'SELECT pg_advisory_xact_lock($1, $2)',
+      [lockKey[0], lockKey[1]],
     );
   }
 
@@ -1465,26 +1559,43 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (payloads.length === 0) {
       return [];
     }
-    for (const [index, payload] of payloads.entries()) {
-      await client.query(
-        `INSERT INTO ${this.table('events')} (
-           tenant_id, session_id, stream_name, sequence, event_id,
-           command_id, event_type, payload, occurred_at, recorded_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
-        [
-          tenantId,
-          sessionId,
-          streamName,
-          firstSequence + index,
-          String(payload.eventId),
-          typeof payload.commandId === 'string' ? payload.commandId : null,
-          String(payload.type),
-          JSON.stringify(payload),
-          String(payload.occurredAt ?? recordedAt),
-          recordedAt,
-        ],
-      );
-    }
+    const rows = payloads.map((payload, index) => ({
+      tenant_id: tenantId,
+      session_id: sessionId,
+      stream_name: streamName,
+      sequence: firstSequence + index,
+      event_id: String(payload.eventId),
+      command_id: typeof payload.commandId === 'string'
+        ? payload.commandId
+        : null,
+      event_type: String(payload.type),
+      payload,
+      occurred_at: String(payload.occurredAt ?? recordedAt),
+      recorded_at: recordedAt,
+    }));
+    await client.query(
+      `INSERT INTO ${this.table('events')} (
+         tenant_id, session_id, stream_name, sequence, event_id,
+         command_id, event_type, payload, occurred_at, recorded_at
+       )
+       SELECT entry.tenant_id, entry.session_id, entry.stream_name,
+              entry.sequence, entry.event_id, entry.command_id,
+              entry.event_type, entry.payload, entry.occurred_at,
+              entry.recorded_at
+         FROM jsonb_to_recordset($1::jsonb) AS entry(
+           tenant_id TEXT,
+           session_id TEXT,
+           stream_name TEXT,
+           sequence BIGINT,
+           event_id TEXT,
+           command_id TEXT,
+           event_type TEXT,
+           payload JSONB,
+           occurred_at TIMESTAMPTZ,
+           recorded_at TIMESTAMPTZ
+         )`,
+      [JSON.stringify(rows)],
+    );
     const nextSequence = firstSequence + payloads.length;
     const retainedFirst = retention
       ? Math.max(1, nextSequence - retention)
@@ -1527,42 +1638,48 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
       throw new RangeError('Event page limit must be between 1 and 1000');
     }
-    const headResult = await this.pool.query<StreamHeadRow>(
-      `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3`,
-      [tenantId, sessionId, streamName],
-    );
-    const head = headResult.rows[0];
-    if (!head) {
-      if (after > 0) {
+    return this.transaction(async (client) => {
+      await this.lock(
+        client,
+        `stream:${tenantId}:${sessionId}:${streamName}`,
+      );
+      const headResult = await client.query<StreamHeadRow>(
+        `SELECT first_sequence, next_sequence
+           FROM ${this.table('stream_heads')}
+          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3`,
+        [tenantId, sessionId, streamName],
+      );
+      const head = headResult.rows[0];
+      if (!head) {
+        if (after > 0) {
+          throw new RangeError('Event cursor is ahead of the session head');
+        }
+        return { payloads: [], headSequence: null, hasMore: false };
+      }
+      const firstSequence = asNumber(head.first_sequence);
+      const nextSequence = asNumber(head.next_sequence);
+      if (after < firstSequence - 1) {
+        throw new RangeError('Event cursor is stale');
+      }
+      if (after >= nextSequence) {
         throw new RangeError('Event cursor is ahead of the session head');
       }
-      return { payloads: [], headSequence: null, hasMore: false };
-    }
-    const firstSequence = asNumber(head.first_sequence);
-    const nextSequence = asNumber(head.next_sequence);
-    if (after < firstSequence - 1) {
-      throw new RangeError('Event cursor is stale');
-    }
-    if (after >= nextSequence) {
-      throw new RangeError('Event cursor is ahead of the session head');
-    }
-    const result = await this.pool.query<PayloadRow>(
-      `SELECT payload
-         FROM ${this.table('events')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
-          AND sequence > $4
-        ORDER BY sequence ASC
-        LIMIT $5`,
-      [tenantId, sessionId, streamName, after, limit + 1],
-    );
-    return {
-      payloads: result.rows.slice(0, limit).map((row) =>
-        asJsonObject(row.payload)),
-      headSequence: nextSequence - 1,
-      hasMore: result.rows.length > limit,
-    };
+      const result = await client.query<PayloadRow>(
+        `SELECT payload
+           FROM ${this.table('events')}
+          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
+            AND sequence > $4
+          ORDER BY sequence ASC
+          LIMIT $5`,
+        [tenantId, sessionId, streamName, after, limit + 1],
+      );
+      return {
+        payloads: result.rows.slice(0, limit).map((row) =>
+          asJsonObject(row.payload)),
+        headSequence: nextSequence - 1,
+        hasMore: result.rows.length > limit,
+      };
+    });
   }
 
   private async appendDomainEvents(
@@ -2105,9 +2222,36 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     sessionId: SessionId,
     contextData: ContextData,
   ): Promise<void> {
-    for (const message of contextData.layers.conversation.messages) {
-      await this.saveMessage(sessionId, message.role, message.content);
+    const messages = contextData.layers.conversation.messages.map((message) => ({
+      messageId: MessageId(nanoid()),
+      role: message.role,
+      content: structuredClone(message.content),
+    }));
+    if (messages.length === 0) {
+      return;
     }
+    await this.runtime.mutateSessionStateBatch(
+      this.tenantId,
+      sessionId,
+      messages.map(({ messageId, role }) => ({
+        type: 'transcript.message_saved',
+        data: { messageId, role },
+      })),
+      (state, now) => {
+        for (const message of messages) {
+          appendMessage(
+            state,
+            message.messageId,
+            {
+              id: message.messageId,
+              role: message.role,
+              content: message.content,
+            },
+            now,
+          );
+        }
+      },
+    );
   }
 
   loadState(sessionId: SessionId): Promise<SessionState | null> {

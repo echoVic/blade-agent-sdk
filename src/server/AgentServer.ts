@@ -467,6 +467,13 @@ export class AgentServer {
       principal,
       commandId: command.commandId,
       ...(signal ? { signal } : {}),
+      ...(this.options.runtimeStore
+        ? {
+            runtimeStore: this.options.runtimeStore.forTenant(
+              principal.tenantId,
+            ),
+          }
+        : {}),
     };
     switch (command.type) {
       case AgentCommandType.INITIALIZE:

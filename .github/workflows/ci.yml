@@ -9,6 +9,9 @@ on:
       - 'codex/**'
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Verify (Node ${{ matrix.node-version }})

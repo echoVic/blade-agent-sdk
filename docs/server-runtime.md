@@ -70,9 +70,10 @@ export function handleAgentRequest(request: Request): Promise<Response> {
 }
 ```
 
-JSONL adapter 适合单机 Node.js 部署。多实例服务必须使用共享
-`SessionRepository` 和共享 `AgentServerStore`；repository 还应按认证得到的
-`tenantId` 分区。客户端 body 中不存在可信 tenant 字段。
+JSONL adapter 适合单机 Node.js 部署。多实例服务必须使用一个共享
+`runtimeStore`，或共享的 `SessionRepository`、`SessionEventStore` 和
+`AgentServerStore`；所有 Store 都必须按认证得到的 `tenantId` 分区。客户端
+body 中不存在可信 tenant 字段。
 
 PostgreSQL 单一事实源配置见 [Runtime Store](./runtime-store)。
 
@@ -114,6 +115,10 @@ const server = new AgentServer({
   authenticate,
 });
 ```
+
+同时配置自定义 executor 和 `runtimeStore` 时，每个 command 都会通过
+`SessionExecutorCommandContext.runtimeStore` 得到认证 tenant 对应的
+`RuntimeTenantStore`。自定义 executor 必须将它作为持久化 authority。
 
 自定义 executor 必须：
 

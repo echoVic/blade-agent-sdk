@@ -5,6 +5,7 @@ import type {
   ModelIdentity,
   ToolCall as ChatToolCall,
 } from '../services/ChatServiceInterface.js';
+import { ConfigError } from '../errors/ConfigError.js';
 import type { SessionState, SessionSummary } from '../session/SessionStore.js';
 import {
   isSessionEventStore,
@@ -69,12 +70,22 @@ export class ContextManager {
 
   constructor(
     options: Partial<ContextManagerOptions> = {},
-    repository: SessionRepository = new NoopSessionRepository(),
-    eventStore: SessionEventStore = isSessionEventStore(repository)
-      ? repository
-      : new NoopSessionRepository(),
+    repository?: SessionRepository,
+    eventStore?: SessionEventStore,
   ) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
+    const compatibleEventStore = eventStore
+      ?? (isSessionEventStore(repository) ? repository : undefined);
+    if (
+      persistenceEnabled
+      && ((repository && !compatibleEventStore)
+        || (!repository && compatibleEventStore))
+    ) {
+      throw new ConfigError(
+        'Persistent context requires both SessionRepository and SessionEventStore.',
+      );
+    }
+    const noopRepository = new NoopSessionRepository();
     // 持久化路径必须由调用方显式提供；未提供时禁用持久化
     const defaultPersistentPath =
       persistenceEnabled ? options.storage?.persistentPath : undefined;
@@ -102,8 +113,12 @@ export class ContextManager {
 
     // Session selects explicit read projection and event append ports.
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    this.repository = repository;
-    this.eventStore = eventStore;
+    this.repository = persistenceEnabled && repository
+      ? repository
+      : noopRepository;
+    this.eventStore = persistenceEnabled && compatibleEventStore
+      ? compatibleEventStore
+      : noopRepository;
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
       5 * 60 * 1000 // 5分钟默认TTL

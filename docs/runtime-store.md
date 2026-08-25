@@ -116,8 +116,8 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 | `*_outbox` | 待执行 effect intent |
 | `*_projections` | projection state 与已消费 offset |
 
-`schema` 与 `tablePrefix` 只接受 PostgreSQL identifier。所有数据值使用参数化
-查询。并发 command 和 stream append 使用 transaction-scoped advisory lock；
+`schema` 与 `tablePrefix` 只接受 PostgreSQL identifier。所有数据值使用
+参数化查询。并发 command 和 stream append 使用 transaction-scoped advisory lock；
 PostgreSQL 是事实源，Redis 不参与 correctness path。
 
 `InMemoryAgentServerStore` 仍只适合测试和单进程。生产环境不得把它与

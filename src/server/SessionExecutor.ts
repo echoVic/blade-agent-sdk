@@ -39,6 +39,7 @@ import type {
   AgentServerStore,
 } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
+import type { RuntimeTenantStore } from './RuntimeStore.js';
 
 export interface AgentServerSessionContext {
   readonly principal: AgentPrincipal;
@@ -51,6 +52,8 @@ export interface SessionExecutorCommandContext {
   readonly principal: AgentPrincipal;
   readonly commandId: string;
   readonly signal?: AbortSignal;
+  /** Tenant-scoped persistence authority supplied by AgentServer. */
+  readonly runtimeStore?: RuntimeTenantStore;
 }
 
 export interface SessionExecutorReadResult {

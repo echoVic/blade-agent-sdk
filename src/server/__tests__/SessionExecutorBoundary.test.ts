@@ -13,6 +13,11 @@ import {
   SessionId,
 } from '../../types/branded.js';
 import { AgentServer } from '../AgentServer.js';
+import { InMemoryAgentServerStore } from '../AgentServerStore.js';
+import type {
+  RuntimeStore,
+  RuntimeTenantStore,
+} from '../RuntimeStore.js';
 import type {
   SessionExecutor,
   SessionExecutorCommandContext,
@@ -182,6 +187,23 @@ describe('SessionExecutor boundary', () => {
 
     expect(source).not.toContain("../session/Session.js");
     expect(source).not.toContain('activeSessions');
+  });
+
+  it('passes the tenant-scoped runtime authority to a custom executor', async () => {
+    const { executor, calls } = createExecutor();
+    const tenantStore = {} as RuntimeTenantStore;
+    const runtimeStore = Object.assign(new InMemoryAgentServerStore(), {
+      forTenant: () => tenantStore,
+    }) as unknown as RuntimeStore;
+    const server = new AgentServer({ runtimeStore, sessionExecutor: executor });
+
+    await expect(server.execute(
+      command(AgentCommandType.SESSION_CREATE, 'create-runtime-store', {}),
+      principal,
+    )).resolves.toMatchObject({ ok: true });
+
+    expect(calls[0]?.context?.runtimeStore).toBe(tenantStore);
+    await server.close();
   });
 
   it('requires either an executor or a Session options resolver', () => {

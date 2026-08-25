@@ -119,6 +119,114 @@ describePostgres('PostgresRuntimeStore', () => {
     )).resolves.toMatchObject({ status: 'claimed' });
   });
 
+  it('maps duplicate event and effect identities to stable conflicts with rollback', async () => {
+    const suffix = `${process.pid}-${Date.now()}`;
+    const tenantId = `tenant-conflict-${suffix}`;
+    const seedSessionId = `session-seed-${suffix}` as SessionId;
+    const duplicateEventId = `event-${suffix}`;
+    const duplicateEffectKey = `effect-key-${suffix}`;
+    await store.commitRuntimeTransaction({
+      tenantId,
+      sessionId: seedSessionId,
+      command: {
+        commandId: `seed-${suffix}`,
+        fingerprint: `seed-fingerprint-${suffix}`,
+        result: {
+          protocolVersion: 1,
+          commandId: `seed-${suffix}`,
+          ok: true,
+          data: {},
+        },
+      },
+      expectedLastSequence: null,
+      events: [{
+        eventId: duplicateEventId,
+        type: 'seeded',
+        data: {},
+      }],
+      effects: [{
+        effectId: `seed-effect-${suffix}`,
+        type: 'seeded',
+        payload: {},
+        idempotencyKey: duplicateEffectKey,
+      }],
+    });
+
+    for (const duplicate of ['event', 'effect'] as const) {
+      const commandId = `duplicate-${duplicate}-${suffix}`;
+      const sessionId = `session-${duplicate}-${suffix}` as SessionId;
+      await expect(store.commitRuntimeTransaction({
+        tenantId,
+        sessionId,
+        command: {
+          commandId,
+          fingerprint: `fingerprint-${commandId}`,
+          result: {
+            protocolVersion: 1,
+            commandId,
+            ok: true,
+            data: {},
+          },
+        },
+        expectedLastSequence: null,
+        events: [{
+          eventId: duplicate === 'event'
+            ? duplicateEventId
+            : `unique-event-${suffix}`,
+          type: 'duplicate',
+          data: { duplicate },
+        }],
+        effects: duplicate === 'effect'
+          ? [{
+              effectId: `effect-${suffix}`,
+              type: 'duplicate',
+              payload: {},
+              idempotencyKey: duplicateEffectKey,
+            }]
+          : [],
+      })).rejects.toMatchObject({
+        code: 'RUNTIME_STORE_COMMAND_CONFLICT',
+      });
+      await expect(
+        store.readDomainEvents(tenantId, sessionId),
+      ).resolves.toMatchObject({ events: [] });
+      await expect(store.claimCommand(
+        tenantId,
+        commandId,
+        `fingerprint-${commandId}`,
+        1000,
+      )).resolves.toMatchObject({ status: 'claimed' });
+    }
+  });
+
+  it('serializes concurrent schema initialization', async () => {
+    if (!connectionString || !pool) {
+      throw new Error('TEST_POSTGRES_URL is required');
+    }
+    const concurrentSchema = `${schema}_init`;
+    const firstPool = new Pool({ connectionString });
+    const secondPool = new Pool({ connectionString });
+    const first = new PostgresRuntimeStore({
+      pool: firstPool,
+      schema: concurrentSchema,
+      tablePrefix: 'runtime',
+    });
+    const second = new PostgresRuntimeStore({
+      pool: secondPool,
+      schema: concurrentSchema,
+      tablePrefix: 'runtime',
+    });
+    try {
+      await expect(Promise.all([
+        first.initialize(),
+        second.initialize(),
+      ])).resolves.toEqual([undefined, undefined]);
+    } finally {
+      await pool.query(`DROP SCHEMA IF EXISTS "${concurrentSchema}" CASCADE`);
+      await Promise.all([firstPool.end(), secondPool.end()]);
+    }
+  });
+
   it('runs AgentServer with one tenant-scoped PostgreSQL authority', async () => {
     const server = new AgentServer({
       runtimeStore: store,

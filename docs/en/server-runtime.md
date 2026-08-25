@@ -72,9 +72,9 @@ export function handleAgentRequest(request: Request): Promise<Response> {
 ```
 
 The JSONL adapter is suitable for a single Node.js host. A multi-instance
-service must use a shared `SessionRepository` and a shared `AgentServerStore`.
-The repository should also partition data by the authenticated `tenantId`.
-There is no trusted client-supplied tenant field.
+service must use one shared `runtimeStore`, or a shared `SessionRepository`,
+`SessionEventStore`, and `AgentServerStore`. Every Store must partition data by
+the authenticated `tenantId`. There is no trusted client-supplied tenant field.
 
 See [Runtime Store](./runtime-store) for the PostgreSQL single-authority setup.
 
@@ -117,6 +117,11 @@ const server = new AgentServer({
   authenticate,
 });
 ```
+
+When a custom executor and `runtimeStore` are both configured, every command
+receives the authenticated tenant's `RuntimeTenantStore` through
+`SessionExecutorCommandContext.runtimeStore`. Custom executors must use that
+Store as their persistence authority.
 
 A custom executor must:
 
