@@ -655,7 +655,26 @@ export async function assertRuntimeStoreConformance(
   if (!uncertainEffectClaim) {
     throw new Error('unreachable');
   }
-  await store.startEffect(effectLease(uncertainEffectClaim));
+  const uncertainLease = effectLease(uncertainEffectClaim);
+  await store.startEffect(uncertainLease);
+  let invalidRetryRejected = false;
+  try {
+    await store.failEffect(
+      uncertainLease,
+      { reason: 'invalid-retry' },
+      { retryAt: '' },
+    );
+  } catch (error) {
+    invalidRetryRejected =
+      typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'WORKER_INVALID';
+  }
+  assert(
+    invalidRetryRejected,
+    'Empty effect retryAt must fail with a stable validation error',
+  );
   await new Promise((resolve) => setTimeout(resolve, 700));
   const uncertainRecovery = await store.recoverExpiredWork();
   assert(

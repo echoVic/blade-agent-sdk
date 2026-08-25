@@ -115,6 +115,10 @@ interface EffectRow extends QueryResultRow {
   error: unknown | null;
 }
 
+interface ConstraintRow extends QueryResultRow {
+  conname: string;
+}
+
 function quoteIdentifier(value: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
     throw new RangeError('PostgreSQL identifier is invalid');
@@ -326,10 +330,26 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         );
     `);
     if (previousSchemaVersion === 1) {
+      const constraints = await client.query<ConstraintRow>(
+        `SELECT DISTINCT constraint_row.conname
+           FROM pg_constraint constraint_row
+           JOIN LATERAL unnest(constraint_row.conkey)
+             AS column_number(attnum) ON TRUE
+           JOIN pg_attribute attribute
+             ON attribute.attrelid = constraint_row.conrelid
+            AND attribute.attnum = column_number.attnum
+          WHERE constraint_row.conrelid = $1::regclass
+            AND constraint_row.contype = 'c'
+            AND attribute.attname = ANY($2::text[])`,
+        [this.table('outbox'), ['status', 'execution_mode']],
+      );
+      for (const constraint of constraints.rows) {
+        await client.query(
+          `ALTER TABLE ${this.table('outbox')}
+             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+        );
+      }
       await client.query(`
-        ALTER TABLE ${this.table('outbox')}
-          DROP CONSTRAINT IF EXISTS ${this.prefix}_outbox_status_check;
-
         ALTER TABLE ${this.table('outbox')}
           ADD CONSTRAINT ${this.prefix}_outbox_status_check CHECK (
             status IN (
@@ -337,9 +357,6 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               'completed', 'failed', 'uncertain'
             )
           );
-
-        ALTER TABLE ${this.table('outbox')}
-          DROP CONSTRAINT IF EXISTS ${this.prefix}_outbox_execution_mode_check;
 
         ALTER TABLE ${this.table('outbox')}
           ADD CONSTRAINT ${this.prefix}_outbox_execution_mode_check CHECK (
@@ -1149,7 +1166,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<RuntimeEffectRecord> {
     assertJsonObject(error, 'Effect error');
     if (
-      options.retryAt
+      options.retryAt !== undefined
       && !Number.isFinite(Date.parse(options.retryAt))
     ) {
       throw new WorkerRuntimeError(
@@ -1168,7 +1185,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       const row = current.rows[0];
       this.assertEffectLease(row, lease, 'executing');
-      if (options.retryAt && row.execution_mode !== 'idempotent') {
+      if (
+        options.retryAt !== undefined
+        && row.execution_mode !== 'idempotent'
+      ) {
         throw new WorkerRuntimeError(
           'EFFECT_RETRY_NOT_ALLOWED',
           `At-most-once effect ${lease.effectId} cannot be retried`,
@@ -1881,7 +1901,21 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<T> {
     const activeClient = this.transactionContext.getStore();
     if (activeClient) {
-      return operation(activeClient);
+      const savepoint = quoteIdentifier(
+        `worker_nested_${nanoid().replaceAll('-', '_')}`,
+      );
+      await activeClient.query(`SAVEPOINT ${savepoint}`);
+      try {
+        const result = await operation(activeClient);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+          .catch(() => undefined);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`)
+          .catch(() => undefined);
+        throw error;
+      }
     }
     const client = await this.pool.connect();
     try {

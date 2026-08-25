@@ -17,6 +17,7 @@ import { DurableExecutionLease } from '../../session/events/DurableExecutionLeas
 import { AgentServer } from '../AgentServer.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
+import { effectLease } from '../WorkerRuntime.js';
 
 const connectionString = process.env.TEST_POSTGRES_URL;
 const describePostgres = connectionString ? describe : describe.skip;
@@ -235,7 +236,7 @@ describePostgres('PostgresRuntimeStore', () => {
     }
   });
 
-  it('migrates a v1 Runtime Store schema in place', async () => {
+  it('migrates a v1 Runtime Store schema without metadata in place', async () => {
     if (!pool) {
       throw new Error('TEST_POSTGRES_URL is required');
     }
@@ -246,8 +247,6 @@ describePostgres('PostgresRuntimeStore', () => {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-      INSERT INTO "${migrationSchema}"."runtime_metadata" (key, value)
-      VALUES ('schema_version', '1');
       CREATE TABLE "${migrationSchema}"."runtime_outbox" (
         tenant_id TEXT NOT NULL,
         effect_id TEXT NOT NULL,
@@ -277,7 +276,7 @@ describePostgres('PostgresRuntimeStore', () => {
       await migrated.registerWorker({
         workerId: WorkerId('migration-worker'),
         capacity: 1,
-        ttlMs: 1_000,
+        ttlMs: 10_000,
       });
       const version = await pool.query(
         `SELECT value
@@ -302,6 +301,42 @@ describePostgres('PostgresRuntimeStore', () => {
           'completed_at',
         ]),
       );
+      const commandId = `migration-command-${Date.now()}`;
+      const sessionId = `migration-session-${Date.now()}` as SessionId;
+      await migrated.commitRuntimeTransaction({
+        tenantId: 'migration-tenant',
+        sessionId,
+        command: {
+          commandId,
+          fingerprint: `fingerprint-${commandId}`,
+          result: {
+            protocolVersion: 1,
+            commandId,
+            ok: true,
+            data: {},
+          },
+        },
+        effects: [{
+          effectId: `migration-effect-${Date.now()}`,
+          type: 'migration-check',
+          payload: {},
+          idempotencyKey: `migration-key-${Date.now()}`,
+          executionMode: 'at_most_once',
+        }],
+      });
+      const [claim] = await migrated.claimEffects({
+        tenantId: 'migration-tenant',
+        workerId: WorkerId('migration-worker'),
+        ttlMs: 10_000,
+        limit: 1,
+      });
+      expect(claim).toBeDefined();
+      if (!claim) {
+        throw new Error('Migrated outbox effect was not claimed');
+      }
+      await expect(
+        migrated.startEffect(effectLease(claim)),
+      ).resolves.toMatchObject({ status: 'executing' });
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
     }
@@ -318,7 +353,30 @@ describePostgres('PostgresRuntimeStore', () => {
       tablePrefix: 'runtime',
     });
     const sessionId = `single-pool-${Date.now()}` as SessionId;
-    const tenantStore = singleStore.forTenant('tenant-single-pool');
+    const tenantId = 'tenant-single-pool';
+    const tenantStore = singleStore.forTenant(tenantId);
+    const seedCommandId = `single-pool-seed-${Date.now()}`;
+    const duplicateEffectId = `single-pool-effect-${Date.now()}`;
+    await singleStore.commitRuntimeTransaction({
+      tenantId,
+      sessionId,
+      command: {
+        commandId: seedCommandId,
+        fingerprint: `fingerprint-${seedCommandId}`,
+        result: {
+          protocolVersion: 1,
+          commandId: seedCommandId,
+          ok: true,
+          data: {},
+        },
+      },
+      effects: [{
+        effectId: duplicateEffectId,
+        type: 'seed',
+        payload: {},
+        idempotencyKey: `key-${duplicateEffectId}`,
+      }],
+    });
     const lease = await DurableExecutionLease.acquire(
       tenantStore,
       sessionId,
@@ -331,7 +389,32 @@ describePostgres('PostgresRuntimeStore', () => {
       },
     );
     try {
-      await lease.runFenced(() => tenantStore.createSession(sessionId));
+      await lease.runFenced(async () => {
+        const conflictingCommandId = `single-pool-conflict-${Date.now()}`;
+        await expect(singleStore.commitRuntimeTransaction({
+          tenantId,
+          sessionId,
+          command: {
+            commandId: conflictingCommandId,
+            fingerprint: `fingerprint-${conflictingCommandId}`,
+            result: {
+              protocolVersion: 1,
+              commandId: conflictingCommandId,
+              ok: true,
+              data: {},
+            },
+          },
+          effects: [{
+            effectId: duplicateEffectId,
+            type: 'duplicate',
+            payload: {},
+            idempotencyKey: `different-${duplicateEffectId}`,
+          }],
+        })).rejects.toMatchObject({
+          code: 'RUNTIME_STORE_COMMAND_CONFLICT',
+        });
+        await tenantStore.createSession(sessionId);
+      });
       await expect(tenantStore.loadState(sessionId)).resolves.toMatchObject({
         sessionId,
       });

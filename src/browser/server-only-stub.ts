@@ -96,7 +96,15 @@ export class WorkerRuntimeError {
 
 export const RUNTIME_STORE_SCHEMA_VERSION = 2;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1;
-export const RUNTIME_SESSION_STATES = [] as const;
+export const RUNTIME_SESSION_STATES = [
+  'queued',
+  'provisioning',
+  'running',
+  'waiting_approval',
+  'suspended',
+  'completed',
+  'failed',
+] as const;
 
 export function assertRuntimeSessionTransition(..._args: unknown[]): never {
   return serverOnly('assertRuntimeSessionTransition');

@@ -13,7 +13,10 @@ import {
   SessionId,
   WorkerId,
 } from '@blade-ai/agent-sdk';
-import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
+import {
+  effectLease,
+  PostgresRuntimeStore,
+} from '@blade-ai/agent-sdk/server/postgres';
 
 const store = new PostgresRuntimeStore({
   connectionString: process.env.DATABASE_URL!,

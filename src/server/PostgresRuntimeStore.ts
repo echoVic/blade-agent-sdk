@@ -1723,18 +1723,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, projection_name)
       );
     `);
-      await client.query(
-        `INSERT INTO ${this.table('metadata')} (key, value)
-         VALUES ('schema_version', $1)
-         ON CONFLICT (key) DO NOTHING`,
-        [String(RUNTIME_STORE_SCHEMA_VERSION)],
-      );
       const storedVersion = await client.query(
         `SELECT value
            FROM ${this.table('metadata')}
           WHERE key = 'schema_version'`,
       );
-      const previousSchemaVersion = Number(storedVersion.rows[0]?.value);
+      const previousSchemaVersion = storedVersion.rows[0]
+        ? Number(storedVersion.rows[0].value)
+        : 1;
       if (
         previousSchemaVersion !== 1
         && previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
@@ -1747,14 +1743,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
         );
       }
       await this.workerRuntime.createSchema(client, previousSchemaVersion);
-      if (previousSchemaVersion === 1) {
-        await client.query(
-          `UPDATE ${this.table('metadata')}
-              SET value = $1
-            WHERE key = 'schema_version' AND value = '1'`,
-          [String(RUNTIME_STORE_SCHEMA_VERSION)],
-        );
-      }
+      await client.query(
+        `INSERT INTO ${this.table('metadata')} AS metadata (key, value)
+         VALUES ('schema_version', $1)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+         WHERE metadata.value = '1'`,
+        [String(RUNTIME_STORE_SCHEMA_VERSION)],
+      );
     } finally {
       if (lockAcquired) {
         await client.query(
@@ -1779,7 +1774,22 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<T> {
     const activeClient = this.transactionContext.getStore();
     if (activeClient) {
-      return operation(activeClient);
+      const savepoint = quoteIdentifier(
+        `runtime_nested_${nanoid().replaceAll('-', '_')}`,
+        'savepoint',
+      );
+      await activeClient.query(`SAVEPOINT ${savepoint}`);
+      try {
+        const result = await operation(activeClient);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+          .catch(() => undefined);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`)
+          .catch(() => undefined);
+        throw error;
+      }
     }
     const client = await this.pool.connect();
     try {

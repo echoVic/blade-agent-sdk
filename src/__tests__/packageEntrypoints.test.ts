@@ -115,6 +115,15 @@ describe('package entrypoints', () => {
     );
     expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(2);
     expect(serverOnly.RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION).toBe(1);
+    expect(serverOnly.RUNTIME_SESSION_STATES).toEqual([
+      'queued',
+      'provisioning',
+      'running',
+      'waiting_approval',
+      'suspended',
+      'completed',
+      'failed',
+    ]);
     expect(() => new serverOnly.InProcessSessionExecutor()).toThrow(
       /server-only.*InProcessSessionExecutor/,
     );
