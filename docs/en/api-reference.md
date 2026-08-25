@@ -83,6 +83,7 @@ These ID exports are branded identifiers, not arbitrary strings.
 Runtime:
 
 - `AgentServer`
+- `InProcessSessionExecutor`
 - `AgentClient`
 - `RemoteAgentSession`
 - `InMemoryAgentServerStore`
@@ -101,6 +102,11 @@ Types:
 
 - `AgentServerOptions`
 - `AgentServerSessionContext`
+- `SessionExecutor`
+- `SessionExecutorCommandContext`
+- `SessionExecutorEventPublisher`
+- `SessionExecutorReadResult`
+- `InProcessSessionExecutorOptions`
 - `AgentServerStore`
 - `AgentCommandClaim`
 - `AgentServerSessionRecord`

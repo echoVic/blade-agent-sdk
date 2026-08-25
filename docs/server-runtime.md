@@ -73,6 +73,57 @@ JSONL adapter 适合单机 Node.js 部署。多实例服务必须使用共享
 `SessionRepository` 和共享 `AgentServerStore`；repository 还应按认证得到的
 `tenantId` 分区。客户端 body 中不存在可信 tenant 字段。
 
+## SessionExecutor
+
+`AgentServer` 只处理认证、授权、command 幂等、HTTP 和 SSE。Session 的创建、
+恢复、fork、输入、abort、关闭、审批关联、并发串行化和 stream pump 均由
+`SessionExecutor` 负责。
+
+未传 `sessionExecutor` 时，`AgentServer` 根据 `resolveSessionOptions` 创建
+`InProcessSessionExecutor`，行为与原来的进程内运行模式一致：
+
+```ts
+import {
+  AgentServer,
+  InProcessSessionExecutor,
+  InMemoryAgentServerStore,
+} from '@blade-ai/agent-sdk/server';
+
+const store = new InMemoryAgentServerStore();
+const executor = new InProcessSessionExecutor({
+  store,
+  resolveSessionOptions,
+  publish: async (tenantId, sessionId, type, data, requestId) => {
+    await store.appendEvent(tenantId, sessionId, {
+      protocolVersion: 1,
+      sessionId,
+      requestId,
+      occurredAt: new Date().toISOString(),
+      type,
+      data,
+    });
+  },
+});
+
+const server = new AgentServer({
+  store,
+  sessionExecutor: executor,
+  authenticate,
+});
+```
+
+自定义 executor 必须：
+
+- 按 tenant 隔离运行中 Session。
+- 对同一 Session 的 mutation 串行化。
+- 自行持久化 Session record，并把 stream/approval/close event 追加到与
+  `AgentServer` 相同的 Store。
+- 在 `shutdown()` 中停止接受新工作并回收所拥有的 runtime。
+- 不向 command 返回值暴露 Provider credential、内部异常或非 JSON 数据。
+
+这一端口是后续远程 worker、容器 executor 和调度器的替换边界。它不是工具
+adapter，也不授予本机能力。
+
 ## HTTP API
 
 默认 base path 是 `/v1/agent`：

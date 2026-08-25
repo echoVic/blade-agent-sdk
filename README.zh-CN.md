@@ -135,7 +135,7 @@ import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
-- 根入口与 `/server`：服务端 Agent；只加载显式传入的工具、Agent、middleware 和 MCP，不扫描宿主工作区
+- 根入口与 `/server`：服务端 Agent；提供可注入 `SessionExecutor` 的 `AgentServer`，只加载显式传入的能力
 - `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
 - `/browser`：browser-safe `AgentClient`、协议视图和明确的 server-only stub
 - `/protocol`：browser-safe 版本化 command/event 契约与 strict parser
