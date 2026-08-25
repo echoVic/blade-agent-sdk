@@ -96,6 +96,11 @@ describe('release workflow', () => {
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
+      [
+        'docker pull alpine:3.22',
+        'echo "TEST_DOCKER_IMAGE=$(docker image inspect --format \'{{index .RepoDigests 0}}\' alpine:3.22)" >> "$GITHUB_ENV"',
+        '',
+      ].join('\n'),
       'pnpm run changelog:check',
       'pnpm run lint',
       'pnpm run type-check',
@@ -131,6 +136,13 @@ describe('pull request workflow', () => {
 
     expect(checkout.with).toMatchObject({ 'fetch-depth': 0 });
     expect(commands).toContain('pnpm run changelog:check');
+    expect(commands).toContain(
+      [
+        'docker pull alpine:3.22',
+        'echo "TEST_DOCKER_IMAGE=$(docker image inspect --format \'{{index .RepoDigests 0}}\' alpine:3.22)" >> "$GITHUB_ENV"',
+        '',
+      ].join('\n'),
+    );
     expect(commands).toContain(
       'pnpm run changelog:check -- --base "${{ github.event.pull_request.base.sha }}"'
     );
