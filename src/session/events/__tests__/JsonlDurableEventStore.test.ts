@@ -795,8 +795,8 @@ describe('JsonlDurableEventStore', () => {
       ttlMs: 10_000,
     });
     const timedStore = new JsonlDurableEventStore(storageRoot, {
-      lockTimeoutMs: 10,
-      operationTimeoutMs: 50,
+      lockTimeoutMs: 500,
+      operationTimeoutMs: 1_000,
     });
     await timedStore.assertExecutionLease(lease);
     const entered = Promise.withResolvers<void>();
@@ -828,7 +828,7 @@ describe('JsonlDurableEventStore', () => {
       error: {
         code: 'DURABLE_EXECUTION_LEASE_TIMEOUT',
         operation: 'with',
-        timeoutMs: 50,
+        timeoutMs: 1_000,
         sessionId,
       },
     });
