@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.7] - 2026-08-25
+
+### Fixes
+
+- Bound durable Journal, subscription, JSONL, and execution-lease Store calls with cooperative cancellation and typed fail-closed timeouts.
+
 ## [5.3.6] - 2026-08-23
 
 ### Fixes

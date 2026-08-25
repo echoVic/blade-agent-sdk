@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.7] - 2026-08-25
+
+### 修复
+
+- 为 durable Journal、subscription、JSONL 与 execution lease Store 调用增加协作取消和类型化 fail-closed 超时。
+
 ## [5.3.6] - 2026-08-23
 
 ### 修复

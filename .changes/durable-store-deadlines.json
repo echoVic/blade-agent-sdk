@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Bound durable Journal, subscription, JSONL, and execution-lease Store calls with cooperative cancellation and typed fail-closed timeouts.",
-  "zh-CN": "为 durable Journal、subscription、JSONL 与 execution lease Store 调用增加协作取消和类型化 fail-closed 超时。"
-}
