@@ -457,6 +457,7 @@ class Session implements ISession {
       id: 'default',
       name: this.options.model,
       provider: this.mapProviderType(provider.type),
+      providerId: provider.id?.trim() || provider.type,
       model: this.options.model,
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || this.getDefaultBaseUrl(provider.type),
@@ -2008,7 +2009,7 @@ class Session implements ISession {
       {
         id: 'default',
         name: this.options.model,
-        provider: this.options.provider.type,
+        provider: this.options.provider.id?.trim() || this.options.provider.type,
       },
     ];
   }
@@ -2337,7 +2338,7 @@ class Session implements ISession {
     }
     const recorder = new TraceRecorder(this.sessionId, observability, {
       model: this.options.model,
-      provider: this.options.provider.type,
+      provider: this.options.provider.id?.trim() || this.options.provider.type,
       permissionMode: this.permissionMode,
     });
     recorder.addEvent('user_prompt', {

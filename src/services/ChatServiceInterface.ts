@@ -9,6 +9,8 @@ import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../type
 import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
+export type { ModelIdentity } from './ModelIdentity.js';
+
 /**
  * 工具调用（完整版，LLM 返回的最终结果）
  * 替代 openai 的 ChatCompletionMessageToolCall
@@ -105,6 +107,9 @@ export type Message = {
   name?: string;
   tool_calls?: ToolCall[];
   metadata?: JsonValue;
+  provider?: string;
+  api?: ProviderType;
+  model?: string;
 };
 
 /**
@@ -129,7 +134,8 @@ export interface ChatConfig {
   supportsThinking?: boolean; // 是否支持 thinking 模式（DeepSeek Reasoner 等）
   providerOptions?: ProviderOptions;
   customHeaders?: Record<string, string>; // Provider 特定的自定义 HTTP Headers
-  providerId?: string; // models.dev 中的 Provider ID（用于获取特定配置）
+  /** Logical provider ID when it differs from the wire-protocol adapter. */
+  providerId?: string;
   outputFormat?: OutputFormat; // 结构化输出格式（JSON Schema）
   retry?: Partial<RetryConfig>;
 }

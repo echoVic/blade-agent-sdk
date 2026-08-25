@@ -9,7 +9,11 @@ import {
   ToolAttemptId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import {
+  type JsonObject,
+  type JsonValue,
+  PROVIDER_TYPES,
+} from '../../types/common.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDataMap,
@@ -160,6 +164,8 @@ const DurableEventDataSchemas = {
   [DurableEventTypeValue.MODEL_REQUEST_STARTED]: z
     .object({
       model: NonEmptyStringSchema,
+      provider: NonEmptyStringSchema.optional(),
+      api: z.enum(PROVIDER_TYPES).optional(),
       streaming: z.boolean(),
     })
     .strict(),

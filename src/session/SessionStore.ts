@@ -369,6 +369,9 @@ export class JsonlSessionStore implements SessionStore {
         record.parentMessageId = data.parentMessageId;
         record.message.role = data.role;
         record.message.id = data.messageId;
+        record.message.model = data.model;
+        record.message.provider = data.provider;
+        record.message.api = data.api;
 
         if (data.model || data.usage || data.customMetadata) {
           record.message.metadata = {

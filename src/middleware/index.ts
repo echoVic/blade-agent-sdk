@@ -29,6 +29,7 @@ export type {
   ChatResponse,
   IChatService,
   Message,
+  ModelIdentity,
   SideQueryOptions,
   StreamChunk,
 } from '../services/ChatServiceInterface.js';

@@ -12,10 +12,8 @@
 
 import type { JSONSchema7 } from 'json-schema';
 import type { InternalLogger } from '../../logging/Logger.js';
-import type {
-  ChatResponse,
-  Message,
-} from '../../services/ChatServiceInterface.js';
+import type { ChatResponse, Message } from '../../services/ChatServiceInterface.js';
+import { type ModelIdentity, resolveModelIdentity } from '../../services/ModelIdentity.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';
@@ -76,10 +74,13 @@ export type StreamingExecutionResult = ToolExecutionOutcome;
 
 export interface TurnOutcome {
   chatResponse: ChatResponse;
+  modelIdentity: ModelIdentity;
   modelAttemptId?: ModelAttemptId;
   /** 若走了 streaming+tools 分支，工具已顺带执行完；非流式路径为 undefined */
   streamingExecutionResults?: StreamingExecutionResult[];
 }
+
+type TurnExecutionOutcome = Omit<TurnOutcome, 'modelIdentity'>;
 
 /**
  * 单回合执行。所有副作用通过 hooks 注入，事件通过 yield 输出。
@@ -94,9 +95,10 @@ export async function* runTurn(
     parameters: JSONSchema7;
   }>;
   const turnChatService = turnState.chatService;
+  const modelIdentity = resolveModelIdentity(turnChatService.getConfig());
   const requestLifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
     turn: turnState.turn,
-    model: turnChatService.getConfig().model,
+    ...modelIdentity,
     streaming: streaming === true,
   });
   await turnState.executionContext.assertExecutionLease?.();
@@ -110,7 +112,7 @@ export async function* runTurn(
     await requestLifecycle.onCompleted(response);
   };
   try {
-    let outcome: TurnOutcome;
+    let outcome: TurnExecutionOutcome;
     try {
       // 分支 1：streaming + 有工具 — 流式边解析边执行
       if (streaming && tools.length > 0) {
@@ -223,6 +225,7 @@ export async function* runTurn(
     }
     return {
       ...outcome,
+      modelIdentity,
       ...(requestLifecycle?.modelAttemptId
         ? { modelAttemptId: requestLifecycle.modelAttemptId }
         : {}),
@@ -241,7 +244,7 @@ async function* runStreamingWithTools(
   tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   modelAttemptId: ModelAttemptId | undefined,
   onModelResponse: (response: ChatResponse) => Promise<void>,
-): AsyncGenerator<AgentEvent, TurnOutcome> {
+): AsyncGenerator<AgentEvent, TurnExecutionOutcome> {
   const {
     turnState, messages, executionPipeline,
     signal, requestSignal, steeringSignal, epoch,

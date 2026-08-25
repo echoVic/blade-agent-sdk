@@ -15,18 +15,23 @@ export interface TokenUsage {
   maxContextTokens: number;
 }
 
-export type ProviderType =
-  | 'anthropic'
-  | 'openai'
-  | 'azure-openai'
-  | 'gemini'
-  | 'deepseek'
-  | 'openai-compatible';
+export const PROVIDER_TYPES = [
+  'anthropic',
+  'openai',
+  'azure-openai',
+  'gemini',
+  'deepseek',
+  'openai-compatible',
+] as const;
+
+export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
 export interface ModelConfig {
   id: string;
   name: string;
   provider: ProviderType;
+  /** Logical provider ID when multiple providers share the same API adapter. */
+  providerId?: string;
   model: string;
   apiKey?: string;
   baseUrl?: string;

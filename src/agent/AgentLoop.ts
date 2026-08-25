@@ -8,7 +8,12 @@
 
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
-import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type {
+  ChatResponse,
+  Message,
+  ModelIdentity,
+  ToolCall,
+} from '../services/ChatServiceInterface.js';
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
@@ -95,6 +100,7 @@ export interface AgentLoopHooks {
       content: string;
       reasoningContent?: string;
       toolCalls?: ToolCall[];
+      modelIdentity: ModelIdentity;
       turn: number;
     }) => Promise<void>;
     onComplete?: (ctx: {
@@ -258,6 +264,7 @@ export async function* agentLoop(
 
     // === runTurn：单回合 LLM 调用 + 流式事件 ===
     let turnResult: ChatResponse | undefined;
+    let modelIdentity: ModelIdentity | undefined;
     let streamingExecutionResults: Array<{
       toolCall: FunctionToolCall;
       result: ToolResult;
@@ -289,6 +296,7 @@ export async function* agentLoop(
         },
       });
       turnResult = turnOutcome.chatResponse;
+      modelIdentity = turnOutcome.modelIdentity;
       streamingExecutionResults = turnOutcome.streamingExecutionResults;
       modelAttemptId = turnOutcome.modelAttemptId;
     } catch (llmError) {
@@ -376,8 +384,8 @@ export async function* agentLoop(
       throw llmError;
     }
 
-    if (!turnResult) {
-      throw new Error('Agent loop completed without a chat response');
+    if (!turnResult || !modelIdentity) {
+      throw new Error('Agent loop completed without a chat response and model identity');
     }
 
     if (recovery.phase !== 'idle') {
@@ -485,10 +493,12 @@ export async function* agentLoop(
           role: 'assistant',
           content,
           reasoningContent: turnResult.reasoningContent,
+          ...modelIdentity,
         });
         await messageHooks?.onAssistant?.({
           content,
           reasoningContent: turnResult.reasoningContent,
+          modelIdentity,
           turn: turnsCount,
         });
       }
@@ -651,12 +661,14 @@ export async function* agentLoop(
       content: turnResult.content || '',
       reasoningContent: turnResult.reasoningContent,
       tool_calls: turnResult.toolCalls,
+      ...modelIdentity,
     });
 
     await messageHooks?.onAssistant?.({
       content: turnResult.content || '',
       reasoningContent: turnResult.reasoningContent,
       toolCalls: turnResult.toolCalls,
+      modelIdentity,
       turn: turnsCount,
     });
 

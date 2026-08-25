@@ -19,6 +19,7 @@ import type {
   ToolCall,
   UsageInfo,
 } from './ChatServiceInterface.js';
+import { resolveModelIdentity } from './ModelIdentity.js';
 import {
   DEFAULT_RETRY_CONFIG,
   type RetryConfig,
@@ -385,6 +386,7 @@ export class VercelAIChatService implements IChatService {
   private convertMessages(messages: readonly Message[]): AIMessage[] {
     const result: AIMessage[] = [];
     const isDeepSeek = this.isDeepSeekProvider();
+    const targetModel = resolveModelIdentity(this.config);
 
     for (const msg of messages) {
       if (msg.role === 'system') {
@@ -429,6 +431,10 @@ export class VercelAIChatService implements IChatService {
           result.push({ role: 'user', content: msg.content });
         }
       } else if (msg.role === 'assistant') {
+        const isSameModel =
+          msg.provider === targetModel.provider
+          && msg.api === targetModel.api
+          && msg.model === targetModel.model;
         if (msg.tool_calls && msg.tool_calls.length > 0) {
           const content: Array<
             { type: 'reasoning'; text: string }
@@ -436,7 +442,11 @@ export class VercelAIChatService implements IChatService {
             | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
           > = [];
           if (msg.reasoningContent) {
-            content.push({ type: 'reasoning', text: msg.reasoningContent });
+            content.push(
+              isSameModel
+                ? { type: 'reasoning', text: msg.reasoningContent }
+                : { type: 'text', text: msg.reasoningContent },
+            );
           }
           const toolCalls = msg.tool_calls.map((tc) => {
             const fn = (tc as { function?: { name: string; arguments?: string } }).function;
@@ -455,11 +465,19 @@ export class VercelAIChatService implements IChatService {
           result.push({ role: 'assistant', content });
         } else {
           const text = getTextContent(msg.content);
-          if (msg.reasoningContent && !isDeepSeek) {
+          if (msg.reasoningContent && isSameModel && !isDeepSeek) {
             result.push({
               role: 'assistant',
               content: [
                 { type: 'reasoning', text: msg.reasoningContent },
+                ...(text ? [{ type: 'text' as const, text }] : []),
+              ],
+            });
+          } else if (msg.reasoningContent && !isSameModel) {
+            result.push({
+              role: 'assistant',
+              content: [
+                { type: 'text', text: msg.reasoningContent },
                 ...(text ? [{ type: 'text' as const, text }] : []),
               ],
             });

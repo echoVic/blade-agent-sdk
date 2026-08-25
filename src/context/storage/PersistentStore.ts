@@ -9,7 +9,12 @@ import {
   type RequestId,
   SessionId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
+import type {
+  JsonObject,
+  JsonValue,
+  MessageRole,
+  ProviderType,
+} from '../../types/common.js';
 import type {
   ContextData,
   ConversationContext,
@@ -191,6 +196,8 @@ export class PersistentStore {
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
+      provider?: string;
+      api?: ProviderType;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
       reasoningContent?: string;
@@ -214,6 +221,8 @@ export class PersistentStore {
         parentMessageId: parentUuid ?? undefined,
         createdAt: now,
         model: metadata?.model,
+        provider: metadata?.provider,
+        api: metadata?.api,
         usage: metadata?.usage,
         customMetadata: metadata?.customMetadata,
       };
@@ -825,6 +834,8 @@ export class NoopPersistentStore {
     _parentUuid: string | null = null,
     _metadata?: {
       model?: string;
+      provider?: string;
+      api?: ProviderType;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
     },

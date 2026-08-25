@@ -12,7 +12,7 @@ import type {
   ToolUseId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue, ProviderType } from '../../types/common.js';
 import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
 export const DURABLE_EVENT_SCHEMA_VERSION = 3 as const;
@@ -154,6 +154,8 @@ export interface DurableEventDataMap {
   };
   [DurableEventType.MODEL_REQUEST_STARTED]: {
     model: string;
+    provider?: string;
+    api?: ProviderType;
     streaming: boolean;
   };
   [DurableEventType.MODEL_REQUEST_COMPLETED]: {

@@ -537,6 +537,8 @@ function buildTurnRecoveryContinuation(
             modelAttempts: retainedModelAttempts.map((attempt) => ({
               modelAttemptId: attempt.modelAttemptId,
               model: attempt.model,
+              ...(attempt.provider ? { provider: attempt.provider } : {}),
+              ...(attempt.api ? { api: attempt.api } : {}),
               streaming: attempt.streaming,
               status: attempt.status,
               ...(attempt.response
