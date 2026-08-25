@@ -806,6 +806,7 @@ journal.
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
+| `DURABLE_EVENT_INVALID_OPTIONS` | JSONL Store construction options are invalid. |
 | `DURABLE_EVENT_LOCK_FAILED` | Session file-lock setup or acquisition failed. |
 | `DURABLE_EVENT_LOCK_TIMEOUT` | The Session file lock was not acquired within `lockTimeoutMs`. |
 | `DURABLE_EVENT_IO_TIMEOUT` | A durable Store append, read, or head lookup exceeded its deadline. |

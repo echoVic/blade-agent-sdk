@@ -738,6 +738,7 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
+| `DURABLE_EVENT_INVALID_OPTIONS` | JSONL Store 构造参数无效 |
 | `DURABLE_EVENT_LOCK_FAILED` | Session 文件锁初始化或获取失败 |
 | `DURABLE_EVENT_LOCK_TIMEOUT` | 在 `lockTimeoutMs` 内未能获得 Session 文件锁 |
 | `DURABLE_EVENT_IO_TIMEOUT` | durable Store append、read 或 head 查询超过 deadline |
