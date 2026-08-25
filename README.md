@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md)
 
-A session-first TypeScript SDK for building AI agents on Node.js. It provides one API for multi-turn conversations, streaming tool execution, MCP, subagents, Skills, permissions, hooks, sandbox policies, structured output, and observability.
+A session-first TypeScript Agent SDK for both local Node.js processes and Node.js servers. It provides one API for multi-turn conversations, streaming tool execution, MCP, subagents, Skills, permissions, hooks, sandbox policies, structured output, and observability.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ pnpm add @blade-ai/agent-sdk
 ## Quick Start
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -31,7 +31,7 @@ const session = await createSession({
   maxOutputTokens: 4096,
 });
 
-await session.send('Summarize the responsibilities of this project');
+await session.send('Analyze this report and return three key findings');
 
 for await (const event of session.stream()) {
   if (event.type === 'content') {
@@ -45,7 +45,7 @@ await session.close();
 For a one-shot request, use `prompt()`:
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk';
+import { prompt } from '@blade-ai/agent-sdk/server';
 
 const result = await prompt('Explain this API surface', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -126,19 +126,20 @@ const weather = defineTool({
 ## Package Entry Points
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
+import { createSession as createCodingSession } from '@blade-ai/agent-sdk/node';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
-import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
-- Root: complete Node.js API
+- Root and `/server`: server-side agents; load only explicitly supplied tools, agents, middleware, and MCP servers without scanning the host workspace
+- `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
+- `/browser`: browser-safe protocol view with explicit server-only execution stubs
 - `/core`: browser-safe contracts, constants, and types
 - `/tools`: browser-safe tool authoring primitives
 - `/middleware`: browser-safe middleware and plugin contracts
-- `/server` and `/session`: server-side Session APIs
-- `/local`: built-in local tools and local runtime helpers
+- `/session`: lower-level server Session API
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
@@ -147,6 +148,8 @@ Importing a server-only entry in a browser resolves to a stub that throws a clea
 Sessions are in-memory unless `storagePath` is configured:
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk/node';
+
 const session = await createSession({
   provider,
   model,

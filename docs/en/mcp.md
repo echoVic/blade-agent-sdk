@@ -7,6 +7,8 @@ Blade Agent SDK can connect to external Model Context Protocol servers and host 
 Configure servers in `SessionOptions.mcpServers`:
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk/server';
+
 const session = await createSession({
   provider,
   model,
@@ -124,9 +126,9 @@ interface McpToolInfo {
 ```ts
 import {
   createSdkMcpServer,
-  createSession,
   tool,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/server';
 import { z } from 'zod';
 
 const getWeather = tool(

@@ -113,7 +113,9 @@ function getBuiltinTools(opts?: {
 }): Promise<Tool[]>
 ```
 
-`MemoryRead` 和 `MemoryWrite` 默认不会注册。只有在显式传入 `memoryManager` 时才会加入内置工具集合。
+`getBuiltinTools()` 仅从 `/node` 导出；`/node` Session 会自动注册 Coding
+Agent 工具集合。`MemoryRead` 和 `MemoryWrite` 默认不会注册，只有在显式传入
+`memoryManager` 时才会加入集合。
 
 ```ts
 import {
@@ -121,7 +123,7 @@ import {
   MemoryManager,
   SubagentRegistry,
   getBuiltinTools,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/node';
 
 const tools = await getBuiltinTools({
   memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),

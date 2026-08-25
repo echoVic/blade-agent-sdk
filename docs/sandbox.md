@@ -14,8 +14,8 @@ Session 初始化会抛出 `ConfigError`；低层命令包装也会拒绝执行�
 import {
   createSession,
   PermissionMode,
-} from '@blade-ai/agent-sdk';
-import { getSandboxService } from '@blade-ai/agent-sdk/local';
+  getSandboxService,
+} from '@blade-ai/agent-sdk/node';
 
 const sandbox = getSandboxService();
 sandbox.configure({
@@ -35,7 +35,7 @@ const session = await createSession({
 });
 ```
 
-`getSandboxService` 从 `/local` 入口导出；根入口导出 Session 和权限常量。
+Sandbox 与内置 `Bash` 属于本地 Node.js 宿主能力，因此从 `/node` 入口导入。
 
 ## SandboxSettings
 
@@ -64,7 +64,7 @@ interface SandboxSettings {
 ## 能力检测
 
 ```ts
-import { getSandboxService } from '@blade-ai/agent-sdk/local';
+import { getSandboxService } from '@blade-ai/agent-sdk/node';
 
 const capabilities = getSandboxService().getCapabilities();
 

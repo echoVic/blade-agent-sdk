@@ -27,7 +27,11 @@ type StreamLoopExecutor = (
 export class PlanExecutor {
   private readonly logger: InternalLogger;
 
-  constructor(private language?: string, logger?: InternalLogger) {
+  constructor(
+    private language?: string,
+    logger?: InternalLogger,
+    private readonly includeSkills = true,
+  ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
 
@@ -62,7 +66,8 @@ export class PlanExecutor {
     const { prompt } = await buildSystemPrompt({
       projectPath: context?.snapshot?.cwd,
       mode: PermissionMode.PLAN,
-      includeEnvironment: true,
+      includeEnvironment: context?.omitEnvironment !== true,
+      includeSkills: this.includeSkills,
       language: this.language,
     });
     return prompt;

@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import * as root from '../index.js';
 import type {
   AgentMiddlewareConfig,
   AgentPlugin,
@@ -69,8 +70,6 @@ import {
   collectToolExecution,
   completeToolExecution,
   composeMiddleware,
-  createMemoryReadTool,
-  createMemoryWriteTool,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -95,13 +94,10 @@ import {
   EventSequence,
   ExecutionLeaseId,
   FencingToken,
-  FileSystemMemoryStore,
   HookEvent,
   HookTimeoutError,
   InputId,
   InputPriority,
-  JsonlDurableEventStore,
-  MemoryManager,
   ModelAttemptId,
   ModelTimeoutError,
   PermissionRequestId,
@@ -122,9 +118,25 @@ import {
   TurnId,
   WorkerId,
 } from '../index.js';
+import {
+  createMemoryReadTool,
+  createMemoryWriteTool,
+  FileSystemMemoryStore,
+  JsonlDurableEventStore,
+  MemoryManager,
+} from '../node/index.js';
 
 describe('root exports', () => {
-  it('exports the opt-in memory, catalog, and subagent primitives', () => {
+  it('keeps Node host adapters out of the server-first root', () => {
+    expect('getBuiltinTools' in root).toBe(false);
+    expect('FileSystemMemoryStore' in root).toBe(false);
+    expect('MemoryManager' in root).toBe(false);
+    expect('createMemoryReadTool' in root).toBe(false);
+    expect('JsonlDurableEventStore' in root).toBe(false);
+    expect('createSdkMcpServer' in root).toBe(false);
+  });
+
+  it('exports shared primitives at root and local adapters from the Node entrypoint', () => {
     expect(MemoryManager).toBeDefined();
     expect(FileSystemMemoryStore).toBeDefined();
     expect(createMemoryReadTool).toBeDefined();

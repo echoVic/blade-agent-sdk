@@ -111,6 +111,7 @@ export class Agent {
   private readonly subagentRegistry: SubagentRegistry;
   private readonly backgroundAgentManager: BackgroundAgentManager;
   private readonly hookRuntime?: HookRuntime;
+  private readonly localDiscovery: boolean;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private lastPreparedSkillCwd?: string;
@@ -135,6 +136,7 @@ export class Agent {
     this.toolCatalog = this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
+    this.localDiscovery = runtimeOptions.localDiscovery ?? true;
     this.runtimeMcpRegistry =
       deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
     this.subagentRegistry =
@@ -161,7 +163,11 @@ export class Agent {
       deps.modelMiddleware,
       deps.providerRegistry,
     );
-    this.planExecutor = new PlanExecutor(config.language, this.rootLogger);
+    this.planExecutor = new PlanExecutor(
+      config.language,
+      this.rootLogger,
+      this.localDiscovery,
+    );
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
 
@@ -207,8 +213,10 @@ export class Agent {
         await this.registerBuiltinTools();
       }
 
-      await this.loadSubagents();
-      await this.discoverSkills();
+      if (this.localDiscovery) {
+        await this.loadSubagents();
+        await this.discoverSkills();
+      }
 
       const modelConfig = this.modelManager.resolveModelConfig(this.runtimeOptions.modelId);
       await this.modelManager.applyModelConfig(modelConfig, '🚀 使用模型:');
@@ -446,15 +454,22 @@ export class Agent {
     const ctx = this.withBackgroundAgentManager(context);
     let enhancedMessage: UserMessageContent;
     if (options?.initialInputPreparation === RECONCILED_INITIAL_INPUT) {
-      await this.discoverSkillsForCwd(this.getContextWorkingDirectory(ctx));
+      if (this.localDiscovery) {
+        await this.discoverSkillsForCwd(this.getContextWorkingDirectory(ctx));
+      }
       enhancedMessage = message;
-    } else {
+    } else if (this.localDiscovery) {
       enhancedMessage = await this.prepareMessageForContext(message, ctx);
+    } else {
+      enhancedMessage = message;
     }
     const loopOptions: LoopOptions = {
       signal: ctx.signal,
       ...options,
-      prepareInput: (input) => this.prepareMessageForContext(input, ctx),
+      prepareInput: (input) =>
+        this.localDiscovery
+          ? this.prepareMessageForContext(input, ctx)
+          : Promise.resolve(input),
     };
 
     return { enhancedMessage, context: ctx, loopOptions };
@@ -540,6 +555,7 @@ export class Agent {
         basePrompt: this.runtimeOptions.systemPrompt,
         append: this.runtimeOptions.appendSystemPrompt,
         includeEnvironment: false,
+        includeSkills: this.localDiscovery,
         language: this.config.language,
       });
       if (result.prompt) {

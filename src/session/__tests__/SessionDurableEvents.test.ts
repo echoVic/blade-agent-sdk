@@ -84,7 +84,7 @@ vi.mock('../../agent/Agent.js', () => ({
   Agent: { create: createAgent },
 }));
 
-const { createSession, forkSession, resumeSession } = await import('../Session.js');
+const { createSession, forkSession, resumeSession } = await import('../../node/index.js');
 const { SessionRuntime } = await import('../SessionRuntime.js');
 
 class FailOnEventTypeStore implements DurableEventStore {

@@ -3,6 +3,8 @@
 ## Multi-turn conversation
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk/node';
+
 const session = await createSession({ provider, model });
 
 for (const prompt of [
@@ -205,10 +207,10 @@ Create the opt-in Memory tools and pass them directly to Session:
 import {
   createMemoryReadTool,
   createMemoryWriteTool,
-  createSession,
   FileSystemMemoryStore,
   MemoryManager,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const manager = new MemoryManager(
   new FileSystemMemoryStore('/var/lib/my-agent/memory'),
@@ -273,9 +275,9 @@ const session = await createSession({
 ```ts
 import {
   createSdkMcpServer,
-  createSession,
   tool,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/server';
 import { z } from 'zod';
 
 const analyzeDependencies = tool(

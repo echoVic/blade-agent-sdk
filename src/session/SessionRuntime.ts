@@ -19,6 +19,7 @@ import {
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import type { DurableExecutionFence } from './events/DurableExecutionLeaseStore.js';
+import { NODE_SESSION_HOST, type SessionHostProfile } from './SessionHostProfile.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
@@ -119,6 +120,7 @@ export class SessionRuntime {
     private readonly permissionMode: PermissionMode,
     private readonly defaultContext: RuntimeContext,
     logger: InternalLogger,
+    private readonly hostProfile: SessionHostProfile = NODE_SESSION_HOST,
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
@@ -208,16 +210,17 @@ export class SessionRuntime {
     activeShellIds: readonly string[];
   } {
     const activeSubagentIds = this.backgroundAgentManager.getActiveAgentIds();
-    const shellManager = BackgroundShellManager.getInstance();
-    const activeShellIds = shellManager.getActiveProcessIds(
-      this.sessionId,
-      executionFence,
-    );
+    const shellManager =
+      this.hostProfile === NODE_SESSION_HOST
+        ? BackgroundShellManager.getInstance()
+        : undefined;
+    const activeShellIds =
+      shellManager?.getActiveProcessIds(this.sessionId, executionFence) ?? [];
     if (activeSubagentIds.length === 0 && activeShellIds.length === 0) {
       this.backgroundAgentManager.sealForHandoff();
-      if (executionFence) {
+      if (shellManager && executionFence) {
         shellManager.sealExecutionFence(this.sessionId, executionFence);
-      } else {
+      } else if (shellManager) {
         shellManager.sealSessionForHandoff(this.sessionId);
       }
     }
@@ -226,10 +229,12 @@ export class SessionRuntime {
 
   stopBackgroundWorkAfterLeaseLoss(executionFence: DurableExecutionFence): void {
     this.backgroundAgentManager.sealAndCancelAll();
-    BackgroundShellManager.getInstance().killExecutionFence(
-      this.sessionId,
-      executionFence,
-    );
+    if (this.hostProfile === NODE_SESSION_HOST) {
+      BackgroundShellManager.getInstance().killExecutionFence(
+        this.sessionId,
+        executionFence,
+      );
+    }
   }
 
   getContextManager(): ContextManager {
@@ -239,16 +244,20 @@ export class SessionRuntime {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    BackgroundShellManager.getInstance().openSession(this.sessionId);
-    if (this.options.sandbox) {
-      getSandboxExecutor(this.rootLogger);
-      getSandboxService().configure(this.options.sandbox);
+    if (this.hostProfile === NODE_SESSION_HOST) {
+      BackgroundShellManager.getInstance().openSession(this.sessionId);
+      if (this.options.sandbox) {
+        getSandboxExecutor(this.rootLogger);
+        getSandboxService().configure(this.options.sandbox);
+      }
     }
 
     this.initializeSubagents();
     await this.contextManager.initialize();
     this.initializeHooks();
-    await this.registerBuiltinTools();
+    if (this.hostProfile === NODE_SESSION_HOST) {
+      await this.registerBuiltinTools();
+    }
     this.registerCustomTools();
     this.registerPluginTools();
     await this.registerConfiguredMcpServers();
@@ -329,13 +338,18 @@ export class SessionRuntime {
   async close(executionFence?: DurableExecutionFence): Promise<void> {
     this.assertNoPendingCleanup({ includeTerminalFailures: false });
     const errors: unknown[] = this.getTerminalCleanupFailures();
-    const shellManager = BackgroundShellManager.getInstance();
-    const shutdownResults = await Promise.allSettled([
+    const shutdownOperations: Promise<unknown>[] = [
       this.backgroundAgentManager.sealCancelAndWait(),
-      executionFence
-        ? shellManager.terminateExecutionFence(this.sessionId, executionFence)
-        : shellManager.terminateSession(this.sessionId),
-    ]);
+    ];
+    if (this.hostProfile === NODE_SESSION_HOST) {
+      const shellManager = BackgroundShellManager.getInstance();
+      shutdownOperations.push(
+        executionFence
+          ? shellManager.terminateExecutionFence(this.sessionId, executionFence)
+          : shellManager.terminateSession(this.sessionId),
+      );
+    }
+    const shutdownResults = await Promise.allSettled(shutdownOperations);
     errors.push(...shutdownResults.flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     ));
@@ -449,10 +463,12 @@ export class SessionRuntime {
   private initializeSubagents(): void {
     this.subagentRegistry.setLogger(this.rootLogger);
     this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
-    this.subagentRegistry.loadFromStandardLocations(
-      getContextCwd(this.defaultContext),
-      this.storageRoot,
-    );
+    if (this.hostProfile === NODE_SESSION_HOST) {
+      this.subagentRegistry.loadFromStandardLocations(
+        getContextCwd(this.defaultContext),
+        this.storageRoot,
+      );
+    }
 
     for (const [name, definition] of Object.entries(this.options.agents ?? {})) {
       this.subagentRegistry.register(toSubagentConfig(name, definition), { override: true });

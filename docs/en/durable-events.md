@@ -20,7 +20,7 @@ model call with an unknown outcome is never replayed automatically.
 ## Imports
 
 Protocol types and parsers are available from root and the browser-safe `/core`
-entry. The Node.js JSONL adapter is available from root and `/local`:
+entry. The Node.js JSONL adapter is available from `/node`:
 
 ```ts
 import {
@@ -33,7 +33,6 @@ import {
   DurableEventType,
   EventSequence,
   InputId,
-  JsonlDurableEventStore,
   ModelAttemptId,
   PermissionRequestId,
   RequestId,
@@ -41,6 +40,7 @@ import {
   ToolAttemptId,
   TurnId,
 } from '@blade-ai/agent-sdk';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
 ```
 
 ## Event envelope

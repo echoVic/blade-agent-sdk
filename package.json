@@ -42,10 +42,10 @@
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js"
     },
-    "./local": {
-      "types": "./dist/local/index.d.ts",
+    "./node": {
+      "types": "./dist/node/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/local/index.js"
+      "import": "./dist/node/index.js"
     },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",

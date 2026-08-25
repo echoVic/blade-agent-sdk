@@ -369,7 +369,9 @@ behavior is unchanged.
 
 ## Built-in tools
 
-`getBuiltinTools()` is exported by the root and `/local` entry points. Memory tools are only included when a `MemoryManager` is supplied.
+`getBuiltinTools()` is exported by the `/node` entry point. The `/node`
+Session facade registers this local host tool set automatically; memory tools
+are only included when a `MemoryManager` is supplied explicitly.
 
 | Group | Tools |
 |-------|-------|

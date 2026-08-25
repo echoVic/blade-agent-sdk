@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-面向 Node.js 的 Session-first TypeScript Agent SDK。它用一套 API 统一多轮会话、流式工具执行、MCP、子 Agent、Skills、权限、Hooks、沙箱策略、结构化输出和可观测性。
+同时面向本地 Node.js 进程与 Node.js 服务端的 Session-first TypeScript Agent SDK。它用一套 API 统一多轮会话、流式工具执行、MCP、子 Agent、Skills、权限、Hooks、沙箱策略、结构化输出和可观测性。
 
 ## 环境要求
 
@@ -22,7 +22,7 @@ pnpm add @blade-ai/agent-sdk
 ## 快速开始
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -31,7 +31,7 @@ const session = await createSession({
   maxOutputTokens: 4096,
 });
 
-await session.send('总结这个项目的模块职责');
+await session.send('分析下面这份报告并给出三个关键结论');
 
 for await (const event of session.stream()) {
   if (event.type === 'content') {
@@ -45,7 +45,7 @@ await session.close();
 一次性请求可以使用 `prompt()`：
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk';
+import { prompt } from '@blade-ai/agent-sdk/server';
 
 const result = await prompt('解释这个 API 的能力边界', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -126,19 +126,20 @@ const weather = defineTool({
 ## 包入口
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
+import { createSession as createCodingSession } from '@blade-ai/agent-sdk/node';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
-import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
-- 根入口：完整 Node.js API
+- 根入口与 `/server`：服务端 Agent；只加载显式传入的工具、Agent、middleware 和 MCP，不扫描宿主工作区
+- `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
+- `/browser`：浏览器安全协议视图；执行 API 为明确的 server-only stub
 - `/core`：浏览器安全的协议、常量和类型
 - `/tools`：浏览器安全的工具定义原语
 - `/middleware`：浏览器安全的 middleware 与插件契约
-- `/server` 和 `/session`：服务端 Session API
-- `/local`：内置本地工具和本地运行时辅助函数
+- `/session`：底层服务端 Session API
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
 
@@ -147,6 +148,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 未配置 `storagePath` 时，Session 只保存在内存中：
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk/node';
+
 const session = await createSession({
   provider,
   model,

@@ -139,6 +139,8 @@ export interface AgentOptions {
   // Token 预算
   tokenBudget?: TokenBudgetConfig;
 
+  /** @internal Enables filesystem-backed skills, attachments, and agent discovery. */
+  localDiscovery?: boolean;
 }
 
 // ===== Agentic Loop Types =====

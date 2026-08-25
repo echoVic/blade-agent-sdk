@@ -5,7 +5,7 @@
 最基本的多轮对话——依次发送多条消息，每条消息都能引用之前的上下文：
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/node';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -36,7 +36,7 @@ await session.close();
 下面是一个更完整的示例，模拟一个交互式 CLI Agent：逐字流式输出、显示工具调用过程、统计 Token 用量，并支持用户持续输入：
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/node';
 import * as readline from 'node:readline';
 
 const session = await createSession({
@@ -276,10 +276,10 @@ Memory 系统是 opt-in 的。创建 Memory 工具后直接传给 Session：
 import {
   createMemoryReadTool,
   createMemoryWriteTool,
-  createSession,
   FileSystemMemoryStore,
   MemoryManager,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const memoryManager = new MemoryManager(
   new FileSystemMemoryStore('/home/user/.blade/memory'),
@@ -358,7 +358,8 @@ const session = await createSession({
 当你需要 TypeScript 编写工具并通过 MCP 协议暴露时：
 
 ```ts
-import { tool, createSdkMcpServer, createSession } from '@blade-ai/agent-sdk';
+import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/server';
 import { z } from 'zod';
 
 const myTool = tool(

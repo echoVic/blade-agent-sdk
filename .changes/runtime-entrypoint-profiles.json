@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Split runtime defaults into a server facade without implicit host access and a local Node.js facade, replacing the local entry point with node.",
+  "zh-CN": "将运行时默认能力拆分为无隐式宿主访问的服务端入口和本地 Node.js 入口，并以 node 入口替代 local。"
+}

@@ -71,16 +71,8 @@ export * from '../middleware/index.js';
 export * from '../session/events/core.js';
 
 export {
-  createMemoryReadTool,
-  createMemoryWriteTool,
-  createSdkMcpServer,
   createSession,
-  FileSystemMemoryStore,
   forkSession,
-  getBuiltinTools,
-  JsonlDurableEventStore,
-  MemoryManager,
   prompt,
   resumeSession,
-  tool,
 } from './server-only-stub.js';
