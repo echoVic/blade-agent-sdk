@@ -24,6 +24,7 @@ const zhSidebar = [
       { text: '权限控制', link: '/permissions' },
       { text: 'Middleware 与插件', link: '/middleware' },
       { text: 'Hooks 生命周期', link: '/hooks' },
+      { text: '类型架构', link: '/type-architecture' },
     ],
   },
   {
@@ -65,6 +66,7 @@ const enSidebar = [
       { text: 'Permissions', link: '/en/permissions' },
       { text: 'Middleware and Plugins', link: '/en/middleware' },
       { text: 'Hooks', link: '/en/hooks' },
+      { text: 'Type Architecture', link: '/en/type-architecture' },
     ],
   },
   {

@@ -133,6 +133,7 @@ import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
+import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
 - Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
@@ -144,6 +145,7 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 - `/core`: browser-safe contracts, constants, and types
 - `/tools`: browser-safe tool authoring primitives
 - `/middleware`: browser-safe middleware and plugin contracts
+- `/model`: browser-safe provider-neutral model contracts, messages, configuration, and usage
 - `/session`: lower-level server Session API
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
@@ -182,6 +184,8 @@ For worker coordination and crash recovery, see
 [Worker Runtime](./docs/en/worker-runtime.md).
 For container isolation, resource limits, checkpoints, and ephemeral
 credentials, see [Execution Host](./docs/en/execution-host.md).
+The ownership and boundary rules for public contracts are documented in
+[Type Architecture](./docs/en/type-architecture.md).
 
 The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 

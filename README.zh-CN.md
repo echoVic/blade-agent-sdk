@@ -133,6 +133,7 @@ import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
+import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
 - 根入口与 `/server`：服务端 Agent；提供可注入 `SessionExecutor` 的 `AgentServer`，只加载显式传入的能力
@@ -144,6 +145,7 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 - `/core`：浏览器安全的协议、常量和类型
 - `/tools`：浏览器安全的工具定义原语
 - `/middleware`：浏览器安全的 middleware 与插件契约
+- `/model`：浏览器安全、Provider 无关的模型契约、消息、配置和用量类型
 - `/session`：底层服务端 Session API
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
@@ -180,6 +182,7 @@ HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
 worker 协调与崩溃恢复见 [Worker Runtime](./docs/worker-runtime.md)。
 容器隔离、资源限制、checkpoint 与短期凭据见
 [Execution Host](./docs/execution-host.md)。
+公开类型的所有权与边界规则见[类型架构](./docs/type-architecture.md)。
 
 workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent 仍可工作，但本地文件工具和项目级发现需要具备文件系统能力的 workspace。
 

@@ -22,6 +22,7 @@ const publicDocuments = [
   'agents.md',
   'skills.md',
   'recipes.md',
+  'type-architecture.md',
   'api-reference.md',
 ] as const;
 
