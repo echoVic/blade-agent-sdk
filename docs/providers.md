@@ -15,6 +15,7 @@
 
 ```ts
 interface ProviderConfig {
+  id?: string;
   type: ProviderType;
   apiKey?: string;
   baseUrl?: string;
@@ -27,11 +28,30 @@ interface ProviderConfig {
 }
 ```
 
+`type` 选择 wire protocol adapter；`id` 标识逻辑 Provider，默认等于
+`type`。OpenAI-compatible 网关如需在模型切换和持久化 Session 恢复后保留
+真实 Provider 身份，应显式设置 `id`：
+
+```ts
+provider: {
+  id: 'openrouter',
+  type: 'openai-compatible',
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  baseUrl: 'https://openrouter.ai/api/v1',
+}
+```
+
 `requestTimeoutMs` 限制一次非流式模型操作的总时长（包括重试等待），默认
 10 分钟。`streamIdleTimeoutMs` 限制等待下一个流式 chunk 的时长，默认
 5 分钟。两者都必须是以毫秒为单位的正整数。超时会主动中止底层 provider
 请求，并抛出 `ModelTimeoutError`；错误码分别为
 `MODEL_REQUEST_TIMEOUT` 和 `MODEL_STREAM_IDLE_TIMEOUT`，不会伪装成用户取消。
+
+assistant 历史会记录生成响应时的逻辑 Provider ID、API adapter 和模型。
+只有来源三元组完全相同时，原生 reasoning block 才会按原格式回放。切换
+Provider、adapter、模型，或恢复不含来源信息的旧历史时，reasoning 会降级为
+普通 assistant 文本，同时保留 tool call 关联，避免把 Provider 专属 payload
+发送给不兼容的 API。
 
 ## 配置示例
 

@@ -119,6 +119,7 @@ const session = await createSession(options);
 
 ```ts
 interface ProviderConfig {
+  id?: string;              // 逻辑 Provider ID；默认等于 type
   type: ProviderType;
   apiKey?: string;
   baseUrl?: string;

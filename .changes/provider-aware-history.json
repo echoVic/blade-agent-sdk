@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Persist provider, API adapter, and model provenance for assistant history, and safely downgrade reasoning when replaying across providers or models.",
+  "zh-CN": "持久化 assistant 历史的 Provider、API adapter 与模型来源，并在跨 Provider 或模型回放时安全降级 reasoning。"
+}

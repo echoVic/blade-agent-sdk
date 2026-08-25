@@ -87,7 +87,7 @@ are rejected before append.
 | `turn_started` | `requestId`, `turnId` | `turn`, `model?` |
 | `turn_completed` | `requestId`, `turnId` | `turn`, `hasToolCalls` |
 | `turn_aborted` | `requestId`, `turnId` | `turn`, `reason` |
-| `model_request_started` | Request, Turn, `modelAttemptId` | `model`, `streaming` |
+| `model_request_started` | Request, Turn, `modelAttemptId` | `model`, optional `provider` / `api`, `streaming` |
 | `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
 | `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
 | `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
@@ -372,6 +372,9 @@ A model attempt is one logical model operation and may contain internal HTTP
 retries. A reactive-compaction retry creates a new attempt. High-frequency
 token deltas remain transient, while the complete response is durable before
 any later Turn terminal event.
+New model-attempt events retain the logical provider and API adapter so
+recovery does not lose model provenance. Older events without those optional
+fields remain valid.
 Active model reconciliation takes precedence over permission and tool outcomes
 in the same Turn. After the model terminal event commits, the plan exposes the
 next unresolved recovery action.
