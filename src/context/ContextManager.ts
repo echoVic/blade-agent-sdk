@@ -1,6 +1,10 @@
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type { Message, ToolCall as ChatToolCall } from '../services/ChatServiceInterface.js';
+import type {
+  Message,
+  ModelIdentity,
+  ToolCall as ChatToolCall,
+} from '../services/ChatServiceInterface.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
@@ -14,7 +18,7 @@ import {
   type RequestId,
   SessionId,
 } from '../types/branded.js';
-import type { JsonObject, JsonValue, ProviderType } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/common.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
@@ -322,8 +326,7 @@ export class ContextManager {
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
-      provider?: string;
-      api?: ProviderType;
+      modelIdentity?: ModelIdentity;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
       reasoningContent?: string;

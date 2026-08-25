@@ -6,6 +6,7 @@
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
+import type { ModelIdentity } from './ModelIdentity.js';
 import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
@@ -107,9 +108,7 @@ export type Message = {
   name?: string;
   tool_calls?: ToolCall[];
   metadata?: JsonValue;
-  provider?: string;
-  api?: ProviderType;
-  model?: string;
+  modelIdentity?: ModelIdentity;
 };
 
 /**
@@ -134,7 +133,7 @@ export interface ChatConfig {
   supportsThinking?: boolean; // 是否支持 thinking 模式（DeepSeek Reasoner 等）
   providerOptions?: ProviderOptions;
   customHeaders?: Record<string, string>; // Provider 特定的自定义 HTTP Headers
-  /** Logical provider ID when it differs from the wire-protocol adapter. */
+  /** Logical provider ID. Adapter selection depends only on `provider`. */
   providerId?: string;
   outputFormat?: OutputFormat; // 结构化输出格式（JSON Schema）
   retry?: Partial<RetryConfig>;

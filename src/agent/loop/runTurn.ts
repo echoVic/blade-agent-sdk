@@ -98,7 +98,8 @@ export async function* runTurn(
   const modelIdentity = resolveModelIdentity(turnChatService.getConfig());
   const requestLifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
     turn: turnState.turn,
-    ...modelIdentity,
+    model: modelIdentity.model,
+    modelIdentity,
     streaming: streaming === true,
   });
   await turnState.executionContext.assertExecutionLease?.();

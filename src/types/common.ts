@@ -30,7 +30,7 @@ export interface ModelConfig {
   id: string;
   name: string;
   provider: ProviderType;
-  /** Logical provider ID when multiple providers share the same API adapter. */
+  /** Logical provider ID. Adapter selection depends only on `provider`. */
   providerId?: string;
   model: string;
   apiKey?: string;

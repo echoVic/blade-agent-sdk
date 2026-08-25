@@ -1,4 +1,5 @@
 import { SdkError } from '../../errors/SdkError.js';
+import type { ModelIdentity } from '../../services/ModelIdentity.js';
 import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
 import {
   type CommandId,
@@ -13,7 +14,7 @@ import {
   type ToolUseId,
   type TurnId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue, ProviderType } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import { canonicalJson } from './canonicalJson.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
@@ -91,8 +92,7 @@ export interface DurableToolAttemptProjection {
 export interface DurableModelAttemptProjection {
   readonly modelAttemptId: ModelAttemptId;
   readonly model: string;
-  readonly provider?: string;
-  readonly api?: ProviderType;
+  readonly modelIdentity?: ModelIdentity;
   readonly streaming: boolean;
   readonly status: DurableModelAttemptStatus;
   readonly response?: DurableModelResponse;
@@ -200,8 +200,7 @@ interface MutableToolAttemptProjection {
 interface MutableModelAttemptProjection {
   modelAttemptId: ModelAttemptId;
   model: string;
-  provider?: string;
-  api?: ProviderType;
+  modelIdentity?: ModelIdentity;
   streaming: boolean;
   status: DurableModelAttemptStatus;
   response?: DurableModelResponse;
@@ -400,7 +399,7 @@ function assertToolMatchesModelAttempt(
   modelInput: JsonValue | undefined,
 ): void {
   if (!modelAttemptId) {
-    if (event.schemaVersion >= DURABLE_EVENT_SCHEMA_VERSION) {
+    if (event.schemaVersion >= 3) {
       invalid(event, `Tool call ${toolCallId} has no model attempt identity`);
     }
     return;
@@ -606,6 +605,9 @@ function cloneModelAttempt(
 ): DurableModelAttemptProjection {
   return {
     ...attempt,
+    ...(attempt.modelIdentity
+      ? { modelIdentity: { ...attempt.modelIdentity } }
+      : {}),
   };
 }
 
@@ -955,8 +957,9 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       const attempt: MutableModelAttemptProjection = {
         modelAttemptId: event.modelAttemptId,
         model: event.data.model,
-        ...(event.data.provider ? { provider: event.data.provider } : {}),
-        ...(event.data.api ? { api: event.data.api } : {}),
+        ...(event.data.modelIdentity
+          ? { modelIdentity: { ...event.data.modelIdentity } }
+          : {}),
         streaming: event.data.streaming,
         status: 'started',
       };

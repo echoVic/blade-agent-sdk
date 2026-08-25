@@ -1,7 +1,11 @@
 import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { ContentPart, ToolCall } from '../../services/ChatServiceInterface.js';
+import type {
+  ContentPart,
+  ModelIdentity,
+  ToolCall,
+} from '../../services/ChatServiceInterface.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import {
   type InputId,
@@ -13,7 +17,6 @@ import type {
   JsonObject,
   JsonValue,
   MessageRole,
-  ProviderType,
 } from '../../types/common.js';
 import type {
   ContextData,
@@ -196,8 +199,7 @@ export class PersistentStore {
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
-      provider?: string;
-      api?: ProviderType;
+      modelIdentity?: ModelIdentity;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
       reasoningContent?: string;
@@ -220,9 +222,8 @@ export class PersistentStore {
         role: messageRole,
         parentMessageId: parentUuid ?? undefined,
         createdAt: now,
-        model: metadata?.model,
-        provider: metadata?.provider,
-        api: metadata?.api,
+        model: metadata?.modelIdentity?.model ?? metadata?.model,
+        modelIdentity: metadata?.modelIdentity,
         usage: metadata?.usage,
         customMetadata: metadata?.customMetadata,
       };
@@ -834,8 +835,7 @@ export class NoopPersistentStore {
     _parentUuid: string | null = null,
     _metadata?: {
       model?: string;
-      provider?: string;
-      api?: ProviderType;
+      modelIdentity?: ModelIdentity;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
     },

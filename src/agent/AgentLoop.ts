@@ -493,7 +493,7 @@ export async function* agentLoop(
           role: 'assistant',
           content,
           reasoningContent: turnResult.reasoningContent,
-          ...modelIdentity,
+          modelIdentity,
         });
         await messageHooks?.onAssistant?.({
           content,
@@ -661,7 +661,7 @@ export async function* agentLoop(
       content: turnResult.content || '',
       reasoningContent: turnResult.reasoningContent,
       tool_calls: turnResult.toolCalls,
-      ...modelIdentity,
+      modelIdentity,
     });
 
     await messageHooks?.onAssistant?.({

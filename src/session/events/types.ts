@@ -1,4 +1,5 @@
 import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
+import type { ModelIdentity } from '../../services/ModelIdentity.js';
 import type {
   CommandId,
   EventId,
@@ -12,11 +13,11 @@ import type {
   ToolUseId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue, ProviderType } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
-export const DURABLE_EVENT_SCHEMA_VERSION = 3 as const;
-export type DurableEventSchemaVersion = 2 | typeof DURABLE_EVENT_SCHEMA_VERSION;
+export const DURABLE_EVENT_SCHEMA_VERSION = 4 as const;
+export type DurableEventSchemaVersion = 2 | 3 | typeof DURABLE_EVENT_SCHEMA_VERSION;
 
 export const DurableEventType = {
   SESSION_CREATED: 'session_created',
@@ -154,8 +155,7 @@ export interface DurableEventDataMap {
   };
   [DurableEventType.MODEL_REQUEST_STARTED]: {
     model: string;
-    provider?: string;
-    api?: ProviderType;
+    modelIdentity?: ModelIdentity;
     streaming: boolean;
   };
   [DurableEventType.MODEL_REQUEST_COMPLETED]: {

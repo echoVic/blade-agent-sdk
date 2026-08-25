@@ -337,22 +337,6 @@ export class VercelAIChatService implements IChatService {
       }
 
       default: {
-        if (providerId === 'deepseek') {
-          const deepseek = createDeepSeek({
-            apiKey,
-            baseURL: resolveDeepSeekBaseUrl(
-              baseUrl,
-              shouldUseDeepSeekBetaBaseUrl({
-                provider,
-                providerId,
-                deepseek: config.providerOptions?.deepseek,
-              }),
-            ),
-            headers: customHeaders,
-          });
-          return deepseek(normalizeDeepSeekModel(model));
-        }
-
         const compatible = createOpenAICompatible({
           name: providerId || 'custom',
           apiKey,
@@ -432,9 +416,9 @@ export class VercelAIChatService implements IChatService {
         }
       } else if (msg.role === 'assistant') {
         const isSameModel =
-          msg.provider === targetModel.provider
-          && msg.api === targetModel.api
-          && msg.model === targetModel.model;
+          msg.modelIdentity?.provider === targetModel.provider
+          && msg.modelIdentity.api === targetModel.api
+          && msg.modelIdentity.model === targetModel.model;
         if (msg.tool_calls && msg.tool_calls.length > 0) {
           const content: Array<
             { type: 'reasoning'; text: string }
@@ -590,7 +574,7 @@ export class VercelAIChatService implements IChatService {
     }
   ): UsageInfo | undefined {
     if (!usage) return undefined;
-    if (providerMetadata?.deepseek || this.config.provider === 'deepseek' || this.config.providerId === 'deepseek') {
+    if (providerMetadata?.deepseek || this.config.provider === 'deepseek') {
       return mergeDeepSeekUsage(usage, providerMetadata);
     }
 
@@ -631,7 +615,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private isDeepSeekProvider(): boolean {
-    return this.config.provider === 'deepseek' || this.config.providerId === 'deepseek';
+    return this.config.provider === 'deepseek';
   }
 
   private shouldOmitSamplingOptions(): boolean {
