@@ -76,6 +76,7 @@ import {
   collectToolExecution,
   completeToolExecution,
   composeMiddleware,
+  CredentialLeaseId,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -98,6 +99,8 @@ import {
   durableEventCursor,
   EventId,
   EventSequence,
+  ExecutionCheckpointId,
+  ExecutionId,
   ExecutionLeaseId,
   FencingToken,
   HookEvent,
@@ -228,6 +231,9 @@ describe('root exports', () => {
     });
     expect(DURABLE_EXECUTION_LEASE_FORMAT).toBe('blade.durable-execution-lease');
     expect(ExecutionLeaseId('lease-1')).toBe('lease-1');
+    expect(ExecutionId('execution-1')).toBe('execution-1');
+    expect(ExecutionCheckpointId('checkpoint-1')).toBe('checkpoint-1');
+    expect(CredentialLeaseId('credential-1')).toBe('credential-1');
     expect(FencingToken(1)).toBe(1);
     expect(WorkerId('worker-1')).toBe('worker-1');
     expect(DurableSessionJournal.open).toBeTypeOf('function');

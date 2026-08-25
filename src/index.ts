@@ -237,8 +237,11 @@ export { ToolKind, ToolSideEffect } from './tools/types/ToolKind.js';
 export {
   AgentId,
   CommandId,
+  CredentialLeaseId,
   EventId,
   EventSequence,
+  ExecutionCheckpointId,
+  ExecutionId,
   ExecutionLeaseId,
   FencingToken,
   InputId,

@@ -91,6 +91,7 @@ const browserNodeOutput = run(process.execPath, [
     'try { m.getBuiltinTools(); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlSessionRepository("."); } catch (error) { console.log(error.message); }',
+    'try { new m.DockerExecutionHost(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(browserNodeOutput, 'server-only for getBuiltinTools', 'browser Node stub');
@@ -104,6 +105,11 @@ assertIncludes(
   'server-only for JsonlSessionRepository',
   'browser Node Session repository stub',
 );
+assertIncludes(
+  browserNodeOutput,
+  'server-only for DockerExecutionHost',
+  'browser Docker execution host stub',
+);
 
 const browserServerOutput = run(process.execPath, [
   '--conditions=browser',
@@ -112,6 +118,8 @@ const browserServerOutput = run(process.execPath, [
     "const m = await import('@blade-ai/agent-sdk/server');",
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
     'try { new m.PostgresRuntimeStore({}); } catch (error) { console.log(error.message); }',
+    'try { new m.EphemeralCredentialBroker({}); } catch (error) { console.log(error.message); }',
+    'try { new m.ExecutionHostError(); } catch (error) { console.log(error.message); }',
     'try { new m.WorkerRuntimeError(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
@@ -124,6 +132,16 @@ assertIncludes(
   browserServerOutput,
   'server-only for PostgresRuntimeStore',
   'browser PostgreSQL runtime Store stub',
+);
+assertIncludes(
+  browserServerOutput,
+  'server-only for EphemeralCredentialBroker',
+  'browser credential broker stub',
+);
+assertIncludes(
+  browserServerOutput,
+  'server-only for ExecutionHostError',
+  'browser execution host error stub',
 );
 assertIncludes(
   browserServerOutput,
@@ -145,6 +163,7 @@ const subpathOutput = run(process.execPath, [
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
     "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
     "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
+    "console.log(typeof server.EphemeralCredentialBroker, typeof server.ExecutionHostError, typeof node.DockerExecutionHost, core.ExecutionId('execution-1'), core.ExecutionCheckpointId('checkpoint-1'), core.CredentialLeaseId('credential-1'));",
   ].join(' '),
 ]);
 assertIncludes(
@@ -156,6 +175,11 @@ assertIncludes(
   subpathOutput,
   'queued,provisioning,running,waiting_approval,suspended,completed,failed function function',
   'worker runtime exports',
+);
+assertIncludes(
+  subpathOutput,
+  'function function function execution-1 checkpoint-1 credential-1',
+  'execution host exports',
 );
 
 const profileOutput = run(process.execPath, [

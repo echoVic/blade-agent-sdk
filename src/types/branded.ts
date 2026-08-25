@@ -18,6 +18,9 @@ export type PermissionRequestId = Brand<string, 'PermissionRequestId'>;
 export type WorkerId = Brand<string, 'WorkerId'>;
 export type ExecutionLeaseId = Brand<string, 'ExecutionLeaseId'>;
 export type FencingToken = Brand<number, 'FencingToken'>;
+export type ExecutionId = Brand<string, 'ExecutionId'>;
+export type ExecutionCheckpointId = Brand<string, 'ExecutionCheckpointId'>;
+export type CredentialLeaseId = Brand<string, 'CredentialLeaseId'>;
 
 export const SessionId = (value: string): SessionId => value as SessionId;
 export const AgentId = (value: string): AgentId => value as AgentId;
@@ -36,3 +39,10 @@ export const PermissionRequestId = (value: string): PermissionRequestId =>
 export const WorkerId = (value: string): WorkerId => value as WorkerId;
 export const ExecutionLeaseId = (value: string): ExecutionLeaseId => value as ExecutionLeaseId;
 export const FencingToken = (value: number): FencingToken => value as FencingToken;
+export const ExecutionId = (value: string): ExecutionId => value as ExecutionId;
+export const ExecutionCheckpointId = (
+  value: string,
+): ExecutionCheckpointId => value as ExecutionCheckpointId;
+export const CredentialLeaseId = (
+  value: string,
+): CredentialLeaseId => value as CredentialLeaseId;

@@ -88,6 +88,24 @@ export class PostgresRuntimeStore {
   }
 }
 
+export class DockerExecutionHost {
+  constructor(..._args: unknown[]) {
+    serverOnly('DockerExecutionHost');
+  }
+}
+
+export class EphemeralCredentialBroker {
+  constructor(..._args: unknown[]) {
+    serverOnly('EphemeralCredentialBroker');
+  }
+}
+
+export class ExecutionHostError {
+  constructor(..._args: unknown[]) {
+    serverOnly('ExecutionHostError');
+  }
+}
+
 export class WorkerRuntimeError {
   constructor(..._args: unknown[]) {
     serverOnly('WorkerRuntimeError');
