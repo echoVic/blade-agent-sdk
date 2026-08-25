@@ -2042,7 +2042,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         `INSERT INTO ${this.table('outbox')} (
            tenant_id, effect_id, session_id, command_id, effect_type,
            payload, idempotency_key, available_at, execution_mode
-         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6::jsonb, $7,
+           COALESCE($8::timestamptz, NOW()), $9
+         )
          RETURNING *`,
         [
           commit.tenantId,
@@ -2052,7 +2055,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           effect.type,
           JSON.stringify(effect.payload),
           effect.idempotencyKey,
-          effect.availableAt ?? new Date().toISOString(),
+          effect.availableAt ?? null,
           effect.executionMode ?? 'idempotent',
         ],
       );
