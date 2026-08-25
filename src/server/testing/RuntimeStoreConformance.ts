@@ -3,11 +3,14 @@ import {
   AgentCommandType,
 } from '../../protocol/index.js';
 import {
+  ExecutionLeaseId,
   InputId,
   RequestId,
   SessionId,
+  WorkerId,
 } from '../../types/branded.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
+import { effectLease } from '../WorkerRuntime.js';
 
 export interface RuntimeStoreConformanceOptions {
   readonly tenantId?: string;
@@ -327,6 +330,411 @@ export async function assertRuntimeStoreConformance(
     'Projection state must be readable at its committed offset',
   );
   checks.push('projection-checkpoint');
+
+  const workerTenantId = `worker-tenant-${suffix}`;
+  const firstWorkerId = WorkerId(`worker-a-${suffix}`);
+  const secondWorkerId = WorkerId(`worker-b-${suffix}`);
+  const firstWorker = await store.registerWorker({
+    workerId: firstWorkerId,
+    capacity: 2,
+    ttlMs: 10_000,
+    metadata: { zone: 'a' },
+  });
+  assert(firstWorker.status === 'active', 'Registered worker must be active');
+  const heartbeat = await store.heartbeatWorker(firstWorkerId, 10_000);
+  assert(
+    heartbeat.lastHeartbeatAt >= firstWorker.lastHeartbeatAt,
+    'Worker heartbeat must advance its liveness record',
+  );
+
+  const routedSessionId = SessionId(`routed-${suffix}`);
+  const queued = await store.enqueueSession(workerTenantId, routedSessionId, {
+    priority: 10,
+  });
+  assert(queued.state === 'queued', 'Enqueued Session must enter queued');
+  const firstClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: firstWorkerId,
+    leaseId: ExecutionLeaseId(`lease-a-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(firstClaim !== null, 'Active worker must claim a queued Session');
+  assert(
+    firstClaim.route.state === 'provisioning',
+    'Claimed Session must enter provisioning',
+  );
+  const workerSessions = store.forTenant(workerTenantId);
+  assert(
+    await workerSessions.requiresExecutionLease(routedSessionId),
+    'Claimed Session must require an execution fence',
+  );
+  let missingFenceRejected = false;
+  try {
+    await workerSessions.append(
+      routedSessionId,
+      [{ type: 'session_created', data: { source: 'create' } }],
+      { expectedLastSequence: null },
+    );
+  } catch {
+    missingFenceRejected = true;
+  }
+  assert(missingFenceRejected, 'Fenced Session must reject an omitted fence');
+  const workerJournal = await workerSessions.append(
+    routedSessionId,
+    [{ type: 'session_created', data: { source: 'create' } }],
+    {
+      expectedLastSequence: null,
+      executionFence: firstClaim.lease,
+    },
+  );
+  assert(
+    workerJournal.lastSequence === 1,
+    'Current Session fence must authorize durable appends',
+  );
+  const running = await store.transitionSession(
+    workerTenantId,
+    firstClaim.lease,
+    { expectedState: 'provisioning', state: 'running' },
+  );
+  assert(running.state === 'running', 'Provisioned Session must enter running');
+  const waiting = await store.transitionSession(
+    workerTenantId,
+    firstClaim.lease,
+    { expectedState: 'running', state: 'waiting_approval' },
+  );
+  assert(
+    waiting.state === 'waiting_approval',
+    'Running Session must enter waiting_approval',
+  );
+  const suspended = await store.handoffSession(
+    workerTenantId,
+    firstClaim.lease,
+    { reason: 'conformance-handoff' },
+  );
+  assert(suspended.state === 'suspended', 'Handoff must suspend the Session');
+  assert(
+    (await store.handoffSession(workerTenantId, firstClaim.lease)).state
+      === 'suspended',
+    'Completed handoff must be idempotent for the same fence',
+  );
+
+  await store.drainWorker(firstWorkerId);
+  const failedSessionId = SessionId(`failed-${suffix}`);
+  await store.enqueueSession(workerTenantId, failedSessionId);
+  let drainingWorkerRejected = false;
+  try {
+    await store.claimSession({
+      tenantId: workerTenantId,
+      ownerId: firstWorkerId,
+      leaseId: ExecutionLeaseId(`draining-${suffix}`),
+      ttlMs: 10_000,
+    });
+  } catch {
+    drainingWorkerRejected = true;
+  }
+  assert(
+    drainingWorkerRejected,
+    'Draining worker must not claim new Sessions',
+  );
+
+  await store.registerWorker({
+    workerId: secondWorkerId,
+    capacity: 4,
+    ttlMs: 10_000,
+  });
+  const secondClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: secondWorkerId,
+    leaseId: ExecutionLeaseId(`lease-b-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(
+    secondClaim?.route.sessionId === routedSessionId
+    && secondClaim.lease.fencingToken > firstClaim.lease.fencingToken,
+    'Handoff successor must receive a higher fencing token',
+  );
+  let staleFenceRejected = false;
+  try {
+    await store.transitionSession(
+      workerTenantId,
+      firstClaim.lease,
+      { expectedState: 'suspended', state: 'provisioning' },
+    );
+  } catch {
+    staleFenceRejected = true;
+  }
+  assert(staleFenceRejected, 'Previous worker fence must be rejected');
+  let staleAppendRejected = false;
+  try {
+    await workerSessions.append(
+      routedSessionId,
+      [{ type: 'session_closed', data: { reason: 'error' } }],
+      {
+        expectedLastSequence: workerJournal.lastSequence,
+        executionFence: firstClaim.lease,
+      },
+    );
+  } catch {
+    staleAppendRejected = true;
+  }
+  assert(staleAppendRejected, 'Previous fence must not append durable events');
+  if (!secondClaim) {
+    throw new Error('unreachable');
+  }
+  await store.transitionSession(
+    workerTenantId,
+    secondClaim.lease,
+    { expectedState: 'provisioning', state: 'running' },
+  );
+  const completed = await store.transitionSession(
+    workerTenantId,
+    secondClaim.lease,
+    { expectedState: 'running', state: 'completed' },
+  );
+  assert(completed.state === 'completed', 'Session must enter completed');
+
+  const failedClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: secondWorkerId,
+    leaseId: ExecutionLeaseId(`failed-lease-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(
+    failedClaim?.route.sessionId === failedSessionId,
+    'Worker must claim the remaining queued Session',
+  );
+  if (!failedClaim) {
+    throw new Error('unreachable');
+  }
+  const failed = await store.transitionSession(
+    workerTenantId,
+    failedClaim.lease,
+    {
+      expectedState: 'provisioning',
+      state: 'failed',
+      failure: { reason: 'conformance' },
+    },
+  );
+  assert(failed.state === 'failed', 'Session must enter failed');
+
+  const preemptedSessionId = SessionId(`preempted-${suffix}`);
+  await store.enqueueSession(workerTenantId, preemptedSessionId);
+  const preemptedClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: secondWorkerId,
+    leaseId: ExecutionLeaseId(`preempted-a-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(preemptedClaim !== null, 'Worker must claim Session for preemption');
+  await store.transitionSession(
+    workerTenantId,
+    preemptedClaim.lease,
+    { expectedState: 'provisioning', state: 'running' },
+  );
+  const preempted = await store.preemptSession(
+    workerTenantId,
+    preemptedSessionId,
+    { requeue: true, reason: { reason: 'higher_priority_work' } },
+  );
+  assert(preempted.state === 'queued', 'Preempted Session must be requeued');
+  let preemptedFenceRejected = false;
+  try {
+    await store.transitionSession(
+      workerTenantId,
+      preemptedClaim.lease,
+      { expectedState: 'queued', state: 'provisioning' },
+    );
+  } catch {
+    preemptedFenceRejected = true;
+  }
+  assert(preemptedFenceRejected, 'Preemption must fence the previous worker');
+  checks.push('worker-routing');
+
+  const expiringWorkerId = WorkerId(`worker-expiring-${suffix}`);
+  await store.registerWorker({
+    workerId: expiringWorkerId,
+    capacity: 1,
+    ttlMs: 1_000,
+  });
+  const expiringSessionId = SessionId(`expiring-${suffix}`);
+  await store.enqueueSession(workerTenantId, expiringSessionId, {
+    priority: 100,
+  });
+  const expiringClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: expiringWorkerId,
+    leaseId: ExecutionLeaseId(`expiring-lease-${suffix}`),
+    ttlMs: 1_000,
+  });
+  assert(expiringClaim !== null, 'Expiring worker must initially claim work');
+  await new Promise((resolve) => setTimeout(resolve, 1_200));
+  const recovery = await store.recoverExpiredWork();
+  assert(recovery.offlineWorkers >= 1, 'Expired worker must become offline');
+  assert(
+    (await store.getSessionRoute(workerTenantId, expiringSessionId))?.state
+      === 'suspended',
+    'Expired Session lease must suspend the Session',
+  );
+  checks.push('worker-recovery');
+
+  const effectTenantId = `effect-tenant-${suffix}`;
+  const effectSessionId = SessionId(`effect-session-${suffix}`);
+  const effectCommandId = `effect-command-${suffix}`;
+  await store.commitRuntimeTransaction({
+    tenantId: effectTenantId,
+    sessionId: effectSessionId,
+    command: {
+      commandId: effectCommandId,
+      fingerprint: `fingerprint-${effectCommandId}`,
+      result: {
+        protocolVersion: AGENT_PROTOCOL_VERSION,
+        commandId: effectCommandId,
+        ok: true,
+        data: {},
+      },
+    },
+    effects: [
+      {
+        effectId: `effect-a-complete-${suffix}`,
+        type: 'side-effect',
+        payload: { order: 1 },
+        idempotencyKey: `effect-key-a-${suffix}`,
+        executionMode: 'idempotent',
+      },
+      {
+        effectId: `effect-b-uncertain-${suffix}`,
+        type: 'side-effect',
+        payload: { order: 2 },
+        idempotencyKey: `effect-key-b-${suffix}`,
+        executionMode: 'at_most_once',
+      },
+      {
+        effectId: `effect-c-requeue-${suffix}`,
+        type: 'side-effect',
+        payload: { order: 3 },
+        idempotencyKey: `effect-key-c-${suffix}`,
+        executionMode: 'at_most_once',
+      },
+    ],
+  });
+  await store.heartbeatWorker(secondWorkerId, 10_000);
+  const [completedEffectClaim] = await store.claimEffects({
+    tenantId: effectTenantId,
+    workerId: secondWorkerId,
+    ttlMs: 10_000,
+    limit: 1,
+  });
+  assert(completedEffectClaim !== undefined, 'Pending effect must be claimable');
+  const completedEffectLease = effectLease(completedEffectClaim);
+  const renewedEffect = await store.renewEffectLease(
+    completedEffectLease,
+    10_000,
+  );
+  assert(
+    renewedEffect.status === 'claimed'
+    && renewedEffect.leaseExpiresAt !== undefined,
+    'Claimed effect lease must be renewable',
+  );
+  await store.startEffect(completedEffectLease);
+  const completedEffect = await store.completeEffect(
+    completedEffectLease,
+    { delivered: true },
+  );
+  assert(completedEffect.status === 'completed', 'Effect must complete');
+
+  const [uncertainEffectClaim] = await store.claimEffects({
+    tenantId: effectTenantId,
+    workerId: secondWorkerId,
+    ttlMs: 500,
+    limit: 1,
+  });
+  assert(
+    uncertainEffectClaim?.executionMode === 'at_most_once',
+    'Second effect must use at-most-once delivery',
+  );
+  if (!uncertainEffectClaim) {
+    throw new Error('unreachable');
+  }
+  const uncertainLease = effectLease(uncertainEffectClaim);
+  await store.startEffect(uncertainLease);
+  let invalidRetryRejected = false;
+  try {
+    await store.failEffect(
+      uncertainLease,
+      { reason: 'invalid-retry' },
+      { retryAt: '' },
+    );
+  } catch (error) {
+    invalidRetryRejected =
+      typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'WORKER_INVALID';
+  }
+  assert(
+    invalidRetryRejected,
+    'Empty effect retryAt must fail with a stable validation error',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const uncertainRecovery = await store.recoverExpiredWork();
+  assert(
+    uncertainRecovery.uncertainEffects >= 1,
+    'Expired started at-most-once effect must become uncertain',
+  );
+
+  const [unstartedEffectClaim] = await store.claimEffects({
+    tenantId: effectTenantId,
+    workerId: secondWorkerId,
+    ttlMs: 500,
+    limit: 1,
+  });
+  assert(
+    unstartedEffectClaim !== undefined,
+    'Remaining at-most-once effect must be claimable',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const unstartedRecovery = await store.recoverExpiredWork();
+  assert(
+    unstartedRecovery.requeuedEffects >= 1,
+    'Claimed effect that never started must be requeued',
+  );
+  const [reclaimedEffect] = await store.claimEffects({
+    tenantId: effectTenantId,
+    workerId: secondWorkerId,
+    ttlMs: 10_000,
+    limit: 1,
+  });
+  assert(
+    reclaimedEffect?.effectId === unstartedEffectClaim.effectId
+    && reclaimedEffect.fencingToken > unstartedEffectClaim.fencingToken,
+    'Reclaimed effect must use a higher fencing token',
+  );
+  if (!reclaimedEffect) {
+    throw new Error('unreachable');
+  }
+  await store.startEffect(effectLease(reclaimedEffect));
+  await store.completeEffect(effectLease(reclaimedEffect));
+  const uncertainEffects = await store.listEffects(
+    effectTenantId,
+    { status: 'uncertain' },
+  );
+  assert(
+    uncertainEffects.length === 1,
+    'Uncertain at-most-once effect must not return to the pending queue',
+  );
+  const reconciledEffect = await store.reconcileEffect(
+    effectTenantId,
+    uncertainEffects[0]?.effectId ?? '',
+    {
+      status: 'failed',
+      error: { reason: 'conformance_reconciled' },
+    },
+  );
+  assert(
+    reconciledEffect.status === 'failed',
+    'Uncertain effect must support explicit reconciliation',
+  );
+  checks.push('effect-delivery');
 
   assert(
     Object.values(AgentCommandType).length > 0,

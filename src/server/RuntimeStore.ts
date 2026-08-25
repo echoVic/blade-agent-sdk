@@ -2,13 +2,23 @@ import { SdkError } from '../errors/SdkError.js';
 import type {
   AgentCommandResult,
 } from '../protocol/index.js';
-import type { DurableEventStore } from '../session/events/DurableEventStore.js';
+import type { DurableExecutionLeaseStore } from '../session/events/DurableExecutionLeaseStore.js';
 import type { SessionPersistence } from '../session/SessionRepository.js';
-import type { SessionId } from '../types/branded.js';
+import type {
+  ExecutionLeaseId,
+  FencingToken,
+  SessionId,
+  WorkerId,
+} from '../types/branded.js';
 import type { JsonObject } from '../types/common.js';
 import type { AgentServerStore } from './AgentServerStore.js';
+import type {
+  RuntimeEffectExecutionMode,
+  WorkerRuntimeStore,
+} from './WorkerRuntime.js';
 
-export const RUNTIME_STORE_SCHEMA_VERSION = 1 as const;
+export const RUNTIME_STORE_SCHEMA_VERSION = 2 as const;
+export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface RuntimeDomainEventDraft {
   readonly eventId?: string;
@@ -18,7 +28,7 @@ export interface RuntimeDomainEventDraft {
 }
 
 export interface RuntimeDomainEvent extends RuntimeDomainEventDraft {
-  readonly schemaVersion: typeof RUNTIME_STORE_SCHEMA_VERSION;
+  readonly schemaVersion: typeof RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION;
   readonly eventId: string;
   readonly tenantId: string;
   readonly sessionId: SessionId;
@@ -34,17 +44,31 @@ export interface RuntimeEffectIntent {
   readonly payload: JsonObject;
   readonly idempotencyKey: string;
   readonly availableAt?: string;
+  readonly executionMode?: RuntimeEffectExecutionMode;
 }
 
-export type RuntimeEffectStatus = 'pending' | 'completed' | 'failed';
+export type RuntimeEffectStatus =
+  | 'pending'
+  | 'claimed'
+  | 'executing'
+  | 'completed'
+  | 'failed'
+  | 'uncertain';
 
 export interface RuntimeEffectRecord extends RuntimeEffectIntent {
   readonly tenantId: string;
   readonly sessionId: SessionId;
   readonly commandId: string;
+  readonly executionMode: RuntimeEffectExecutionMode;
   readonly status: RuntimeEffectStatus;
   readonly attempts: number;
   readonly createdAt: string;
+  readonly workerId?: WorkerId;
+  readonly leaseId?: ExecutionLeaseId;
+  readonly fencingToken?: FencingToken;
+  readonly leaseExpiresAt?: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
   readonly result?: JsonObject;
   readonly error?: JsonObject;
 }
@@ -93,7 +117,7 @@ export interface RuntimeDomainEventPage {
   readonly hasMore: boolean;
 }
 
-export interface RuntimeStore extends AgentServerStore {
+export interface RuntimeStore extends AgentServerStore, WorkerRuntimeStore {
   initialize(): Promise<void>;
   forTenant(tenantId: string): RuntimeTenantStore;
   commitRuntimeTransaction(
@@ -121,7 +145,7 @@ export interface RuntimeStore extends AgentServerStore {
 }
 
 export interface RuntimeTenantStore
-  extends SessionPersistence, DurableEventStore {}
+  extends SessionPersistence, DurableExecutionLeaseStore {}
 
 export type RuntimeStoreErrorCode =
   | 'RUNTIME_STORE_COMMAND_CONFLICT'

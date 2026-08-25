@@ -148,14 +148,20 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `parseAgentCommand` / `parseAgentCommandResult` | strict command envelope parser |
 | `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
 | `RuntimeStore` / `RuntimeTenantStore` | 共享 authority 与 tenant-scoped Session/durable adapter |
+| `RUNTIME_STORE_SCHEMA_VERSION` / `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION` | 数据库 schema 与 domain event schema 版本 |
 | `RuntimeCommandCommit` / `RuntimeCommitResult` | 原子 command、event、effect、projection transaction |
 | `RuntimeDomainEvent` / `RuntimeDomainEventDraft` / `RuntimeDomainEventPage` | Runtime domain event stream |
 | `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
 | `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
+| `RuntimeWorkerRecord` / `RuntimeWorkerRegistration` | worker heartbeat、容量与 drain 状态 |
+| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、七态状态机与 execution lease |
+| `RuntimeEffectClaim` / `RuntimeEffectLease` / `RuntimeEffectExecutionMode` / `RuntimeEffectReconciliation` | effect 领取、fencing、at-most-once 与人工对账语义 |
+| `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
 | `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
 
 完整部署约束见 [Server Runtime](./server-runtime) 和
-[Runtime Store](./runtime-store)。
+[Runtime Store](./runtime-store)，worker 调度见
+[Worker Runtime](./worker-runtime)。
 
 ### Durable Events
 

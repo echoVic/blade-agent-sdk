@@ -104,7 +104,7 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 
 ## PostgreSQL schema
 
-`PostgresRuntimeStore.initialize()` 幂等创建七类表：
+`PostgresRuntimeStore.initialize()` 幂等创建十类表：
 
 | 表 | 作用 |
 |----|------|
@@ -115,10 +115,17 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 | `*_events` | `agent`、`domain`、`durable`、`transcript` 事件 |
 | `*_outbox` | 待执行 effect intent |
 | `*_projections` | projection state 与已消费 offset |
+| `*_workers` | worker heartbeat、drain 状态与容量 |
+| `*_execution_leases` | Session execution lease 与 fencing token |
+| `*_session_routes` | Session 调度状态与当前 worker 路由 |
 
 `schema` 与 `tablePrefix` 只接受 PostgreSQL identifier。所有数据值使用
 参数化查询。并发 command 和 stream append 使用 transaction-scoped advisory lock；
 PostgreSQL 是事实源，Redis 不参与 correctness path。
+
+当前数据库 schema 版本为 `2`。`initialize()` 会在全局 advisory lock 内将
+v1 outbox 原地迁移到 worker/effect lease schema；domain event schema 继续保持
+版本 `1`，已有事件不需要重写。
 
 `InMemoryAgentServerStore` 仍只适合测试和单进程。生产环境不得把它与
 PostgreSQL transcript 混用。
@@ -166,8 +173,8 @@ await assertRuntimeStoreConformance(runtimeStore, {
 ```
 
 该套件验证 health、Session projection、tenant isolation、command receipt、
-agent/durable event、原子 commit、事务回滚和 projection checkpoint。应在专用
-schema 或测试数据库中运行。
+agent/durable event、原子 commit、事务回滚、projection checkpoint、worker
+路由、lease 恢复与 effect delivery。应在专用 schema 或测试数据库中运行。
 
 ## 运维边界
 
@@ -175,7 +182,7 @@ schema 或测试数据库中运行。
 - `PostgresRuntimeStore` 自建 Pool 时 `close()` 会关闭 Pool；注入的 Pool 由调用方管理。
 - `maxAgentEventsPerSession` 只限制可重放的远程 SSE 事件，不裁剪 durable/domain event。
 - `maxSessionsPerTenant` 只用于 transcript projection 清理。
-- outbox 在本版本只提供原子写入和查询；claim、heartbeat 与执行恢复由下一阶段
-  Worker lease 协议负责。
+- outbox claim、worker heartbeat、Session 路由与恢复见
+  [Worker Runtime](./worker-runtime)。
 - Redis只能用于通知、wake-up 和短期配额；丢失 Redis 数据不得影响 command、
   event、effect 或 projection 的正确性。

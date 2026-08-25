@@ -106,7 +106,7 @@ for a different payload throws `RUNTIME_STORE_COMMAND_CONFLICT`.
 
 ## PostgreSQL schema
 
-`PostgresRuntimeStore.initialize()` idempotently creates seven tables:
+`PostgresRuntimeStore.initialize()` idempotently creates ten tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -117,11 +117,18 @@ for a different payload throws `RUNTIME_STORE_COMMAND_CONFLICT`.
 | `*_events` | `agent`, `domain`, `durable`, and `transcript` events |
 | `*_outbox` | Effect intents waiting for execution |
 | `*_projections` | Projection state and consumed offset |
+| `*_workers` | Worker heartbeat, drain state, and capacity |
+| `*_execution_leases` | Session execution leases and fencing tokens |
+| `*_session_routes` | Session scheduling state and current worker route |
 
 `schema` and `tablePrefix` accept PostgreSQL identifiers only. Data values use
 parameterized queries. Concurrent command and stream writes use
 transaction-scoped advisory locks. PostgreSQL is authoritative; Redis is not in
 the correctness path.
+
+The current database schema version is `2`. `initialize()` migrates a v1 outbox
+in place under a global advisory lock. The domain-event schema remains at
+version `1`, so existing events do not require rewriting.
 
 `InMemoryAgentServerStore` remains a test and single-process implementation. Do
 not combine it with PostgreSQL transcript storage in production.
@@ -172,8 +179,9 @@ await assertRuntimeStoreConformance(runtimeStore, {
 ```
 
 The suite verifies health, Session projection, tenant isolation, command
-receipts, agent and durable events, atomic commits, transaction rollback, and
-projection checkpoints. Run it against a dedicated schema or test database.
+receipts, agent and durable events, atomic commits, transaction rollback,
+projection checkpoints, worker routing, lease recovery, and effect delivery.
+Run it against a dedicated schema or test database.
 
 ## Operational boundaries
 
@@ -181,5 +189,6 @@ projection checkpoints. Run it against a dedicated schema or test database.
 - `close()` closes an internally created Pool; an injected Pool remains caller-owned.
 - `maxAgentEventsPerSession` limits replayable SSE events, not durable or domain events.
 - `maxSessionsPerTenant` applies only to transcript projection cleanup.
-- This release writes and queries the outbox. Effect claim, heartbeat, and recovery belong to the next Worker lease milestone.
+- See [Worker Runtime](./worker-runtime) for outbox claims, worker heartbeat,
+  Session routing, and recovery.
 - Redis may provide notifications, wake-ups, and short-lived quotas only. Losing Redis data must not affect command, event, effect, or projection correctness.

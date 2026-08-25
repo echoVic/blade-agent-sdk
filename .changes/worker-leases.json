@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Add PostgreSQL-backed worker heartbeats, Session routing and fencing, drain/handoff/preemption, and crash-safe effect recovery.",
+  "zh-CN": "新增 PostgreSQL worker heartbeat、Session 路由与 fencing、drain/handoff/preemption，以及崩溃安全的 effect 恢复。"
+}

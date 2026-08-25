@@ -112,6 +112,7 @@ const browserServerOutput = run(process.execPath, [
     "const m = await import('@blade-ai/agent-sdk/server');",
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
     'try { new m.PostgresRuntimeStore({}); } catch (error) { console.log(error.message); }',
+    'try { new m.WorkerRuntimeError(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(
@@ -123,6 +124,11 @@ assertIncludes(
   browserServerOutput,
   'server-only for PostgresRuntimeStore',
   'browser PostgreSQL runtime Store stub',
+);
+assertIncludes(
+  browserServerOutput,
+  'server-only for WorkerRuntimeError',
+  'browser worker runtime error stub',
 );
 
 const subpathOutput = run(process.execPath, [
@@ -138,12 +144,18 @@ const subpathOutput = run(process.execPath, [
     "const protocol = await import('@blade-ai/agent-sdk/protocol');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
     "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
+    "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
   'default request_accepted empty function function function default function function function function function function function function function function function 1 function',
   'subpath imports',
+);
+assertIncludes(
+  subpathOutput,
+  'queued,provisioning,running,waiting_approval,suspended,completed,failed function function',
+  'worker runtime exports',
 );
 
 const profileOutput = run(process.execPath, [

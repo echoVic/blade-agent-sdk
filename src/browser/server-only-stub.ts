@@ -88,6 +88,40 @@ export class PostgresRuntimeStore {
   }
 }
 
+export class WorkerRuntimeError {
+  constructor(..._args: unknown[]) {
+    serverOnly('WorkerRuntimeError');
+  }
+}
+
+export const RUNTIME_STORE_SCHEMA_VERSION = 2;
+export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1;
+export const RUNTIME_SESSION_STATES = [
+  'queued',
+  'provisioning',
+  'running',
+  'waiting_approval',
+  'suspended',
+  'completed',
+  'failed',
+] as const;
+
+export function assertRuntimeSessionTransition(..._args: unknown[]): never {
+  return serverOnly('assertRuntimeSessionTransition');
+}
+
+export function canTransitionRuntimeSession(..._args: unknown[]): never {
+  return serverOnly('canTransitionRuntimeSession');
+}
+
+export function effectLease(..._args: unknown[]): never {
+  return serverOnly('effectLease');
+}
+
+export function isTerminalRuntimeEffectStatus(..._args: unknown[]): never {
+  return serverOnly('isTerminalRuntimeEffectStatus');
+}
+
 export class TenantAdmissionController {
   constructor(..._args: unknown[]) {
     serverOnly('TenantAdmissionController');

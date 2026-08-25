@@ -27,6 +27,7 @@ export {
   type PostgresRuntimeStoreOptions,
 } from './PostgresRuntimeStore.js';
 export {
+  RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
   RuntimeStoreError,
   type RuntimeCommandCommit,
@@ -43,6 +44,31 @@ export {
   type RuntimeStoreErrorCode,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
+export {
+  assertRuntimeSessionTransition,
+  canTransitionRuntimeSession,
+  effectLease,
+  isTerminalRuntimeEffectStatus,
+  RUNTIME_SESSION_STATES,
+  type RuntimeEffectClaim,
+  type RuntimeEffectClaimOptions,
+  type RuntimeEffectExecutionMode,
+  type RuntimeEffectFailureOptions,
+  type RuntimeEffectLease,
+  type RuntimeEffectReconciliation,
+  type RuntimeRecoveryResult,
+  type RuntimeSessionClaim,
+  type RuntimeSessionClaimOptions,
+  type RuntimeSessionRoute,
+  type RuntimeSessionState,
+  type RuntimeSessionTransition,
+  type RuntimeWorkerRecord,
+  type RuntimeWorkerRegistration,
+  type RuntimeWorkerStatus,
+  type WorkerRuntimeErrorCode,
+  WorkerRuntimeError,
+  type WorkerRuntimeStore,
+} from './WorkerRuntime.js';
 export {
   type AgentServerSessionContext,
   InProcessSessionExecutor,
