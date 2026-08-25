@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.9] - 2026-08-25
+
+### 修复
+
+- 新增实例级 Provider Registry 以接入自定义模型 adapter，并在 Session、subagent 与 compaction 链路中提供 fail-closed 路由。
+
 ## [5.3.8] - 2026-08-25
 
 ### 修复

@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.9] - 2026-08-25
+
+### Fixes
+
+- Add an instance-scoped Provider Registry for custom model adapters, with fail-closed routing across Sessions, subagents, and compaction.
+
 ## [5.3.8] - 2026-08-25
 
 ### Fixes
