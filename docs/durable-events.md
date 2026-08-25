@@ -598,9 +598,10 @@ lease acquire 超时且结果未知后，同一进程内针对相同 Store、Ses
 必须继续使用相同的 TTL、heartbeat interval 和 Store deadline。
 
 独立使用 Journal、subscription 和 lease API 时可设置 `storeTimeoutMs`。
-`JsonlDurableEventStore` 提供 `operationTimeoutMs`；默认预算是在
-`lockTimeoutMs` 之外再保留 15 秒锁内 I/O 时间。取消会移除进程内排队的锁
-waiter 并停止跨进程锁轮询；已经开始的 callback 仍持有锁，直到清理完成。
+`JsonlDurableEventStore` 提供 `operationTimeoutMs`；默认值为
+`Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`。取消会移除
+进程内排队的锁 waiter 并停止跨进程锁轮询；已经开始的 callback 仍持有锁，直到
+清理完成。
 
 ### 执行租约与 fencing
 
@@ -680,13 +681,13 @@ Request 前拒绝；同时要求 durable journal 与 transcript storage 都已�
 4. 调用文件 `fsync` 后才返回成功。
 
 `read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
-追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。跨进程
-完整的直接 Store 调用还受 `operationTimeoutMs` 限制；默认值为
-`lockTimeoutMs + 15000`，显式 operation timeout 不能小于 lock timeout。
-跨进程
-锁使用操作系统 advisory lock：进程退出或崩溃时由内核立即释放，暂停但仍存活的
-进程会继续持锁，不会因 wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0`
-表示只立即尝试一次；锁已被占用时不会排队或重试。
+追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。完整的
+直接 Store 调用还受 `operationTimeoutMs` 限制；默认值为
+`Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`，显式
+operation timeout 不能小于 lock timeout。跨进程锁使用操作系统 advisory lock：
+进程退出或崩溃时由内核立即释放，暂停但仍存活的进程会继续持锁，不会因
+wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0` 表示只立即尝试一次；锁已
+被占用时不会排队或重试。
 
 每个事件文件旁会保留一个 `*.jsonl.lock` sidecar。它的存在不表示锁当前被占用；
 锁状态属于打开的文件描述符。只要仍有进程使用该 Store，就不能手动删除、替换或

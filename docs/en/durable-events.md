@@ -645,8 +645,8 @@ the same TTL, heartbeat interval, and Store deadline until that uncertainty
 window is resolved or expires.
 
 Standalone Journal, subscription, and lease APIs expose `storeTimeoutMs`.
-`JsonlDurableEventStore` exposes `operationTimeoutMs`; its default leaves the
-configured `lockTimeoutMs` plus 15 seconds for lock-held I/O. Cancellation
+`JsonlDurableEventStore` exposes `operationTimeoutMs`; its default is
+`Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`. Cancellation
 removes queued process-local lock waiters and stops cross-process lock polling;
 an already-running callback keeps ownership until its cleanup finishes.
 
@@ -742,8 +742,8 @@ Each append:
 another process between tail truncation and append. Local mutex queuing and
 cross-process acquisition share a total 10-second budget by default. The
 complete direct Store call is also bounded by `operationTimeoutMs`; by default
-that budget is `lockTimeoutMs + 15000`. An explicit operation timeout must be
-at least the lock timeout. The
+that budget is `Math.min(MAX_DURABLE_STORE_TIMEOUT_MS, lockTimeoutMs + 15000)`.
+An explicit operation timeout must be at least the lock timeout. The
 cross-process lock is an operating-system advisory lock: the kernel releases it
 when a process exits or crashes, while a paused live process retains ownership
 instead of being displaced after a wall-clock timeout. `lockTimeoutMs: 0`
