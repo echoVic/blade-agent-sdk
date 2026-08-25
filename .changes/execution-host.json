@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Add the ExecutionHost boundary, a Docker isolation reference host, bounded workspaces and network egress, checkpoints, and one-command ephemeral credential injection.",
-  "zh-CN": "新增 ExecutionHost 边界、Docker 隔离参考实现、有界 workspace 与网络出口、checkpoint，以及仅作用于单次 command 的短期凭据注入。"
-}

@@ -2,6 +2,16 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.4.1] - 2026-08-25
+
+### Fixes
+
+- Use the PostgreSQL transaction clock for immediately available runtime effects so clock skew cannot delay worker claims.
+
+### Refactoring
+
+- Add the ExecutionHost boundary, a Docker isolation reference host, bounded workspaces and network egress, checkpoints, and one-command ephemeral credential injection.
+
 ## [5.4.0] - 2026-08-25
 
 ### Refactoring

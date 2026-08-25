@@ -2,6 +2,16 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.4.1] - 2026-08-25
+
+### 修复
+
+- 即时可用的 Runtime effect 改用 PostgreSQL 事务时钟，避免宿主与数据库时钟偏差导致 worker 延迟领取。
+
+### 重构
+
+- 新增 ExecutionHost 边界、Docker 隔离参考实现、有界 workspace 与网络出口、checkpoint，以及仅作用于单次 command 的短期凭据注入。
+
 ## [5.4.0] - 2026-08-25
 
 ### 重构

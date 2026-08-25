@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Use the PostgreSQL transaction clock for immediately available runtime effects so clock skew cannot delay worker claims.",
-  "zh-CN": "即时可用的 Runtime effect 改用 PostgreSQL 事务时钟，避免宿主与数据库时钟偏差导致 worker 延迟领取。"
-}
