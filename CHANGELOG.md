@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.4.0] - 2026-08-25
+
+### Refactoring
+
+- Add PostgreSQL-backed worker heartbeats, Session routing and fencing, drain/handoff/preemption, and crash-safe effect recovery.
+
 ## [5.3.13] - 2026-08-25
 
 ### Refactoring

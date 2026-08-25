@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.4.0] - 2026-08-25
+
+### 重构
+
+- 新增 PostgreSQL worker heartbeat、Session 路由与 fencing、drain/handoff/preemption，以及崩溃安全的 effect 恢复。
+
 ## [5.3.13] - 2026-08-25
 
 ### 重构
