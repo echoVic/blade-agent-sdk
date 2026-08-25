@@ -70,6 +70,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `JsonlDurableEventStore` | node | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
 | `AgentServer` | server | 多租户 command 调度、Session 管理和 Fetch-compatible HTTP/SSE transport |
+| `InProcessSessionExecutor` | server | `SessionExecutor` 的进程内参考实现，负责 Session 生命周期与 stream pump |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
 | `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
@@ -126,6 +127,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `AgentServerOptions` / `AgentServerSessionContext` | 认证、Session options、Store、遥测、准入和 transport 限制 |
+| `SessionExecutor` / `SessionExecutorCommandContext` | command transport 与 Session 执行面的稳定边界 |
+| `InProcessSessionExecutorOptions` | 进程内 executor 的 Store、Session resolver、event publisher 与容量配置 |
+| `SessionExecutorEventPublisher` / `SessionExecutorReadResult` | executor 的事件输出与 Session read projection |
 | `AgentServerStore` / `AgentCommandClaim` / `AgentServerSessionRecord` | command claim/seal/complete、tenant Session 和 event replay 端口 |
 | `AgentServerTelemetry` / `AgentServerAuditRecord` | payload-free metric 与审计端口 |
 | `AgentClientOptions` / `AgentClientCommandOptions` / `AgentClientEventOptions` | 浏览器 transport、重试和 cursor 选项 |

@@ -74,6 +74,59 @@ service must use a shared `SessionRepository` and a shared `AgentServerStore`.
 The repository should also partition data by the authenticated `tenantId`.
 There is no trusted client-supplied tenant field.
 
+## SessionExecutor
+
+`AgentServer` owns authentication, authorization, command idempotency, HTTP,
+and SSE only. `SessionExecutor` owns Session creation, resume, fork, input,
+abort, close, approval correlation, mutation serialization, and stream pumps.
+
+When `sessionExecutor` is omitted, `AgentServer` creates an
+`InProcessSessionExecutor` from `resolveSessionOptions`, preserving the original
+in-process behavior:
+
+```ts
+import {
+  AgentServer,
+  InProcessSessionExecutor,
+  InMemoryAgentServerStore,
+} from '@blade-ai/agent-sdk/server';
+
+const store = new InMemoryAgentServerStore();
+const executor = new InProcessSessionExecutor({
+  store,
+  resolveSessionOptions,
+  publish: async (tenantId, sessionId, type, data, requestId) => {
+    await store.appendEvent(tenantId, sessionId, {
+      protocolVersion: 1,
+      sessionId,
+      requestId,
+      occurredAt: new Date().toISOString(),
+      type,
+      data,
+    });
+  },
+});
+
+const server = new AgentServer({
+  store,
+  sessionExecutor: executor,
+  authenticate,
+});
+```
+
+A custom executor must:
+
+- Isolate active Sessions by tenant.
+- Serialize mutations for each Session.
+- Persist Session records and append stream, approval, and close events to the
+  same Store used by `AgentServer`.
+- Stop admission and release owned runtimes in `shutdown()`.
+- Never expose provider credentials, internal failures, or non-JSON values in
+  command results.
+
+This port is the replacement boundary for remote workers, container executors,
+and schedulers. It is not a tool adapter and does not grant local host access.
+
 ## HTTP API
 
 The default base path is `/v1/agent`:

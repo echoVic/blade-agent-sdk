@@ -4,7 +4,6 @@ export * from '../index.js';
 export {
   AgentServer,
   type AgentServerOptions,
-  type AgentServerSessionContext,
 } from './AgentServer.js';
 export {
   type AgentCommandClaim,
@@ -23,6 +22,15 @@ export {
   OpenTelemetryAgentServerTelemetry,
   type OpenTelemetryAgentServerOptions,
 } from './OpenTelemetryAgentServerTelemetry.js';
+export {
+  type AgentServerSessionContext,
+  InProcessSessionExecutor,
+  type InProcessSessionExecutorOptions,
+  type SessionExecutor,
+  type SessionExecutorCommandContext,
+  type SessionExecutorEventPublisher,
+  type SessionExecutorReadResult,
+} from './SessionExecutor.js';
 export {
   type TenantAdmissionLimits,
   TenantAdmissionController,

@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Extract Session execution behind injectable SessionExecutor and InProcessSessionExecutor contracts.",
+  "zh-CN": "将 Session 执行提取为可注入的 SessionExecutor 与 InProcessSessionExecutor 契约。"
+}

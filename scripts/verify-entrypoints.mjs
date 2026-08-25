@@ -105,6 +105,20 @@ assertIncludes(
   'browser Node Session repository stub',
 );
 
+const browserServerOutput = run(process.execPath, [
+  '--conditions=browser',
+  '-e',
+  [
+    "const m = await import('@blade-ai/agent-sdk/server');",
+    'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
+  ].join(' '),
+]);
+assertIncludes(
+  browserServerOutput,
+  'server-only for InProcessSessionExecutor',
+  'browser in-process Session executor stub',
+);
+
 const subpathOutput = run(process.execPath, [
   '-e',
   [
@@ -115,12 +129,12 @@ const subpathOutput = run(process.execPath, [
     "const node = await import('@blade-ai/agent-sdk/node');",
     "const protocol = await import('@blade-ai/agent-sdk/protocol');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function function function function 1 function',
+  'default request_accepted empty function function function default function function function function function function function function function 1 function',
   'subpath imports',
 );
 

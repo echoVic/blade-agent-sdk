@@ -135,7 +135,7 @@ import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
-- Root and `/server`: server-side agents; load only explicitly supplied tools, agents, middleware, and MCP servers without scanning the host workspace
+- Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
 - `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
 - `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
 - `/protocol`: browser-safe versioned command/event contracts and strict parsers

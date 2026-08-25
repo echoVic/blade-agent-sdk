@@ -96,6 +96,9 @@ describe('package entrypoints', () => {
       /server-only.*JsonlDurableEventStore/,
     );
     expect(() => new serverOnly.AgentServer()).toThrow(/server-only.*AgentServer/);
+    expect(() => new serverOnly.InProcessSessionExecutor()).toThrow(
+      /server-only.*InProcessSessionExecutor/,
+    );
   });
 
   it('uses distinct server and Node Session factories', async () => {
@@ -106,6 +109,7 @@ describe('package entrypoints', () => {
     expect(server.createSession).toBe(root.createSession);
     expect(node.createSession).not.toBe(server.createSession);
     expect(server.AgentServer).toBeTypeOf('function');
+    expect(server.InProcessSessionExecutor).toBeTypeOf('function');
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');
