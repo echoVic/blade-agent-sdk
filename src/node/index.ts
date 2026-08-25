@@ -19,21 +19,24 @@ export * from '../index.js';
 
 function withNodeRepository(options: SessionOptions): SessionOptions {
   if (
-    options.sessionRepository ||
-    options.persistSession === false ||
-    !options.storagePath
+    options.sessionRepository
+    || options.sessionEventStore
+    || options.persistSession === false
+    || !options.storagePath
   ) {
     return options;
   }
 
+  const persistence = new PersistentStore(
+    options.storagePath,
+    100,
+    '0.0.10',
+    getContextCwd(options.defaultContext),
+  );
   return {
     ...options,
-    sessionRepository: new PersistentStore(
-      options.storagePath,
-      100,
-      '0.0.10',
-      getContextCwd(options.defaultContext),
-    ),
+    sessionRepository: persistence,
+    sessionEventStore: persistence,
   };
 }
 

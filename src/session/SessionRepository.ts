@@ -59,14 +59,17 @@ export interface SessionRepositoryHealth {
   error?: string;
 }
 
-/**
- * Complete transcript persistence port used by Session and ContextManager.
- *
- * Implementations own both append operations and read projections so a Session
- * never writes through one backend and resumes through another.
- */
+/** Read-side Session projection port. */
 export interface SessionRepository extends SessionStore {
   initialize(): Promise<void>;
+  deleteSession(sessionId: SessionId): Promise<void>;
+  cleanupOldSessions(): Promise<void>;
+  getStorageStats(): Promise<SessionRepositoryStorageStats>;
+  checkStorageHealth(): Promise<SessionRepositoryHealth>;
+}
+
+/** Append-only transcript event port used to update Session projections. */
+export interface SessionEventStore {
   createSession(
     sessionId: SessionId,
     subagentInfo?: SessionRepositorySubagentInfo,
@@ -118,17 +121,37 @@ export interface SessionRepository extends SessionStore {
     parentUuid?: string | null,
   ): Promise<string>;
   saveContext(sessionId: SessionId, contextData: ContextData): Promise<void>;
-  deleteSession(sessionId: SessionId): Promise<void>;
-  cleanupOldSessions(): Promise<void>;
-  getStorageStats(): Promise<SessionRepositoryStorageStats>;
-  checkStorageHealth(): Promise<SessionRepositoryHealth>;
+}
+
+/** Compatibility port for backends that expose reads and appends together. */
+export interface SessionPersistence
+  extends SessionRepository, SessionEventStore {}
+
+export function isSessionEventStore(
+  value: SessionRepository | SessionEventStore | undefined,
+): value is SessionEventStore {
+  if (!value) {
+    return false;
+  }
+  const candidate = value as unknown as Record<string, unknown>;
+  return [
+    'createSession',
+    'saveMessage',
+    'saveInputEnqueued',
+    'saveAppliedInputMessage',
+    'saveInputCancelled',
+    'saveToolUse',
+    'saveToolResult',
+    'saveCompaction',
+    'saveContext',
+  ].every((method) => typeof candidate[method] === 'function');
 }
 
 /**
  * Non-persistent repository used when callers intentionally run an ephemeral
  * Session without a shared store.
  */
-export class NoopSessionRepository implements SessionRepository {
+export class NoopSessionRepository implements SessionPersistence {
   async initialize(): Promise<void> {}
 
   async createSession(

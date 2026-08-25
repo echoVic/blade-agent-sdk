@@ -37,6 +37,8 @@ export type {
 } from '../session/types.js';
 export type {
   PersistedToolUse,
+  SessionEventStore,
+  SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,

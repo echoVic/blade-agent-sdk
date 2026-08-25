@@ -4,17 +4,17 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { InputId, RequestId, SessionId } from '../../types/branded.js';
-import type { SessionRepository } from '../SessionRepository.js';
+import type { SessionPersistence } from '../SessionRepository.js';
 
 interface RepositoryFixture {
-  readonly repository: SessionRepository;
+  readonly repository: SessionPersistence;
 }
 
-function sessionRepositoryContract(
+function sessionPersistenceContract(
   name: string,
   createFixture: () => RepositoryFixture,
 ): void {
-  describe(`${name} SessionRepository conformance`, () => {
+  describe(`${name} SessionPersistence conformance`, () => {
     it('uses one backend for append operations and read projections', async () => {
       const { repository } = createFixture();
       const sessionId = SessionId('contract-session');
@@ -99,7 +99,7 @@ function sessionRepositoryContract(
   });
 }
 
-sessionRepositoryContract('JSONL', () => ({
+sessionPersistenceContract('JSONL', () => ({
   repository: new PersistentStore(
     mkdtempSync(join(tmpdir(), 'session-repository-contract-')),
   ),

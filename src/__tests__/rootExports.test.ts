@@ -48,6 +48,8 @@ import type {
   SessionHandoffErrorCode,
   SessionHandoffResult,
   SessionOptions,
+  SessionEventStore,
+  SessionPersistence,
   SessionRepository,
   SessionTool,
   ToolCatalogEntry,
@@ -366,6 +368,13 @@ describe('root exports', () => {
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined
     >();
+    expectTypeOf<SessionOptions['sessionRepository']>().toEqualTypeOf<
+      SessionRepository | undefined
+    >();
+    expectTypeOf<SessionOptions['sessionEventStore']>().toEqualTypeOf<
+      SessionEventStore | undefined
+    >();
+    expectTypeOf<SessionPersistence>().toMatchTypeOf<SessionRepository>();
     expectTypeOf<SessionOptions['executionLease']>().toEqualTypeOf<
       DurableExecutionLeaseOptions | undefined
     >();

@@ -18,6 +18,7 @@ import {
   forkSession,
   resumeSession,
 } from '../session/Session.js';
+import { isSessionEventStore } from '../session/SessionRepository.js';
 import type {
   ISession,
   PendingSessionInput,
@@ -498,10 +499,15 @@ export class InProcessSessionExecutor implements SessionExecutor {
     context: AgentServerSessionContext,
   ): Promise<SessionOptions> {
     const options = await this.options.resolveSessionOptions(context);
-    if (this.options.requirePersistentSessions && !options.sessionRepository) {
+    const hasEventStore = options.sessionEventStore
+      || isSessionEventStore(options.sessionRepository);
+    if (
+      this.options.requirePersistentSessions
+      && (!options.sessionRepository || !hasEventStore)
+    ) {
       throw new AgentProtocolError(
         'SESSION_CONFLICT',
-        'This executor requires a persistent sessionRepository',
+        'This executor requires sessionRepository and sessionEventStore',
         409,
       );
     }
