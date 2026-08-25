@@ -338,22 +338,6 @@ const DurableEventEnvelopeSchema = z
         message: `${value.type} provider identity requires durable event schema v4`,
       });
     }
-    if (value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED) {
-      const parsedData = DurableEventDataSchemas[
-        DurableEventTypeValue.MODEL_REQUEST_STARTED
-      ].safeParse(value.data);
-      if (
-        parsedData.success
-        && parsedData.data.modelIdentity !== undefined
-        && parsedData.data.modelIdentity.model !== parsedData.data.model
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['data', 'modelIdentity', 'model'],
-          message: 'Model identity must match the model request',
-        });
-      }
-    }
     if (
       value.schemaVersion === 2
       && value.type === DurableEventTypeValue.TOOL_SCHEDULED

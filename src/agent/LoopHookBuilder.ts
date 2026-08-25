@@ -8,6 +8,7 @@
 
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
@@ -236,6 +237,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             requestSignal?.aborted
             || isExecutionLeaseFailure(compactError)
             || isHookProcessContainmentError(compactError)
+            || compactError instanceof ProviderRegistryError
           ) {
             throw compactError;
           }

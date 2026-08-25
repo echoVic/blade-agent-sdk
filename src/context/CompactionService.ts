@@ -8,6 +8,7 @@ import { HookManager } from '../hooks/HookManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
@@ -324,6 +325,7 @@ export async function compact(
     if (
       isExecutionLeaseFailure(error)
       || isHookProcessContainmentError(error)
+      || error instanceof ProviderRegistryError
     ) {
       throw error;
     }

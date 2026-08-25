@@ -2,6 +2,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
+import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
@@ -192,6 +193,7 @@ export class CompactionHandler {
           runtimeCtx.signal?.aborted ||
           isExecutionLeaseFailure(error)
           || isHookProcessContainmentError(error)
+          || error instanceof ProviderRegistryError
         ) {
           throw error;
         }
@@ -324,6 +326,7 @@ export class CompactionHandler {
         runtimeCtx.signal?.aborted ||
         isExecutionLeaseFailure(error)
         || isHookProcessContainmentError(error)
+        || error instanceof ProviderRegistryError
       ) {
         throw error;
       }
