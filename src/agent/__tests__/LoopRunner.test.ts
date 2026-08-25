@@ -5,6 +5,7 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { z } from 'zod';
 import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
+import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
@@ -356,15 +357,18 @@ describe('LoopRunner', () => {
     it('persists streaming tool turns in provider-compatible order', async () => {
       const workspaceRoot = mkdtempSync(join(tmpdir(), 'loop-runner-persistence-'));
       const sessionId = SessionId('streaming-tool-session');
-      const contextManager = new ContextManager({
-        projectPath: workspaceRoot,
-        storage: {
-          maxMemorySize: 1000,
-          persistentPath: workspaceRoot,
-          cacheSize: 100,
-          compressionEnabled: true,
+      const contextManager = new ContextManager(
+        {
+          projectPath: workspaceRoot,
+          storage: {
+            maxMemorySize: 1000,
+            persistentPath: workspaceRoot,
+            cacheSize: 100,
+            compressionEnabled: true,
+          },
         },
-      });
+        new PersistentStore(workspaceRoot),
+      );
       await contextManager.initialize();
       await contextManager.createSession(undefined, {}, { sessionId });
 

@@ -34,7 +34,7 @@ vi.mock('../../agent/Agent.js', () => ({
   Agent: { create: createAgent },
 }));
 
-const { createSession } = await import('../Session.js');
+const { createSession } = await import('../../node/index.js');
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-steering-resilience-'));

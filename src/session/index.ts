@@ -9,4 +9,14 @@ export {
   type SessionHandoffErrorCode,
 } from '../errors/SessionHandoffError.js';
 export * from './events/core.js';
+export type {
+  PersistedToolUse,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from './SessionRepository.js';
 export * from './types.js';

@@ -63,7 +63,7 @@ vi.mock('../../agent/Agent.js', () => ({
   },
 }));
 
-const { createSession } = await import('../Session.js');
+const { createSession } = await import('../../node/index.js');
 
 describe('Session observability', () => {
   it('records a safe trace without capturing prompt or tool payloads by default', async () => {

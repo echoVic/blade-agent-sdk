@@ -9,7 +9,11 @@ import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUti
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { SessionEvent } from '../../context/types.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import { createSession, forkSession, resumeSession } from '../Session.js';
+import { createSession, forkSession, resumeSession } from '../../node/index.js';
+import {
+  createSession as createServerSession,
+  resumeSession as resumeServerSession,
+} from '../Session.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 
 function createWorkspaceRoot(): string {
@@ -46,6 +50,34 @@ function createOptions(workspaceRoot: string) {
 }
 
 describe('Session persistence', () => {
+  it('supports an injected repository without a local storage path', async () => {
+    const repository = new PersistentStore(createWorkspaceRoot());
+    const session = await createServerSession({
+      ...createOptions(createWorkspaceRoot()),
+      storagePath: undefined,
+      sessionRepository: repository,
+    });
+    await session.close();
+
+    const resumed = await resumeServerSession({
+      ...createOptions(createWorkspaceRoot()),
+      sessionId: session.sessionId,
+      storagePath: undefined,
+      sessionRepository: repository,
+    });
+
+    expect(resumed.sessionId).toBe(session.sessionId);
+    await resumed.close();
+  });
+
+  it('rejects a server storagePath without an injected repository', async () => {
+    await expect(
+      createServerSession(createOptions(createWorkspaceRoot())),
+    ).rejects.toMatchObject({
+      code: 'CONFIG_ERROR',
+    });
+  });
+
   it('should resume messages from the unified session store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);

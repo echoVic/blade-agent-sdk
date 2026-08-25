@@ -5,13 +5,12 @@ import type {
   ModelIdentity,
   ToolCall as ChatToolCall,
 } from '../services/ChatServiceInterface.js';
+import type { SessionState, SessionSummary } from '../session/SessionStore.js';
 import {
-  JsonlSessionStore,
-  NoopSessionStore,
-  type SessionState,
-  type SessionStore,
-  type SessionSummary,
-} from '../session/SessionStore.js';
+  NoopSessionRepository,
+  type PersistedToolUse,
+  type SessionRepository,
+} from '../session/SessionRepository.js';
 import type { ContentPart } from '../services/ChatServiceInterface.js';
 import {
   type InputId,
@@ -23,11 +22,6 @@ import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
-import {
-  NoopPersistentStore,
-  PersistentStore,
-  type PersistedToolUse,
-} from './storage/PersistentStore.js';
 import type {
   CompressedContext,
   ContextData,
@@ -59,8 +53,7 @@ function isUsageMetadata(
  */
 export class ContextManager {
   private readonly memory: MemoryStore;
-  private readonly persistent: PersistentStore | NoopPersistentStore;
-  private readonly sessionStore: SessionStore;
+  private readonly repository: SessionRepository;
   private readonly cache: CacheStore;
   private readonly compressor: ContextCompressor;
   private readonly filter: ContextFilter;
@@ -71,7 +64,10 @@ export class ContextManager {
   private readonly pendingToolUses = new Map<string, string[]>();
   private initialized = false;
 
-  constructor(options: Partial<ContextManagerOptions> = {}) {
+  constructor(
+    options: Partial<ContextManagerOptions> = {},
+    repository: SessionRepository = new NoopSessionRepository(),
+  ) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
     // 持久化路径必须由调用方显式提供；未提供时禁用持久化
     const defaultPersistentPath =
@@ -98,21 +94,9 @@ export class ContextManager {
     };
     this.projectPath = this.options.projectPath;
 
-    // 初始化存储层
+    // Session owns repository selection so reads and writes always share one backend.
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    const persistentPath = this.options.storage.persistentPath;
-    const actualPersistence = persistenceEnabled && !!persistentPath;
-    this.persistent = actualPersistence && persistentPath
-      ? new PersistentStore(
-        persistentPath,
-        100,
-        '0.0.10',
-        this.projectPath,
-      )
-      : new NoopPersistentStore();
-    this.sessionStore = actualPersistence && persistentPath
-      ? new JsonlSessionStore(persistentPath)
-      : new NoopSessionStore();
+    this.repository = repository;
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
       5 * 60 * 1000 // 5分钟默认TTL
@@ -136,10 +120,10 @@ export class ContextManager {
         return;
       }
 
-      await this.persistent.initialize();
+      await this.repository.initialize();
 
       // 检查存储健康状态
-      const health = await this.persistent.checkStorageHealth();
+      const health = await this.repository.checkStorageHealth();
       if (!health.isAvailable) {
         console.warn('警告：持久化存储不可用，将仅使用内存存储');
       }
@@ -196,7 +180,7 @@ export class ContextManager {
 
     // 初始化内存并写入首个 session_created 事件
     this.memory.setContext(contextData);
-    await this.persistent.createSession(sessionId);
+    await this.repository.createSession(sessionId);
 
     this.currentSessionId = sessionId;
 
@@ -212,7 +196,7 @@ export class ContextManager {
     let contextData = this.memory.getContext();
 
     if (!contextData || contextData.layers.session.sessionId !== sessionId) {
-      const state = await this.sessionStore.loadState(sessionId);
+      const state = await this.repository.loadState(sessionId);
       if (!state) {
         return false;
       }
@@ -238,7 +222,7 @@ export class ContextManager {
       throw new Error('没有活动会话');
     }
 
-    const messageId = await this.persistent.saveMessage(
+    const messageId = await this.repository.saveMessage(
       this.currentSessionId,
       role,
       content,
@@ -279,7 +263,7 @@ export class ContextManager {
 
     const pendingToolUseKey = `${this.currentSessionId}\0${toolCall.id}`;
     if (toolCall.status === 'pending') {
-      const persisted = await this.persistent.saveToolUse(
+      const persisted = await this.repository.saveToolUse(
         this.currentSessionId,
         toolCall.name,
         toolCall.input,
@@ -298,7 +282,7 @@ export class ContextManager {
       } else {
         this.pendingToolUses.delete(pendingToolUseKey);
       }
-      await this.persistent.saveToolResult(
+      await this.repository.saveToolResult(
         this.currentSessionId,
         toolCall.id,
         toolCall.name,
@@ -316,9 +300,7 @@ export class ContextManager {
     }
   }
 
-  /**
-   * 保存消息到 JSONL (直接访问 PersistentStore,不依赖 currentSessionId)
-   */
+  /** 保存消息到 repository，不依赖 currentSessionId。 */
   async saveMessage(
     sessionId: SessionId,
     role: Message['role'],
@@ -338,7 +320,7 @@ export class ContextManager {
       isSidechain: boolean;
     }
   ): Promise<string> {
-    return this.persistent.saveMessage(
+    return this.repository.saveMessage(
       sessionId,
       role,
       content,
@@ -352,7 +334,7 @@ export class ContextManager {
     sessionId: SessionId,
     input: PendingInputInfo,
   ): Promise<void> {
-    return this.persistent.saveInputEnqueued(sessionId, input);
+    return this.repository.saveInputEnqueued(sessionId, input);
   }
 
   async saveAppliedInputMessage(
@@ -367,7 +349,7 @@ export class ContextManager {
       isSidechain: boolean;
     },
   ): Promise<string> {
-    return this.persistent.saveAppliedInputMessage(
+    return this.repository.saveAppliedInputMessage(
       sessionId,
       inputId,
       requestId,
@@ -382,12 +364,10 @@ export class ContextManager {
     inputId: InputId,
     reason: string,
   ): Promise<void> {
-    return this.persistent.saveInputCancelled(sessionId, inputId, reason);
+    return this.repository.saveInputCancelled(sessionId, inputId, reason);
   }
 
-  /**
-   * 保存工具调用到 JSONL (直接访问 PersistentStore)
-   */
+  /** 保存工具调用到 repository。 */
   async saveToolUse(
     sessionId: SessionId,
     toolName: string,
@@ -400,7 +380,7 @@ export class ContextManager {
     },
     requestedToolCallId?: string,
   ): Promise<PersistedToolUse> {
-    return this.persistent.saveToolUse(
+    return this.repository.saveToolUse(
       sessionId,
       toolName,
       toolInput,
@@ -410,9 +390,7 @@ export class ContextManager {
     );
   }
 
-  /**
-   * 保存工具结果到 JSONL (直接访问 PersistentStore)
-   */
+  /** 保存工具结果到 repository。 */
   async saveToolResult(
     sessionId: SessionId,
     toolId: string,
@@ -432,7 +410,7 @@ export class ContextManager {
       subagentSummary?: string;
     }
   ): Promise<string> {
-    return this.persistent.saveToolResult(
+    return this.repository.saveToolResult(
       sessionId,
       toolId,
       toolName,
@@ -444,9 +422,7 @@ export class ContextManager {
     );
   }
 
-  /**
-   * 保存压缩边界和总结到 JSONL (直接访问 PersistentStore)
-   */
+  /** 保存压缩边界和总结到 repository。 */
   async saveCompaction(
     sessionId: SessionId,
     summary: string,
@@ -458,7 +434,7 @@ export class ContextManager {
     },
     parentUuid: string | null = null
   ): Promise<string> {
-    return this.persistent.saveCompaction(sessionId, summary, metadata, parentUuid);
+    return this.repository.saveCompaction(sessionId, summary, metadata, parentUuid);
   }
 
   /**
@@ -537,7 +513,7 @@ export class ContextManager {
       relevanceScore: number;
       }>
   > {
-    const sessions = await this.sessionStore.listSessions();
+    const sessions = await this.repository.listSessions();
     const results: Array<{
       sessionId: SessionId;
       summary: string;
@@ -547,7 +523,7 @@ export class ContextManager {
 
     for (const sessionId of sessions) {
       const sid = SessionId(sessionId);
-      const summary = await this.sessionStore.getSessionSummary(sid);
+      const summary = await this.repository.getSessionSummary(sid);
       if (summary) {
         const relevanceScore = this.calculateSummaryRelevance(query, summary);
         if (relevanceScore > 0) {
@@ -580,12 +556,12 @@ export class ContextManager {
     currentSession: string | null;
     memory: ReturnType<MemoryStore['getMemoryInfo']>;
     cache: ReturnType<CacheStore['getStats']>;
-    storage: Awaited<ReturnType<PersistentStore['getStorageStats']>>;
+    storage: Awaited<ReturnType<SessionRepository['getStorageStats']>>;
   }> {
     const [memoryInfo, cacheStats, storageStats] = await Promise.all([
       Promise.resolve(this.memory.getMemoryInfo()),
       Promise.resolve(this.cache.getStats()),
-      this.persistent.getStorageStats(),
+      this.repository.getStorageStats(),
     ]);
 
     return {
@@ -606,7 +582,7 @@ export class ContextManager {
 
     this.memory.clear();
     this.cache.clear();
-    await this.persistent.cleanupOldSessions();
+    await this.repository.cleanupOldSessions();
 
     this.currentSessionId = null;
     console.log('上下文管理器资源清理完成');

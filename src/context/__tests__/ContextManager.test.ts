@@ -17,15 +17,18 @@ describe('ContextManager', () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
-    const contextManager = new ContextManager({
-      projectPath: workspaceRoot,
-      storage: {
-        maxMemorySize: 1000,
-        persistentPath: workspaceRoot,
-        cacheSize: 100,
-        compressionEnabled: true,
+    const contextManager = new ContextManager(
+      {
+        projectPath: workspaceRoot,
+        storage: {
+          maxMemorySize: 1000,
+          persistentPath: workspaceRoot,
+          cacheSize: 100,
+          compressionEnabled: true,
+        },
       },
-    });
+      persistentStore,
+    );
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
@@ -62,15 +65,19 @@ describe('ContextManager', () => {
 
   it('keeps pending tool-use message IDs scoped to their session', async () => {
     const workspaceRoot = createWorkspaceRoot();
-    const contextManager = new ContextManager({
-      projectPath: workspaceRoot,
-      storage: {
-        maxMemorySize: 1000,
-        persistentPath: workspaceRoot,
-        cacheSize: 100,
-        compressionEnabled: true,
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const contextManager = new ContextManager(
+      {
+        projectPath: workspaceRoot,
+        storage: {
+          maxMemorySize: 1000,
+          persistentPath: workspaceRoot,
+          cacheSize: 100,
+          compressionEnabled: true,
+        },
       },
-    });
+      persistentStore,
+    );
     await contextManager.initialize();
 
     const firstSessionId = SessionId('session-first');

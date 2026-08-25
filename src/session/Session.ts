@@ -6,6 +6,7 @@ import {
     RECONCILED_INITIAL_INPUT,
 } from '../agent/InitialInputPreparation.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import { ConfigError } from '../errors/ConfigError.js';
 import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
@@ -19,6 +20,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
+import type { ConfirmationHandler } from '../tools/types/index.js';
 import { CommandId, type EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
 import {
     type BladeConfig,
@@ -65,13 +67,14 @@ import {
     type SessionHostProfile,
 } from './SessionHostProfile.js';
 import { SessionInputInbox } from './SessionInputInbox.js';
-import { SessionRuntime } from './SessionRuntime.js';
 import {
-    JsonlSessionStore,
-    NoopSessionStore,
-    type SessionSnapshot,
-    type SessionState,
-    type SessionStore,
+  NoopSessionRepository,
+  type SessionRepository,
+} from './SessionRepository.js';
+import { SessionRuntime } from './SessionRuntime.js';
+import type {
+    SessionSnapshot,
+    SessionState,
 } from './SessionStore.js';
 import { SessionStreamChannel } from './SessionStreamChannel.js';
 import type {
@@ -151,12 +154,13 @@ class Session implements ISession {
   private runtime: SessionRuntime | null = null;
   private _messages: Message[] = [];
   private readonly options: SessionOptions;
-  private readonly store: SessionStore;
+  private readonly store: SessionRepository;
   private readonly persistenceEnabled: boolean;
   private readonly isResumeSession: boolean;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
   private readonly durableStoreTimeoutMs: number;
+  private readonly confirmationHandler?: ConfirmationHandler;
   private maxTurns: number;
   private permissionMode: PermissionMode;
   private defaultContext: RuntimeContext;
@@ -200,17 +204,32 @@ class Session implements ISession {
       parentSessionId?: SessionId;
     } = { source: isResume ? 'resume' : 'create' },
   ) {
+    if (
+      hostProfile === SERVER_SESSION_HOST &&
+      options.persistSession !== false &&
+      options.storagePath &&
+      !options.sessionRepository
+    ) {
+      throw new ConfigError(
+        'Server sessions require sessionRepository for persistence. '
+          + 'Import from @blade-ai/agent-sdk/node to use storagePath-backed local persistence.',
+      );
+    }
     this.sessionId = sessionId || SessionId(nanoid());
     this.options = options;
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
     this.defaultContext = options.defaultContext ?? {};
     this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
-    this.persistenceEnabled = options.persistSession ?? true;
+    this.confirmationHandler =
+      options.confirmationHandlerFactory?.(this.sessionId)
+      ?? options.confirmationHandler;
+    this.persistenceEnabled =
+      options.persistSession !== false && options.sessionRepository !== undefined;
     this.store =
-      this.persistenceEnabled && options.storagePath
-        ? new JsonlSessionStore(options.storagePath)
-        : new NoopSessionStore();
+      this.persistenceEnabled && options.sessionRepository
+        ? options.sessionRepository
+        : new NoopSessionRepository();
     this.isResumeSession = isResume;
     this.rootLogger = createRootLogger(options.logger, this.sessionId);
     this.logger = this.rootLogger.child(LogCategory.AGENT);
@@ -303,6 +322,7 @@ class Session implements ISession {
         this.defaultContext,
         this.rootLogger,
         this.hostProfile,
+        this.store,
       );
       await this.runtime.initialize();
       if (this.isResumeSession) {
@@ -1006,6 +1026,7 @@ class Session implements ISession {
         ? (operation) => executionLease.runFenced(operation)
         : undefined,
       backgroundAgentManager: runtime.getBackgroundAgentManager(),
+      confirmationHandler: this.confirmationHandler,
       omitEnvironment: this.hostProfile === SERVER_SESSION_HOST,
     };
 
@@ -1504,7 +1525,7 @@ class Session implements ISession {
         ),
       );
     }
-    if (!this.persistenceEnabled || !this.options.storagePath) {
+    if (!this.persistenceEnabled) {
       return Promise.reject(
         new SessionHandoffError(
           'SESSION_HANDOFF_NOT_CONFIGURED',
@@ -1855,7 +1876,7 @@ class Session implements ISession {
     if (!options || this.executionLease) {
       return;
     }
-    if (!this.persistenceEnabled || !this.options.storagePath) {
+    if (!this.persistenceEnabled) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_INVALID',
         'Session execution leases require persistent transcript storage',
@@ -2462,9 +2483,9 @@ export async function resumeSessionWithHost(
   options: ResumeOptions,
   hostProfile: SessionHostProfile,
 ): Promise<ISession> {
-  if (options.persistSession === false) {
+  if (options.persistSession === false || !options.sessionRepository) {
     throw new Error(
-      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
+      'resumeSession() requires session persistence through sessionRepository.',
     );
   }
   const { sessionId, ...sessionOptions } = options;
@@ -2491,9 +2512,10 @@ export async function forkSessionWithHost(
   options: ForkOptions,
   hostProfile: SessionHostProfile,
 ): Promise<ISession> {
-  if (options.persistSession === false) {
+  if (options.persistSession === false || !options.sessionRepository) {
     throw new Error(
-      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
+      'forkSession() requires session persistence through sessionRepository. '
+        + 'Use session.fork() for an in-memory Session.',
     );
   }
   const { sessionId, messageId, ...sessionOptions } = options;

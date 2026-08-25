@@ -20,6 +20,7 @@ import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import type { DurableExecutionFence } from './events/DurableExecutionLeaseStore.js';
 import { NODE_SESSION_HOST, type SessionHostProfile } from './SessionHostProfile.js';
+import type { SessionRepository } from './SessionRepository.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
@@ -121,6 +122,7 @@ export class SessionRuntime {
     private readonly defaultContext: RuntimeContext,
     logger: InternalLogger,
     private readonly hostProfile: SessionHostProfile = NODE_SESSION_HOST,
+    sessionRepository?: SessionRepository,
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
@@ -142,16 +144,20 @@ export class SessionRuntime {
       },
       options.providerRegistry,
     );
-    this.contextManager = new ContextManager({
-      storage: {
-        maxMemorySize: 1000,
-        persistentPath: options.storagePath,
-        persistenceEnabled: options.persistSession ?? true,
-        cacheSize: 100,
-        compressionEnabled: true,
+    this.contextManager = new ContextManager(
+      {
+        storage: {
+          maxMemorySize: 1000,
+          persistentPath: options.storagePath,
+          persistenceEnabled:
+            options.persistSession !== false && sessionRepository !== undefined,
+          cacheSize: 100,
+          compressionEnabled: true,
+        },
+        projectPath: getContextCwd(defaultContext),
       },
-      projectPath: getContextCwd(defaultContext),
-    });
+      sessionRepository,
+    );
     this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
       sessionId,
