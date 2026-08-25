@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.11] - 2026-08-25
+
+### Refactoring
+
+- Add injectable Session repositories, protocol v1, and the tenant-aware AgentServer and browser AgentClient HTTP/SSE runtime.
+
 ## [5.3.10] - 2026-08-25
 
 ### Refactoring

@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.11] - 2026-08-25
+
+### 重构
+
+- 新增可注入 Session repository、protocol v1，以及支持租户隔离的 AgentServer 与浏览器 AgentClient HTTP/SSE 运行时。
+
 ## [5.3.10] - 2026-08-25
 
 ### 重构

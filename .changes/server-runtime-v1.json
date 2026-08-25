@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Add injectable Session repositories, protocol v1, and the tenant-aware AgentServer and browser AgentClient HTTP/SSE runtime.",
-  "zh-CN": "新增可注入 Session repository、protocol v1，以及支持租户隔离的 AgentServer 与浏览器 AgentClient HTTP/SSE 运行时。"
-}
