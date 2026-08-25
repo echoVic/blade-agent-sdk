@@ -97,8 +97,9 @@ interface SessionPersistence
 ## Branded identifiers
 
 `SessionId`, `MessageId`, `ToolUseId`, `CommandId`, `EventId`,
-`EventSequence`, and `ExecutionLeaseId` are branded types. Structurally similar
-identifiers therefore cannot be passed to the wrong API.
+`EventSequence`, `ExecutionLeaseId`, `ExecutionId`, `ExecutionCheckpointId`,
+and `CredentialLeaseId` are branded types. Structurally similar identifiers
+therefore cannot be passed to the wrong API.
 
 ```ts
 const sessionId = SessionId(rawSessionId);

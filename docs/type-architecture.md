@@ -92,7 +92,8 @@ interface SessionPersistence
 ## Branded identifiers
 
 `SessionId`、`MessageId`、`ToolUseId`、`CommandId`、`EventId`、
-`EventSequence`、`ExecutionLeaseId` 等均为 branded types。它们阻止不同 ID
+`EventSequence`、`ExecutionLeaseId`、`ExecutionId`、`ExecutionCheckpointId`
+和 `CredentialLeaseId` 等均为 branded types。它们阻止不同 ID
 在结构相同的情况下被误传。
 
 ```ts

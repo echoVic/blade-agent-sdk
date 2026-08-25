@@ -1,8 +1,11 @@
 export {
   AgentId,
   CommandId,
+  CredentialLeaseId,
   EventId,
   EventSequence,
+  ExecutionCheckpointId,
+  ExecutionId,
   ExecutionLeaseId,
   FencingToken,
   InputId,
