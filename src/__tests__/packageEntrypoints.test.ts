@@ -110,6 +110,11 @@ describe('package entrypoints', () => {
     expect(() => new serverOnly.PostgresRuntimeStore()).toThrow(
       /server-only.*PostgresRuntimeStore/,
     );
+    expect(() => new serverOnly.WorkerRuntimeError()).toThrow(
+      /server-only.*WorkerRuntimeError/,
+    );
+    expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(2);
+    expect(serverOnly.RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION).toBe(1);
     expect(() => new serverOnly.InProcessSessionExecutor()).toThrow(
       /server-only.*InProcessSessionExecutor/,
     );
@@ -125,6 +130,16 @@ describe('package entrypoints', () => {
     expect(server.AgentServer).toBeTypeOf('function');
     expect(server.InProcessSessionExecutor).toBeTypeOf('function');
     expect(server.PostgresRuntimeStore).toBeTypeOf('function');
+    expect(server.WorkerRuntimeError).toBeTypeOf('function');
+    expect(server.RUNTIME_SESSION_STATES).toEqual([
+      'queued',
+      'provisioning',
+      'running',
+      'waiting_approval',
+      'suspended',
+      'completed',
+      'failed',
+    ]);
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');

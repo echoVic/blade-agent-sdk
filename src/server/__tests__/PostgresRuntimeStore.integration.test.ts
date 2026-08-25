@@ -8,7 +8,12 @@ import {
   vi,
 } from 'vitest';
 import { AgentCommandType, type AgentPrincipal } from '../../protocol/index.js';
-import type { SessionId } from '../../types/branded.js';
+import {
+  ExecutionLeaseId,
+  type SessionId,
+  WorkerId,
+} from '../../types/branded.js';
+import { DurableExecutionLease } from '../../session/events/DurableExecutionLease.js';
 import { AgentServer } from '../AgentServer.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
@@ -84,6 +89,9 @@ describePostgres('PostgresRuntimeStore', () => {
       'atomic-runtime-commit',
       'transaction-rollback',
       'projection-checkpoint',
+      'worker-routing',
+      'worker-recovery',
+      'effect-delivery',
     ]);
   });
 
@@ -224,6 +232,112 @@ describePostgres('PostgresRuntimeStore', () => {
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${concurrentSchema}" CASCADE`);
       await Promise.all([firstPool.end(), secondPool.end()]);
+    }
+  });
+
+  it('migrates a v1 Runtime Store schema in place', async () => {
+    if (!pool) {
+      throw new Error('TEST_POSTGRES_URL is required');
+    }
+    const migrationSchema = `${schema}_migration`;
+    await pool.query(`
+      CREATE SCHEMA "${migrationSchema}";
+      CREATE TABLE "${migrationSchema}"."runtime_metadata" (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+      INSERT INTO "${migrationSchema}"."runtime_metadata" (key, value)
+      VALUES ('schema_version', '1');
+      CREATE TABLE "${migrationSchema}"."runtime_outbox" (
+        tenant_id TEXT NOT NULL,
+        effect_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        command_id TEXT NOT NULL,
+        effect_type TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'completed', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        result JSONB,
+        error JSONB,
+        PRIMARY KEY (tenant_id, effect_id),
+        UNIQUE (tenant_id, idempotency_key)
+      );
+    `);
+    const migrated = new PostgresRuntimeStore({
+      pool,
+      schema: migrationSchema,
+      tablePrefix: 'runtime',
+    });
+    try {
+      await migrated.initialize();
+      await migrated.registerWorker({
+        workerId: WorkerId('migration-worker'),
+        capacity: 1,
+        ttlMs: 1_000,
+      });
+      const version = await pool.query(
+        `SELECT value
+           FROM "${migrationSchema}"."runtime_metadata"
+          WHERE key = 'schema_version'`,
+      );
+      const columns = await pool.query(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'runtime_outbox'`,
+        [migrationSchema],
+      );
+      expect(version.rows[0]?.value).toBe('2');
+      expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
+        expect.arrayContaining([
+          'execution_mode',
+          'worker_id',
+          'lease_id',
+          'fencing_token',
+          'lease_expires_at',
+          'started_at',
+          'completed_at',
+        ]),
+      );
+    } finally {
+      await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
+    }
+  });
+
+  it('keeps fenced persistence reentrant with a single-connection Pool', async () => {
+    if (!connectionString) {
+      throw new Error('TEST_POSTGRES_URL is required');
+    }
+    const singlePool = new Pool({ connectionString, max: 1 });
+    const singleStore = new PostgresRuntimeStore({
+      pool: singlePool,
+      schema,
+      tablePrefix: 'runtime',
+    });
+    const sessionId = `single-pool-${Date.now()}` as SessionId;
+    const tenantStore = singleStore.forTenant('tenant-single-pool');
+    const lease = await DurableExecutionLease.acquire(
+      tenantStore,
+      sessionId,
+      {
+        ownerId: WorkerId('worker-single-pool'),
+        leaseId: ExecutionLeaseId(`lease-${sessionId}`),
+        ttlMs: 1_000,
+        heartbeatIntervalMs: 250,
+        storeTimeoutMs: 500,
+      },
+    );
+    try {
+      await lease.runFenced(() => tenantStore.createSession(sessionId));
+      await expect(tenantStore.loadState(sessionId)).resolves.toMatchObject({
+        sessionId,
+      });
+    } finally {
+      await lease.release();
+      await singlePool.end();
     }
   });
 
@@ -385,6 +499,93 @@ describePostgres('PostgresRuntimeStore', () => {
       expect(
         await store.listEffects('tenant-shared', { sessionId }),
       ).toHaveLength(1);
+    } finally {
+      await secondPool.end();
+    }
+  });
+
+  it('claims each Session and effect only once across Store instances', async () => {
+    if (!connectionString) {
+      throw new Error('TEST_POSTGRES_URL is required');
+    }
+    const secondPool = new Pool({ connectionString });
+    const second = new PostgresRuntimeStore({
+      pool: secondPool,
+      schema,
+      tablePrefix: 'runtime',
+    });
+    const suffix = `scheduler-${Date.now()}`;
+    const tenantId = `tenant-${suffix}`;
+    const sessionId = `session-${suffix}` as SessionId;
+    const firstWorkerId = WorkerId(`worker-a-${suffix}`);
+    const secondWorkerId = WorkerId(`worker-b-${suffix}`);
+    try {
+      await second.initialize();
+      await Promise.all([
+        store.registerWorker({
+          workerId: firstWorkerId,
+          capacity: 1,
+          ttlMs: 10_000,
+        }),
+        second.registerWorker({
+          workerId: secondWorkerId,
+          capacity: 1,
+          ttlMs: 10_000,
+        }),
+      ]);
+      await store.enqueueSession(tenantId, sessionId);
+      const sessionClaims = await Promise.all([
+        store.claimSession({
+          tenantId,
+          ownerId: firstWorkerId,
+          leaseId: ExecutionLeaseId(`lease-a-${suffix}`),
+          ttlMs: 10_000,
+        }),
+        second.claimSession({
+          tenantId,
+          ownerId: secondWorkerId,
+          leaseId: ExecutionLeaseId(`lease-b-${suffix}`),
+          ttlMs: 10_000,
+        }),
+      ]);
+      expect(sessionClaims.filter((claim) => claim !== null)).toHaveLength(1);
+
+      const effectCommandId = `effect-command-${suffix}`;
+      await store.commitRuntimeTransaction({
+        tenantId,
+        sessionId,
+        command: {
+          commandId: effectCommandId,
+          fingerprint: `fingerprint-${effectCommandId}`,
+          result: {
+            protocolVersion: 1,
+            commandId: effectCommandId,
+            ok: true,
+            data: {},
+          },
+        },
+        effects: [{
+          effectId: `effect-${suffix}`,
+          type: 'concurrent',
+          payload: {},
+          idempotencyKey: `effect-key-${suffix}`,
+        }],
+      });
+      const effectClaims = await Promise.all([
+        store.claimEffects({
+          tenantId,
+          workerId: firstWorkerId,
+          ttlMs: 10_000,
+          limit: 1,
+        }),
+        second.claimEffects({
+          tenantId,
+          workerId: secondWorkerId,
+          ttlMs: 10_000,
+          limit: 1,
+        }),
+      ]);
+      expect(effectClaims.flat()).toHaveLength(1);
     } finally {
       await secondPool.end();
     }
