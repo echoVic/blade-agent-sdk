@@ -542,6 +542,8 @@ describe('DurableSessionProjector', () => {
         modelAttemptId,
         data: {
           model: 'claude-sonnet',
+          provider: 'anthropic-primary',
+          api: 'anthropic',
           streaming: true,
         },
       },
@@ -550,6 +552,8 @@ describe('DurableSessionProjector', () => {
     expect(started.activeRequest?.activeTurn?.activeModelAttempt).toMatchObject({
       modelAttemptId,
       model: 'claude-sonnet',
+      provider: 'anthropic-primary',
+      api: 'anthropic',
       streaming: true,
       status: 'started',
     });

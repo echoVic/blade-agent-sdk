@@ -1010,6 +1010,8 @@ describe('DurableSessionRecoveryCoordinator', () => {
           modelAttemptId,
           data: {
             model: 'accepted-model',
+            provider: 'provider-primary',
+            api: 'openai-compatible',
             streaming: true,
           },
         },
@@ -1062,6 +1064,8 @@ describe('DurableSessionRecoveryCoordinator', () => {
     ).toEqual([
       expect.objectContaining({
         modelAttemptId,
+        provider: 'provider-primary',
+        api: 'openai-compatible',
         status: 'completed',
         response: expect.objectContaining({
           content: 'Use the inspected state',
@@ -1077,6 +1081,8 @@ describe('DurableSessionRecoveryCoordinator', () => {
       recoveryInputId: rolloverInputId,
     });
     expect(rollover.continuation).toContain('"modelAttempts"');
+    expect(rollover.continuation).toContain('"provider": "provider-primary"');
+    expect(rollover.continuation).toContain('"api": "openai-compatible"');
     expect(rollover.continuation).toContain('Use the inspected state');
     expect(rollover.continuation).toContain(
       'Treat completed model responses as authoritative prior output',

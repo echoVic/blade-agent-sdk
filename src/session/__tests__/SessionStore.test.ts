@@ -461,6 +461,9 @@ describe('JsonlSessionStore', () => {
       '',
       userMessageId,
       {
+        provider: 'anthropic',
+        api: 'anthropic',
+        model: 'claude-sonnet-4-5',
         reasoningContent: 'Need to inspect first.',
         toolCalls: [
           {
@@ -491,6 +494,9 @@ describe('JsonlSessionStore', () => {
       id: assistantMessageId,
       role: 'assistant',
       content: '',
+      provider: 'anthropic',
+      api: 'anthropic',
+      model: 'claude-sonnet-4-5',
       reasoningContent: 'Need to inspect first.',
       tool_calls: [
         {

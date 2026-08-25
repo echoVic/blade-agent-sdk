@@ -77,6 +77,10 @@ function createMockChatService(responses: Array<{
       return await chatFn(...args);
     }),
     getConfig: () => ({
+      provider: 'openai',
+      providerId: 'openai-primary',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
       model: 'test-model',
       maxContextTokens: 128000,
     }),
@@ -256,6 +260,8 @@ describe('agentLoop', () => {
 
       expect(onModelRequestStarting).toHaveBeenCalledWith({
         turn: 1,
+        provider: 'openai-primary',
+        api: 'openai',
         model: 'test-model',
         streaming: false,
       });
@@ -1243,9 +1249,31 @@ describe('agentLoop', () => {
       await collectEvents(agentLoop(config));
 
       expect(onAssistantMessage).toHaveBeenCalled();
-      const firstCall = (onAssistantMessage.mock.calls as unknown as [{ content: string; turn: number }][])[0][0];
+      const firstCall = (onAssistantMessage.mock.calls as unknown as [{
+        content: string;
+        modelIdentity: {
+          provider: string;
+          api: string;
+          model: string;
+        };
+        turn: number;
+      }][])[0][0];
       expect(firstCall.content).toBe('Using tool');
+      expect(firstCall.modelIdentity).toEqual({
+        provider: 'openai-primary',
+        api: 'openai',
+        model: 'test-model',
+      });
       expect(firstCall.turn).toBe(1);
+      expect(
+        config.conversationState
+          .toArray()
+          .find((message) => message.role === 'assistant'),
+      ).toMatchObject({
+        provider: 'openai-primary',
+        api: 'openai',
+        model: 'test-model',
+      });
     });
 
     it('should call onBeforeToolExec and onAfterToolExec hooks', async () => {

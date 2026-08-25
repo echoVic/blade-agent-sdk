@@ -35,6 +35,7 @@ import type {
   ExecutionContext,
   InputSubmission,
   ISession,
+  ModelIdentity,
   PendingSessionInput,
   RuntimePatch,
   SessionHandoffErrorCode,
@@ -230,6 +231,9 @@ describe('root exports', () => {
     expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
+    expectTypeOf<ModelIdentity['api']>().toEqualTypeOf<
+      'anthropic' | 'openai' | 'azure-openai' | 'gemini' | 'deepseek' | 'openai-compatible'
+    >();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
@@ -261,6 +265,9 @@ describe('root exports', () => {
     expectTypeOf<DurableRequestRecoveryKind>().toEqualTypeOf<'turn' | 'pre_turn_request'>();
     expectTypeOf<DurableModelAttemptProjection['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>
+    >();
+    expectTypeOf<DurableModelAttemptProjection['provider']>().toEqualTypeOf<
+      string | undefined
     >();
     expectTypeOf<DurableModelOutcomeReconciliationCommand['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>

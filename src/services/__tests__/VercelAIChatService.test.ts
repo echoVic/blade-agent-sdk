@@ -201,6 +201,9 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: '',
         reasoningContent: 'need a tool',
+        provider: 'deepseek',
+        api: 'deepseek',
+        model: 'deepseek-v4-pro',
         tool_calls: [
           {
             id: 'call_keep',
@@ -230,6 +233,9 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: 'intermediate answer',
         reasoningContent: 'ignored reasoning',
+        provider: 'deepseek',
+        api: 'deepseek',
+        model: 'deepseek-v4-pro',
       },
       { role: 'user', content: 'continue' },
     ]);
@@ -263,6 +269,169 @@ describe('VercelAIChatService', () => {
       { role: 'assistant', content: 'intermediate answer' },
       { role: 'user', content: 'continue' },
     ]);
+  });
+
+  it('downgrades foreign and legacy reasoning while preserving same-model reasoning', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: 'done',
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai',
+        providerId: 'openai-primary',
+        apiKey: 'test-key',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5',
+      },
+      NOOP_LOGGER,
+    );
+
+    await service.ready();
+    await service.chat([
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: 'foreign answer',
+        reasoningContent: 'foreign reasoning',
+        provider: 'anthropic',
+        api: 'anthropic',
+        model: 'claude-sonnet',
+        tool_calls: [
+          {
+            id: 'call_search',
+            type: 'function',
+            function: { name: 'Search', arguments: '{"q":"needle"}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_search',
+        name: 'Search',
+        content: 'found',
+      },
+      {
+        role: 'assistant',
+        content: 'same answer',
+        reasoningContent: 'same reasoning',
+        provider: 'openai-primary',
+        api: 'openai',
+        model: 'gpt-5',
+      },
+      {
+        role: 'assistant',
+        content: 'legacy answer',
+        reasoningContent: 'legacy reasoning',
+      },
+      { role: 'user', content: 'continue' },
+    ]);
+
+    const request = mockGenerateText.mock.calls[0]?.[0] as { messages: unknown[] };
+    expect(request.messages).toEqual([
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'foreign reasoning' },
+          { type: 'text', text: 'foreign answer' },
+          {
+            type: 'tool-call',
+            toolCallId: 'call_search',
+            toolName: 'Search',
+            input: { q: 'needle' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call_search',
+            toolName: 'Search',
+            output: { type: 'text', value: 'found' },
+          },
+        ],
+      },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'same reasoning' },
+          { type: 'text', text: 'same answer' },
+        ],
+      },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'legacy reasoning' },
+          { type: 'text', text: 'legacy answer' },
+        ],
+      },
+      { role: 'user', content: 'continue' },
+    ]);
+  });
+
+  it.each([
+    [
+      'provider',
+      {
+        provider: 'openai-secondary',
+        api: 'openai' as const,
+        model: 'gpt-5',
+      },
+    ],
+    [
+      'API adapter',
+      {
+        provider: 'openai-primary',
+        api: 'openai-compatible' as const,
+        model: 'gpt-5',
+      },
+    ],
+    [
+      'model',
+      {
+        provider: 'openai-primary',
+        api: 'openai' as const,
+        model: 'gpt-4.1',
+      },
+    ],
+  ])('downgrades reasoning when only the source %s differs', async (_field, source) => {
+    mockGenerateText.mockResolvedValue({
+      text: 'done',
+    });
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai',
+        providerId: 'openai-primary',
+        apiKey: 'test-key',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5',
+      },
+      NOOP_LOGGER,
+    );
+
+    await service.ready();
+    await service.chat([
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: 'answer',
+        reasoningContent: 'reasoning',
+        ...source,
+      },
+      { role: 'user', content: 'continue' },
+    ]);
+
+    const request = mockGenerateText.mock.calls[0]?.[0] as { messages: unknown[] };
+    expect(request.messages[1]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'reasoning' },
+        { type: 'text', text: 'answer' },
+      ],
+    });
   });
 
   it('normalizes DeepSeek raw and snake_case tool call responses', async () => {

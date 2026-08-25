@@ -113,6 +113,8 @@ const validDrafts: readonly DurableEventDraft[] = [
     modelAttemptId,
     data: {
       model: 'claude-sonnet',
+      provider: 'anthropic-primary',
+      api: 'anthropic',
       streaming: true,
     },
   },

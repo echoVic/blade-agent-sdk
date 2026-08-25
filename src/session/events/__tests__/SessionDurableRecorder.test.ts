@@ -59,6 +59,8 @@ describe('SessionDurableRecorder', () => {
     const modelRequest = await recorder.onModelRequestStarting({
       turn: 1,
       model: 'test-model',
+      provider: 'provider-primary',
+      api: 'openai-compatible',
       streaming: false,
     });
     await modelRequest.onCompleted({
@@ -101,6 +103,8 @@ describe('SessionDurableRecorder', () => {
     const modelRequest = await recorder.onModelRequestStarting({
       turn: 1,
       model: 'test-model',
+      provider: 'provider-primary',
+      api: 'openai-compatible',
       streaming: false,
     });
     await modelRequest.onCompleted({
@@ -206,6 +210,14 @@ describe('SessionDurableRecorder', () => {
         id: 'request-context',
         environment: { REGION: 'test' },
       },
+    });
+    expect(events.find(
+      (event) => event.type === DurableEventType.MODEL_REQUEST_STARTED,
+    )?.data).toEqual({
+      model: 'test-model',
+      provider: 'provider-primary',
+      api: 'openai-compatible',
+      streaming: false,
     });
     expect(events.find(
       (event) => event.type === DurableEventType.TOOL_SCHEDULED,

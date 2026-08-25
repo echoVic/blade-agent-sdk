@@ -21,6 +21,7 @@ describe('Session model config', () => {
     };
     const session = await createSession({
       provider: {
+        id: 'openai-primary',
         type: 'openai',
         apiKey: 'test-key',
         requestTimeoutMs: 120_000,
@@ -42,6 +43,8 @@ describe('Session model config', () => {
       toolTimeoutMs: 45_000,
       models: [
         expect.objectContaining({
+          provider: 'openai',
+          providerId: 'openai-primary',
           temperature: 0.2,
           maxOutputTokens: 4096,
           maxContextTokens: 32000,
@@ -53,6 +56,13 @@ describe('Session model config', () => {
         }),
       ],
     });
+    await expect(session.supportedModels()).resolves.toEqual([
+      {
+        id: 'default',
+        name: 'gpt-5',
+        provider: 'openai-primary',
+      },
+    ]);
 
     await session.close();
   });
