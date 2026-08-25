@@ -708,6 +708,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | Option | Type | Notes |
 |--------|------|-------|
 | `provider` | `ProviderConfig` | Required |
+| `providerRegistry` | `ProviderRegistry` | Instance-scoped custom provider adapters |
 | `model` | `string` | Required |
 | `temperature` | `number` | Sampling temperature |
 | `maxOutputTokens` | `number` | Per-call output limit |

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Add an instance-scoped Provider Registry for custom model adapters, with fail-closed routing across Sessions, subagents, and compaction.",
+  "zh-CN": "新增实例级 Provider Registry 以接入自定义模型 adapter，并在 Session、subagent 与 compaction 链路中提供 fail-closed 路由。"
+}

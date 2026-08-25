@@ -14,9 +14,17 @@
 ## ProviderConfig
 
 ```ts
+type BuiltinProviderType =
+  | 'openai'
+  | 'anthropic'
+  | 'azure-openai'
+  | 'gemini'
+  | 'deepseek'
+  | 'openai-compatible';
+
 interface ProviderConfig {
   id?: string;
-  type: ProviderType;
+  type: BuiltinProviderType | (string & {});
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
@@ -52,6 +60,42 @@ assistant 历史会记录生成响应时的逻辑 Provider ID、API adapter 和�
 Provider、adapter、模型，或恢复不含来源信息的旧历史时，reasoning 会降级为
 普通 assistant 文本，同时保留 tool call 关联，避免把 Provider 专属 payload
 发送给不兼容的 API。
+
+## 自定义 Provider Adapter
+
+`ProviderRegistry` 是实例级 Registry，不包含进程全局注册状态，因此不同 Session
+可以为同一个 `type` 使用不同 adapter。
+
+```ts
+import {
+  ProviderRegistry,
+  type ChatConfig,
+  type IChatService,
+  type ProviderAdapter,
+} from '@blade-ai/agent-sdk';
+
+const adapter = {
+  type: 'acme-chat',
+  async create(config: Readonly<ChatConfig>): Promise<IChatService> {
+    return new AcmeChatService(config);
+  },
+} satisfies ProviderAdapter;
+
+const session = await createSession({
+  provider: {
+    id: 'acme-production',
+    type: 'acme-chat',
+    apiKey: process.env.ACME_API_KEY!,
+  },
+  providerRegistry: new ProviderRegistry([adapter]),
+  model: 'acme-reasoner',
+});
+```
+
+Adapter 返回现有 `IChatService` 契约，因此 model middleware、request/stream idle
+deadline、durable model attempt、subagent 和 compaction 会继续走同一运行时链路。
+自定义 adapter 也可以只在当前 Registry 实例中覆盖内置 `type`。重复、非法注册
+以及未注册的未知 adapter type 都会以 `ProviderRegistryError` fail-closed。
 
 ## 配置示例
 

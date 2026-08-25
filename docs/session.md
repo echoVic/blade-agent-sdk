@@ -1746,6 +1746,7 @@ async function analyzeCodeManual() {
 | 字段                | 类型                                                      | 必填 | 默认值         | 说明                                                |
 | ----------------- | ------------------------------------------------------- | -- | ----------- | ------------------------------------------------- |
 | `provider`        | `ProviderConfig`                                        | ✅  | —           | 模型提供方配置                                           |
+| `providerRegistry` | `ProviderRegistry`                                     | —  | —           | 当前 Session 使用的实例级自定义 Provider adapter Registry   |
 | `model`           | `string`                                                | ✅  | —           | 模型 ID（如 `'claude-sonnet-4-20250514'`, `'gpt-4o'`） |
 | `temperature`     | `number`                                                | —  | `0.7`       | 模型采样温度                                            |
 | `maxOutputTokens` | `number`                                                | —  | —           | 单次模型输出 token 限制                                  |

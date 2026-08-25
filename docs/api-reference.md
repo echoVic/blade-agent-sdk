@@ -240,8 +240,14 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
+| `ProviderRegistry` | 实例级 Provider adapter Registry |
+| `ProviderRegistryError` | Registry 配置与查找错误 |
+| `ProviderRegistryErrorCode` | Registry 错误码 |
+| `ProviderAdapter` | 自定义 provider adapter 契约 |
 | `ProviderConfig` | Provider 配置 |
-| `ProviderType` | Provider 类型字面量 |
+| `BuiltinProviderType` | 内置 Provider adapter 类型字面量 |
+| `ProviderType` | 内置或自定义 Provider adapter 类型 |
+| `ChatConfig` | 传给 Provider adapter 的模型请求配置 |
 | `ModelIdentity` | 生成 assistant 消息的 Provider、API adapter 与模型身份 |
 | `ModelInfo` | 模型信息 |
 | `TokenUsage` | Token 用量 |
@@ -354,6 +360,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SdkError` / `AbortError` / `ConfigError` | SDK 基础错误、中止错误与配置错误 |
 | `HookTimeoutError` | inline hook 事件总时限错误 |
 | `ModelTimeoutError` | 非流式模型请求或流式空闲超时错误 |
+| `ProviderRegistryError` | Provider adapter 注册、查找或构造错误 |
 | `PermissionDeniedError` / `ToolExecutionError` | 权限与工具执行错误 |
 | `getErrorCode` / `getErrorMessage` / `getErrorName` / `toError` | 未知错误规范化辅助函数 |
 | `registerCleanup` / `gracefulShutdown` / `resetCleanupRegistry` | 进程级清理生命周期 |
