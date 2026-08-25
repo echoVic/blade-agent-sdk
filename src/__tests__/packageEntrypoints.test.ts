@@ -37,10 +37,10 @@ describe('package entrypoints', () => {
         types: './dist/tools/index.d.ts',
         import: './dist/tools/index.js',
       },
-      './local': {
-        types: './dist/local/index.d.ts',
+      './node': {
+        types: './dist/node/index.d.ts',
         browser: './dist/browser/server-only-stub.js',
-        import: './dist/local/index.js',
+        import: './dist/node/index.js',
       },
       './middleware': {
         types: './dist/middleware/index.d.ts',
@@ -56,7 +56,7 @@ describe('package entrypoints', () => {
       'src/browser/server-only-stub.ts',
       'src/server/index.ts',
       'src/tools/index.ts',
-      'src/local/index.ts',
+      'src/node/index.ts',
       'src/middleware/index.ts',
       'src/session/index.ts',
     ]) {
@@ -90,6 +90,17 @@ describe('package entrypoints', () => {
     );
   });
 
+  it('uses distinct server and Node Session factories', async () => {
+    const root = await import('../index.js');
+    const server = await import('../server/index.js');
+    const node = await import('../node/index.js');
+
+    expect(server.createSession).toBe(root.createSession);
+    expect(node.createSession).not.toBe(server.createSession);
+    expect('getBuiltinTools' in root).toBe(false);
+    expect(node.getBuiltinTools).toBeTypeOf('function');
+  });
+
   it('keeps browser-safe source entries away from Node-only and server runtime imports', () => {
     const disallowedPatterns = [
       /node:/,
@@ -99,7 +110,7 @@ describe('package entrypoints', () => {
       /@modelcontextprotocol/,
       /\.\.\/session\/index\.js/,
       /\.\.\/server\//,
-      /\.\.\/local\//,
+      /\.\.\/node\//,
       /\.\.\/tools\/builtin\//,
     ];
 

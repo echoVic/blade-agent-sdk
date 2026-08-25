@@ -77,15 +77,25 @@ const browserRootOutput = run(process.execPath, [
     "const m = await import('@blade-ai/agent-sdk');",
     'console.log(m.PermissionMode.DEFAULT);',
     'try { m.createSession({}); } catch (error) { console.log(error.message); }',
-    'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(browserRootOutput, 'default', 'browser root import');
 assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root stub');
+
+const browserNodeOutput = run(process.execPath, [
+  '--conditions=browser',
+  '-e',
+  [
+    "const m = await import('@blade-ai/agent-sdk/node');",
+    'try { m.getBuiltinTools(); } catch (error) { console.log(error.message); }',
+    'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
+  ].join(' '),
+]);
+assertIncludes(browserNodeOutput, 'server-only for getBuiltinTools', 'browser Node stub');
 assertIncludes(
-  browserRootOutput,
+  browserNodeOutput,
   'server-only for JsonlDurableEventStore',
-  'browser durable event store stub',
+  'browser Node durable event store stub',
 );
 
 const subpathOutput = run(process.execPath, [
@@ -95,16 +105,27 @@ const subpathOutput = run(process.execPath, [
     "const browser = await import('@blade-ai/agent-sdk/browser');",
     "const server = await import('@blade-ai/agent-sdk/server');",
     "const tools = await import('@blade-ai/agent-sdk/tools');",
-    "const local = await import('@blade-ai/agent-sdk/local');",
+    "const node = await import('@blade-ai/agent-sdk/node');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, typeof local.JsonlDurableEventStore, typeof middleware.composeMiddleware);",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof middleware.composeMiddleware);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function',
+  'default request_accepted empty function function function default function function function function function function',
   'subpath imports',
 );
+
+const profileOutput = run(process.execPath, [
+  '-e',
+  [
+    "const root = await import('@blade-ai/agent-sdk');",
+    "const server = await import('@blade-ai/agent-sdk/server');",
+    "const node = await import('@blade-ai/agent-sdk/node');",
+    "console.log(root.createSession === server.createSession, node.createSession === server.createSession, 'getBuiltinTools' in root, 'getBuiltinTools' in node);",
+  ].join(' '),
+]);
+assertIncludes(profileOutput, 'true false false true', 'runtime profile boundaries');
 
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');

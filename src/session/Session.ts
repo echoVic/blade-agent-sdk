@@ -2,8 +2,8 @@ import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import {
-  type InitialInputPreparation,
-  RECONCILED_INITIAL_INPUT,
+    type InitialInputPreparation,
+    RECONCILED_INITIAL_INPUT,
 } from '../agent/InitialInputPreparation.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { SessionHandoffError } from '../errors/SessionHandoffError.js';
@@ -13,79 +13,84 @@ import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistr
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
-  type ContextSnapshot,
-  createContextSnapshot,
-  type RuntimeContext,
+    type ContextSnapshot,
+    createContextSnapshot,
+    type RuntimeContext,
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import { CommandId, type EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
 import {
-  type BladeConfig,
-  type JsonObject,
-  type JsonValue,
-  type ModelConfig,
-  PermissionMode,
+    type BladeConfig,
+    type JsonObject,
+    type JsonValue,
+    type ModelConfig,
+    PermissionMode,
 } from '../types/common.js';
 import { ActiveRequestController, type RequestAbortReason } from './ActiveRequestController.js';
 import {
-  parseDurableRuntimeContext,
-  parseDurableUserMessageContent,
-  serializeDurableRuntimeContext,
+    parseDurableRuntimeContext,
+    parseDurableUserMessageContent,
+    serializeDurableRuntimeContext,
 } from './DurableRequestRecovery.js';
 import {
-  DurableEventSubscription,
-  DurableEventSubscriptionError,
-  type DurableEventSubscriptionOptions,
+    DurableEventSubscription,
+    DurableEventSubscriptionError,
+    type DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
 import { DurableExecutionLease } from './events/DurableExecutionLease.js';
 import {
-  DurableExecutionLeaseError,
-  type DurableExecutionLease as DurableExecutionLeaseSnapshot,
+    DurableExecutionLeaseError,
+    type DurableExecutionLease as DurableExecutionLeaseSnapshot,
 } from './events/DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
-  DurableRequestProjection,
-  DurableSessionProjection,
-  DurableSessionRecoveryPlan,
+    DurableRequestProjection,
+    DurableSessionProjection,
+    DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
 import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
 import { resolveDurableStoreTimeoutMs } from './events/DurableStoreOperation.js';
 import {
-  type DurableRequestFinish,
-  durableRequestFinishFromLoopResult,
-  DurableSessionRecoveryRequiredError,
-  SessionDurableRecorder,
-  SessionDurableRecorderError,
+    type DurableRequestFinish,
+    durableRequestFinishFromLoopResult,
+    DurableSessionRecoveryRequiredError,
+    SessionDurableRecorder,
+    SessionDurableRecorderError,
 } from './events/SessionDurableRecorder.js';
 import { DurableEventType, type DurableRequestInterruptReason } from './events/types.js';
+import {
+    NODE_SESSION_HOST,
+    SERVER_SESSION_HOST,
+    type SessionHostProfile,
+} from './SessionHostProfile.js';
 import { SessionInputInbox } from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
-  JsonlSessionStore,
-  NoopSessionStore,
-  type SessionSnapshot,
-  type SessionState,
-  type SessionStore,
+    JsonlSessionStore,
+    NoopSessionStore,
+    type SessionSnapshot,
+    type SessionState,
+    type SessionStore,
 } from './SessionStore.js';
 import { SessionStreamChannel } from './SessionStreamChannel.js';
 import type {
-  ForkSessionOptions,
-  InputSubmission,
-  ISession,
-  McpServerStatus,
-  McpToolInfo,
-  ModelInfo,
-  PendingSessionInput,
-  PromptResult,
-  ProviderConfig,
-  SendOptions,
-  SessionHandoffResult,
-  SessionOptions,
-  StreamMessage,
-  StreamOptions,
-  TokenUsage,
-  ToolCallRecord,
+    ForkSessionOptions,
+    InputSubmission,
+    ISession,
+    McpServerStatus,
+    McpToolInfo,
+    ModelInfo,
+    PendingSessionInput,
+    PromptResult,
+    ProviderConfig,
+    SendOptions,
+    SessionHandoffResult,
+    SessionOptions,
+    StreamMessage,
+    StreamOptions,
+    TokenUsage,
+    ToolCallRecord,
 } from './types.js';
 import { InputPriority } from './types.js';
 
@@ -189,6 +194,7 @@ class Session implements ISession {
     options: SessionOptions,
     sessionId?: SessionId,
     isResume = false,
+    private readonly hostProfile: SessionHostProfile = SERVER_SESSION_HOST,
     private readonly durableOrigin: {
       source: 'create' | 'resume' | 'fork';
       parentSessionId?: SessionId;
@@ -296,6 +302,7 @@ class Session implements ISession {
         this.permissionMode,
         this.defaultContext,
         this.rootLogger,
+        this.hostProfile,
       );
       await this.runtime.initialize();
       if (this.isResumeSession) {
@@ -316,6 +323,7 @@ class Session implements ISession {
           outputFormat: this.options.outputFormat,
           sandbox: this.options.sandbox,
           tokenBudget: this.options.tokenBudget,
+          localDiscovery: this.hostProfile === NODE_SESSION_HOST,
         },
         this.runtime.getAgentRuntimeDeps(),
       );
@@ -998,6 +1006,7 @@ class Session implements ISession {
         ? (operation) => executionLease.runFenced(operation)
         : undefined,
       backgroundAgentManager: runtime.getBackgroundAgentManager(),
+      omitEnvironment: this.hostProfile === SERVER_SESSION_HOST,
     };
 
     const stream = this.getAgent().streamChat(message, context, {
@@ -2367,6 +2376,7 @@ class Session implements ISession {
       },
       undefined,
       false,
+      this.hostProfile,
       {
         source: 'fork',
         parentSessionId: this.sessionId,
@@ -2432,19 +2442,33 @@ class Session implements ISession {
 }
 
 export async function createSession(options: SessionOptions): Promise<ISession> {
-  const session = new Session(options);
+  return createSessionWithHost(options, SERVER_SESSION_HOST);
+}
+
+export async function createSessionWithHost(
+  options: SessionOptions,
+  hostProfile: SessionHostProfile,
+): Promise<ISession> {
+  const session = new Session(options, undefined, false, hostProfile);
   await session.initialize();
   return session;
 }
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
+  return resumeSessionWithHost(options, SERVER_SESSION_HOST);
+}
+
+export async function resumeSessionWithHost(
+  options: ResumeOptions,
+  hostProfile: SessionHostProfile,
+): Promise<ISession> {
   if (options.persistSession === false) {
     throw new Error(
       'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
     );
   }
   const { sessionId, ...sessionOptions } = options;
-  const session = new Session(sessionOptions, sessionId, true);
+  const session = new Session(sessionOptions, sessionId, true, hostProfile);
   try {
     await session.initialize();
     await session.loadHistory();
@@ -2460,6 +2484,13 @@ export interface ForkOptions extends ResumeOptions {
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
+  return forkSessionWithHost(options, SERVER_SESSION_HOST);
+}
+
+export async function forkSessionWithHost(
+  options: ForkOptions,
+  hostProfile: SessionHostProfile,
+): Promise<ISession> {
   if (options.persistSession === false) {
     throw new Error(
       'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
@@ -2467,7 +2498,7 @@ export async function forkSession(options: ForkOptions): Promise<ISession> {
   }
   const { sessionId, messageId, ...sessionOptions } = options;
 
-  const sourceSession = new Session(sessionOptions, sessionId, true);
+  const sourceSession = new Session(sessionOptions, sessionId, true, hostProfile);
   await sourceSession.initialize();
   await sourceSession.loadHistory();
 
@@ -2482,8 +2513,16 @@ export async function prompt(
   message: UserMessageContent,
   options: SessionOptions,
 ): Promise<PromptResult> {
+  return promptWithHost(message, options, SERVER_SESSION_HOST);
+}
+
+export async function promptWithHost(
+  message: UserMessageContent,
+  options: SessionOptions,
+  hostProfile: SessionHostProfile,
+): Promise<PromptResult> {
   const startTime = Date.now();
-  const session = new Session(options);
+  const session = new Session(options, undefined, false, hostProfile);
   await session.initialize();
 
   const toolCalls: ToolCallRecord[] = [];

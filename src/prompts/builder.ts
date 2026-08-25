@@ -53,6 +53,11 @@ export interface BuildSystemPromptOptions {
   includeEnvironment?: boolean;
 
   /**
+   * 是否注入已发现的本地 Skills 元数据（默认 true）。
+   */
+  includeSkills?: boolean;
+
+  /**
    * AI 回复语言（如 'zh-CN', 'en-US'）
    */
   language?: string;
@@ -118,6 +123,7 @@ export async function buildSystemPrompt(
     append,
     mode,
     includeEnvironment = true,
+    includeSkills = true,
     language,
     planModePrompt,
     skillActivationContext,
@@ -157,7 +163,9 @@ export async function buildSystemPrompt(
   let prompt = parts.join('\n\n---\n\n');
 
   // 注入 Skills 元数据到 <available_skills> 占位符
-  prompt = injectSkillsToPrompt(prompt, skillActivationContext);
+  if (includeSkills) {
+    prompt = injectSkillsToPrompt(prompt, skillActivationContext);
+  }
 
   // 注入语言指令
   prompt = injectLanguageInstruction(prompt, language);

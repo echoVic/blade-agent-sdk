@@ -25,6 +25,7 @@ import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
+import { SERVER_SESSION_HOST } from '../SessionHostProfile.js';
 import type { SessionOptions } from '../types.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
@@ -190,6 +191,32 @@ describe('SessionRuntime', () => {
         sourceId: 'session',
       },
     });
+
+    await runtime.close();
+  });
+
+  it('keeps server sessions free of implicit local host tools', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('server-analysis-session'),
+      createOptions({
+        tools: [customTool],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+      SERVER_SESSION_HOST,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolRegistry().get('CustomTool')).toBeDefined();
+    expect(runtime.getToolRegistry().get('Read')).toBeUndefined();
+    expect(runtime.getToolRegistry().get('Bash')).toBeUndefined();
+    expect(runtime.getToolRegistry().get('Task')).toBeUndefined();
+    expect(runtime.getToolRegistry().get('Skill')).toBeUndefined();
 
     await runtime.close();
   });

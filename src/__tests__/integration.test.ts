@@ -17,19 +17,19 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
-  createSdkMcpServer,
-  createSession,
-  defineTool,
-  forkSession,
-  type ISession,
-  PermissionMode,
-  type PromptResult,
-  type ProviderType,
-  prompt,
-  resumeSession,
-  type StreamMessage,
-  tool,
-} from '../index.js';
+    createSdkMcpServer,
+    createSession,
+    defineTool,
+    forkSession,
+    type ISession,
+    PermissionMode,
+    prompt,
+    type PromptResult,
+    type ProviderType,
+    resumeSession,
+    type StreamMessage,
+    tool,
+} from '../node/index.js';
 
 // ─── 配置（从环境变量读取） ─────────────────────────────────
 const API_KEY = process.env.INTEGRATION_API_KEY;

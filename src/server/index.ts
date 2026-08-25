@@ -1,3 +1,3 @@
-// Server-side facade. The root package entrypoint remains session-first and
-// server-only; this subpath makes that boundary explicit for bundlers.
+// Headless server facade. Sessions only load explicitly configured tools,
+// agents, middleware, and MCP servers; local host capabilities live in /node.
 export * from '../index.js';

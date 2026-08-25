@@ -1,3 +1,6 @@
+// Server-first facade. Import /node when the runtime may access local host
+// capabilities such as builtin tools, sandboxing, and JSONL stores.
+
 // --- Agent ---
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -57,11 +60,7 @@ export type {
   SdkTool,
   ToolResponse as McpToolResponse,
 } from './mcp/index.js';
-// --- MCP ---
-export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
-// --- Memory ---
-export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 // --- Middleware and plugins ---
 export * from './middleware/index.js';
 export { ProviderRegistry } from './services/ProviderRegistry.js';
@@ -137,7 +136,7 @@ export {
   sanitizeDeepSeekStrictSchema,
   summarizeDeepSeekBatchChatCompletions,
 } from './services/deepseek.js';
-export * from './session/events/index.js';
+export * from './session/events/core.js';
 export type {
   AgentDefinition,
   BuiltinProviderType,
@@ -179,8 +178,6 @@ export {
   resumeSession,
 } from './session/index.js';
 // --- Tool authoring primitives ---
-export { getBuiltinTools } from './tools/builtin/index.js';
-export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
 export type {
   ToolCatalogEntry,
   ToolCatalogReadView,

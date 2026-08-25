@@ -8,5 +8,5 @@ export {
   SessionHandoffError,
   type SessionHandoffErrorCode,
 } from '../errors/SessionHandoffError.js';
-export * from './events/index.js';
+export * from './events/core.js';
 export * from './types.js';

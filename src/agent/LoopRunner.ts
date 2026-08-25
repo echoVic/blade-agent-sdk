@@ -16,8 +16,8 @@ import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
-  isExecutionLeaseFailure,
-  runWithExecutionLeaseBoundary,
+    isExecutionLeaseFailure,
+    runWithExecutionLeaseBoundary,
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
@@ -349,6 +349,7 @@ export class LoopRunner {
       basePrompt: replacePrompt,
       append: appendPrompt,
       includeEnvironment: false,
+      includeSkills: this.runtimeOptions.localDiscovery !== false,
       language: this.config.language,
       skillActivationContext,
     });
