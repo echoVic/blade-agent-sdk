@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.8] - 2026-08-25
+
+### 修复
+
+- 持久化 assistant 历史的 Provider、API adapter 与模型来源，并在跨 Provider 或模型回放时安全降级 reasoning。
+
 ## [5.3.7] - 2026-08-25
 
 ### 修复

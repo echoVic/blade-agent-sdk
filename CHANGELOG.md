@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.8] - 2026-08-25
+
+### Fixes
+
+- Persist provider, API adapter, and model provenance for assistant history, and safely downgrade reasoning when replaying across providers or models.
+
 ## [5.3.7] - 2026-08-25
 
 ### Fixes
