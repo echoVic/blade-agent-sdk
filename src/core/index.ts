@@ -2,6 +2,7 @@
 // Keep this entry free of Node-only runtime imports.
 
 export * from '../middleware/index.js';
+export * from '../protocol/index.js';
 export type {
   AgentTrace,
   ObservabilityOptions,
@@ -30,9 +31,20 @@ export type {
   InputSubmission,
   PendingSessionInput,
   SendOptions,
+  SessionOptions,
   StreamMessage,
   StreamOptions,
 } from '../session/types.js';
+export type {
+  PersistedToolUse,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from '../session/SessionRepository.js';
 export { InputPriority } from '../session/types.js';
 export type {
   ConfirmationDetails,

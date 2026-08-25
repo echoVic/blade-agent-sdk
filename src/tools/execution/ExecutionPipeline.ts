@@ -1447,6 +1447,8 @@ export class ExecutionPipeline {
           : `权限确认: ${state.permissionSignature ?? state.tool.name}`;
 
       const confirmationDetails: ConfirmationDetails = {
+        toolName: state.tool.name,
+        args: structuredClone(state.params),
         title: confirmationTitle,
         message: getConfirmationReason(state) || '此操作需要用户确认',
         abortSignal: state.context.signal,
@@ -1471,7 +1473,11 @@ export class ExecutionPipeline {
           );
         this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
         const response = await this.awaitPermissionCallback(
-          () => confirmationHandler.requestConfirmation(confirmationDetails),
+          () =>
+            confirmationHandler.requestConfirmation({
+              ...confirmationDetails,
+              ...(permissionRequestId ? { permissionRequestId } : {}),
+            }),
           state.context.signal,
         );
         this.logger.info(`[ExecutionPipeline] Confirmation response: approved=${response.approved}`);

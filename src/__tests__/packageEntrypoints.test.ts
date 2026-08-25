@@ -23,6 +23,10 @@ describe('package entrypoints', () => {
         types: './dist/browser/index.d.ts',
         import: './dist/browser/index.js',
       },
+      './protocol': {
+        types: './dist/protocol/index.d.ts',
+        import: './dist/protocol/index.js',
+      },
       './server': {
         types: './dist/server/index.d.ts',
         browser: './dist/browser/server-only-stub.js',
@@ -54,6 +58,7 @@ describe('package entrypoints', () => {
       'src/core/index.ts',
       'src/browser/index.ts',
       'src/browser/server-only-stub.ts',
+      'src/protocol/index.ts',
       'src/server/index.ts',
       'src/tools/index.ts',
       'src/node/index.ts',
@@ -83,11 +88,14 @@ describe('package entrypoints', () => {
     expect(browser.projectDurableSession([]).status).toBe('empty');
     expect(browser.PermissionRequestId('permission-1')).toBe('permission-1');
     expect(browser.ToolUseId('tool-call-1')).toBe('tool-call-1');
+    expect(browser.AgentClient).toBeTypeOf('function');
+    expect(browser.AGENT_PROTOCOL_VERSION).toBe(1);
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
     expect(() => new serverOnly.JsonlDurableEventStore()).toThrow(
       /server-only.*JsonlDurableEventStore/,
     );
+    expect(() => new serverOnly.AgentServer()).toThrow(/server-only.*AgentServer/);
   });
 
   it('uses distinct server and Node Session factories', async () => {
@@ -97,6 +105,8 @@ describe('package entrypoints', () => {
 
     expect(server.createSession).toBe(root.createSession);
     expect(node.createSession).not.toBe(server.createSession);
+    expect(server.AgentServer).toBeTypeOf('function');
+    expect(node.JsonlSessionRepository).toBeTypeOf('function');
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');
   });

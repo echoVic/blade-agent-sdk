@@ -68,7 +68,15 @@ export {
   WorkerId,
 } from '../core/index.js';
 export * from '../middleware/index.js';
+export * from '../protocol/index.js';
 export * from '../session/events/core.js';
+export {
+  AgentClient,
+  type AgentClientCommandOptions,
+  type AgentClientEventOptions,
+  type AgentClientOptions,
+  RemoteAgentSession,
+} from './AgentClient.js';
 
 export {
   createSession,

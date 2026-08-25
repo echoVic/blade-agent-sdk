@@ -28,6 +28,10 @@
       "types": "./dist/browser/index.d.ts",
       "import": "./dist/browser/index.js"
     },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "import": "./dist/protocol/index.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",
@@ -105,6 +109,7 @@
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@opentelemetry/api": "^1.9.0",
     "ai": "^6.0.168",
     "async-mutex": "^0.5.0",
     "chalk": "^5.6.2",

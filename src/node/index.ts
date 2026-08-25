@@ -2,6 +2,8 @@
 // Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
 
 import type { UserMessageContent } from '../agent/types.js';
+import { PersistentStore } from '../context/storage/PersistentStore.js';
+import { getContextCwd } from '../runtime/index.js';
 import {
   createSessionWithHost,
   type ForkOptions,
@@ -15,23 +17,43 @@ import type { ISession, PromptResult, SessionOptions } from '../session/types.js
 
 export * from '../index.js';
 
+function withNodeRepository(options: SessionOptions): SessionOptions {
+  if (
+    options.sessionRepository ||
+    options.persistSession === false ||
+    !options.storagePath
+  ) {
+    return options;
+  }
+
+  return {
+    ...options,
+    sessionRepository: new PersistentStore(
+      options.storagePath,
+      100,
+      '0.0.10',
+      getContextCwd(options.defaultContext),
+    ),
+  };
+}
+
 export function createSession(options: SessionOptions): Promise<ISession> {
-  return createSessionWithHost(options, NODE_SESSION_HOST);
+  return createSessionWithHost(withNodeRepository(options), NODE_SESSION_HOST);
 }
 
 export function resumeSession(options: ResumeOptions): Promise<ISession> {
-  return resumeSessionWithHost(options, NODE_SESSION_HOST);
+  return resumeSessionWithHost(withNodeRepository(options) as ResumeOptions, NODE_SESSION_HOST);
 }
 
 export function forkSession(options: ForkOptions): Promise<ISession> {
-  return forkSessionWithHost(options, NODE_SESSION_HOST);
+  return forkSessionWithHost(withNodeRepository(options) as ForkOptions, NODE_SESSION_HOST);
 }
 
 export function prompt(
   message: UserMessageContent,
   options: SessionOptions,
 ): Promise<PromptResult> {
-  return promptWithHost(message, options, NODE_SESSION_HOST);
+  return promptWithHost(message, withNodeRepository(options), NODE_SESSION_HOST);
 }
 
 export type {
@@ -43,6 +65,10 @@ export type {
 } from '../mcp/index.js';
 export { createSdkMcpServer, tool } from '../mcp/index.js';
 export { FileSystemMemoryStore, MemoryManager } from '../memory/index.js';
+export {
+  PersistentStore,
+  PersistentStore as JsonlSessionRepository,
+} from '../context/storage/PersistentStore.js';
 export type {
   SandboxCapabilities,
   SandboxCheckResult,

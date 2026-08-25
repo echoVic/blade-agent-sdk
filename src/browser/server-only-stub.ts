@@ -1,6 +1,6 @@
 function serverOnly(name: string): never {
   throw new Error(
-    `@blade-ai/agent-sdk is server-only for ${name}. Use it from a Node server, API route, server action, or CLI process. Browser clients should import browser-safe contracts from @blade-ai/agent-sdk/core.`,
+    `@blade-ai/agent-sdk is server-only for ${name}. Use it from a Node server, API route, server action, or CLI process. Browser clients should import AgentClient from @blade-ai/agent-sdk/browser or contracts from @blade-ai/agent-sdk/protocol.`,
   );
 }
 
@@ -55,5 +55,35 @@ export class MemoryManager {
 export class JsonlDurableEventStore {
   constructor(..._args: unknown[]) {
     serverOnly('JsonlDurableEventStore');
+  }
+}
+
+export class JsonlSessionRepository {
+  constructor(..._args: unknown[]) {
+    serverOnly('JsonlSessionRepository');
+  }
+}
+
+export class AgentServer {
+  constructor(..._args: unknown[]) {
+    serverOnly('AgentServer');
+  }
+}
+
+export class InMemoryAgentServerStore {
+  constructor(..._args: unknown[]) {
+    serverOnly('InMemoryAgentServerStore');
+  }
+}
+
+export class TenantAdmissionController {
+  constructor(..._args: unknown[]) {
+    serverOnly('TenantAdmissionController');
+  }
+}
+
+export class OpenTelemetryAgentServerTelemetry {
+  constructor(..._args: unknown[]) {
+    serverOnly('OpenTelemetryAgentServerTelemetry');
   }
 }

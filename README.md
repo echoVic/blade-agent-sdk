@@ -127,7 +127,9 @@ const weather = defineTool({
 
 ```ts
 import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
-import { createSession as createCodingSession } from '@blade-ai/agent-sdk/node';
+import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
+import { AgentClient } from '@blade-ai/agent-sdk/browser';
+import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
@@ -135,7 +137,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 
 - Root and `/server`: server-side agents; load only explicitly supplied tools, agents, middleware, and MCP servers without scanning the host workspace
 - `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
-- `/browser`: browser-safe protocol view with explicit server-only execution stubs
+- `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
+- `/protocol`: browser-safe versioned command/event contracts and strict parsers
 - `/core`: browser-safe contracts, constants, and types
 - `/tools`: browser-safe tool authoring primitives
 - `/middleware`: browser-safe middleware and plugin contracts
@@ -145,7 +148,8 @@ Importing a server-only entry in a browser resolves to a stub that throws a clea
 
 ## Persistence and Workspace
 
-Sessions are in-memory unless `storagePath` is configured:
+Sessions are ephemeral unless a `SessionRepository` is configured. The `/node`
+entry converts `storagePath` into a local JSONL repository:
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/node';
@@ -165,12 +169,18 @@ const session = await createSession({
 });
 ```
 
+The root and `/server` entries never interpret `storagePath` as local access.
+Server applications must inject `sessionRepository` explicitly. See
+[Server Runtime](./docs/en/server-runtime.md) for the HTTP/SSE server,
+browser client, multi-tenant storage, idempotency, approvals, and telemetry.
+
 The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 
 ## Documentation
 
 - [English documentation](./docs/en/index.md)
 - [Middleware and plugins](./docs/en/middleware.md)
+- [Server Runtime](./docs/en/server-runtime.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)

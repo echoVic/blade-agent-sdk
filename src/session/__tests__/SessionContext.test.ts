@@ -38,7 +38,7 @@ vi.mock('../../agent/Agent.js', () => ({
   },
 }));
 
-const { createSession, resumeSession } = await import('../Session.js');
+const { createSession, resumeSession } = await import('../../node/index.js');
 
 describe('Session runtime context', () => {
   it('should let turn-scoped context override the session default context', async () => {

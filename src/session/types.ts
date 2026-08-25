@@ -13,6 +13,7 @@ import type { Message } from '../services/ChatServiceInterface.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type {
+  ConfirmationHandler,
   ExecutionContext,
   Tool,
   ToolDefinition,
@@ -50,6 +51,7 @@ import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
+import type { SessionRepository } from './SessionRepository.js';
 
 export type {
   AgentMiddlewareConfig,
@@ -293,6 +295,9 @@ export interface SessionOptions {
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;
   canUseTool?: CanUseTool;
+  confirmationHandler?: ConfirmationHandler;
+  /** Creates a Session-bound confirmation handler after the Session ID exists. */
+  confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;
 
   systemPrompt?: string;
   maxTurns?: number;
@@ -313,6 +318,11 @@ export interface SessionOptions {
   logger?: AgentLogger;
   storagePath?: string;
   persistSession?: boolean;
+  /**
+   * Shared transcript repository. Required for resumable server Sessions.
+   * The /node entry creates a JSONL repository from storagePath when omitted.
+   */
+  sessionRepository?: SessionRepository;
   durableEventStore?: DurableEventStore;
   /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;

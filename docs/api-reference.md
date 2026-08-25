@@ -13,7 +13,8 @@
 | `@blade-ai/agent-sdk/node` | Node.js local process | 具备本机访问能力的入口；默认启用本地工具和工作区发现，并导出 Node 宿主适配器 |
 | `@blade-ai/agent-sdk/session` | Node.js server | 底层 Session API 子入口，采用 server profile |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
-| `@blade-ai/agent-sdk/browser` | Browser | Browser-safe 常量和 server-only stub |
+| `@blade-ai/agent-sdk/browser` | Browser | `AgentClient`、协议类型、Browser-safe 常量和 server-only stub |
+| `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | 版本化 command/event schema、解析器和协议错误 |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/middleware` | Browser-safe / Node | 洋葱组合器、模型/工具 middleware 与插件定义 |
 
@@ -68,6 +69,12 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
 | `JsonlDurableEventStore` | node | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
+| `AgentServer` | server | 多租户 command 调度、Session 管理和 Fetch-compatible HTTP/SSE transport |
+| `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
+| `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
+| `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
+| `OpenTelemetryAgentServerTelemetry` | server | 默认不采集 payload 的 metric、trace 与 audit adapter |
+| `JsonlSessionRepository` | node | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
@@ -92,6 +99,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 |------|------|
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
+| `SessionRepository` | transcript append 与 read projection 的统一持久化端口 |
+| `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
+| `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
+| `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
 | `SessionTool` | Session 接受的 `ToolDefinition` 或完整 `Tool` 联合类型 |
 | `SendOptions` | send() 选项 |
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
@@ -109,6 +120,25 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ForkSessionResult` | Session fork 结果 |
 | `SessionHandoffResult` | worker handoff 完成后的 journal head 与 recovery plan |
 | `SessionHandoffErrorCode` | worker handoff 的稳定错误码 |
+
+### Server Runtime
+
+| 导出 | 说明 |
+|------|------|
+| `AgentServerOptions` / `AgentServerSessionContext` | 认证、Session options、Store、遥测、准入和 transport 限制 |
+| `AgentServerStore` / `AgentCommandClaim` / `AgentServerSessionRecord` | command claim/seal/complete、tenant Session 和 event replay 端口 |
+| `AgentServerTelemetry` / `AgentServerAuditRecord` | payload-free metric 与审计端口 |
+| `AgentClientOptions` / `AgentClientCommandOptions` / `AgentClientEventOptions` | 浏览器 transport、重试和 cursor 选项 |
+| `AgentCommand` / `AgentCommandResult` | protocol v1 command 与结果判别联合 |
+| `AgentServerEvent` / `AgentEventCursor` / `AgentEventPage` | 单调 sequence 的远程事件与 cursor |
+| `AgentPrincipal` / `AgentServerScope` | 服务端认证主体与授权 scope |
+| `AgentProtocolCapabilities` / `AgentClientCapabilities` | `initialize` 能力协商 |
+| `AgentProtocolError` / `AgentProtocolErrorCode` | 稳定 wire error |
+| `AGENT_PROTOCOL_VERSION` / `AgentCommandType` | 协议版本与 command 常量 |
+| `parseAgentCommand` / `parseAgentCommandResult` | strict command envelope parser |
+| `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
+
+完整部署约束见 [Server Runtime](./server-runtime)。
 
 ### Durable Events
 

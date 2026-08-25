@@ -8,6 +8,11 @@ import type {
 } from '../../services/ChatServiceInterface.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import {
+  NoopSessionRepository,
+  type PersistedToolUse,
+  type SessionRepository,
+} from '../../session/SessionRepository.js';
+import {
   type InputId,
   MessageId,
   type RequestId,
@@ -72,16 +77,11 @@ function parseToolCallArguments(value: string): JsonValue {
   }
 }
 
-export interface PersistedToolUse {
-  messageId: string;
-  toolCallId: string;
-}
-
 /**
  * 持久化存储实现 - JSONL 格式
  * 存储路径: {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export class PersistentStore {
+export class PersistentStore implements SessionRepository {
   private readonly storageRoot: string;
   private readonly projectPath?: string;
   private readonly maxSessions: number;
@@ -571,6 +571,18 @@ export class PersistentStore {
     };
   }
 
+  async loadState(sessionId: SessionId) {
+    return this.getSessionStore().loadState(sessionId);
+  }
+
+  async loadMessages(sessionId: SessionId) {
+    return this.getSessionStore().loadMessages(sessionId);
+  }
+
+  async forkState(sessionId: SessionId, options?: { messageId?: string }) {
+    return this.getSessionStore().forkState(sessionId, options);
+  }
+
   /**
    * 获取所有会话列表
    */
@@ -812,7 +824,8 @@ export class PersistentStore {
   }
 }
 
-export class NoopPersistentStore {
+/** @deprecated Use NoopSessionRepository. */
+export class NoopPersistentStore extends NoopSessionRepository {
   async initialize(): Promise<void> {
     return Promise.resolve();
   }
