@@ -180,6 +180,8 @@ browser client, multi-tenant storage, idempotency, approvals, and telemetry.
 For multi-instance storage, see [Runtime Store](./docs/en/runtime-store.md).
 For worker coordination and crash recovery, see
 [Worker Runtime](./docs/en/worker-runtime.md).
+For container isolation, resource limits, checkpoints, and ephemeral
+credentials, see [Execution Host](./docs/en/execution-host.md).
 
 The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 
@@ -190,6 +192,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 - [Server Runtime](./docs/en/server-runtime.md)
 - [Runtime Store](./docs/en/runtime-store.md)
 - [Worker Runtime](./docs/en/worker-runtime.md)
+- [Execution Host](./docs/en/execution-host.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)

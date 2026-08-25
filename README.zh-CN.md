@@ -178,6 +178,8 @@ HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
 审批和遥测见 [Server Runtime](./docs/server-runtime.md)。
 多实例持久化见 [Runtime Store](./docs/runtime-store.md)。
 worker 协调与崩溃恢复见 [Worker Runtime](./docs/worker-runtime.md)。
+容器隔离、资源限制、checkpoint 与短期凭据见
+[Execution Host](./docs/execution-host.md)。
 
 workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent 仍可工作，但本地文件工具和项目级发现需要具备文件系统能力的 workspace。
 
@@ -188,6 +190,7 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 - [Server Runtime](./docs/server-runtime.md)
 - [Runtime Store](./docs/runtime-store.md)
 - [Worker Runtime](./docs/worker-runtime.md)
+- [Execution Host](./docs/execution-host.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)
