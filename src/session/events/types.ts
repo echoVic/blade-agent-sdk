@@ -1,4 +1,5 @@
 import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
+import type { ModelIdentity } from '../../services/ModelIdentity.js';
 import type {
   CommandId,
   EventId,
@@ -15,8 +16,8 @@ import type {
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
-export const DURABLE_EVENT_SCHEMA_VERSION = 3 as const;
-export type DurableEventSchemaVersion = 2 | typeof DURABLE_EVENT_SCHEMA_VERSION;
+export const DURABLE_EVENT_SCHEMA_VERSION = 4 as const;
+export type DurableEventSchemaVersion = 2 | 3 | typeof DURABLE_EVENT_SCHEMA_VERSION;
 
 export const DurableEventType = {
   SESSION_CREATED: 'session_created',
@@ -154,6 +155,7 @@ export interface DurableEventDataMap {
   };
   [DurableEventType.MODEL_REQUEST_STARTED]: {
     model: string;
+    modelIdentity?: ModelIdentity;
     streaming: boolean;
   };
   [DurableEventType.MODEL_REQUEST_COMPLETED]: {

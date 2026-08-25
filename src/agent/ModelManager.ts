@@ -86,6 +86,7 @@ export class ModelManager {
 
     const chatService = await createChatServiceAsync({
       provider: modelConfig.provider,
+      providerId: modelConfig.providerId?.trim() || modelConfig.provider,
       apiKey: modelConfig.apiKey || '',
       model: modelConfig.model,
       baseUrl: modelConfig.baseUrl || '',

@@ -17,6 +17,7 @@ Provider adapters are loaded lazily. Optional adapters only need to be installed
 
 ```ts
 interface ProviderConfig {
+  id?: string;
   type:
     | 'openai'
     | 'anthropic'
@@ -32,6 +33,20 @@ interface ProviderConfig {
   projectId?: string;
   requestTimeoutMs?: number;
   streamIdleTimeoutMs?: number;
+}
+```
+
+`type` selects the wire-protocol adapter. `id` identifies the logical provider
+and defaults to `type`. Set `id` for OpenAI-compatible gateways when provider
+identity must survive model switches or persisted-session resume. `id` never
+changes adapter selection:
+
+```ts
+provider: {
+  id: 'openrouter',
+  type: 'openai-compatible',
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  baseUrl: 'https://openrouter.ai/api/v1',
 }
 ```
 
@@ -122,6 +137,7 @@ These helpers are lower-level APIs and do not replace the Session interface.
 ```ts
 const session = await createSession({
   provider: {
+    id: 'provider-name',
     type: 'openai-compatible',
     apiKey: process.env.PROVIDER_API_KEY!,
     baseUrl: 'https://provider.example.com/v1',
@@ -170,6 +186,13 @@ for (const model of models) {
 ```
 
 Changing the model affects later model calls in the same Session.
+
+Assistant history records the logical provider ID, API adapter, and model that
+produced each response. Native reasoning blocks are replayed only to that same
+provider, adapter, and model. When any identity component changes, or when
+legacy history has no identity, reasoning is converted to ordinary assistant
+text while tool-call relationships are preserved. This prevents
+provider-specific reasoning payloads from being sent to an incompatible API.
 
 ## Logging
 

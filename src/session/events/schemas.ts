@@ -9,7 +9,11 @@ import {
   ToolAttemptId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import {
+  type JsonObject,
+  type JsonValue,
+  PROVIDER_TYPES,
+} from '../../types/common.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDataMap,
@@ -160,6 +164,11 @@ const DurableEventDataSchemas = {
   [DurableEventTypeValue.MODEL_REQUEST_STARTED]: z
     .object({
       model: NonEmptyStringSchema,
+      modelIdentity: z.object({
+        provider: NonEmptyStringSchema,
+        api: z.enum(PROVIDER_TYPES),
+        model: NonEmptyStringSchema,
+      }).strict().optional(),
       streaming: z.boolean(),
     })
     .strict(),
@@ -264,6 +273,7 @@ const DurableEventDraftBaseSchema = z
 
 const DurableEventSchemaVersionSchema = z.union([
   z.literal(2),
+  z.literal(3),
   z.literal(DURABLE_EVENT_SCHEMA_VERSION),
 ]);
 
@@ -303,7 +313,7 @@ const DurableEventEnvelopeSchema = z
       });
     }
     if (
-      value.schemaVersion === DURABLE_EVENT_SCHEMA_VERSION
+      value.schemaVersion >= 3
       && value.type === DurableEventTypeValue.TOOL_SCHEDULED
     ) {
       if (value.modelAttemptId === undefined) {
@@ -320,6 +330,17 @@ const DurableEventEnvelopeSchema = z
           message: `${value.type} requires modelInput in durable event schema v3`,
         });
       }
+    }
+    if (
+      value.schemaVersion < DURABLE_EVENT_SCHEMA_VERSION
+      && value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED
+      && value.data.modelIdentity !== undefined
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['data'],
+        message: `${value.type} provider identity requires durable event schema v4`,
+      });
     }
     if (
       value.schemaVersion === 2

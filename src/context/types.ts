@@ -8,6 +8,7 @@ import type {
   RequestId,
   SessionId,
 } from '../types/branded.js';
+import type { ModelIdentity } from '../services/ModelIdentity.js';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
 
 export interface ContextMessage {
@@ -163,6 +164,7 @@ export interface MessageInfo {
   parentMessageId?: string;
   createdAt: string;
   model?: string;
+  modelIdentity?: ModelIdentity;
   usage?: {
     input_tokens: number;
     output_tokens: number;

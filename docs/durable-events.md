@@ -43,7 +43,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -82,7 +82,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `turn_started` | `requestId`、`turnId` | `turn`、`model?` |
 | `turn_completed` | `requestId`、`turnId` | `turn`、`hasToolCalls` |
 | `turn_aborted` | `requestId`、`turnId` | `turn`、`reason` |
-| `model_request_started` | Request、Turn、`modelAttemptId` | `model`、`streaming` |
+| `model_request_started` | Request、Turn、`modelAttemptId` | `model`、可选 `modelIdentity`、`streaming` |
 | `model_request_completed` | Request、Turn、`modelAttemptId` | 完整模型 `response` |
 | `model_request_failed` | Request、Turn、`modelAttemptId` | `error` |
 | `model_request_aborted` | Request、Turn、`modelAttemptId` | `reason` |
@@ -352,6 +352,8 @@ Turn 结束；进程崩溃留下 started attempt 时，plan 返回
 一次 model attempt 表示包含内部 HTTP 重试的一次逻辑模型调用；反应式压缩后的
 重新调用会创建新的 attempt。高频 token delta 仍是临时流，完整响应在任何后续
 Turn 终态前持久化。
+新的 model attempt event 会保留逻辑 Provider 和 API adapter，避免恢复时丢失
+模型来源；缺少这些可选字段的旧事件仍然有效。
 活动 model attempt 的对账优先于同一 Turn 的权限和工具结果；模型终态提交后，
 plan 会继续暴露尚未消解的下一层恢复动作。
 
@@ -565,16 +567,17 @@ provenance 还要求前置 synthetic `turn_started`。`requestId` 和 `turnId` �
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER`，必须保持 fail-closed；该 API 不使用提示词
 绕过未知副作用。
 
-当前 writer 使用 schema v3，并为模型调用增加 `modelAttemptId` 及完整生命周期
-事件。v3 的 `tool_scheduled.modelAttemptId` 显式绑定产生该工具调用的 Model
-Attempt，`modelInput` 保存 provider 原始参数，`input` 保存参数修复后的执行值；
-projector 以 canonical JSON 校验工具 ID、名称和原始参数与已确认模型响应完全
-一致。即使流式工具在
+当前 writer 使用 schema v4。Schema v3 为模型调用增加了 `modelAttemptId` 和完整
+生命周期事件；v3 及后续版本的 `tool_scheduled.modelAttemptId` 显式绑定产生该
+工具调用的 Model Attempt，`modelInput` 保存 provider 原始参数，`input` 保存参数
+修复后的执行值。Schema v4 在 `model_request_started` 中增加可选的
+`modelIdentity` 对象。projector 以 canonical JSON 校验工具 ID、
+名称和原始参数与已确认模型响应完全一致。即使流式工具在
 `model_request_completed` 前开始调度，模型终态到达时也会反向校验已调度工具。
-Reader 可继续读取没有这些字段的 schema v2 日志，并允许在同一 Session 后续追加
-v3 batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 batch 不允许
-伪装包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前
-runtime 恢复。
+Reader 可继续读取 schema v2 和 v3 日志，并允许在同一 Session 后续追加 v4
+batch；schema 版本只能单调升级，旧版本 batch 不能追加到新版本之后，v2 不允许
+包含 v3 模型事件，v2/v3 也不允许包含 v4 Provider 身份。Schema v1 不会被静默
+推断，需要显式迁移后才能由当前 runtime 恢复。
 
 ### Store deadline 与协作取消
 

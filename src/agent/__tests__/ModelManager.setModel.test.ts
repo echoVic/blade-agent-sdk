@@ -33,6 +33,7 @@ describe('ModelManager.setModel', () => {
     const config: BladeConfig = {
       models: [
         createModelConfig({
+          providerId: 'gateway-primary',
           maxOutputTokens: 4096,
           requestTimeoutMs: 120_000,
           streamIdleTimeoutMs: 30_000,
@@ -51,6 +52,7 @@ describe('ModelManager.setModel', () => {
 
     expect(mockCreateChatServiceAsync).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        providerId: 'gateway-primary',
         maxOutputTokens: 4096,
         requestTimeoutMs: 120_000,
         streamIdleTimeoutMs: 30_000,

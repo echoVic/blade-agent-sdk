@@ -35,6 +35,7 @@ import type {
   ExecutionContext,
   InputSubmission,
   ISession,
+  ModelIdentity,
   PendingSessionInput,
   RuntimePatch,
   SessionHandoffErrorCode,
@@ -143,7 +144,7 @@ describe('root exports', () => {
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
     expect(ToolSideEffect.NON_IDEMPOTENT).toBe('non_idempotent');
-    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(3);
+    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(4);
     expect(DURABLE_EVENT_CURSOR_VERSION).toBe(1);
     expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
     expect(DurableEventType.MODEL_REQUEST_STARTED).toBe('model_request_started');
@@ -230,6 +231,9 @@ describe('root exports', () => {
     expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
+    expectTypeOf<ModelIdentity['api']>().toEqualTypeOf<
+      'anthropic' | 'openai' | 'azure-openai' | 'gemini' | 'deepseek' | 'openai-compatible'
+    >();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
@@ -261,6 +265,9 @@ describe('root exports', () => {
     expectTypeOf<DurableRequestRecoveryKind>().toEqualTypeOf<'turn' | 'pre_turn_request'>();
     expectTypeOf<DurableModelAttemptProjection['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>
+    >();
+    expectTypeOf<DurableModelAttemptProjection['modelIdentity']>().toEqualTypeOf<
+      ModelIdentity | undefined
     >();
     expectTypeOf<DurableModelOutcomeReconciliationCommand['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>

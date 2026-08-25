@@ -113,6 +113,11 @@ const validDrafts: readonly DurableEventDraft[] = [
     modelAttemptId,
     data: {
       model: 'claude-sonnet',
+      modelIdentity: {
+        provider: 'anthropic-primary',
+        api: 'anthropic',
+        model: 'claude-sonnet',
+      },
       streaming: true,
     },
   },
@@ -482,7 +487,35 @@ describe('durable event schemas', () => {
     ).toThrow(/requires durable event schema v3/);
   });
 
-  it('requires model-attempt identity and original input for schema-v3 tool schedules only', () => {
+  it('reads schema-v3 model attempts but reserves provider identity for schema v4', () => {
+    const modelStarted = validDrafts.find(
+      (draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED,
+    );
+    if (!modelStarted || modelStarted.type !== DurableEventType.MODEL_REQUEST_STARTED) {
+      throw new Error('Expected model_request_started fixture');
+    }
+    const { modelIdentity: _modelIdentity, ...legacyData } = modelStarted.data;
+    const envelope = {
+      ...modelStarted,
+      data: legacyData,
+      schemaVersion: 3,
+      eventId: EventId('schema-v3-model-event'),
+      sequence: 1,
+      sessionId: 'schema-v3-session',
+      recordedAt: '2026-08-22T12:00:00.000Z',
+      occurredAt: '2026-08-22T12:00:00.000Z',
+    } as const;
+
+    expect(parseDurableEventEnvelope(envelope).schemaVersion).toBe(3);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        data: modelStarted.data,
+      }),
+    ).toThrow(/provider identity requires durable event schema v4/);
+  });
+
+  it('requires model-attempt identity and original input for schema-v3 and later tools', () => {
     const toolScheduled = validDrafts.find(
       (draft) => draft.type === DurableEventType.TOOL_SCHEDULED,
     );

@@ -1,4 +1,5 @@
 import { SdkError } from '../../errors/SdkError.js';
+import type { ModelIdentity } from '../../services/ModelIdentity.js';
 import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
 import {
   type CommandId,
@@ -91,6 +92,7 @@ export interface DurableToolAttemptProjection {
 export interface DurableModelAttemptProjection {
   readonly modelAttemptId: ModelAttemptId;
   readonly model: string;
+  readonly modelIdentity?: ModelIdentity;
   readonly streaming: boolean;
   readonly status: DurableModelAttemptStatus;
   readonly response?: DurableModelResponse;
@@ -198,6 +200,7 @@ interface MutableToolAttemptProjection {
 interface MutableModelAttemptProjection {
   modelAttemptId: ModelAttemptId;
   model: string;
+  modelIdentity?: ModelIdentity;
   streaming: boolean;
   status: DurableModelAttemptStatus;
   response?: DurableModelResponse;
@@ -396,7 +399,7 @@ function assertToolMatchesModelAttempt(
   modelInput: JsonValue | undefined,
 ): void {
   if (!modelAttemptId) {
-    if (event.schemaVersion >= DURABLE_EVENT_SCHEMA_VERSION) {
+    if (event.schemaVersion >= 3) {
       invalid(event, `Tool call ${toolCallId} has no model attempt identity`);
     }
     return;
@@ -602,6 +605,9 @@ function cloneModelAttempt(
 ): DurableModelAttemptProjection {
   return {
     ...attempt,
+    ...(attempt.modelIdentity
+      ? { modelIdentity: { ...attempt.modelIdentity } }
+      : {}),
   };
 }
 
@@ -951,6 +957,9 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       const attempt: MutableModelAttemptProjection = {
         modelAttemptId: event.modelAttemptId,
         model: event.data.model,
+        ...(event.data.modelIdentity
+          ? { modelIdentity: { ...event.data.modelIdentity } }
+          : {}),
         streaming: event.data.streaming,
         status: 'started',
       };

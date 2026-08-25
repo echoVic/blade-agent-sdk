@@ -94,6 +94,8 @@ export interface PendingSessionInput {
 }
 
 export interface ProviderConfig {
+  /** Logical provider ID. Defaults to `type`. */
+  id?: string;
   type: ProviderType;
   apiKey?: string;
   baseUrl?: string;

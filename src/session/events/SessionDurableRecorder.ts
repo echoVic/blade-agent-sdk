@@ -11,6 +11,7 @@ import type {
   UserMessageContent,
 } from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
+import type { ModelIdentity } from '../../services/ModelIdentity.js';
 import type {
   ToolExecutionLifecycle,
   ToolExecutionStartedLifecycle,
@@ -404,6 +405,7 @@ export class SessionDurableRecorder implements
   async onModelRequestStarting(input: {
     readonly turn: number;
     readonly model: string;
+    readonly modelIdentity?: ModelIdentity;
     readonly streaming: boolean;
   }): Promise<ModelRequestLifecycle> {
     this.assertNewWorkAllowed();
@@ -427,6 +429,7 @@ export class SessionDurableRecorder implements
           modelAttemptId: attempt.modelAttemptId,
           data: {
             model: input.model,
+            ...(input.modelIdentity ? { modelIdentity: input.modelIdentity } : {}),
             streaming: input.streaming,
           },
         },

@@ -1,6 +1,10 @@
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type { Message, ToolCall as ChatToolCall } from '../services/ChatServiceInterface.js';
+import type {
+  Message,
+  ModelIdentity,
+  ToolCall as ChatToolCall,
+} from '../services/ChatServiceInterface.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
@@ -322,6 +326,7 @@ export class ContextManager {
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
+      modelIdentity?: ModelIdentity;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
       reasoningContent?: string;

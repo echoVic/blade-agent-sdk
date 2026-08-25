@@ -393,6 +393,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
                 ctx.content,
                 getLastUuid(),
                 {
+                  modelIdentity: ctx.modelIdentity,
                   reasoningContent: ctx.reasoningContent,
                   toolCalls: ctx.toolCalls,
                 },

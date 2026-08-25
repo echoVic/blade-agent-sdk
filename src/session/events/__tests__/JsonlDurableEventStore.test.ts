@@ -396,7 +396,7 @@ describe('JsonlDurableEventStore', () => {
     ]);
   });
 
-  it('reads schema-v2 batches and appends new schema-v3 events', async () => {
+  it('reads schema-v2 batches and appends new schema-v4 events', async () => {
     const sessionId = SessionId('session-schema-upgrade');
     const filePath = store.getFilePath(sessionId);
     const timestamp = '2026-08-22T12:00:00.000Z';
@@ -431,10 +431,10 @@ describe('JsonlDurableEventStore', () => {
       [
         {
           type: DurableEventType.REQUEST_ACCEPTED,
-          requestId: RequestId('schema-v3-request'),
-          commandId: CommandId('schema-v3-command'),
+          requestId: RequestId('schema-v4-request'),
+          commandId: CommandId('schema-v4-command'),
           data: {
-            inputId: InputId('schema-v3-input'),
+            inputId: InputId('schema-v4-input'),
             input: 'continue',
             priority: 'next',
           },
@@ -443,9 +443,9 @@ describe('JsonlDurableEventStore', () => {
       { expectedLastSequence: EventSequence(1) },
     );
 
-    expect(appended.events[0]?.schemaVersion).toBe(3);
+    expect(appended.events[0]?.schemaVersion).toBe(4);
     expect((await store.read(sessionId)).events.map((event) => event.schemaVersion)).toEqual([
-      2, 3,
+      2, 4,
     ]);
 
     await appendFile(
@@ -463,7 +463,7 @@ describe('JsonlDurableEventStore', () => {
             sequence: 3,
             sessionId,
             type: DurableEventType.REQUEST_STARTED,
-            requestId: RequestId('schema-v3-request'),
+            requestId: RequestId('schema-v4-request'),
             data: {},
             recordedAt: timestamp,
             occurredAt: timestamp,

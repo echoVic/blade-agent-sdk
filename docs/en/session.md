@@ -744,6 +744,8 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 `ProviderConfig.requestTimeoutMs` defaults to `600000`, and
 `ProviderConfig.streamIdleTimeoutMs` defaults to `300000`. See
 [Providers and Logging](./providers) for timeout semantics.
+`ProviderConfig.id` optionally identifies the logical provider independently
+from its wire-protocol `type`.
 
 ## ISession
 

@@ -32,7 +32,7 @@ Types:
 
 `AgentDefinition`, `ExecutionContext`, `ForkOptions`, `ForkSessionOptions`,
 `ForkSessionResult`, `HookCallback`, `HookInput`, `HookOutput`,
-`InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelInfo`,
+`InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelIdentity`, `ModelInfo`,
 `PendingSessionInput`, `PromptResult`, `ProviderConfig`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionTool`, `StreamMessage`,
