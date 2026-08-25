@@ -23,6 +23,8 @@ export default defineConfig({
     'node/index': 'src/node/index.ts',
     'protocol/index': 'src/protocol/index.ts',
     'server/index': 'src/server/index.ts',
+    'server/postgres': 'src/server/postgres.ts',
+    'server/testing/index': 'src/server/testing/index.ts',
     'session/index': 'src/session/index.ts',
     'tools/index': 'src/tools/index.ts',
   },

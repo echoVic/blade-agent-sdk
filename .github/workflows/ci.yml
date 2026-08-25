@@ -14,6 +14,22 @@ jobs:
     name: Verify (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      TEST_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/blade_agent_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: blade_agent_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blade_agent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     strategy:
       matrix:
         node-version: ['22']
