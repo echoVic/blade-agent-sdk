@@ -9,6 +9,7 @@ const publicDocuments = [
   'blade-agent-sdk.md',
   'providers.md',
   'session.md',
+  'server-runtime.md',
   'durable-events.md',
   'tools.md',
   'permissions.md',

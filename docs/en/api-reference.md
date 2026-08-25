@@ -15,7 +15,8 @@ split npm dependencies into separate packages.
 | `@blade-ai/agent-sdk/node` | Local Node.js process | Entry with local tools, workspace discovery, and Node host adapters enabled |
 | `@blade-ai/agent-sdk/session` | Node.js server | Lower-level Session functions and types using the server profile |
 | `@blade-ai/agent-sdk/core` | Browser and Node.js | Browser-safe contracts, constants, and types |
-| `@blade-ai/agent-sdk/browser` | Browser | Core contracts plus stubs for server-only functions |
+| `@blade-ai/agent-sdk/browser` | Browser | `AgentClient`, protocol types, core contracts, and stubs for server-only functions |
+| `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Versioned command/event schemas, parsers, and protocol errors |
 | `@blade-ai/agent-sdk/tools` | Browser and Node.js | Tool authoring, catalog, and execution contracts |
 | `@blade-ai/agent-sdk/middleware` | Browser and Node.js | Onion composition, model/tool middleware, and plugin definitions |
 
@@ -41,9 +42,15 @@ Types:
 `PendingSessionInput`, `PromptResult`, `ProviderAdapter`, `ProviderConfig`,
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
-`SessionHandoffResult`, `SessionOptions`, `SessionTool`, `StreamMessage`,
+`SessionHandoffResult`, `SessionOptions`, `SessionRepository`, `SessionTool`, `StreamMessage`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
 `ToolDefinition`, and `ToolResult`.
+
+Repository support types:
+
+`SessionRepositoryMessageMetadata`, `SessionRepositoryCompactionMetadata`,
+`SessionRepositorySubagentInfo`, `SessionRepositorySubagentRef`,
+`SessionRepositoryHealth`, and `SessionRepositoryStorageStats`.
 
 Errors:
 
@@ -70,6 +77,50 @@ Constants:
 - `ToolUseId`
 
 These ID exports are branded identifiers, not arbitrary strings.
+
+## Server Runtime
+
+Runtime:
+
+- `AgentServer`
+- `AgentClient`
+- `RemoteAgentSession`
+- `InMemoryAgentServerStore`
+- `TenantAdmissionController`
+- `OpenTelemetryAgentServerTelemetry`
+- `JsonlSessionRepository` (`/node` only)
+- `AgentProtocolError`
+- `AGENT_PROTOCOL_VERSION`
+- `AgentCommandType`
+- `parseAgentCommand`
+- `parseAgentCommandResult`
+- `parseAgentEventCursor`
+- `parseAgentServerEvent`
+
+Types:
+
+- `AgentServerOptions`
+- `AgentServerSessionContext`
+- `AgentServerStore`
+- `AgentCommandClaim`
+- `AgentServerSessionRecord`
+- `AgentServerTelemetry`
+- `AgentServerAuditRecord`
+- `AgentClientOptions`
+- `AgentClientCommandOptions`
+- `AgentClientEventOptions`
+- `AgentCommand`
+- `AgentCommandResult`
+- `AgentServerEvent`
+- `AgentEventCursor`
+- `AgentEventPage`
+- `AgentPrincipal`
+- `AgentServerScope`
+- `AgentProtocolCapabilities`
+- `AgentClientCapabilities`
+- `AgentProtocolErrorCode`
+
+See [Server Runtime](./server-runtime) for deployment and failure semantics.
 
 ## Durable Events
 

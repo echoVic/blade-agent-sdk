@@ -127,7 +127,9 @@ const weather = defineTool({
 
 ```ts
 import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
-import { createSession as createCodingSession } from '@blade-ai/agent-sdk/node';
+import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
+import { AgentClient } from '@blade-ai/agent-sdk/browser';
+import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
@@ -135,7 +137,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 
 - 根入口与 `/server`：服务端 Agent；只加载显式传入的工具、Agent、middleware 和 MCP，不扫描宿主工作区
 - `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
-- `/browser`：浏览器安全协议视图；执行 API 为明确的 server-only stub
+- `/browser`：browser-safe `AgentClient`、协议视图和明确的 server-only stub
+- `/protocol`：browser-safe 版本化 command/event 契约与 strict parser
 - `/core`：浏览器安全的协议、常量和类型
 - `/tools`：浏览器安全的工具定义原语
 - `/middleware`：浏览器安全的 middleware 与插件契约
@@ -145,7 +148,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 
 ## 持久化与 Workspace
 
-未配置 `storagePath` 时，Session 只保存在内存中：
+未配置 `SessionRepository` 时，Session 只保存在内存中。`/node` 入口会把
+`storagePath` 转换成本地 JSONL repository：
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/node';
@@ -165,12 +169,17 @@ const session = await createSession({
 });
 ```
 
+根入口和 `/server` 不会把 `storagePath` 解释成本机访问权限；服务端应用必须显式
+注入 `sessionRepository`。HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
+审批和遥测见 [Server Runtime](./docs/server-runtime.md)。
+
 workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent 仍可工作，但本地文件工具和项目级发现需要具备文件系统能力的 workspace。
 
 ## 文档
 
 - [中文文档](./docs/index.md)
 - [Middleware 与插件](./docs/middleware.md)
+- [Server Runtime](./docs/server-runtime.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)
