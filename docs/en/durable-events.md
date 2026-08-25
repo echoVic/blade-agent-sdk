@@ -47,7 +47,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -87,7 +87,7 @@ are rejected before append.
 | `turn_started` | `requestId`, `turnId` | `turn`, `model?` |
 | `turn_completed` | `requestId`, `turnId` | `turn`, `hasToolCalls` |
 | `turn_aborted` | `requestId`, `turnId` | `turn`, `reason` |
-| `model_request_started` | Request, Turn, `modelAttemptId` | `model`, optional `provider` / `api`, `streaming` |
+| `model_request_started` | Request, Turn, `modelAttemptId` | `model`, optional `modelIdentity`, `streaming` |
 | `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
 | `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
 | `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
@@ -608,18 +608,21 @@ execution started raises
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER` and remains fail-closed; the API does not use
 prompting to bypass an unknown side effect.
 
-The current writer uses schema v3, which adds `modelAttemptId` and the complete
-model-request lifecycle. In v3, `tool_scheduled.modelAttemptId` explicitly
-identifies the Model Attempt that produced the call, `modelInput` preserves the
-provider's original arguments, and `input` holds repaired execution input. The
-projector uses canonical JSON to match the tool ID, name, and original
-arguments to the confirmed model response. If streaming dispatches a tool before
+The current writer uses schema v4. Schema v3 added `modelAttemptId` and the
+complete model-request lifecycle. In v3 and later,
+`tool_scheduled.modelAttemptId` explicitly identifies the Model Attempt that
+produced the call, `modelInput` preserves the provider's original arguments,
+and `input` holds repaired execution input. Schema v4 adds the optional
+`modelIdentity` object to `model_request_started`. The projector
+uses canonical JSON to match the tool ID, name, and original arguments to the
+confirmed model response. If streaming dispatches a tool before
 `model_request_completed`, the terminal model event validates all previously
-scheduled tools when it arrives. Readers remain compatible with schema-v2 logs
-that lack these fields and may append later v3 batches to the same Session. Schema
-versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
-cannot masquerade as containing v3 model events. Version 1 logs are not
-inferred silently and must be migrated before this runtime can resume them.
+scheduled tools when it arrives. Readers remain compatible with schema-v2 and
+schema-v3 logs and may append later v4 batches to the same Session. Schema
+versions may only increase: an older batch after a newer one is corrupt, v2
+cannot contain v3 model events, and v2/v3 cannot contain v4 provider identity.
+Version 1 logs are not inferred silently and must be migrated before this
+runtime can resume them.
 
 ### Store deadlines and cooperative cancellation
 

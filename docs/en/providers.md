@@ -38,7 +38,8 @@ interface ProviderConfig {
 
 `type` selects the wire-protocol adapter. `id` identifies the logical provider
 and defaults to `type`. Set `id` for OpenAI-compatible gateways when provider
-identity must survive model switches or persisted-session resume:
+identity must survive model switches or persisted-session resume. `id` never
+changes adapter selection:
 
 ```ts
 provider: {

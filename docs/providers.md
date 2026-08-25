@@ -30,7 +30,7 @@ interface ProviderConfig {
 
 `type` 选择 wire protocol adapter；`id` 标识逻辑 Provider，默认等于
 `type`。OpenAI-compatible 网关如需在模型切换和持久化 Session 恢复后保留
-真实 Provider 身份，应显式设置 `id`：
+真实 Provider 身份，应显式设置 `id`；`id` 不会改变 adapter 选择：
 
 ```ts
 provider: {
