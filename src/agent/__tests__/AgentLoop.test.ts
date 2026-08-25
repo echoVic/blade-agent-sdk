@@ -260,9 +260,12 @@ describe('agentLoop', () => {
 
       expect(onModelRequestStarting).toHaveBeenCalledWith({
         turn: 1,
-        provider: 'openai-primary',
-        api: 'openai',
         model: 'test-model',
+        modelIdentity: {
+          provider: 'openai-primary',
+          api: 'openai',
+          model: 'test-model',
+        },
         streaming: false,
       });
       expect(onCompleted).toHaveBeenCalledWith(
@@ -1270,9 +1273,11 @@ describe('agentLoop', () => {
           .toArray()
           .find((message) => message.role === 'assistant'),
       ).toMatchObject({
-        provider: 'openai-primary',
-        api: 'openai',
-        model: 'test-model',
+        modelIdentity: {
+          provider: 'openai-primary',
+          api: 'openai',
+          model: 'test-model',
+        },
       });
     });
 

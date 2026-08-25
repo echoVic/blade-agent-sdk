@@ -94,6 +94,30 @@ describe('VercelAIChatService', () => {
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
   });
 
+  it('does not let a logical provider ID change the configured API adapter', async () => {
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai-compatible',
+        providerId: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.example.test/v1',
+        model: 'deepseek-chat',
+      },
+      NOOP_LOGGER,
+    );
+
+    await service.ready();
+
+    expect(mockCreateOpenAICompatible).toHaveBeenCalledWith({
+      name: 'deepseek',
+      apiKey: 'test-key',
+      baseURL: 'https://gateway.example.test/v1',
+      headers: undefined,
+    });
+    expect(mockCompatibleModelFactory).toHaveBeenCalledWith('deepseek-chat');
+    expect(mockCreateDeepSeek).not.toHaveBeenCalled();
+  });
+
   it('uses DeepSeek beta endpoint and strict sanitized tools when strictTools is enabled', async () => {
     mockGenerateText.mockResolvedValue({
       text: '',
@@ -201,9 +225,11 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: '',
         reasoningContent: 'need a tool',
-        provider: 'deepseek',
-        api: 'deepseek',
-        model: 'deepseek-v4-pro',
+        modelIdentity: {
+          provider: 'deepseek',
+          api: 'deepseek',
+          model: 'deepseek-v4-pro',
+        },
         tool_calls: [
           {
             id: 'call_keep',
@@ -233,9 +259,11 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: 'intermediate answer',
         reasoningContent: 'ignored reasoning',
-        provider: 'deepseek',
-        api: 'deepseek',
-        model: 'deepseek-v4-pro',
+        modelIdentity: {
+          provider: 'deepseek',
+          api: 'deepseek',
+          model: 'deepseek-v4-pro',
+        },
       },
       { role: 'user', content: 'continue' },
     ]);
@@ -294,9 +322,11 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: 'foreign answer',
         reasoningContent: 'foreign reasoning',
-        provider: 'anthropic',
-        api: 'anthropic',
-        model: 'claude-sonnet',
+        modelIdentity: {
+          provider: 'anthropic',
+          api: 'anthropic',
+          model: 'claude-sonnet',
+        },
         tool_calls: [
           {
             id: 'call_search',
@@ -315,9 +345,11 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: 'same answer',
         reasoningContent: 'same reasoning',
-        provider: 'openai-primary',
-        api: 'openai',
-        model: 'gpt-5',
+        modelIdentity: {
+          provider: 'openai-primary',
+          api: 'openai',
+          model: 'gpt-5',
+        },
       },
       {
         role: 'assistant',
@@ -419,7 +451,7 @@ describe('VercelAIChatService', () => {
         role: 'assistant',
         content: 'answer',
         reasoningContent: 'reasoning',
-        ...source,
+        modelIdentity: source,
       },
       { role: 'user', content: 'continue' },
     ]);

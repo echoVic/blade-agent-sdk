@@ -144,7 +144,7 @@ describe('root exports', () => {
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
     expect(ToolSideEffect.NON_IDEMPOTENT).toBe('non_idempotent');
-    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(3);
+    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(4);
     expect(DURABLE_EVENT_CURSOR_VERSION).toBe(1);
     expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
     expect(DurableEventType.MODEL_REQUEST_STARTED).toBe('model_request_started');
@@ -266,8 +266,8 @@ describe('root exports', () => {
     expectTypeOf<DurableModelAttemptProjection['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>
     >();
-    expectTypeOf<DurableModelAttemptProjection['provider']>().toEqualTypeOf<
-      string | undefined
+    expectTypeOf<DurableModelAttemptProjection['modelIdentity']>().toEqualTypeOf<
+      ModelIdentity | undefined
     >();
     expectTypeOf<DurableModelOutcomeReconciliationCommand['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>

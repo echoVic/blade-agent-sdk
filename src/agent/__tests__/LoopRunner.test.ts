@@ -397,6 +397,10 @@ describe('LoopRunner', () => {
           chat: vi.fn(),
           streamChat,
           getConfig: () => ({
+            provider: 'openai-compatible' as const,
+            providerId: 'test-provider',
+            apiKey: 'test-key',
+            baseUrl: 'https://provider.example.test/v1',
             model: 'test-model',
             maxContextTokens: 128000,
           }),

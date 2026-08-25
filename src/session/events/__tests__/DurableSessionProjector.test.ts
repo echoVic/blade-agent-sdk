@@ -361,7 +361,7 @@ describe('DurableSessionProjector', () => {
     });
     const projector = new DurableSessionProjector().apply([legacy, upgraded]);
     expect(projector.snapshot()).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
       activeRequest: { requestId },
     });
 
@@ -379,7 +379,7 @@ describe('DurableSessionProjector', () => {
           occurredAt: timestamp,
         }),
       ]),
-    ).toThrow(/schema regressed from v3 to v2/);
+    ).toThrow(/schema regressed from v4 to v2/);
   });
 
   it('continues to project schema-v2 tool events without model attempt metadata', () => {
@@ -542,8 +542,11 @@ describe('DurableSessionProjector', () => {
         modelAttemptId,
         data: {
           model: 'claude-sonnet',
-          provider: 'anthropic-primary',
-          api: 'anthropic',
+          modelIdentity: {
+            provider: 'anthropic-primary',
+            api: 'anthropic',
+            model: 'claude-sonnet',
+          },
           streaming: true,
         },
       },
@@ -552,8 +555,11 @@ describe('DurableSessionProjector', () => {
     expect(started.activeRequest?.activeTurn?.activeModelAttempt).toMatchObject({
       modelAttemptId,
       model: 'claude-sonnet',
-      provider: 'anthropic-primary',
-      api: 'anthropic',
+      modelIdentity: {
+        provider: 'anthropic-primary',
+        api: 'anthropic',
+        model: 'claude-sonnet',
+      },
       streaming: true,
       status: 'started',
     });
