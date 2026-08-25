@@ -136,6 +136,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
+- `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, transcripts, and durable journals
+- `/server/testing`: framework-independent Runtime Store conformance suite
 - `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
 - `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
 - `/protocol`: browser-safe versioned command/event contracts and strict parsers
@@ -148,8 +150,9 @@ Importing a server-only entry in a browser resolves to a stub that throws a clea
 
 ## Persistence and Workspace
 
-Sessions are ephemeral unless a `SessionRepository` is configured. The `/node`
-entry converts `storagePath` into a local JSONL repository:
+Sessions are ephemeral unless a read-side `SessionRepository` and write-side
+`SessionEventStore` are configured. The `/node` entry converts `storagePath`
+into one local JSONL `SessionPersistence` implementation:
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/node';
@@ -170,9 +173,11 @@ const session = await createSession({
 ```
 
 The root and `/server` entries never interpret `storagePath` as local access.
-Server applications must inject `sessionRepository` explicitly. See
+Server applications must inject `sessionRepository` plus `sessionEventStore`,
+or configure one shared `runtimeStore`. See
 [Server Runtime](./docs/en/server-runtime.md) for the HTTP/SSE server,
 browser client, multi-tenant storage, idempotency, approvals, and telemetry.
+For multi-instance storage, see [Runtime Store](./docs/en/runtime-store.md).
 
 The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 
@@ -181,6 +186,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 - [English documentation](./docs/en/index.md)
 - [Middleware and plugins](./docs/en/middleware.md)
 - [Server Runtime](./docs/en/server-runtime.md)
+- [Runtime Store](./docs/en/runtime-store.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)

@@ -14,8 +14,8 @@ SSE event stream。浏览器通过 `AgentClient` 调用，不直接加载模型 
 | `@blade-ai/agent-sdk/node` | 本机 JSONL repository、文件、Shell、Sandbox 等 Node adapter |
 
 `/server` 不会根据 `storagePath` 隐式访问本机文件。需要恢复 Session 时，宿主必须
-显式传入 `sessionRepository`；`requirePersistentSessions: true` 可使缺少该端口
-的配置 fail-closed。
+显式传入 `sessionRepository` 和 `sessionEventStore`，或提供一个
+`runtimeStore`；`requirePersistentSessions: true` 会使不完整配置 fail-closed。
 
 ## 创建服务端
 
@@ -54,6 +54,7 @@ const server = new AgentServer({
       },
       model: 'gpt-4o-mini',
       sessionRepository: repository,
+      sessionEventStore: repository,
       defaultContext: {
         metadata: { tenantId: principal.tenantId },
       },
@@ -69,9 +70,12 @@ export function handleAgentRequest(request: Request): Promise<Response> {
 }
 ```
 
-JSONL adapter 适合单机 Node.js 部署。多实例服务必须使用共享
-`SessionRepository` 和共享 `AgentServerStore`；repository 还应按认证得到的
-`tenantId` 分区。客户端 body 中不存在可信 tenant 字段。
+JSONL adapter 适合单机 Node.js 部署。多实例服务必须使用一个共享
+`runtimeStore`，或共享的 `SessionRepository`、`SessionEventStore` 和
+`AgentServerStore`；所有 Store 都必须按认证得到的 `tenantId` 分区。客户端
+body 中不存在可信 tenant 字段。
+
+PostgreSQL 单一事实源配置见 [Runtime Store](./runtime-store)。
 
 ## SessionExecutor
 
@@ -111,6 +115,10 @@ const server = new AgentServer({
   authenticate,
 });
 ```
+
+同时配置自定义 executor 和 `runtimeStore` 时，每个 command 都会通过
+`SessionExecutorCommandContext.runtimeStore` 得到认证 tenant 对应的
+`RuntimeTenantStore`。自定义 executor 必须将它作为持久化 authority。
 
 自定义 executor 必须：
 
@@ -235,7 +243,8 @@ SSE 使用 pull-based `ReadableStream`，每次 pull 最多写一个 frame，
 
 | Port | 事实范围 |
 |------|---------|
-| `SessionRepository` | transcript append、Session state/messages projection、fork 与 list |
+| `SessionRepository` | transcript state/messages 的只读 projection、fork 与 list |
+| `SessionEventStore` | transcript domain event append |
 | `AgentServerStore` | tenant Session records、command 幂等、远程 event replay |
 | `DurableEventStore` | Request/Turn/model/tool 生命周期 journal 与恢复 |
 

@@ -12,6 +12,8 @@ split npm dependencies into separate packages.
 |-------|---------|----------|
 | `@blade-ai/agent-sdk` | Node.js server | Server-first Session API; only explicit tools, agents, middleware, and MCP servers are loaded |
 | `@blade-ai/agent-sdk/server` | Node.js server | Server entry without implicit local host access, equivalent to root |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
+| `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
 | `@blade-ai/agent-sdk/node` | Local Node.js process | Entry with local tools, workspace discovery, and Node host adapters enabled |
 | `@blade-ai/agent-sdk/session` | Node.js server | Lower-level Session functions and types using the server profile |
 | `@blade-ai/agent-sdk/core` | Browser and Node.js | Browser-safe contracts, constants, and types |
@@ -42,7 +44,8 @@ Types:
 `PendingSessionInput`, `PromptResult`, `ProviderAdapter`, `ProviderConfig`,
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
-`SessionHandoffResult`, `SessionOptions`, `SessionRepository`, `SessionTool`, `StreamMessage`,
+`SessionHandoffResult`, `SessionOptions`, `SessionRepository`,
+`SessionEventStore`, `SessionPersistence`, `SessionTool`, `StreamMessage`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
 `ToolDefinition`, and `ToolResult`.
 
@@ -87,6 +90,8 @@ Runtime:
 - `AgentClient`
 - `RemoteAgentSession`
 - `InMemoryAgentServerStore`
+- `PostgresRuntimeStore`
+- `RuntimeStoreError`
 - `TenantAdmissionController`
 - `OpenTelemetryAgentServerTelemetry`
 - `JsonlSessionRepository` (`/node` only)
@@ -108,6 +113,18 @@ Types:
 - `SessionExecutorReadResult`
 - `InProcessSessionExecutorOptions`
 - `AgentServerStore`
+- `RuntimeStore`
+- `RuntimeTenantStore`
+- `RuntimeCommandCommit`
+- `RuntimeCommitResult`
+- `RuntimeDomainEvent`
+- `RuntimeDomainEventDraft`
+- `RuntimeDomainEventPage`
+- `RuntimeEffectIntent`
+- `RuntimeEffectRecord`
+- `RuntimeEffectStatus`
+- `RuntimeProjectionCheckpoint`
+- `RuntimeProjectionRecord`
 - `AgentCommandClaim`
 - `AgentServerSessionRecord`
 - `AgentServerTelemetry`
@@ -125,8 +142,10 @@ Types:
 - `AgentProtocolCapabilities`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
+- `assertRuntimeStoreConformance` (`/server/testing`)
 
-See [Server Runtime](./server-runtime) for deployment and failure semantics.
+See [Server Runtime](./server-runtime) and [Runtime Store](./runtime-store) for
+deployment and failure semantics.
 
 ## Durable Events
 

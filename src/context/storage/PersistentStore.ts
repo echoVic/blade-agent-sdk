@@ -10,7 +10,7 @@ import { JsonlSessionStore } from '../../session/SessionStore.js';
 import {
   NoopSessionRepository,
   type PersistedToolUse,
-  type SessionRepository,
+  type SessionPersistence,
 } from '../../session/SessionRepository.js';
 import {
   type InputId,
@@ -81,7 +81,7 @@ function parseToolCallArguments(value: string): JsonValue {
  * 持久化存储实现 - JSONL 格式
  * 存储路径: {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export class PersistentStore implements SessionRepository {
+export class PersistentStore implements SessionPersistence {
   private readonly storageRoot: string;
   private readonly projectPath?: string;
   private readonly maxSessions: number;

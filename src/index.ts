@@ -162,6 +162,8 @@ export type {
   SendOptions,
   SessionHandoffResult,
   SessionOptions,
+  SessionEventStore,
+  SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,

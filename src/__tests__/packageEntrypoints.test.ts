@@ -32,6 +32,15 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/server/index.js',
       },
+      './server/postgres': {
+        types: './dist/server/postgres.d.ts',
+        browser: './dist/browser/server-only-stub.js',
+        import: './dist/server/postgres.js',
+      },
+      './server/testing': {
+        types: './dist/server/testing/index.d.ts',
+        import: './dist/server/testing/index.js',
+      },
       './session': {
         types: './dist/session/index.d.ts',
         browser: './dist/browser/server-only-stub.js',
@@ -60,6 +69,8 @@ describe('package entrypoints', () => {
       'src/browser/server-only-stub.ts',
       'src/protocol/index.ts',
       'src/server/index.ts',
+      'src/server/postgres.ts',
+      'src/server/testing/index.ts',
       'src/tools/index.ts',
       'src/node/index.ts',
       'src/middleware/index.ts',
@@ -96,6 +107,9 @@ describe('package entrypoints', () => {
       /server-only.*JsonlDurableEventStore/,
     );
     expect(() => new serverOnly.AgentServer()).toThrow(/server-only.*AgentServer/);
+    expect(() => new serverOnly.PostgresRuntimeStore()).toThrow(
+      /server-only.*PostgresRuntimeStore/,
+    );
     expect(() => new serverOnly.InProcessSessionExecutor()).toThrow(
       /server-only.*InProcessSessionExecutor/,
     );
@@ -110,6 +124,7 @@ describe('package entrypoints', () => {
     expect(node.createSession).not.toBe(server.createSession);
     expect(server.AgentServer).toBeTypeOf('function');
     expect(server.InProcessSessionExecutor).toBeTypeOf('function');
+    expect(server.PostgresRuntimeStore).toBeTypeOf('function');
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { SessionRepository } from '../../session/SessionRepository.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { PersistentStore } from '../storage/PersistentStore.js';
 import { ContextManager } from '../ContextManager.js';
@@ -13,6 +14,39 @@ function createWorkspaceRoot(): string {
 }
 
 describe('ContextManager', () => {
+  it('rejects a read-only repository when persistence is enabled', () => {
+    const readOnlyRepository: SessionRepository = {
+      async initialize() {},
+      async loadState() {
+        return null;
+      },
+      async loadMessages() {
+        return [];
+      },
+      async forkState() {
+        return null;
+      },
+      async listSessions() {
+        return [];
+      },
+      async getSessionSummary() {
+        return null;
+      },
+      async deleteSession() {},
+      async cleanupOldSessions() {},
+      async getStorageStats() {
+        return { totalSessions: 0, totalSize: 0 };
+      },
+      async checkStorageHealth() {
+        return { isAvailable: true, canWrite: false };
+      },
+    };
+
+    expect(() => new ContextManager({}, readOnlyRepository)).toThrow(
+      /both SessionRepository and SessionEventStore/,
+    );
+  });
+
   it('should hydrate conversation history from the unified session store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);

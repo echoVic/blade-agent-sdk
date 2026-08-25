@@ -82,6 +82,12 @@ export class InMemoryAgentServerStore {
   }
 }
 
+export class PostgresRuntimeStore {
+  constructor(..._args: unknown[]) {
+    serverOnly('PostgresRuntimeStore');
+  }
+}
+
 export class TenantAdmissionController {
   constructor(..._args: unknown[]) {
     serverOnly('TenantAdmissionController');

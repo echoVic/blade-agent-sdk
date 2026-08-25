@@ -136,6 +136,8 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - 根入口与 `/server`：服务端 Agent；提供可注入 `SessionExecutor` 的 `AgentServer`，只加载显式传入的能力
+- `/server/postgres`：共享 PostgreSQL Runtime Store，统一承载 command、event、effect、projection、transcript 和 durable journal
+- `/server/testing`：不依赖测试框架的 Runtime Store conformance suite
 - `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
 - `/browser`：browser-safe `AgentClient`、协议视图和明确的 server-only stub
 - `/protocol`：browser-safe 版本化 command/event 契约与 strict parser
@@ -148,8 +150,9 @@ import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 
 ## 持久化与 Workspace
 
-未配置 `SessionRepository` 时，Session 只保存在内存中。`/node` 入口会把
-`storagePath` 转换成本地 JSONL repository：
+未同时配置只读 `SessionRepository` 与只写 `SessionEventStore` 时，Session
+只保存在内存中。`/node` 入口会把 `storagePath` 转换为同时实现两者的本地
+JSONL `SessionPersistence`：
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/node';
@@ -170,8 +173,10 @@ const session = await createSession({
 ```
 
 根入口和 `/server` 不会把 `storagePath` 解释成本机访问权限；服务端应用必须显式
-注入 `sessionRepository`。HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
+注入 `sessionRepository` 和 `sessionEventStore`，或配置共享 `runtimeStore`。
+HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
 审批和遥测见 [Server Runtime](./docs/server-runtime.md)。
+多实例持久化见 [Runtime Store](./docs/runtime-store.md)。
 
 workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent 仍可工作，但本地文件工具和项目级发现需要具备文件系统能力的 workspace。
 
@@ -180,6 +185,7 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 - [中文文档](./docs/index.md)
 - [Middleware 与插件](./docs/middleware.md)
 - [Server Runtime](./docs/server-runtime.md)
+- [Runtime Store](./docs/runtime-store.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)

@@ -5,10 +5,13 @@ import type {
   ModelIdentity,
   ToolCall as ChatToolCall,
 } from '../services/ChatServiceInterface.js';
+import { ConfigError } from '../errors/ConfigError.js';
 import type { SessionState, SessionSummary } from '../session/SessionStore.js';
 import {
+  isSessionEventStore,
   NoopSessionRepository,
   type PersistedToolUse,
+  type SessionEventStore,
   type SessionRepository,
 } from '../session/SessionRepository.js';
 import type { ContentPart } from '../services/ChatServiceInterface.js';
@@ -54,6 +57,7 @@ function isUsageMetadata(
 export class ContextManager {
   private readonly memory: MemoryStore;
   private readonly repository: SessionRepository;
+  private readonly eventStore: SessionEventStore;
   private readonly cache: CacheStore;
   private readonly compressor: ContextCompressor;
   private readonly filter: ContextFilter;
@@ -66,9 +70,22 @@ export class ContextManager {
 
   constructor(
     options: Partial<ContextManagerOptions> = {},
-    repository: SessionRepository = new NoopSessionRepository(),
+    repository?: SessionRepository,
+    eventStore?: SessionEventStore,
   ) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
+    const compatibleEventStore = eventStore
+      ?? (isSessionEventStore(repository) ? repository : undefined);
+    if (
+      persistenceEnabled
+      && ((repository && !compatibleEventStore)
+        || (!repository && compatibleEventStore))
+    ) {
+      throw new ConfigError(
+        'Persistent context requires both SessionRepository and SessionEventStore.',
+      );
+    }
+    const noopRepository = new NoopSessionRepository();
     // 持久化路径必须由调用方显式提供；未提供时禁用持久化
     const defaultPersistentPath =
       persistenceEnabled ? options.storage?.persistentPath : undefined;
@@ -94,9 +111,14 @@ export class ContextManager {
     };
     this.projectPath = this.options.projectPath;
 
-    // Session owns repository selection so reads and writes always share one backend.
+    // Session selects explicit read projection and event append ports.
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    this.repository = repository;
+    this.repository = persistenceEnabled && repository
+      ? repository
+      : noopRepository;
+    this.eventStore = persistenceEnabled && compatibleEventStore
+      ? compatibleEventStore
+      : noopRepository;
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
       5 * 60 * 1000 // 5分钟默认TTL
@@ -180,7 +202,7 @@ export class ContextManager {
 
     // 初始化内存并写入首个 session_created 事件
     this.memory.setContext(contextData);
-    await this.repository.createSession(sessionId);
+    await this.eventStore.createSession(sessionId);
 
     this.currentSessionId = sessionId;
 
@@ -222,7 +244,7 @@ export class ContextManager {
       throw new Error('没有活动会话');
     }
 
-    const messageId = await this.repository.saveMessage(
+    const messageId = await this.eventStore.saveMessage(
       this.currentSessionId,
       role,
       content,
@@ -263,7 +285,7 @@ export class ContextManager {
 
     const pendingToolUseKey = `${this.currentSessionId}\0${toolCall.id}`;
     if (toolCall.status === 'pending') {
-      const persisted = await this.repository.saveToolUse(
+      const persisted = await this.eventStore.saveToolUse(
         this.currentSessionId,
         toolCall.name,
         toolCall.input,
@@ -282,7 +304,7 @@ export class ContextManager {
       } else {
         this.pendingToolUses.delete(pendingToolUseKey);
       }
-      await this.repository.saveToolResult(
+      await this.eventStore.saveToolResult(
         this.currentSessionId,
         toolCall.id,
         toolCall.name,
@@ -320,7 +342,7 @@ export class ContextManager {
       isSidechain: boolean;
     }
   ): Promise<string> {
-    return this.repository.saveMessage(
+    return this.eventStore.saveMessage(
       sessionId,
       role,
       content,
@@ -334,7 +356,7 @@ export class ContextManager {
     sessionId: SessionId,
     input: PendingInputInfo,
   ): Promise<void> {
-    return this.repository.saveInputEnqueued(sessionId, input);
+    return this.eventStore.saveInputEnqueued(sessionId, input);
   }
 
   async saveAppliedInputMessage(
@@ -349,7 +371,7 @@ export class ContextManager {
       isSidechain: boolean;
     },
   ): Promise<string> {
-    return this.repository.saveAppliedInputMessage(
+    return this.eventStore.saveAppliedInputMessage(
       sessionId,
       inputId,
       requestId,
@@ -364,7 +386,7 @@ export class ContextManager {
     inputId: InputId,
     reason: string,
   ): Promise<void> {
-    return this.repository.saveInputCancelled(sessionId, inputId, reason);
+    return this.eventStore.saveInputCancelled(sessionId, inputId, reason);
   }
 
   /** 保存工具调用到 repository。 */
@@ -380,7 +402,7 @@ export class ContextManager {
     },
     requestedToolCallId?: string,
   ): Promise<PersistedToolUse> {
-    return this.repository.saveToolUse(
+    return this.eventStore.saveToolUse(
       sessionId,
       toolName,
       toolInput,
@@ -410,7 +432,7 @@ export class ContextManager {
       subagentSummary?: string;
     }
   ): Promise<string> {
-    return this.repository.saveToolResult(
+    return this.eventStore.saveToolResult(
       sessionId,
       toolId,
       toolName,
@@ -434,7 +456,7 @@ export class ContextManager {
     },
     parentUuid: string | null = null
   ): Promise<string> {
-    return this.repository.saveCompaction(sessionId, summary, metadata, parentUuid);
+    return this.eventStore.saveCompaction(sessionId, summary, metadata, parentUuid);
   }
 
   /**

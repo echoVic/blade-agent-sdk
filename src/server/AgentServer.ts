@@ -37,6 +37,7 @@ import {
   type SessionExecutor,
   type SessionExecutorCommandContext,
 } from './SessionExecutor.js';
+import type { RuntimeStore } from './RuntimeStore.js';
 import {
   TenantAdmissionController,
   type TenantAdmissionLimits,
@@ -52,6 +53,7 @@ export interface AgentServerOptions {
     context: AgentServerSessionContext,
   ) => SessionOptions | Promise<SessionOptions>;
   readonly sessionExecutor?: SessionExecutor;
+  readonly runtimeStore?: RuntimeStore;
   readonly authenticate?: (
     request: Request,
   ) => AgentPrincipal | null | Promise<AgentPrincipal | null>;
@@ -160,7 +162,17 @@ export class AgentServer {
   private readonly basePath: string;
 
   constructor(private readonly options: AgentServerOptions) {
-    this.store = options.store ?? new InMemoryAgentServerStore();
+    if (
+      options.runtimeStore
+      && options.store
+      && options.runtimeStore !== options.store
+    ) {
+      throw new TypeError(
+        'AgentServer store and runtimeStore must reference the same backend',
+      );
+    }
+    this.store =
+      options.runtimeStore ?? options.store ?? new InMemoryAgentServerStore();
     this.telemetry = options.telemetry ?? NOOP_AGENT_SERVER_TELEMETRY;
     this.admission = new TenantAdmissionController(options.admission);
     this.commandLeaseTtlMs =
@@ -190,9 +202,37 @@ export class AgentServer {
     this.sessionExecutor = options.sessionExecutor
       ?? new InProcessSessionExecutor({
         store: this.store,
-        resolveSessionOptions: resolveSessionOptions as NonNullable<
-          AgentServerOptions['resolveSessionOptions']
-        >,
+        resolveSessionOptions: async (context) => {
+          const sessionOptions = await (
+            resolveSessionOptions as NonNullable<
+              AgentServerOptions['resolveSessionOptions']
+            >
+          )(context);
+          if (!options.runtimeStore) {
+            return sessionOptions;
+          }
+          if (
+            sessionOptions.sessionRepository
+            || sessionOptions.sessionEventStore
+            || sessionOptions.durableEventStore
+          ) {
+            throw new AgentProtocolError(
+              'SESSION_CONFLICT',
+              'runtimeStore is authoritative; Session-level persistence '
+                + 'overrides are not allowed',
+              409,
+            );
+          }
+          const tenantStore = options.runtimeStore.forTenant(
+            context.principal.tenantId,
+          );
+          return {
+            ...sessionOptions,
+            sessionRepository: tenantStore,
+            sessionEventStore: tenantStore,
+            durableEventStore: tenantStore,
+          };
+        },
         publish: (tenantId, sessionId, type, data, requestId) =>
           this.publish(tenantId, sessionId, type, data, requestId),
         maxActiveSessionsPerTenant:
@@ -427,6 +467,13 @@ export class AgentServer {
       principal,
       commandId: command.commandId,
       ...(signal ? { signal } : {}),
+      ...(this.options.runtimeStore
+        ? {
+            runtimeStore: this.options.runtimeStore.forTenant(
+              principal.tenantId,
+            ),
+          }
+        : {}),
     };
     switch (command.type) {
       case AgentCommandType.INITIALIZE:

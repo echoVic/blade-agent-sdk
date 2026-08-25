@@ -111,12 +111,18 @@ const browserServerOutput = run(process.execPath, [
   [
     "const m = await import('@blade-ai/agent-sdk/server');",
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
+    'try { new m.PostgresRuntimeStore({}); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(
   browserServerOutput,
   'server-only for InProcessSessionExecutor',
   'browser in-process Session executor stub',
+);
+assertIncludes(
+  browserServerOutput,
+  'server-only for PostgresRuntimeStore',
+  'browser PostgreSQL runtime Store stub',
 );
 
 const subpathOutput = run(process.execPath, [
@@ -125,16 +131,18 @@ const subpathOutput = run(process.execPath, [
     "const core = await import('@blade-ai/agent-sdk/core');",
     "const browser = await import('@blade-ai/agent-sdk/browser');",
     "const server = await import('@blade-ai/agent-sdk/server');",
+    "const postgres = await import('@blade-ai/agent-sdk/server/postgres');",
+    "const testing = await import('@blade-ai/agent-sdk/server/testing');",
     "const tools = await import('@blade-ai/agent-sdk/tools');",
     "const node = await import('@blade-ai/agent-sdk/node');",
     "const protocol = await import('@blade-ai/agent-sdk/protocol');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function function function function function 1 function',
+  'default request_accepted empty function function function default function function function function function function function function function function function 1 function',
   'subpath imports',
 );
 
@@ -154,6 +162,7 @@ verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');
 verifyBrowserSafeDist('dist/middleware/index.js');
 verifyBrowserSafeDist('dist/protocol/index.js');
+verifyBrowserSafeDist('dist/server/testing/index.js');
 verifyBrowserSafeDist('dist/tools/index.js');
 
 const tempDir = mkdtempSync(join(repoRoot, '.tmp-entrypoints-'));

@@ -18,6 +18,7 @@ import {
   forkSession,
   resumeSession,
 } from '../session/Session.js';
+import { isSessionEventStore } from '../session/SessionRepository.js';
 import type {
   ISession,
   PendingSessionInput,
@@ -38,6 +39,7 @@ import type {
   AgentServerStore,
 } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
+import type { RuntimeTenantStore } from './RuntimeStore.js';
 
 export interface AgentServerSessionContext {
   readonly principal: AgentPrincipal;
@@ -50,6 +52,8 @@ export interface SessionExecutorCommandContext {
   readonly principal: AgentPrincipal;
   readonly commandId: string;
   readonly signal?: AbortSignal;
+  /** Tenant-scoped persistence authority supplied by AgentServer. */
+  readonly runtimeStore?: RuntimeTenantStore;
 }
 
 export interface SessionExecutorReadResult {
@@ -498,10 +502,15 @@ export class InProcessSessionExecutor implements SessionExecutor {
     context: AgentServerSessionContext,
   ): Promise<SessionOptions> {
     const options = await this.options.resolveSessionOptions(context);
-    if (this.options.requirePersistentSessions && !options.sessionRepository) {
+    const hasEventStore = options.sessionEventStore
+      || isSessionEventStore(options.sessionRepository);
+    if (
+      this.options.requirePersistentSessions
+      && (!options.sessionRepository || !hasEventStore)
+    ) {
       throw new AgentProtocolError(
         'SESSION_CONFLICT',
-        'This executor requires a persistent sessionRepository',
+        'This executor requires sessionRepository and sessionEventStore',
         409,
       );
     }

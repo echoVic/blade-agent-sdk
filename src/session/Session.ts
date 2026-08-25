@@ -68,7 +68,9 @@ import {
 } from './SessionHostProfile.js';
 import { SessionInputInbox } from './SessionInputInbox.js';
 import {
+  isSessionEventStore,
   NoopSessionRepository,
+  type SessionEventStore,
   type SessionRepository,
 } from './SessionRepository.js';
 import { SessionRuntime } from './SessionRuntime.js';
@@ -99,6 +101,14 @@ import { InputPriority } from './types.js';
 
 export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
+}
+
+function hasSessionPersistence(options: SessionOptions): boolean {
+  return options.sessionRepository !== undefined
+    && (
+      options.sessionEventStore !== undefined
+      || isSessionEventStore(options.sessionRepository)
+    );
 }
 
 interface SessionStreamExecution {
@@ -155,6 +165,7 @@ class Session implements ISession {
   private _messages: Message[] = [];
   private readonly options: SessionOptions;
   private readonly store: SessionRepository;
+  private readonly eventStore: SessionEventStore;
   private readonly persistenceEnabled: boolean;
   private readonly isResumeSession: boolean;
   private readonly rootLogger: InternalLogger;
@@ -211,7 +222,8 @@ class Session implements ISession {
       !options.sessionRepository
     ) {
       throw new ConfigError(
-        'Server sessions require sessionRepository for persistence. '
+        'Server sessions require sessionRepository and sessionEventStore '
+          + 'for persistence. '
           + 'Import from @blade-ai/agent-sdk/node to use storagePath-backed local persistence.',
       );
     }
@@ -224,12 +236,30 @@ class Session implements ISession {
     this.confirmationHandler =
       options.confirmationHandlerFactory?.(this.sessionId)
       ?? options.confirmationHandler;
-    this.persistenceEnabled =
-      options.persistSession !== false && options.sessionRepository !== undefined;
-    this.store =
-      this.persistenceEnabled && options.sessionRepository
+    const eventStore = options.sessionEventStore
+      ?? (isSessionEventStore(options.sessionRepository)
         ? options.sessionRepository
-        : new NoopSessionRepository();
+        : undefined);
+    if (
+      options.persistSession !== false
+      && ((options.sessionRepository && !eventStore)
+        || (!options.sessionRepository && eventStore))
+    ) {
+      throw new ConfigError(
+        'Persistent Sessions require both sessionRepository and sessionEventStore.',
+      );
+    }
+    this.persistenceEnabled =
+      options.persistSession !== false
+      && options.sessionRepository !== undefined
+      && eventStore !== undefined;
+    const noopRepository = new NoopSessionRepository();
+    this.store = this.persistenceEnabled && options.sessionRepository
+      ? options.sessionRepository
+      : noopRepository;
+    this.eventStore = this.persistenceEnabled && eventStore
+      ? eventStore
+      : noopRepository;
     this.isResumeSession = isResume;
     this.rootLogger = createRootLogger(options.logger, this.sessionId);
     this.logger = this.rootLogger.child(LogCategory.AGENT);
@@ -323,6 +353,7 @@ class Session implements ISession {
         this.rootLogger,
         this.hostProfile,
         this.store,
+        this.eventStore,
       );
       await this.runtime.initialize();
       if (this.isResumeSession) {
@@ -2483,9 +2514,10 @@ export async function resumeSessionWithHost(
   options: ResumeOptions,
   hostProfile: SessionHostProfile,
 ): Promise<ISession> {
-  if (options.persistSession === false || !options.sessionRepository) {
+  if (options.persistSession === false || !hasSessionPersistence(options)) {
     throw new Error(
-      'resumeSession() requires session persistence through sessionRepository.',
+      'resumeSession() requires session persistence through '
+        + 'sessionRepository and sessionEventStore.',
     );
   }
   const { sessionId, ...sessionOptions } = options;
@@ -2512,9 +2544,10 @@ export async function forkSessionWithHost(
   options: ForkOptions,
   hostProfile: SessionHostProfile,
 ): Promise<ISession> {
-  if (options.persistSession === false || !options.sessionRepository) {
+  if (options.persistSession === false || !hasSessionPersistence(options)) {
     throw new Error(
-      'forkSession() requires session persistence through sessionRepository. '
+      'forkSession() requires session persistence through '
+        + 'sessionRepository and sessionEventStore. '
         + 'Use session.fork() for an in-memory Session.',
     );
   }

@@ -15,6 +15,10 @@ import {
   resumeSession as resumeServerSession,
 } from '../Session.js';
 import { MessageId, SessionId } from '../../types/branded.js';
+import {
+  isSessionEventStore,
+  type SessionRepository,
+} from '../SessionRepository.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-persistence-test-'));
@@ -50,6 +54,52 @@ function createOptions(workspaceRoot: string) {
 }
 
 describe('Session persistence', () => {
+  it('recognizes only complete transcript event Stores', () => {
+    expect(isSessionEventStore({
+      saveMessage: async () => 'message-1',
+    } as never)).toBe(false);
+    expect(isSessionEventStore(
+      new PersistentStore(createWorkspaceRoot()),
+    )).toBe(true);
+  });
+
+  it('requires an event writer when a read-only repository is configured', async () => {
+    const repository: SessionRepository = {
+      async initialize() {},
+      async loadState() {
+        return null;
+      },
+      async loadMessages() {
+        return [];
+      },
+      async forkState() {
+        return null;
+      },
+      async listSessions() {
+        return [];
+      },
+      async getSessionSummary() {
+        return null;
+      },
+      async deleteSession() {},
+      async cleanupOldSessions() {},
+      async getStorageStats() {
+        return { totalSessions: 0, totalSize: 0 };
+      },
+      async checkStorageHealth() {
+        return { isAvailable: true, canWrite: false };
+      },
+    };
+
+    await expect(createServerSession({
+      ...createOptions(createWorkspaceRoot()),
+      storagePath: undefined,
+      sessionRepository: repository,
+    })).rejects.toMatchObject({
+      code: 'CONFIG_ERROR',
+    });
+  });
+
   it('supports an injected repository without a local storage path', async () => {
     const repository = new PersistentStore(createWorkspaceRoot());
     const session = await createServerSession({

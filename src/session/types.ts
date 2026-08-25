@@ -51,7 +51,10 @@ import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
-import type { SessionRepository } from './SessionRepository.js';
+import type {
+  SessionEventStore,
+  SessionRepository,
+} from './SessionRepository.js';
 
 export type {
   AgentMiddlewareConfig,
@@ -323,6 +326,8 @@ export interface SessionOptions {
    * The /node entry creates a JSONL repository from storagePath when omitted.
    */
   sessionRepository?: SessionRepository;
+  /** Append-only transcript event port paired with sessionRepository. */
+  sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
   /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;
