@@ -157,8 +157,43 @@ Types:
 - `AgentProtocolErrorCode`
 - `assertRuntimeStoreConformance` (`/server/testing`)
 
-See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store), and
-[Worker Runtime](./worker-runtime) for deployment and failure semantics.
+See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
+[Worker Runtime](./worker-runtime), and
+[Execution Host](./execution-host) for deployment and failure semantics.
+
+## Execution Host
+
+Runtime:
+
+- `EphemeralCredentialBroker`
+- `ExecutionHostError`
+- `DockerExecutionHost` (`/node` only)
+- `ExecutionId`
+- `ExecutionCheckpointId`
+- `CredentialLeaseId`
+
+Types:
+
+- `ExecutionHost`
+- `ExecutionProvisionRequest`
+- `ExecutionHandle`
+- `ExecutionExecRequest`
+- `ExecutionExecResult`
+- `ExecutionCheckpoint`
+- `ExecutionRestoreRequest`
+- `ExecutionResourceLimits`
+- `ExecutionNetworkPolicy`
+- `ExecutionWorkspaceSource`
+- `ExecutionEgressController`
+- `ExecutionEgressLease`
+- `CredentialBroker`
+- `CredentialIssuer`
+- `CredentialRequest`
+- `CredentialLease`
+- `CredentialIssueContext`
+- `IssuedCredential`
+- `ExecutionHostErrorCode`
+- `DockerExecutionHostOptions` (`/node` only)
 
 ## Durable Events
 

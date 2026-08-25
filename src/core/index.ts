@@ -87,8 +87,11 @@ export {
 export { ToolKind, ToolSideEffect } from '../tools/types/ToolKind.js';
 export {
   CommandId,
+  CredentialLeaseId,
   EventId,
   EventSequence,
+  ExecutionCheckpointId,
+  ExecutionId,
   ExecutionLeaseId,
   FencingToken,
   InputId,

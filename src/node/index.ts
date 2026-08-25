@@ -16,6 +16,11 @@ import { NODE_SESSION_HOST } from '../session/SessionHostProfile.js';
 import type { ISession, PromptResult, SessionOptions } from '../session/types.js';
 
 export * from '../index.js';
+export * from '../execution/index.js';
+export {
+  DockerExecutionHost,
+  type DockerExecutionHostOptions,
+} from '../execution/DockerExecutionHost.js';
 
 function withNodeRepository(options: SessionOptions): SessionOptions {
   if (

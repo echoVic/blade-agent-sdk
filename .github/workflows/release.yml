@@ -59,6 +59,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve immutable Docker test image
+        run: |
+          docker pull alpine:3.22
+          echo "TEST_DOCKER_IMAGE=$(docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.22)" >> "$GITHUB_ENV"
+
       - name: Validate changelog fragments
         run: pnpm run changelog:check
 

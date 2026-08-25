@@ -99,6 +99,9 @@ describe('package entrypoints', () => {
     expect(browser.projectDurableSession([]).status).toBe('empty');
     expect(browser.PermissionRequestId('permission-1')).toBe('permission-1');
     expect(browser.ToolUseId('tool-call-1')).toBe('tool-call-1');
+    expect(browser.ExecutionId('execution-1')).toBe('execution-1');
+    expect(browser.ExecutionCheckpointId('checkpoint-1')).toBe('checkpoint-1');
+    expect(browser.CredentialLeaseId('credential-1')).toBe('credential-1');
     expect(browser.AgentClient).toBeTypeOf('function');
     expect(browser.AGENT_PROTOCOL_VERSION).toBe(1);
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
@@ -109,6 +112,15 @@ describe('package entrypoints', () => {
     expect(() => new serverOnly.AgentServer()).toThrow(/server-only.*AgentServer/);
     expect(() => new serverOnly.PostgresRuntimeStore()).toThrow(
       /server-only.*PostgresRuntimeStore/,
+    );
+    expect(() => new serverOnly.DockerExecutionHost()).toThrow(
+      /server-only.*DockerExecutionHost/,
+    );
+    expect(() => new serverOnly.EphemeralCredentialBroker()).toThrow(
+      /server-only.*EphemeralCredentialBroker/,
+    );
+    expect(() => new serverOnly.ExecutionHostError()).toThrow(
+      /server-only.*ExecutionHostError/,
     );
     expect(() => new serverOnly.WorkerRuntimeError()).toThrow(
       /server-only.*WorkerRuntimeError/,
@@ -139,6 +151,8 @@ describe('package entrypoints', () => {
     expect(server.AgentServer).toBeTypeOf('function');
     expect(server.InProcessSessionExecutor).toBeTypeOf('function');
     expect(server.PostgresRuntimeStore).toBeTypeOf('function');
+    expect(server.EphemeralCredentialBroker).toBeTypeOf('function');
+    expect(server.ExecutionHostError).toBeTypeOf('function');
     expect(server.WorkerRuntimeError).toBeTypeOf('function');
     expect(server.RUNTIME_SESSION_STATES).toEqual([
       'queued',
@@ -150,6 +164,10 @@ describe('package entrypoints', () => {
       'failed',
     ]);
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
+    expect(node.DockerExecutionHost).toBeTypeOf('function');
+    expect(node.EphemeralCredentialBroker).toBe(
+      server.EphemeralCredentialBroker,
+    );
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');
   });

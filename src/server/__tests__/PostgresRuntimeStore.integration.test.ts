@@ -128,6 +128,52 @@ describePostgres('PostgresRuntimeStore', () => {
     )).resolves.toMatchObject({ status: 'claimed' });
   });
 
+  it('uses the database clock for immediately available effects', async () => {
+    const suffix = `${process.pid}-${Date.now()}`;
+    const tenantId = `tenant-database-clock-${suffix}`;
+    const workerId = WorkerId(`worker-database-clock-${suffix}`);
+    const sessionId = `session-database-clock-${suffix}` as SessionId;
+    const commandId = `command-database-clock-${suffix}`;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2035-01-01T00:00:00.000Z'));
+    try {
+      await store.commitRuntimeTransaction({
+        tenantId,
+        sessionId,
+        command: {
+          commandId,
+          fingerprint: `fingerprint-${commandId}`,
+          result: {
+            protocolVersion: 1,
+            commandId,
+            ok: true,
+            data: {},
+          },
+        },
+        effects: [{
+          effectId: `effect-${suffix}`,
+          type: 'database-clock',
+          payload: {},
+          idempotencyKey: `effect-key-${suffix}`,
+        }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await store.registerWorker({
+      workerId,
+      capacity: 1,
+      ttlMs: 10_000,
+    });
+
+    await expect(store.claimEffects({
+      tenantId,
+      workerId,
+      ttlMs: 10_000,
+      limit: 1,
+    })).resolves.toHaveLength(1);
+  });
+
   it('maps duplicate event and effect identities to stable conflicts with rollback', async () => {
     const suffix = `${process.pid}-${Date.now()}`;
     const tenantId = `tenant-conflict-${suffix}`;

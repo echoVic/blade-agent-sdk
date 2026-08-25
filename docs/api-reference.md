@@ -161,7 +161,25 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 完整部署约束见 [Server Runtime](./server-runtime) 和
 [Runtime Store](./runtime-store)，worker 调度见
-[Worker Runtime](./worker-runtime)。
+[Worker Runtime](./worker-runtime)，隔离执行见
+[Execution Host](./execution-host)。
+
+### Execution Host
+
+| 导出 | 说明 |
+|------|------|
+| `ExecutionHost` | `provision`、`exec`、`checkpoint`、`restore`、`terminate` 执行端口 |
+| `ExecutionProvisionRequest` / `ExecutionHandle` | 镜像、workspace、资源、网络与执行句柄 |
+| `ExecutionExecRequest` / `ExecutionExecResult` | 单次 command 输入与有界输出 |
+| `ExecutionCheckpoint` / `ExecutionRestoreRequest` | workspace checkpoint 与恢复输入 |
+| `ExecutionResourceLimits` / `ExecutionNetworkPolicy` / `ExecutionWorkspaceSource` | CPU、内存、磁盘、PID、运行时、输出、网络及 workspace 约束 |
+| `ExecutionEgressController` / `ExecutionEgressLease` | proxy allowlist 的外部 enforcement 端口 |
+| `CredentialBroker` / `CredentialIssuer` / `CredentialRequest` / `CredentialLease` | 单次 command 的短期凭据签发与撤销 |
+| `CredentialIssueContext` / `IssuedCredential` | issuer 输入和有明确过期时间的签发结果 |
+| `EphemeralCredentialBroker` | TTL 校验、失败回滚和自动撤销的参考 broker |
+| `ExecutionHostError` / `ExecutionHostErrorCode` | 稳定的执行边界错误 |
+| `ExecutionId` / `ExecutionCheckpointId` / `CredentialLeaseId` | 执行、checkpoint 和凭据 lease 的 branded ID |
+| `DockerExecutionHost` / `DockerExecutionHostOptions` | `/node` 导出的 Docker 参考实现 |
 
 ### Durable Events
 
