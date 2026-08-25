@@ -14,8 +14,9 @@ model providers, tool executors, or local host capabilities.
 | `@blade-ai/agent-sdk/node` | Local JSONL repository and Node adapters such as files, shell, and sandbox |
 
 `/server` never interprets `storagePath` as permission to access local files.
-A resumable Session requires an explicitly supplied `sessionRepository`.
-Set `requirePersistentSessions: true` to fail closed when the port is missing.
+A resumable Session requires an explicitly supplied `sessionRepository` and
+`sessionEventStore`, or one `runtimeStore`. Set
+`requirePersistentSessions: true` to fail closed on incomplete configuration.
 
 ## Create a server
 
@@ -54,6 +55,7 @@ const server = new AgentServer({
       },
       model: 'gpt-4o-mini',
       sessionRepository: repository,
+      sessionEventStore: repository,
       defaultContext: {
         metadata: { tenantId: principal.tenantId },
       },
@@ -73,6 +75,8 @@ The JSONL adapter is suitable for a single Node.js host. A multi-instance
 service must use a shared `SessionRepository` and a shared `AgentServerStore`.
 The repository should also partition data by the authenticated `tenantId`.
 There is no trusted client-supplied tenant field.
+
+See [Runtime Store](./runtime-store) for the PostgreSQL single-authority setup.
 
 ## SessionExecutor
 
@@ -246,7 +250,8 @@ window, `STALE_CURSOR` tells the client to reload Session state.
 
 | Port | Source of truth |
 |------|-----------------|
-| `SessionRepository` | Transcript appends, Session state/message projection, fork, and list |
+| `SessionRepository` | Read-only transcript state/message projection, fork, and list |
+| `SessionEventStore` | Transcript domain event appends |
 | `AgentServerStore` | Tenant Session records, command idempotency, and remote event replay |
 | `DurableEventStore` | Request, Turn, model, and tool lifecycle journal and recovery |
 

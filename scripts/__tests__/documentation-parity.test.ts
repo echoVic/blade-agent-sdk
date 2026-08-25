@@ -10,6 +10,7 @@ const publicDocuments = [
   'providers.md',
   'session.md',
   'server-runtime.md',
+  'runtime-store.md',
   'durable-events.md',
   'tools.md',
   'permissions.md',

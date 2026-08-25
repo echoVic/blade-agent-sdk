@@ -10,6 +10,8 @@
 |------|---------|------|
 | `@blade-ai/agent-sdk` | Node.js server | 默认服务端入口；仅加载显式配置的工具、Agent、middleware 和 MCP |
 | `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的服务端入口，行为等价于 root |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
+| `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
 | `@blade-ai/agent-sdk/node` | Node.js local process | 具备本机访问能力的入口；默认启用本地工具和工作区发现，并导出 Node 宿主适配器 |
 | `@blade-ai/agent-sdk/session` | Node.js server | 底层 Session API 子入口，采用 server profile |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
@@ -73,6 +75,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `InProcessSessionExecutor` | server | `SessionExecutor` 的进程内参考实现，负责 Session 生命周期与 stream pump |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
+| `PostgresRuntimeStore` | server/postgres | 共享 command、event、outbox、projection 和 Session persistence |
+| `RuntimeStoreError` | server | Runtime transaction 的稳定错误类型 |
 | `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
 | `OpenTelemetryAgentServerTelemetry` | server | 默认不采集 payload 的 metric、trace 与 audit adapter |
 | `JsonlSessionRepository` | node | Node.js transcript repository |
@@ -100,7 +104,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 |------|------|
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
-| `SessionRepository` | transcript append 与 read projection 的统一持久化端口 |
+| `SessionRepository` | transcript 的只读 projection 端口 |
+| `SessionEventStore` | transcript domain event append 端口 |
+| `SessionPersistence` | 组合 read projection 与 event append 的兼容端口 |
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
@@ -141,8 +147,15 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `AGENT_PROTOCOL_VERSION` / `AgentCommandType` | 协议版本与 command 常量 |
 | `parseAgentCommand` / `parseAgentCommandResult` | strict command envelope parser |
 | `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
+| `RuntimeStore` / `RuntimeTenantStore` | 共享 authority 与 tenant-scoped Session/durable adapter |
+| `RuntimeCommandCommit` / `RuntimeCommitResult` | 原子 command、event、effect、projection transaction |
+| `RuntimeDomainEvent` / `RuntimeDomainEventDraft` / `RuntimeDomainEventPage` | Runtime domain event stream |
+| `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
+| `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
+| `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
 
-完整部署约束见 [Server Runtime](./server-runtime)。
+完整部署约束见 [Server Runtime](./server-runtime) 和
+[Runtime Store](./runtime-store)。
 
 ### Durable Events
 

@@ -16,6 +16,7 @@ const zhSidebar = [
     items: [
       { text: 'Session 会话', link: '/session' },
       { text: 'Server Runtime', link: '/server-runtime' },
+      { text: 'Runtime Store', link: '/runtime-store' },
       { text: 'Durable Event Store', link: '/durable-events' },
       { text: '工具系统', link: '/tools' },
       { text: '权限控制', link: '/permissions' },
@@ -54,6 +55,7 @@ const enSidebar = [
     items: [
       { text: 'Session', link: '/en/session' },
       { text: 'Server Runtime', link: '/en/server-runtime' },
+      { text: 'Runtime Store', link: '/en/runtime-store' },
       { text: 'Durable Event Store', link: '/en/durable-events' },
       { text: 'Tools', link: '/en/tools' },
       { text: 'Permissions', link: '/en/permissions' },
