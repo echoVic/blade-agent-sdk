@@ -17,7 +17,7 @@ features:
     details: Stream responses, interrupt active work, queue follow-ups, persist state, and fork conversations.
   - icon: 🔧
     title: Structured tools
-    details: Author generator-only tools with typed progress, UI messages, effects, and model-facing results.
+    details: Inject explicit server tools or use the Node profile's coding tools, with typed progress, effects, and model-facing results.
   - icon: 🔒
     title: Explicit safety
     details: Combine permissions, path checks, hooks, and optional OS sandboxing without hiding runtime boundaries.

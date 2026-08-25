@@ -31,7 +31,7 @@
 | S18 | Observability | `src/observability/` | TraceRecorder.ts, types.ts | skip |
 | S19 | Lifecycle | `src/lifecycle/` | CleanupRegistry.ts | skip |
 | S20 | Logging | `src/logging/` | Logger.ts, StreamDebugLogger.ts | skip |
-| S21 | Platform Entries | `src/browser/`, `src/local/`, `src/server/`, `src/core/` | Re-export barrels only | skip |
+| S21 | Platform Entries | `src/browser/`, `src/node/`, `src/server/`, `src/core/` | Runtime-specific facades | skip |
 | S22 | Scripts/Tooling | `scripts/` | release.js, release-utils.js, download-ripgrep.js (600 LoC total) | skip |
 
 ---
@@ -227,7 +227,7 @@ Findings are ranked by concrete impact, confidence, implementation effort, and b
 
 - **Smallest credible scope**:
   - `src/sandbox/SandboxService.ts`, `src/tools/builtin/shell/bash.ts`, test file.
-- **Regression risks**: `SandboxCheckResult` is publicly exported via `src/local/index.ts`. **Breaking change** requiring semver major bump. TypeScript catches all consumer breakage at compile time.
+- **Regression risks**: `SandboxCheckResult` is publicly exported via `src/node/index.ts`. **Breaking change** requiring semver major bump. TypeScript catches all consumer breakage at compile time.
 - **Validation**: Existing `SandboxService.test.ts` covers all 5 outcomes.
 
 #### F7. Attachment type → proper discriminated union [S11]

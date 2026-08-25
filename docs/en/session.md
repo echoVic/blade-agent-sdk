@@ -2,10 +2,15 @@
 
 Session is the primary SDK boundary. It owns conversation state, request execution, tools, persistence, MCP connections, hooks, and runtime context.
 
+The root and `/server` entry points use the server profile: only explicitly
+supplied tools, agents, middleware, and MCP servers are loaded. `/node` uses the
+local Node.js profile and additionally enables built-in file, search, shell, and
+task tools plus local agent, Skill, and attachment discovery.
+
 ## Create a Session
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/node';
 
 const session = await createSession({
   provider: {
@@ -270,10 +275,10 @@ Session:
 
 ```ts
 import {
-  JsonlDurableEventStore,
   WorkerId,
   createSession,
 } from '@blade-ai/agent-sdk';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({
@@ -360,7 +365,7 @@ try {
 ## One-shot prompts
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk';
+import { prompt } from '@blade-ai/agent-sdk/node';
 
 const result = await prompt('Summarize the repository', {
   provider,
@@ -423,9 +428,9 @@ with `persistSession: false`:
 
 ```ts
 import {
-  JsonlDurableEventStore,
   createSession,
 } from '@blade-ai/agent-sdk';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({

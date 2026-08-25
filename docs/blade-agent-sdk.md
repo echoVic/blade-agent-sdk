@@ -15,7 +15,7 @@ pnpm add @blade-ai/agent-sdk
 ## 最小示例：流式对话
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -36,7 +36,7 @@ await session.close();
 ## 最小示例：一次性调用
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk';
+import { prompt } from '@blade-ai/agent-sdk/node';
 
 const result = await prompt('列出当前目录下的所有 TypeScript 文件', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -55,7 +55,7 @@ console.log(`耗时 ${result.duration}ms，使用了 ${result.toolCalls.length} 
 ## 带自定义工具的示例
 
 ```ts
-import { createSession, defineTool } from '@blade-ai/agent-sdk';
+import { createSession, defineTool } from '@blade-ai/agent-sdk/server';
 
 const weatherTool = defineTool({
   name: 'GetWeather',

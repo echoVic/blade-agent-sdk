@@ -13,9 +13,9 @@ command wrapper also rejects execution instead of running the original command.
 ```ts
 import {
   createSession,
+  getSandboxService,
   PermissionMode,
-} from '@blade-ai/agent-sdk';
-import { getSandboxService } from '@blade-ai/agent-sdk/local';
+} from '@blade-ai/agent-sdk/node';
 
 const sandbox = getSandboxService();
 sandbox.configure({

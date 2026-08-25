@@ -20,7 +20,7 @@ pnpm add @blade-ai/agent-sdk
 ## Stream a response
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk/server';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -41,7 +41,7 @@ await session.close();
 ## Run a one-shot prompt
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk';
+import { prompt } from '@blade-ai/agent-sdk/server';
 
 const result = await prompt('Summarize this API', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -55,7 +55,7 @@ console.log(result.usage);
 ## Add a custom tool
 
 ```ts
-import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk/server';
 
 const weather = defineTool({
   name: 'GetWeather',

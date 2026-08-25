@@ -2,20 +2,24 @@
 
 This page inventories the public package surface. Detailed behavior is documented on the feature pages.
 
+`/server` currently targets Node.js server processes, not edge runtimes. This
+split isolates default capabilities and public APIs; it does not physically
+split npm dependencies into separate packages.
+
 ## Entry points
 
 | Entry | Runtime | Contents |
 |-------|---------|----------|
-| `@blade-ai/agent-sdk` | Node.js | Complete Session-first API |
-| `@blade-ai/agent-sdk/server` | Node.js | Explicit server facade equivalent to root |
-| `@blade-ai/agent-sdk/session` | Node.js | Session functions and types |
+| `@blade-ai/agent-sdk` | Node.js server | Server-first Session API; only explicit tools, agents, middleware, and MCP servers are loaded |
+| `@blade-ai/agent-sdk/server` | Node.js server | Server entry without implicit local host access, equivalent to root |
+| `@blade-ai/agent-sdk/node` | Local Node.js process | Entry with local tools, workspace discovery, and Node host adapters enabled |
+| `@blade-ai/agent-sdk/session` | Node.js server | Lower-level Session functions and types using the server profile |
 | `@blade-ai/agent-sdk/core` | Browser and Node.js | Browser-safe contracts, constants, and types |
 | `@blade-ai/agent-sdk/browser` | Browser | Core contracts plus stubs for server-only functions |
 | `@blade-ai/agent-sdk/tools` | Browser and Node.js | Tool authoring, catalog, and execution contracts |
 | `@blade-ai/agent-sdk/middleware` | Browser and Node.js | Onion composition, model/tool middleware, and plugin definitions |
-| `@blade-ai/agent-sdk/local` | Node.js | Built-in tools, MCP, memory, and sandbox adapters |
 
-The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/local` resolve server APIs to stubs that throw an explicit error.
+The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/node` resolve server APIs to stubs that throw an explicit error.
 
 ## Session
 
@@ -76,7 +80,7 @@ Runtime:
 - `executionFence`
 - `isDurableExecutionLeaseStore`
 - `DURABLE_EXECUTION_LEASE_FORMAT`
-- `JsonlDurableEventStore`
+- `JsonlDurableEventStore` (`/node` only)
 - `DurableEventSubscription`
 - `durableEventCursor`
 - `parseDurableEventCursor`
@@ -102,7 +106,7 @@ Types and errors:
 - `DurableExecutionFence`
 - `DurableExecutionLeaseErrorCode`
 - `DurableEventStore`
-- `JsonlDurableEventStoreOptions`
+- `JsonlDurableEventStoreOptions` (`/node` only)
 - `DurableEventCursor`
 - `DurableEventSubscriptionOptions`
 - `DurableEventSubscriptionMessage`
@@ -196,9 +200,9 @@ Authoring and execution:
 | `toolFromDefinition` | Convert a definition to `Tool` |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
-| `getBuiltinTools` | Build the Node-local built-in tool set |
-| `createMemoryReadTool` | Create an opt-in memory reader |
-| `createMemoryWriteTool` | Create an opt-in memory writer |
+| `getBuiltinTools` | Build the `/node` local tool set |
+| `createMemoryReadTool` | Create an opt-in memory reader (`/node`) |
+| `createMemoryWriteTool` | Create an opt-in memory writer (`/node`) |
 
 Types:
 
@@ -255,14 +259,14 @@ Types:
 - `SdkMcpServerHandle`
 - `SdkTool`
 
-There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from root or `/local`.
+There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from `/node`.
 
 ## Memory
 
 Runtime:
 
-- `FileSystemMemoryStore`
-- `MemoryManager`
+- `FileSystemMemoryStore` (`/node`)
+- `MemoryManager` (`/node`)
 
 Types:
 

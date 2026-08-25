@@ -1,19 +1,21 @@
 # API 参考
 
-`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI 场景。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+`@blade-ai/agent-sdk` 根包保持 session-first 体验，并采用服务端安全默认值。需要访问本机文件、进程或 Sandbox 的 Node.js 应用使用 `/node`；不应隐式访问宿主资源的服务端应用使用 `/server`。浏览器端应优先从 `/browser` 或 `/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `node` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+
+`/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口；本次拆分隔离的是默认能力与公开 API，不是 npm 依赖的物理分包。
 
 ## 包入口
 
 | 入口 | 运行环境 | 说明 |
 |------|---------|------|
-| `@blade-ai/agent-sdk` | Node server / CLI | 默认 session-first 入口，导出 `createSession()` 等完整 server runtime API |
-| `@blade-ai/agent-sdk/server` | Node server / CLI | 显式 server 入口，等价于 server-only root facade |
-| `@blade-ai/agent-sdk/session` | Node server / CLI | Session API 子入口 |
+| `@blade-ai/agent-sdk` | Node.js server | 默认服务端入口；仅加载显式配置的工具、Agent、middleware 和 MCP |
+| `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的服务端入口，行为等价于 root |
+| `@blade-ai/agent-sdk/node` | Node.js local process | 具备本机访问能力的入口；默认启用本地工具和工作区发现，并导出 Node 宿主适配器 |
+| `@blade-ai/agent-sdk/session` | Node.js server | 底层 Session API 子入口，采用 server profile |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
 | `@blade-ai/agent-sdk/browser` | Browser | Browser-safe 常量和 server-only stub |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/middleware` | Browser-safe / Node | 洋葱组合器、模型/工具 middleware 与插件定义 |
-| `@blade-ai/agent-sdk/local` | Node server / CLI | 内置工具、MCP、memory、sandbox 等 Node 本地能力 |
 
 ## 函数
 
@@ -29,11 +31,11 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `defineTool` | tools | 定义工具（简单模式） |
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
-| `getBuiltinTools` | root / local | 获取内置工具 |
-| `createMemoryReadTool` | root / local | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | root / local | 创建 opt-in MemoryWrite 工具 |
-| `tool` | root / local | 定义 MCP 工具 |
-| `createSdkMcpServer` | root / local | 创建进程内 MCP Server |
+| `getBuiltinTools` | node | 获取内置 Node 本地工具 |
+| `createMemoryReadTool` | node | 创建 opt-in MemoryRead 工具 |
+| `createMemoryWriteTool` | node | 创建 opt-in MemoryWrite 工具 |
+| `tool` | node | 定义 MCP 工具 |
+| `createSdkMcpServer` | node | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
 | `mergeContext` | runtime | 合并上下文 |
 | `hasFilesystemCapability` | runtime | 检查文件系统能力 |
@@ -56,15 +58,15 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 名称 | 来源 | 说明 |
 |------|------|------|
 | `ToolCatalog` | tools/catalog | 工具目录，管理来源追踪、信任分级和策略过滤 |
-| `FileSystemMemoryStore` | memory | 文件系统 memory 适配器 |
-| `MemoryManager` | memory | memory 编排层 |
+| `FileSystemMemoryStore` | node | 文件系统 memory 适配器 |
+| `MemoryManager` | node | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
 | `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
 | `isDurableExecutionLeaseStore` | durable events | 检查 Store 是否实现完整 execution lease 协议 |
 | `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
-| `JsonlDurableEventStore` | root / local | 支持同机多进程锁的 Node.js durable event JSONL adapter |
+| `JsonlDurableEventStore` | node | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
