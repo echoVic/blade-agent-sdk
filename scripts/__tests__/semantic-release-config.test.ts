@@ -110,6 +110,7 @@ describe('release workflow', () => {
         'node scripts/verify-minimal-install.mjs',
         '',
       ].join('\n'),
+      'pnpm run verify:production-example',
       'pnpm run docs:build',
       'pnpm run test',
       'pnpm exec semantic-release',
@@ -158,6 +159,7 @@ describe('pull request workflow', () => {
         '',
       ].join('\n'),
     );
+    expect(commands).toContain('pnpm run verify:production-example');
     expect(commands).toContain('pnpm run docs:build');
   });
 });

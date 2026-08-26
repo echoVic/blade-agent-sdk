@@ -1,6 +1,35 @@
 # Golden Paths
 
-仓库提供三条可直接运行的完整路径，所有示例只导入公开 package entrypoint。
+仓库提供四条可直接运行的完整路径，所有示例只导入公开 package entrypoint。
+
+## 单命令生产闭环
+
+```bash
+pnpm example:production
+```
+
+打开命令输出的本地 URL。该命令自动启动并在退出时清理 PostgreSQL、Worker
+使用的 Docker 容器、volume 和临时目录。请求会完整经过：
+
+```text
+Browser AgentClient
+→ AgentServer
+→ PostgreSQL route queue
+→ AgentWorker
+→ DockerExecutionHost
+→ PostgreSQL event log
+→ SSE
+```
+
+无需浏览器的自动验收命令：
+
+```bash
+pnpm run build
+pnpm verify:production-example
+```
+
+输出中的 `firstResultMs` 从基础设施编排开始计时；smoke 只有在五分钟内收到
+Docker worker 生成的精确结果后才成功。
 
 ## 本地 CLI Agent
 

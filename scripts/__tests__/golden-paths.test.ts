@@ -10,10 +10,14 @@ const goldenPaths = [
   'examples/postgres-worker-recovery/compose.yaml',
   'examples/postgres-worker-recovery/run.mjs',
   'examples/postgres-worker-recovery/worker.mjs',
+  'examples/production-stack/compose.yaml',
+  'examples/production-stack/DockerPromptRunner.mjs',
+  'examples/production-stack/QueuedSessionExecutor.mjs',
+  'examples/production-stack/run.mjs',
 ] as const;
 
 describe('golden paths', () => {
-  it('keeps all three runnable entrypoints wired to package scripts', () => {
+  it('keeps every runnable entrypoint wired to package scripts', () => {
     const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
@@ -21,6 +25,8 @@ describe('golden paths', () => {
     expect(packageJson.scripts).toMatchObject({
       'example:local':
         'pnpm run build && node examples/local-cli-agent/index.mjs',
+      'example:production':
+        'pnpm run build && node examples/production-stack/run.mjs',
       'example:web':
         'pnpm run build && node examples/web-agent-server/server.mjs',
       'example:worker-recovery':
@@ -55,6 +61,20 @@ describe('golden paths', () => {
     expect(worker).toContain('AgentWorker');
     expect(worker).toContain('ExecutionHostSessionRunner');
     expect(worker).toContain('DockerExecutionHost');
+
+    const production = readFileSync(
+      resolve('examples/production-stack/run.mjs'),
+      'utf8',
+    );
+    for (const boundary of [
+      'AgentClient',
+      'AgentServer',
+      'PostgresRuntimeStore',
+      'AgentWorker',
+      'DockerExecutionHost',
+    ]) {
+      expect(production).toContain(boundary);
+    }
   });
 
   it('keeps the Web example in standards mode without external assets', () => {
