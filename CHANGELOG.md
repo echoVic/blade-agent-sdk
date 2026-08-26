@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.1] - 2026-08-26
+
+### Fixes
+
+- Add a one-command Web-to-Docker production stack example with an automated end-to-end smoke check.
+
 ## [6.0.0] - 2026-08-26
 
 ### Breaking Changes
