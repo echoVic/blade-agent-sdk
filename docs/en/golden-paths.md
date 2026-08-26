@@ -34,6 +34,11 @@ The reported `firstResultMs` starts before infrastructure orchestration. The
 smoke command succeeds only after receiving the exact Docker worker output
 within five minutes.
 
+The same smoke verifies unauthenticated `/v1/runtime/readyz` and
+tenant-scoped `/v1/runtime/metrics` using the local operator token. Acceptance
+passes only when the Worker is ready and queue metrics reflect the completed
+Session.
+
 ## Local CLI Agent
 
 ```bash

@@ -97,6 +97,7 @@ Runtime:
 - `SdkSessionRunner`
 - `ExecutionHostSessionRunner`
 - `AgentWorker`
+- `AgentRuntimeOperations`
 - `EffectDispatcher`
 - `AgentClient`
 - `RemoteAgentSession`
@@ -144,6 +145,7 @@ Types:
 - `RuntimeEffectLease`
 - `RuntimeEffectExecutionMode`
 - `RuntimeEffectReconciliation`
+- `RuntimeQueueMetrics`
 - `RuntimeEffectHandler`
 - `RuntimeEffectHandlerContext`
 - `RetryableRuntimeEffectError`
@@ -176,7 +178,8 @@ Types:
 - `assertRuntimeStoreConformance` (`/server/testing`)
 
 `PostgresRuntimeStore` is exported by `/server/postgres`.
-`OpenTelemetryAgentServerTelemetry` is exported by `/server/otel`.
+`OpenTelemetryAgentServerTelemetry` and
+`OpenTelemetryAgentWorkerTelemetry` are exported by `/server/otel`.
 
 See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 [Worker Runtime](./worker-runtime), and

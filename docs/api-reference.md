@@ -80,6 +80,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SdkSessionRunner` | server | 在 worker fencing 下恢复并执行 durable SDK Session |
 | `ExecutionHostSessionRunner` | server | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
 | `AgentWorker` | server | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
+| `AgentRuntimeOperations` | server | 受鉴权的 runtime health、queue metrics 与 uncertain effect reconciliation |
 | `EffectDispatcher` | server | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
@@ -87,6 +88,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `RuntimeStoreError` | server | Runtime transaction 的稳定错误类型 |
 | `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
 | `OpenTelemetryAgentServerTelemetry` | server/otel | 默认不采集 payload 的 metric、trace 与 audit adapter |
+| `OpenTelemetryAgentWorkerTelemetry` | server/otel | 默认不采集 payload 的 Worker readiness、吞吐、恢复和 effect metric adapter |
 | `JsonlSessionRepository` | node | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
@@ -166,11 +168,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
 | `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
 | `RuntimeWorkerRecord` / `RuntimeWorkerRegistration` | worker heartbeat、容量与 drain 状态 |
+| `RuntimeQueueMetrics` / `AgentWorkerHealth` | tenant backlog、Worker capacity 与本地 readiness 快照 |
 | `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、含可重入 `idle` 的八态状态机与 execution lease |
 | `RuntimeEffectClaim` / `RuntimeEffectLease` / `RuntimeEffectExecutionMode` / `RuntimeEffectReconciliation` | effect 领取、fencing、at-most-once 与人工对账语义 |
 | `RuntimeEffectHandler` / `RuntimeEffectHandlerContext` | 类型化 outbox effect handler |
 | `RetryableRuntimeEffectError` / `UncertainRuntimeEffectError` | 显式声明 effect 可重试或结果未知 |
 | `SessionRunner` / `SessionRunnerContext` / `SessionRunResult` | 单个 fenced Session 的执行边界 |
+| `AgentRuntimeOperationsOptions` / `RuntimeOperationsPrincipal` | 运维 HTTP 面、鉴权与 tenant scope 配置 |
 | `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
 | `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
 

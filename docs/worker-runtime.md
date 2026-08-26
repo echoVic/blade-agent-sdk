@@ -240,6 +240,79 @@ const recovered = await store.recoverExpiredWork();
 4. 只重排 `idempotent` 的执行中 effect。
 5. 将 `at_most_once` 的执行中 effect 标记为 `uncertain`。
 
+## 生产运维面
+
+`AgentRuntimeOperations` 提供独立于 Agent protocol 的运维接口。除 liveness 和
+readiness 外，所有入口都必须由调用方鉴权，并自动限制在返回 principal 的
+tenant：
+
+```ts
+import {
+  AgentRuntimeOperations,
+} from '@blade-ai/agent-sdk/server';
+
+const operations = new AgentRuntimeOperations({
+  store,
+  workers: () => [worker],
+  authorize: async (request, action) => {
+    const operator = await authenticateOperator(request, action);
+    return operator
+      ? { tenantId: operator.tenantId, subject: operator.id }
+      : null;
+  },
+});
+
+const response = await operations.handle(request);
+```
+
+默认路由：
+
+| 路由 | 作用 |
+|------|------|
+| `GET /v1/runtime/healthz` | 进程与 Worker liveness |
+| `GET /v1/runtime/readyz` | Store 与已配置 Worker 的 readiness |
+| `GET /v1/runtime/metrics` | tenant Session/effect backlog 与全局 Worker capacity |
+| `GET /v1/runtime/effects/uncertain` | 查询已脱敏的 uncertain effect |
+| `POST /v1/runtime/effects/:id/reconcile` | 人工收敛为 `completed` 或 `failed` |
+
+reconciliation body 必须是：
+
+```json
+{ "status": "completed", "result": { "receiptId": "provider-123" } }
+```
+
+或：
+
+```json
+{ "status": "failed", "error": { "reason": "provider_rejected" } }
+```
+
+HTTP 列表不会返回 effect payload 或 idempotency key。底层
+`reconcileEffect()` 仍只允许修改 `uncertain` effect。
+无需鉴权的 health/readiness 响应只返回聚合计数，不暴露 Worker ID、Session ID、
+Store 细节或 failure payload。未配置本地 Worker 时，readiness 只取决于 Store。
+
+`worker.getHealth()` 是无 I/O 的本地健康快照。`ready` 要求 Worker 处于
+`running` 且最近一次成功 heartbeat 未超过 worker TTL；`draining` 和
+`stopped` 保持 live，但不再 ready。
+
+## Worker OpenTelemetry
+
+```ts
+import {
+  OpenTelemetryAgentWorkerTelemetry,
+} from '@blade-ai/agent-sdk/server/otel';
+
+const worker = new AgentWorker({
+  // ...
+  telemetry: new OpenTelemetryAgentWorkerTelemetry(),
+});
+```
+
+adapter 导出 readiness、active Session、claim、成功/失败、恢复耗时和 uncertain
+effect 指标。默认不添加 worker ID，也不记录 prompt、effect payload、Session ID
+或凭据；只有显式设置 `includeWorkerIdAttribute: true` 才添加 worker ID。
+
 ## 故障边界
 
 - Session lease 与 effect lease 都使用单调 fencing token。
