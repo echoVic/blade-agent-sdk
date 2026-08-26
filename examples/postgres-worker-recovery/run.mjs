@@ -90,12 +90,15 @@ try {
   }
   const connectionString =
     `postgresql://postgres:postgres@127.0.0.1:${port}/blade_agent_example`;
-  await execFileAsync('docker', ['pull', 'alpine:3.22']);
-  const { stdout: imageOutput } = await execFileAsync(
-    'docker',
-    ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', 'alpine:3.22'],
-  );
-  const image = imageOutput.trim();
+  let image = process.env.TEST_DOCKER_IMAGE;
+  if (!image) {
+    await execFileAsync('docker', ['pull', 'alpine:3.22']);
+    const { stdout: imageOutput } = await execFileAsync(
+      'docker',
+      ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', 'alpine:3.22'],
+    );
+    image = imageOutput.trim();
+  }
 
   pool = new Pool({ connectionString });
   const store = new PostgresRuntimeStore({
@@ -110,8 +113,10 @@ try {
   const checkpoint = await waitForJsonLine(first);
   abandonedExecutionId = checkpoint.executionId;
   const closed = once(first, 'close');
+  const failureInjectedAt = performance.now();
   first.kill('SIGKILL');
   await closed;
+  const crashObservedAt = performance.now();
 
   const crashedRoute = await store.getSessionRoute(tenantId, sessionId);
   if (!crashedRoute?.leaseExpiresAt) {
@@ -122,16 +127,19 @@ try {
       resolve,
       Math.max(0, Date.parse(crashedRoute.leaseExpiresAt) - Date.now()) + 100,
     ));
-  const recoveryStartedAt = performance.now();
+  const leaseExpiredAt = performance.now();
+  const recoveryScanStartedAt = performance.now();
   await store.recoverExpiredWork();
+  const recoveryScanCompletedAt = performance.now();
 
   const second = startWorker('restore', connectionString, image);
-  const snapshot = await waitForJsonLine(second);
-  const [exitCode] = await once(second, 'close');
+  const secondClosed = once(second, 'close');
+  const restored = await waitForJsonLine(second);
+  const [exitCode] = await secondClosed;
   if (exitCode !== 0) {
     throw new Error(`Recovery worker exited with ${String(exitCode)}`);
   }
-  const recoveryDurationMs = performance.now() - recoveryStartedAt;
+  const recoveredAt = performance.now();
   const route = await store.getSessionRoute(tenantId, sessionId);
   process.stdout.write(JSON.stringify({
     sessionId,
@@ -139,8 +147,27 @@ try {
     finalState: route?.state,
     attempts: route?.attempt,
     fencingToken: route?.fencingToken,
-    recoveryDurationMs: Math.round(recoveryDurationMs * 100) / 100,
-    workerMetrics: snapshot.metrics,
+    metrics: {
+      processTerminationMs:
+        Math.round((crashObservedAt - failureInjectedAt) * 100) / 100,
+      leaseExpiryWaitMs:
+        Math.round((leaseExpiredAt - crashObservedAt) * 100) / 100,
+      failureDetectionMs:
+        Math.round(
+          (recoveryScanCompletedAt - failureInjectedAt) * 100,
+        ) / 100,
+      recoveryScanMs:
+        Math.round(
+          (recoveryScanCompletedAt - recoveryScanStartedAt) * 100,
+        ) / 100,
+      reclaimAndRestoreMs:
+        Math.round((recoveredAt - recoveryScanCompletedAt) * 100) / 100,
+      checkpointRestoreMs:
+        restored.executionMetrics?.checkpointRestoreMs,
+      fullRecoveryRtoMs:
+        Math.round((recoveredAt - failureInjectedAt) * 100) / 100,
+    },
+    workerMetrics: restored.snapshot?.metrics,
   }, null, 2) + '\n');
 } finally {
   const closingChildren = [...runningChildren].map(async (child) => {

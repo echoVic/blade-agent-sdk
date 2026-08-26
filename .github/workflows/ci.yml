@@ -90,6 +90,17 @@ jobs:
       - name: Verify production Golden Path
         run: pnpm run verify:production-example
 
+      - name: Verify Runtime regression metrics
+        run: pnpm run verify:runtime-regression
+
+      - name: Upload Runtime regression report
+        if: ${{ always() && hashFiles('artifacts/runtime-regression.json') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-regression-node-${{ matrix.node-version }}
+          path: artifacts/runtime-regression.json
+          retention-days: 30
+
       - name: Build documentation
         run: pnpm run docs:build
 

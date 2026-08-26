@@ -92,6 +92,9 @@ describe('release workflow', () => {
     const releaseStep = steps.find((step: { run?: string }) =>
       step.run?.includes('semantic-release')
     );
+    const regressionArtifact = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/upload-artifact@')
+    );
 
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
@@ -112,6 +115,7 @@ describe('release workflow', () => {
       ].join('\n'),
       'pnpm run verify:create-agent',
       'pnpm run verify:production-example',
+      'pnpm run verify:runtime-regression',
       'pnpm run docs:build',
       'pnpm run test',
       'pnpm exec semantic-release',
@@ -125,6 +129,14 @@ describe('release workflow', () => {
     });
     expect(releaseStep.env).not.toHaveProperty('NPM_TOKEN');
     expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
+    expect(regressionArtifact).toMatchObject({
+      if: "${{ always() && hashFiles('artifacts/runtime-regression.json') != '' }}",
+      with: {
+        name: 'runtime-regression-release',
+        path: 'artifacts/runtime-regression.json',
+        'retention-days': 90,
+      },
+    });
   });
 });
 
@@ -136,6 +148,9 @@ describe('pull request workflow', () => {
     const steps = workflow.jobs.verify.steps;
     const checkout = steps.find((step: { uses?: string }) =>
       step.uses?.startsWith('actions/checkout@')
+    );
+    const regressionArtifact = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/upload-artifact@')
     );
     const commands = steps
       .map((step: { run?: string }) => step.run)
@@ -162,6 +177,15 @@ describe('pull request workflow', () => {
     );
     expect(commands).toContain('pnpm run verify:create-agent');
     expect(commands).toContain('pnpm run verify:production-example');
+    expect(commands).toContain('pnpm run verify:runtime-regression');
     expect(commands).toContain('pnpm run docs:build');
+    expect(regressionArtifact).toMatchObject({
+      if: "${{ always() && hashFiles('artifacts/runtime-regression.json') != '' }}",
+      with: {
+        name: 'runtime-regression-node-${{ matrix.node-version }}',
+        path: 'artifacts/runtime-regression.json',
+        'retention-days': 30,
+      },
+    });
   });
 });

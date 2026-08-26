@@ -48,6 +48,7 @@ describe('Node.js version policy', () => {
       'actions/configure-pages@v6',
       'actions/deploy-pages@v5',
       'actions/setup-node@v7',
+      'actions/upload-artifact@v6',
       'actions/upload-pages-artifact@v5',
       'pnpm/action-setup@v6',
     ]);

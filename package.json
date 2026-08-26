@@ -102,6 +102,7 @@
     "verify:install": "pnpm run build && node scripts/verify-minimal-install.mjs",
     "verify:create-agent": "node scripts/verify-create-blade-agent.mjs",
     "verify:production-example": "node examples/production-stack/run.mjs --smoke",
+    "verify:runtime-regression": "node scripts/verify-runtime-regression.mjs",
     "changelog:check": "node scripts/semantic-release-bilingual-changelog.cjs --check",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
