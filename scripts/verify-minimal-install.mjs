@@ -89,6 +89,7 @@ try {
     '@ai-sdk/azure',
     '@ai-sdk/deepseek',
     '@ai-sdk/google',
+    'esbuild',
     'node-pty',
   ]) {
     if (existsSync(join(consumer, 'node_modules', ...packageName.split('/')))) {
@@ -120,6 +121,13 @@ try {
     ) {
       throw new Error(`${packageName} must remain an optional peer`);
     }
+  }
+  if (
+    manifest.dependencies?.esbuild
+    || manifest.optionalDependencies?.esbuild
+    || manifest.peerDependencies?.esbuild
+  ) {
+    throw new Error('esbuild must remain a development-only dependency');
   }
   if (
     manifest.dependencies?.['node-pty']

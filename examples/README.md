@@ -38,6 +38,16 @@ pnpm verify:production-example
 The smoke command prints `firstResultMs` and fails unless the browser protocol
 receives the exact output produced by the Docker worker within five minutes.
 
+Generate this topology as an independent project from the published package:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --verify
+```
+
+The CLI installs the generated dependencies and includes setup time in the
+five-minute first-result budget.
+
 ## Local CLI Agent
 
 ```bash

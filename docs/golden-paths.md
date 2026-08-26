@@ -35,6 +35,21 @@ Docker worker 生成的精确结果后才成功。
 令牌访问的、按租户隔离的 `/v1/runtime/metrics`。只有 Worker ready 且队列指标
 反映已完成的 Session 时，验收才会通过。
 
+## 生成独立项目
+
+已发布的 SDK 自带 `create-blade-agent` 可执行文件。以下单命令会临时安装 CLI、
+生成独立项目、安装项目依赖并运行完整 production smoke：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --verify
+```
+
+五分钟预算从 CLI 启动开始计算，覆盖生成、安装、PostgreSQL 编排、Worker
+启动和首个 Docker 结果。PR 与 Release CI 会从当前 SDK tarball 安装 CLI，
+执行相同流程，并对生成项目运行 production dependency audit。省略 `--verify`
+时不会启动 stack；`--skip-install` 只生成文件。
+
 ## 本地 CLI Agent
 
 ```bash

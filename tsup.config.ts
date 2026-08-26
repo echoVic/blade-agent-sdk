@@ -18,6 +18,7 @@ export default defineConfig({
     index: 'src/index.ts',
     'browser/index': 'src/browser/index.ts',
     'browser/server-only-stub': 'src/browser/server-only-stub.ts',
+    'cli/create-blade-agent': 'src/cli/create-blade-agent.ts',
     'core/index': 'src/core/index.ts',
     'middleware/index': 'src/middleware/index.ts',
     'model/index': 'src/model/index.ts',

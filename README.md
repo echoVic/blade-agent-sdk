@@ -19,6 +19,23 @@ npm install @blade-ai/agent-sdk
 pnpm add @blade-ai/agent-sdk
 ```
 
+## Create a Full-Stack Agent
+
+With Node.js 22.14+ and Docker running, generate, install, and verify a
+standalone production-topology project in one command:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --verify
+```
+
+The generated project includes a browser client, `AgentServer`, PostgreSQL,
+`AgentWorker`, `DockerExecutionHost`, health probes, queue metrics, and
+uncertain-effect operations. The `--verify` budget covers project generation,
+dependency installation, and the first Docker-produced result, and fails after
+five minutes. Omit `--verify` to generate and install without starting the
+stack; use `--skip-install` for files only.
+
 ## Quick Start
 
 ```ts

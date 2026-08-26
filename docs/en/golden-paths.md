@@ -39,6 +39,23 @@ tenant-scoped `/v1/runtime/metrics` using the local operator token. Acceptance
 passes only when the Worker is ready and queue metrics reflect the completed
 Session.
 
+## Generate a standalone project
+
+The published SDK includes the `create-blade-agent` executable. This command
+temporarily installs the CLI, generates a standalone project, installs its
+dependencies, and runs the complete production smoke:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --verify
+```
+
+The five-minute budget starts with the CLI and covers generation, installation,
+PostgreSQL orchestration, Worker startup, and the first Docker-produced result.
+PR and Release CI install the CLI from the current SDK tarball, run the same
+flow, and audit the generated production dependency tree. Omit `--verify` to
+avoid starting the stack; `--skip-install` writes files only.
+
 ## Local CLI Agent
 
 ```bash

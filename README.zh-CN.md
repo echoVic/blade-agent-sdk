@@ -19,6 +19,21 @@ npm install @blade-ai/agent-sdk
 pnpm add @blade-ai/agent-sdk
 ```
 
+## 创建完整生产拓扑 Agent
+
+本机具备 Node.js 22.14+ 和 Docker 时，可以用一条命令生成独立项目、安装依赖并
+完成验收：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --verify
+```
+
+生成项目包含浏览器客户端、`AgentServer`、PostgreSQL、`AgentWorker`、
+`DockerExecutionHost`、健康检查、队列指标和 uncertain effect 运维入口。
+`--verify` 的五分钟预算覆盖项目生成、依赖安装和 Docker 首次结果；超时会直接
+失败。省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
+
 ## 快速开始
 
 ```ts
