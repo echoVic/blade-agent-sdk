@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.5] - 2026-08-26
+
+### Fixes
+
+- Add dependency-minimal local and Web create-blade-agent presets while preserving the production default.
+
 ## [6.0.4] - 2026-08-26
 
 ### Fixes

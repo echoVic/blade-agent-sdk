@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [6.0.5] - 2026-08-26
+
+### 修复
+
+- 为 create-blade-agent 增加依赖极简的 local 与 Web preset，同时保留 production 默认行为。
+
 ## [6.0.4] - 2026-08-26
 
 ### 修复

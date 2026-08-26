@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Add dependency-minimal local and Web create-blade-agent presets while preserving the production default.",
-  "zh-CN": "为 create-blade-agent 增加依赖极简的 local 与 Web preset，同时保留 production 默认行为。"
-}
