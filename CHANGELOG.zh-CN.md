@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [6.0.2] - 2026-08-26
+
+### 修复
+
+- 新增带鉴权的 runtime 健康检查、队列指标、uncertain effect 对账与不采集 payload 的 Worker OpenTelemetry。
+
 ## [6.0.1] - 2026-08-26
 
 ### 修复

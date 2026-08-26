@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.2] - 2026-08-26
+
+### Fixes
+
+- Add authenticated runtime health, queue metrics, uncertain-effect reconciliation, and payload-free Worker OpenTelemetry.
+
 ## [6.0.1] - 2026-08-26
 
 ### Fixes

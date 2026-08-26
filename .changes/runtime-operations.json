@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Add authenticated runtime health, queue metrics, uncertain-effect reconciliation, and payload-free Worker OpenTelemetry.",
-  "zh-CN": "新增带鉴权的 runtime 健康检查、队列指标、uncertain effect 对账与不采集 payload 的 Worker OpenTelemetry。"
-}
