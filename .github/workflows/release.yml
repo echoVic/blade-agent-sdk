@@ -81,6 +81,9 @@ jobs:
           node scripts/verify-entrypoints.mjs
           node scripts/verify-minimal-install.mjs
 
+      - name: Verify generated Agent starter
+        run: pnpm run verify:create-agent
+
       - name: Verify production Golden Path
         run: pnpm run verify:production-example
 

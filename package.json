@@ -11,6 +11,9 @@
   "engines": {
     "node": ">=22.14.0"
   },
+  "bin": {
+    "create-blade-agent": "./dist/cli/create-blade-agent.js"
+  },
   "packageManager": "pnpm@10.6.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -79,6 +82,9 @@
   },
   "files": [
     "dist",
+    "examples/production-stack",
+    "examples/web-agent-server/client.js",
+    "examples/web-agent-server/index.html",
     "vendor/ripgrep/**",
     "README.md",
     "README.zh-CN.md",
@@ -94,6 +100,7 @@
     "audit:prod": "pnpm audit --prod --audit-level low",
     "verify:entrypoints": "pnpm run build && node scripts/verify-entrypoints.mjs",
     "verify:install": "pnpm run build && node scripts/verify-minimal-install.mjs",
+    "verify:create-agent": "node scripts/verify-create-blade-agent.mjs",
     "verify:production-example": "node examples/production-stack/run.mjs --smoke",
     "changelog:check": "node scripts/semantic-release-bilingual-changelog.cjs --check",
     "release": "semantic-release",
@@ -204,7 +211,7 @@
     "@types/semver": "^7.7.1",
     "@types/write-file-atomic": "^4.0.3",
     "@vscode/ripgrep": "^1.17.0",
-    "esbuild": "0.27.4",
+    "esbuild": "0.28.2",
     "fs-native-extensions": "1.5.0",
     "koffi": "3.1.6",
     "pg": "8.23.0",

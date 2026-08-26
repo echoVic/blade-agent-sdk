@@ -110,6 +110,7 @@ describe('release workflow', () => {
         'node scripts/verify-minimal-install.mjs',
         '',
       ].join('\n'),
+      'pnpm run verify:create-agent',
       'pnpm run verify:production-example',
       'pnpm run docs:build',
       'pnpm run test',
@@ -159,6 +160,7 @@ describe('pull request workflow', () => {
         '',
       ].join('\n'),
     );
+    expect(commands).toContain('pnpm run verify:create-agent');
     expect(commands).toContain('pnpm run verify:production-example');
     expect(commands).toContain('pnpm run docs:build');
   });

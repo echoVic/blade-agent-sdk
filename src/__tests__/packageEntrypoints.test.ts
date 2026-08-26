@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
+  bin: Record<string, string>;
   exports: Record<string, unknown>;
+  files: string[];
   scripts: Record<string, string>;
 };
 
@@ -96,6 +98,20 @@ describe('package entrypoints', () => {
       'pnpm run build && node scripts/verify-entrypoints.mjs',
     );
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
+  });
+
+  it('ships the create-blade-agent executable and its verified template assets', () => {
+    expect(packageJson.bin).toEqual({
+      'create-blade-agent': './dist/cli/create-blade-agent.js',
+    });
+    expect(packageJson.files).toEqual(
+      expect.arrayContaining([
+        'examples/production-stack',
+        'examples/web-agent-server/client.js',
+        'examples/web-agent-server/index.html',
+      ]),
+    );
+    expect(existsSync(join(process.cwd(), 'src/cli/create-blade-agent.ts'))).toBe(true);
   });
 
   it('throws clear errors from browser runtime stubs', async () => {
