@@ -31,6 +31,8 @@ describe('golden paths', () => {
         'pnpm run build && node examples/web-agent-server/server.mjs',
       'example:worker-recovery':
         'pnpm run build && node examples/postgres-worker-recovery/run.mjs',
+      'verify:create-agent':
+        'node scripts/verify-create-blade-agent.mjs',
     });
     for (const file of goldenPaths) {
       expect(existsSync(resolve(file)), file).toBe(true);
@@ -84,5 +86,18 @@ describe('golden paths', () => {
     );
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).not.toMatch(/(?:src|href)=["']https?:\/\//);
+  });
+
+  it('documents the installed create-blade-agent verification path in both locales', () => {
+    for (const file of [
+      'README.md',
+      'README.zh-CN.md',
+      'docs/golden-paths.md',
+      'docs/en/golden-paths.md',
+    ]) {
+      const source = readFileSync(resolve(file), 'utf8');
+      expect(source, file).toContain('create-blade-agent my-agent --verify');
+      expect(source, file).toMatch(/five minutes|five-minute|五分钟/);
+    }
   });
 });

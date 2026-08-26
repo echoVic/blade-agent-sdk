@@ -6,6 +6,9 @@
 OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
 `/server` 不再静态加载对应 adapter。部分依赖仍可能由基础依赖间接安装。
 
+包还提供 `create-blade-agent` 可执行文件，用于生成并验收独立的完整生产拓扑项目。
+该 CLI 不属于 JavaScript package export；通过 npm bin 调用。
+
 ## 包入口
 
 | 入口 | 运行环境 | 说明 |
