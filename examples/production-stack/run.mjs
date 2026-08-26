@@ -124,6 +124,7 @@ async function runSmoke(baseUrl) {
   );
   let resolveResult;
   let rejectResult;
+  let resultSettled = false;
   const resultReceived = new Promise((resolve, reject) => {
     resolveResult = resolve;
     rejectResult = reject;
@@ -138,18 +139,24 @@ async function runSmoke(baseUrl) {
           output += event.data.delta;
         }
         if (event.type === 'session.stream' && event.data.type === 'result') {
+          resultSettled = true;
           resolveResult({
             output,
             result: event.data,
           });
         }
         if (event.type === 'session.closed') {
+          if (!resultSettled) {
+            rejectResult(new Error('Session closed before producing a result'));
+          }
           return;
         }
       }
       throw new Error('Session event stream ended before session.closed');
     } catch (error) {
-      rejectResult(error);
+      if (!resultSettled) {
+        rejectResult(error);
+      }
       throw error;
     }
   })();
@@ -295,6 +302,12 @@ try {
     conditions: ['browser'],
   });
   httpServer = createServer(async (request, response) => {
+    const requestController = new AbortController();
+    const abortUpstream = () => {
+      requestController.abort(new Error('Client disconnected'));
+    };
+    request.once('aborted', abortUpstream);
+    response.once('close', abortUpstream);
     try {
       const url = new URL(request.url || '/', 'http://127.0.0.1');
       if (request.method === 'GET' && url.pathname === '/') {
@@ -315,6 +328,7 @@ try {
         new Request(`http://127.0.0.1${request.url || '/'}`, {
           method: request.method,
           headers: request.headers,
+          signal: requestController.signal,
           ...(body ? { body } : {}),
         }),
       );
@@ -323,8 +337,19 @@ try {
         response.end();
         return;
       }
-      Readable.fromWeb(upstream.body).pipe(response);
+      const bodyStream = Readable.fromWeb(upstream.body);
+      response.once('close', () => bodyStream.destroy());
+      bodyStream.on('error', (error) => {
+        requestController.abort(error);
+        if (!response.destroyed) {
+          response.destroy(error);
+        }
+      });
+      bodyStream.pipe(response);
     } catch (error) {
+      if (response.destroyed) {
+        return;
+      }
       response.writeHead(500, { 'content-type': 'application/json' });
       response.end(JSON.stringify({
         error: error instanceof Error ? error.message : String(error),

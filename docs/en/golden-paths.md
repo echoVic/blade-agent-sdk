@@ -1,7 +1,7 @@
 # Golden Paths
 
 The repository provides four runnable paths. Every example imports only public
-only public package entrypoints.
+package entrypoints.
 
 ## Single-command production loop
 
