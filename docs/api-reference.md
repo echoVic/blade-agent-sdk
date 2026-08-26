@@ -3,7 +3,7 @@
 `@blade-ai/agent-sdk` 根包保持 session-first 体验，并采用服务端安全默认值。需要访问本机文件、进程或 Sandbox 的 Node.js 应用使用 `/node`；不应隐式访问宿主资源的服务端应用使用 `/server`。浏览器端应优先从 `/browser` 或 `/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `node` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 
 `/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
-OpenTelemetry、非默认 Provider 与原生 Node 增强使用可选 peer dependency；
+OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
 `/server` 不再静态加载对应 adapter。部分依赖仍可能由基础依赖间接安装。
 
 ## 包入口

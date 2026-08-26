@@ -154,7 +154,7 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
 
-PostgreSQL、OpenTelemetry、非默认 Provider 和本机原生增强是按需 peer：
+PostgreSQL、OpenTelemetry、非内置 Provider adapter 和本机原生增强是按需 peer：
 
 ```bash
 pnpm add pg                         # /server/postgres

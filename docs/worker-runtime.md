@@ -7,8 +7,8 @@ Worker Runtime 在共享 `RuntimeStore` 上提供 worker 存活、Session 路由
 ## AgentWorker
 
 `AgentWorker` 把 worker 注册、heartbeat、Session claim、lease 续期、恢复扫描和
-effect 消费组合为一个常驻执行循环。`SessionRunner` 负责执行单个已经 fencing 的
-Session：
+可选的 effect 消费组合为一个常驻执行循环。`SessionRunner` 负责执行单个已经
+fencing 的 Session：
 
 ```ts
 import {
@@ -34,9 +34,16 @@ const worker = new AgentWorker({
       allowedTools: [],
     }),
   }),
+  effectHandlers: [{
+    type: 'payment.capture',
+    execute: ({ effect, signal }) =>
+      paymentProvider.capture(effect.payload, effect.idempotencyKey, signal),
+  }],
 });
 
-await worker.run(shutdownSignal);
+const shutdownController = new AbortController();
+process.once('SIGTERM', () => shutdownController.abort());
+await worker.run(shutdownController.signal);
 ```
 
 `SdkSessionRunner` 恢复已经持久化的 Request，并自动注入当前 tenant Store 与

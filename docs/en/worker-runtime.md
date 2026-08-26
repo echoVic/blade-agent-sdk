@@ -8,8 +8,8 @@ and short-lived quotas only.
 ## AgentWorker
 
 `AgentWorker` combines worker registration, heartbeat, Session claims, lease
-renewal, recovery scans, and effect consumption into one long-running execution
-loop. A `SessionRunner` executes one already-fenced Session:
+renewal, recovery scans, and optional effect consumption into one long-running
+execution loop. A `SessionRunner` executes one already-fenced Session:
 
 ```ts
 import {
@@ -35,9 +35,16 @@ const worker = new AgentWorker({
       allowedTools: [],
     }),
   }),
+  effectHandlers: [{
+    type: 'payment.capture',
+    execute: ({ effect, signal }) =>
+      paymentProvider.capture(effect.payload, effect.idempotencyKey, signal),
+  }],
 });
 
-await worker.run(shutdownSignal);
+const shutdownController = new AbortController();
+process.once('SIGTERM', () => shutdownController.abort());
+await worker.run(shutdownController.signal);
 ```
 
 `SdkSessionRunner` resumes an already-persisted Request and injects the current

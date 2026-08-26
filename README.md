@@ -154,7 +154,7 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
-PostgreSQL, OpenTelemetry, non-default providers, and native Node enhancements
+PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node enhancements
 are opt-in peers:
 
 ```bash

@@ -1,3 +1,4 @@
+<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blade Agent Console</title>
@@ -36,10 +37,35 @@
   .workspace {
     width: 100%;
     aspect-ratio: 16 / 9;
-    object-fit: cover;
     margin: 24px 0;
     border: 1px solid #536158;
-    filter: saturate(0.78) contrast(1.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    background: #111814;
+  }
+
+  .workspace-line {
+    display: block;
+    width: 82%;
+    height: 5px;
+    background: #88a594;
+  }
+
+  .workspace-line:nth-child(2) {
+    width: 58%;
+    background: #d7f236;
+  }
+
+  .workspace-line:nth-child(3) {
+    width: 72%;
+  }
+
+  .workspace-line:nth-child(4) {
+    width: 44%;
+    background: #f0f0e8;
   }
 
   h1 {
@@ -198,11 +224,16 @@
   <aside>
     <div class="eyebrow">Runtime console</div>
     <h1>Blade Agent</h1>
-    <img
+    <div
       class="workspace"
-      src="https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=realistic%20developer%20workstation%20with%20terminal%20and%20code%20editor%2C%20clean%20industrial%20lighting%2C%20dark%20green%20and%20neutral%20palette%2C%20documentary%20photography%2C%20no%20logos%2C%20no%20text&image_size=landscape_16_9"
-      alt="Developer workstation"
+      role="img"
+      aria-label="Active runtime console"
     >
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+    </div>
     <div class="meta">
       <span class="meta-label">Session</span>
       <strong id="session-id">Not started</strong>

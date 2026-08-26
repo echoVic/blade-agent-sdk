@@ -112,10 +112,19 @@ if (mode === 'park') {
   }
   await worker.wait();
 } else {
-  while ((await store.getSessionRoute(tenantId, sessionId))?.state !== 'completed') {
+  const deadline = Date.now() + 60_000;
+  let state;
+  while (Date.now() < deadline) {
+    state = (await store.getSessionRoute(tenantId, sessionId))?.state;
+    if (state === 'completed' || state === 'failed') {
+      break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   await worker.shutdown();
   process.stdout.write(JSON.stringify(worker.getSnapshot()) + '\n');
   await store.close();
+  if (state !== 'completed') {
+    throw new Error(`Restore Session ended in ${state ?? 'unknown'} state`);
+  }
 }

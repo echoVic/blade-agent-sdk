@@ -3,8 +3,8 @@
 This page inventories the public package surface. Detailed behavior is documented on the feature pages.
 
 `/server` currently targets Node.js server processes, not edge runtimes.
-PostgreSQL, OpenTelemetry, non-default providers, and native Node enhancements
-are optional peers, and `/server` no longer statically loads their adapters.
+PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
+enhancements are optional peers, and `/server` no longer statically loads their adapters.
 Some packages can still be present transitively through base dependencies.
 
 ## Entry points

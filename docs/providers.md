@@ -15,7 +15,7 @@ Provider SDK。
 | DeepSeek | `'deepseek'` | 可选 peer `@ai-sdk/deepseek` |
 | OpenAI 兼容 | `'openai-compatible'` | 内置 `@ai-sdk/openai-compatible` |
 
-Provider adapter 按需加载。使用非默认 Provider 时安装对应 peer，例如：
+Provider adapter 按需加载。使用非内置 Provider adapter 时安装对应 peer，例如：
 
 ```bash
 pnpm add @blade-ai/agent-sdk @ai-sdk/anthropic

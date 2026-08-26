@@ -56,4 +56,13 @@ describe('golden paths', () => {
     expect(worker).toContain('ExecutionHostSessionRunner');
     expect(worker).toContain('DockerExecutionHost');
   });
+
+  it('keeps the Web example in standards mode without external assets', () => {
+    const html = readFileSync(
+      resolve('examples/web-agent-server/index.html'),
+      'utf8',
+    );
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).not.toMatch(/(?:src|href)=["']https?:\/\//);
+  });
 });
