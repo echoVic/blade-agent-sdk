@@ -182,6 +182,7 @@ async function runSmoke(baseUrl) {
     resolveResult = resolve;
     rejectResult = reject;
   });
+  void resultReceived.catch(() => undefined);
   const events = (async () => {
     let output = '';
     try {

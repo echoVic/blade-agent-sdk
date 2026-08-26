@@ -8,9 +8,10 @@ enhancements are optional peers, and `/server` no longer statically loads their 
 Some packages can still be present transitively through base dependencies.
 
 The package also ships the `create-blade-agent` executable. Its
-`--preset <local|web|production>` option generates and verifies a standalone
-topology; omitting `--preset` preserves the production default. It is an npm
-binary, not a JavaScript package export.
+`--preset <local|web|production>` option selects the generated project
+topology, while `--verify` enables post-installation verification. Omitting
+`--preset` preserves the production default. It is an npm binary, not a
+JavaScript package export.
 
 ## Entry points
 
