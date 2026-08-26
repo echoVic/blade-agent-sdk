@@ -37,6 +37,14 @@ interface ProcessOptions {
   readonly timeoutMs?: number;
 }
 
+function remainingFirstSuccessBudget(startedAt: number): number {
+  const remainingMs = Math.floor(FIRST_SUCCESS_BUDGET_MS - (performance.now() - startedAt));
+  if (remainingMs <= 0) {
+    throw new Error('Project setup exceeded the five-minute first-success budget');
+  }
+  return remainingMs;
+}
+
 function detectPackageManager(
   userAgent = process.env.npm_config_user_agent,
 ): CreateBladeAgentPackageManager {
@@ -267,18 +275,18 @@ export async function createBladeAgent(
 
   if (!options.skipInstall) {
     const [command, args] = commandFor(packageManager);
-    await runProcess(command, args, { cwd: directory });
+    await runProcess(command, args, {
+      cwd: directory,
+      ...(options.verify
+        ? { timeoutMs: remainingFirstSuccessBudget(startedAt) }
+        : {}),
+    });
   }
   if (options.verify) {
-    const elapsedMs = performance.now() - startedAt;
-    const remainingMs = Math.floor(FIRST_SUCCESS_BUDGET_MS - elapsedMs);
-    if (remainingMs <= 0) {
-      throw new Error('Project setup exceeded the five-minute first-success budget');
-    }
     const [command, args] = commandFor(packageManager, 'smoke');
     await runProcess(command, args, {
       cwd: directory,
-      timeoutMs: remainingMs,
+      timeoutMs: remainingFirstSuccessBudget(startedAt),
     });
   }
 
