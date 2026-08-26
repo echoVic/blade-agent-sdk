@@ -20,12 +20,17 @@ A resumable Session requires an explicitly supplied `sessionRepository` and
 
 ## Create a server
 
+The OpenTelemetry adapter is an opt-in peer. Install
+`@opentelemetry/api` and import the adapter from `/server/otel`.
+
 ```ts
 import {
   AgentServer,
-  OpenTelemetryAgentServerTelemetry,
   type AgentPrincipal,
 } from '@blade-ai/agent-sdk/server';
+import {
+  OpenTelemetryAgentServerTelemetry,
+} from '@blade-ai/agent-sdk/server/otel';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/node';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');

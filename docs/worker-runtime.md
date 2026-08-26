@@ -4,6 +4,56 @@ Worker Runtime 在共享 `RuntimeStore` 上提供 worker 存活、Session 路由
 和 effect outbox 恢复。PostgreSQL 是唯一协调事实源；Redis 只能用于通知、wake-up
 和短期配额。
 
+## AgentWorker
+
+`AgentWorker` 把 worker 注册、heartbeat、Session claim、lease 续期、恢复扫描和
+可选的 effect 消费组合为一个常驻执行循环。`SessionRunner` 负责执行单个已经
+fencing 的 Session：
+
+```ts
+import {
+  AgentWorker,
+  SdkSessionRunner,
+} from '@blade-ai/agent-sdk/server';
+import {
+  PostgresRuntimeStore,
+} from '@blade-ai/agent-sdk/server/postgres';
+import { WorkerId } from '@blade-ai/agent-sdk/core';
+
+const store = new PostgresRuntimeStore({
+  connectionString: process.env.DATABASE_URL!,
+});
+const worker = new AgentWorker({
+  store,
+  workerId: WorkerId(crypto.randomUUID()),
+  capacity: 8,
+  sessionRunner: new SdkSessionRunner({
+    resolveSessionOptions: () => ({
+      provider,
+      model,
+      allowedTools: [],
+    }),
+  }),
+  effectHandlers: [{
+    type: 'payment.capture',
+    execute: ({ effect, signal }) =>
+      paymentProvider.capture(effect.payload, effect.idempotencyKey, signal),
+  }],
+});
+
+const shutdownController = new AbortController();
+process.once('SIGTERM', () => shutdownController.abort());
+await worker.run(shutdownController.signal);
+```
+
+`SdkSessionRunner` 恢复已经持久化的 Request，并自动注入当前 tenant Store 与
+worker lease。单轮完成后路由进入 `idle` 并释放 lease；后续输入可以重新入队。
+
+需要隔离 workspace 时使用 `ExecutionHostSessionRunner`。它会在 route metadata
+中持久化 checkpoint 引用，后继 worker 可通过同一个 `ExecutionHost` backend
+恢复。完整可运行示例见
+[`examples/postgres-worker-recovery`](https://github.com/echoVic/blade-agent-sdk/tree/main/examples/postgres-worker-recovery)。
+
 ## Worker 生命周期
 
 ```ts
@@ -13,7 +63,6 @@ import {
   WorkerId,
 } from '@blade-ai/agent-sdk';
 import {
-  effectLease,
   PostgresRuntimeStore,
 } from '@blade-ai/agent-sdk/server/postgres';
 
@@ -79,9 +128,10 @@ if (claim) {
 |------|------|----------|
 | `queued` | 等待 worker | `provisioning`、`failed` |
 | `provisioning` | worker 已领取，正在准备运行环境 | `running`、`suspended`、`failed` |
-| `running` | Session 正在执行 | `waiting_approval`、`suspended`、`completed`、`failed` |
+| `running` | Session 正在执行 | `waiting_approval`、`suspended`、`idle`、`completed`、`failed` |
 | `waiting_approval` | 等待外部审批，worker 仍持有 lease | `running`、`suspended`、`failed` |
-| `suspended` | 无 worker 持有，可由新 worker 恢复 | `queued`、`provisioning`、`completed`、`failed` |
+| `suspended` | 无 worker 持有，可由新 worker 恢复 | `queued`、`provisioning`、`idle`、`completed`、`failed` |
+| `idle` | 本轮完成且未持有 lease，可接受后续输入 | `queued`、`completed`、`failed` |
 | `completed` | 正常终态 | 无 |
 | `failed` | 失败终态 | 无 |
 
@@ -121,6 +171,8 @@ effect 有两种执行模式：
   重试。
 
 ```ts
+import { EffectDispatcher } from '@blade-ai/agent-sdk/server';
+
 await store.commitRuntimeTransaction({
   tenantId,
   sessionId,
@@ -134,19 +186,22 @@ await store.commitRuntimeTransaction({
   }],
 });
 
-const [effect] = await store.claimEffects({
-  tenantId,
+const dispatcher = new EffectDispatcher({
+  store,
   workerId,
-  ttlMs: 30_000,
-  limit: 1,
+  handlers: [{
+    type: 'payment.capture',
+    async execute({ effect, signal }) {
+      return paymentProvider.capture(
+        effect.payload,
+        effect.idempotencyKey,
+        signal,
+      );
+    },
+  }],
 });
 
-if (effect) {
-  const lease = effectLease(effect);
-  await store.startEffect(lease);
-  await executeExternalEffect(effect.payload);
-  await store.completeEffect(lease, { delivered: true });
-}
+await dispatcher.run(shutdownSignal);
 ```
 
 执行顺序必须是 `claim -> startEffect -> external side effect -> completeEffect`：
@@ -158,6 +213,9 @@ if (effect) {
 
 `at_most_once` 保证“不重复”，不保证“一定执行”。`uncertain` 不能直接重试；
 业务对账后通过 `reconcileEffect()` 将其明确收敛为 `completed` 或 `failed`。
+handler 已发出请求但无法确认结果时应抛出
+`UncertainRuntimeEffectError`；明确可重试的幂等失败使用
+`RetryableRuntimeEffectError`。
 
 长任务应同时续期 worker heartbeat 和 effect lease：
 

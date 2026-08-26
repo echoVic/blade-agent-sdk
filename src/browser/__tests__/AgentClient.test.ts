@@ -225,6 +225,29 @@ describe('AgentClient events', () => {
 });
 
 describe('AgentClient commands', () => {
+  it('calls fetch without binding the AgentClient instance as its receiver', async () => {
+    let receiver: unknown = 'not-called';
+    const fetchImpl = function (
+      this: unknown,
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> {
+      receiver = this;
+      const request = new Request(input, init);
+      return request.json().then((body) =>
+        initializeResponse((body as { commandId: string }).commandId));
+    };
+    const client = new AgentClient({
+      baseUrl: 'https://agent.test/v1/agent',
+      client: { name: 'test-client', version: '1.0.0' },
+      fetch: fetchImpl,
+    });
+
+    await client.initialize();
+
+    expect(receiver).toBeUndefined();
+  });
+
   it('retries a non-JSON HTTP 429 with the same command ID', async () => {
     const commandIds: string[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {

@@ -76,6 +76,42 @@ export class InProcessSessionExecutor {
   }
 }
 
+export class SdkSessionRunner {
+  constructor(..._args: unknown[]) {
+    serverOnly('SdkSessionRunner');
+  }
+}
+
+export class AgentWorker {
+  constructor(..._args: unknown[]) {
+    serverOnly('AgentWorker');
+  }
+}
+
+export class EffectDispatcher {
+  constructor(..._args: unknown[]) {
+    serverOnly('EffectDispatcher');
+  }
+}
+
+export class RetryableRuntimeEffectError {
+  constructor(..._args: unknown[]) {
+    serverOnly('RetryableRuntimeEffectError');
+  }
+}
+
+export class UncertainRuntimeEffectError {
+  constructor(..._args: unknown[]) {
+    serverOnly('UncertainRuntimeEffectError');
+  }
+}
+
+export class ExecutionHostSessionRunner {
+  constructor(..._args: unknown[]) {
+    serverOnly('ExecutionHostSessionRunner');
+  }
+}
+
 export class InMemoryAgentServerStore {
   constructor(..._args: unknown[]) {
     serverOnly('InMemoryAgentServerStore');
@@ -112,7 +148,7 @@ export class WorkerRuntimeError {
   }
 }
 
-export const RUNTIME_STORE_SCHEMA_VERSION = 2;
+export const RUNTIME_STORE_SCHEMA_VERSION = 3;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1;
 export const RUNTIME_SESSION_STATES = [
   'queued',
@@ -120,6 +156,7 @@ export const RUNTIME_SESSION_STATES = [
   'running',
   'waiting_approval',
   'suspended',
+  'idle',
   'completed',
   'failed',
 ] as const;

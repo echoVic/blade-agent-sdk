@@ -21,6 +21,7 @@ export const RUNTIME_SESSION_STATES = [
   'running',
   'waiting_approval',
   'suspended',
+  'idle',
   'completed',
   'failed',
 ] as const;
@@ -77,6 +78,12 @@ export interface RuntimeSessionClaimOptions
 export interface RuntimeSessionTransition {
   readonly expectedState: RuntimeSessionState;
   readonly state: RuntimeSessionState;
+  readonly metadata?: JsonObject;
+  readonly failure?: JsonObject;
+}
+
+export interface RuntimeSessionSettlement {
+  readonly state: 'idle' | 'completed' | 'failed';
   readonly metadata?: JsonObject;
   readonly failure?: JsonObject;
 }
@@ -156,6 +163,11 @@ export interface WorkerRuntimeStore {
     lease: DurableExecutionLease,
     transition: RuntimeSessionTransition,
   ): Promise<RuntimeSessionRoute>;
+  settleSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    settlement: RuntimeSessionSettlement,
+  ): Promise<RuntimeSessionRoute>;
   handoffSession(
     tenantId: string,
     lease: DurableExecutionLease,
@@ -194,6 +206,10 @@ export interface WorkerRuntimeStore {
     error: JsonObject,
     options?: RuntimeEffectFailureOptions,
   ): Promise<RuntimeEffectRecord>;
+  markEffectUncertain(
+    lease: RuntimeEffectLease,
+    error: JsonObject,
+  ): Promise<RuntimeEffectRecord>;
   reconcileEffect(
     tenantId: string,
     effectId: string,
@@ -227,9 +243,16 @@ const SESSION_TRANSITIONS: Readonly<
 > = {
   queued: new Set(['provisioning', 'failed']),
   provisioning: new Set(['running', 'suspended', 'failed']),
-  running: new Set(['waiting_approval', 'suspended', 'completed', 'failed']),
+  running: new Set([
+    'waiting_approval',
+    'suspended',
+    'idle',
+    'completed',
+    'failed',
+  ]),
   waiting_approval: new Set(['running', 'suspended', 'failed']),
-  suspended: new Set(['queued', 'provisioning', 'completed', 'failed']),
+  suspended: new Set(['queued', 'provisioning', 'idle', 'completed', 'failed']),
+  idle: new Set(['queued', 'completed', 'failed']),
   completed: new Set(),
   failed: new Set(),
 };

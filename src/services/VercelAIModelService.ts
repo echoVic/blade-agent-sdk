@@ -1,9 +1,3 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createAzure } from '@ai-sdk/azure';
-import { createDeepSeek } from '@ai-sdk/deepseek';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
@@ -184,6 +178,22 @@ function safeJsonParse(str: string, logger: InternalLogger, fallback: JsonValue 
   }
 }
 
+async function loadProviderPackage<T>(
+  provider: string,
+  packageName: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await load();
+  } catch (cause) {
+    throw new ProviderRegistryError(
+      'PROVIDER_ADAPTER_NOT_FOUND',
+      `Built-in provider "${provider}" requires the optional package "${packageName}"`,
+      { providerType: provider, cause },
+    );
+  }
+}
+
 function getStreamTextDelta(part: unknown): string | undefined {
   const chunk = part as { text?: string; textDelta?: string; delta?: string };
   return chunk.text ?? chunk.textDelta ?? chunk.delta;
@@ -267,6 +277,7 @@ export class VercelAIModelService implements ModelService {
 
     switch (provider) {
       case 'openai': {
+        const { createOpenAI } = await import('@ai-sdk/openai');
         const openai = createOpenAI({
           apiKey,
           baseURL: baseUrl || undefined,
@@ -276,6 +287,11 @@ export class VercelAIModelService implements ModelService {
       }
 
       case 'anthropic': {
+        const { createAnthropic } = await loadProviderPackage(
+          provider,
+          '@ai-sdk/anthropic',
+          () => import('@ai-sdk/anthropic'),
+        );
         const anthropic = createAnthropic({
           apiKey,
           baseURL: baseUrl || undefined,
@@ -286,6 +302,7 @@ export class VercelAIModelService implements ModelService {
 
       case 'gemini': {
         if (baseUrl && !this.isGeminiOfficialUrl(baseUrl)) {
+          const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
           const compatible = createOpenAICompatible({
             name: 'gemini',
             apiKey,
@@ -294,6 +311,11 @@ export class VercelAIModelService implements ModelService {
           });
           return compatible(model);
         }
+        const { createGoogleGenerativeAI } = await loadProviderPackage(
+          provider,
+          '@ai-sdk/google',
+          () => import('@ai-sdk/google'),
+        );
         const google = createGoogleGenerativeAI({
           apiKey,
           baseURL: baseUrl || undefined,
@@ -304,6 +326,11 @@ export class VercelAIModelService implements ModelService {
       case 'azure-openai': {
         const resourceName = this.extractAzureResourceName(baseUrl);
         if (resourceName) {
+          const { createAzure } = await loadProviderPackage(
+            provider,
+            '@ai-sdk/azure',
+            () => import('@ai-sdk/azure'),
+          );
           const azure = createAzure({
             apiKey,
             resourceName,
@@ -312,6 +339,7 @@ export class VercelAIModelService implements ModelService {
           return azure(model);
         }
         const azureBaseUrl = this.buildAzureBaseUrl(baseUrl, model);
+        const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
         const compatible = createOpenAICompatible({
           name: 'azure-openai',
           apiKey,
@@ -328,6 +356,11 @@ export class VercelAIModelService implements ModelService {
       }
 
       case 'deepseek': {
+        const { createDeepSeek } = await loadProviderPackage(
+          provider,
+          '@ai-sdk/deepseek',
+          () => import('@ai-sdk/deepseek'),
+        );
         const deepseek = createDeepSeek({
           apiKey,
           baseURL: resolveDeepSeekBaseUrl(
@@ -344,6 +377,7 @@ export class VercelAIModelService implements ModelService {
       }
 
       case 'openai-compatible': {
+        const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
         const compatible = createOpenAICompatible({
           name: providerId || 'custom',
           apiKey,

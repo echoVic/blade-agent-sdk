@@ -19,12 +19,17 @@ SSE event stream。浏览器通过 `AgentClient` 调用，不直接加载模型 
 
 ## 创建服务端
 
+OpenTelemetry adapter 是按需 peer；使用时先安装
+`@opentelemetry/api`，再从 `/server/otel` 导入。
+
 ```ts
 import {
   AgentServer,
-  OpenTelemetryAgentServerTelemetry,
   type AgentPrincipal,
 } from '@blade-ai/agent-sdk/server';
+import {
+  OpenTelemetryAgentServerTelemetry,
+} from '@blade-ai/agent-sdk/server/otel';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/node';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');

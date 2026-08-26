@@ -20,14 +20,6 @@ export type {
   AgentServerTelemetry,
 } from './AgentServerTelemetry.js';
 export {
-  OpenTelemetryAgentServerTelemetry,
-  type OpenTelemetryAgentServerOptions,
-} from './OpenTelemetryAgentServerTelemetry.js';
-export {
-  PostgresRuntimeStore,
-  type PostgresRuntimeStoreOptions,
-} from './PostgresRuntimeStore.js';
-export {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
   RuntimeStoreError,
@@ -61,6 +53,7 @@ export {
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
   type RuntimeSessionRoute,
+  type RuntimeSessionSettlement,
   type RuntimeSessionState,
   type RuntimeSessionTransition,
   type RuntimeWorkerRecord,
@@ -83,3 +76,38 @@ export {
   type TenantAdmissionLimits,
   TenantAdmissionController,
 } from './TenantAdmissionController.js';
+export {
+  AgentWorker,
+  type AgentWorkerMetrics,
+  type AgentWorkerOptions,
+  type AgentWorkerSnapshot,
+  type AgentWorkerStatus,
+} from './AgentWorker.js';
+export {
+  EffectDispatcher,
+  type EffectDispatcherMetrics,
+  type EffectDispatcherOptions,
+  type RuntimeEffectHandler,
+  type RuntimeEffectHandlerContext,
+  RetryableRuntimeEffectError,
+  UncertainRuntimeEffectError,
+} from './EffectDispatcher.js';
+export {
+  ExecutionHostSessionRunner,
+  type ExecutionHostSessionPlan,
+  type ExecutionHostSessionRunnerOptions,
+  EXECUTION_HOST_ROUTE_METADATA_KEY,
+  EXECUTION_HOST_ROUTE_METADATA_VERSION,
+  type ExecutionCheckpointPolicy,
+} from './ExecutionHostSessionRunner.js';
+export {
+  SdkSessionRunner,
+  type SdkSessionRunnerOptions,
+  type SdkSessionRunnerOptionsContext,
+} from './SdkSessionRunner.js';
+export type {
+  ActiveRuntimeSessionState,
+  SessionRunner,
+  SessionRunnerContext,
+  SessionRunResult,
+} from './SessionRunner.js';

@@ -117,6 +117,8 @@ const browserServerOutput = run(process.execPath, [
   [
     "const m = await import('@blade-ai/agent-sdk/server');",
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
+    'try { new m.AgentWorker({}); } catch (error) { console.log(error.message); }',
+    'try { new m.EffectDispatcher({}); } catch (error) { console.log(error.message); }',
     'try { new m.PostgresRuntimeStore({}); } catch (error) { console.log(error.message); }',
     'try { new m.EphemeralCredentialBroker({}); } catch (error) { console.log(error.message); }',
     'try { new m.ExecutionHostError(); } catch (error) { console.log(error.message); }',
@@ -127,6 +129,12 @@ assertIncludes(
   browserServerOutput,
   'server-only for InProcessSessionExecutor',
   'browser in-process Session executor stub',
+);
+assertIncludes(browserServerOutput, 'server-only for AgentWorker', 'browser AgentWorker stub');
+assertIncludes(
+  browserServerOutput,
+  'server-only for EffectDispatcher',
+  'browser effect dispatcher stub',
 );
 assertIncludes(
   browserServerOutput,
@@ -155,6 +163,7 @@ const subpathOutput = run(process.execPath, [
     "const core = await import('@blade-ai/agent-sdk/core');",
     "const browser = await import('@blade-ai/agent-sdk/browser');",
     "const server = await import('@blade-ai/agent-sdk/server');",
+    "const otel = await import('@blade-ai/agent-sdk/server/otel');",
     "const postgres = await import('@blade-ai/agent-sdk/server/postgres');",
     "const testing = await import('@blade-ai/agent-sdk/server/testing');",
     "const tools = await import('@blade-ai/agent-sdk/tools');",
@@ -162,25 +171,31 @@ const subpathOutput = run(process.execPath, [
     "const protocol = await import('@blade-ai/agent-sdk/protocol');",
     "const middleware = await import('@blade-ai/agent-sdk/middleware');",
     "const model = await import('@blade-ai/agent-sdk/model');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware, model.PROVIDER_TYPES.length);",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof otel.OpenTelemetryAgentServerTelemetry, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware, model.PROVIDER_TYPES.length);",
     "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
     "console.log(typeof server.EphemeralCredentialBroker, typeof server.ExecutionHostError, typeof node.DockerExecutionHost, core.ExecutionId('execution-1'), core.ExecutionCheckpointId('checkpoint-1'), core.CredentialLeaseId('credential-1'));",
+    "console.log(typeof server.AgentWorker, typeof server.EffectDispatcher, typeof server.SdkSessionRunner, typeof server.ExecutionHostSessionRunner);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function function function function function function function 1 function 6',
+  'default request_accepted empty function function function default function function function function function function function function function function function function 1 function 6',
   'subpath imports',
 );
 assertIncludes(
   subpathOutput,
-  'queued,provisioning,running,waiting_approval,suspended,completed,failed function function',
+  'queued,provisioning,running,waiting_approval,suspended,idle,completed,failed function function',
   'worker runtime exports',
 );
 assertIncludes(
   subpathOutput,
   'function function function execution-1 checkpoint-1 credential-1',
   'execution host exports',
+);
+assertIncludes(
+  subpathOutput,
+  'function function function function',
+  'server worker exports',
 );
 
 const profileOutput = run(process.execPath, [

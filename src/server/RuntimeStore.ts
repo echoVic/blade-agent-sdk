@@ -18,7 +18,7 @@ import type {
   WorkerRuntimeStore,
 } from './WorkerRuntime.js';
 
-export const RUNTIME_STORE_SCHEMA_VERSION = 2 as const;
+export const RUNTIME_STORE_SCHEMA_VERSION = 3 as const;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface RuntimeDomainEventDraft {

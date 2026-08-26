@@ -8,7 +8,7 @@ Session transcripts, and the durable execution journal.
 ## Install and import
 
 ```bash
-pnpm add @blade-ai/agent-sdk
+pnpm add @blade-ai/agent-sdk pg
 ```
 
 ```ts
@@ -126,9 +126,11 @@ parameterized queries. Concurrent command and stream writes use
 transaction-scoped advisory locks. PostgreSQL is authoritative; Redis is not in
 the correctness path.
 
-The current database schema version is `2`. `initialize()` migrates a v1 outbox
-in place under a global advisory lock. The domain-event schema remains at
-version `1`, so existing events do not require rewriting.
+The current database schema version is `3`. `initialize()` migrates a v1
+outbox to the worker/effect lease schema and upgrades the v2 Session route
+constraint to support `idle`, all under a global advisory lock. The
+domain-event schema remains at version `1`, so existing events do not require
+rewriting.
 
 `InMemoryAgentServerStore` remains a test and single-process implementation. Do
 not combine it with PostgreSQL transcript storage in production.

@@ -8,6 +8,7 @@ const zhSidebar = [
     text: '入门',
     items: [
       { text: '概览', link: '/blade-agent-sdk' },
+      { text: 'Golden Paths', link: '/golden-paths' },
       { text: 'Provider 与日志', link: '/providers' },
     ],
   },
@@ -25,6 +26,7 @@ const zhSidebar = [
       { text: 'Middleware 与插件', link: '/middleware' },
       { text: 'Hooks 生命周期', link: '/hooks' },
       { text: '类型架构', link: '/type-architecture' },
+      { text: 'Runtime 基准', link: '/runtime-benchmarks' },
     ],
   },
   {
@@ -50,6 +52,7 @@ const enSidebar = [
     text: 'Getting Started',
     items: [
       { text: 'Overview', link: '/en/blade-agent-sdk' },
+      { text: 'Golden Paths', link: '/en/golden-paths' },
       { text: 'Providers and Logging', link: '/en/providers' },
     ],
   },
@@ -67,6 +70,7 @@ const enSidebar = [
       { text: 'Middleware and Plugins', link: '/en/middleware' },
       { text: 'Hooks', link: '/en/hooks' },
       { text: 'Type Architecture', link: '/en/type-architecture' },
+      { text: 'Runtime Benchmarks', link: '/en/runtime-benchmarks' },
     ],
   },
   {

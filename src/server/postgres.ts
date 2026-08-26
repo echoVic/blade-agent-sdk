@@ -36,6 +36,7 @@ export {
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
   type RuntimeSessionRoute,
+  type RuntimeSessionSettlement,
   type RuntimeSessionState,
   type RuntimeSessionTransition,
   type RuntimeWorkerRecord,

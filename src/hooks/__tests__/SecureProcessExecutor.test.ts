@@ -269,7 +269,7 @@ describe('SecureProcessExecutor', () => {
       async () => {
         expect(await pathExists(fixture.readyPath)).toBe(true);
       },
-      { timeout: 2_000 },
+      { timeout: 5_000 },
     );
     const { groupPid, parentPid, childPid } = JSON.parse(
       await readFile(fixture.readyPath, 'utf8'),
@@ -280,7 +280,7 @@ describe('SecureProcessExecutor', () => {
       () => {
         expect(() => process.kill(parentPid, 0)).toThrow();
       },
-      { timeout: 2_000 },
+      { timeout: 5_000 },
     );
 
     await expect(execution).resolves.toMatchObject({

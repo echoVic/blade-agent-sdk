@@ -1,0 +1,260 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blade Agent Console</title>
+<style>
+  :root {
+    color-scheme: light;
+    font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+    background: #f3f3ef;
+    color: #171a18;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #f3f3ef;
+  }
+
+  main {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  }
+
+  aside {
+    min-height: 100vh;
+    padding: 28px;
+    color: #f7f7f2;
+    background: #1d2823;
+    border-right: 1px solid #0c110e;
+  }
+
+  .workspace {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 24px 0;
+    border: 1px solid #536158;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    background: #111814;
+  }
+
+  .workspace-line {
+    display: block;
+    width: 82%;
+    height: 5px;
+    background: #88a594;
+  }
+
+  .workspace-line:nth-child(2) {
+    width: 58%;
+    background: #d7f236;
+  }
+
+  .workspace-line:nth-child(3) {
+    width: 72%;
+  }
+
+  .workspace-line:nth-child(4) {
+    width: 44%;
+    background: #f0f0e8;
+  }
+
+  h1 {
+    margin: 0;
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .eyebrow,
+  .meta-label,
+  .message-role {
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  .eyebrow {
+    color: #a8c7b4;
+    margin-bottom: 8px;
+  }
+
+  .meta {
+    padding-top: 18px;
+    border-top: 1px solid #536158;
+  }
+
+  .meta-label {
+    color: #a8c7b4;
+  }
+
+  #session-id {
+    display: block;
+    margin-top: 7px;
+    overflow-wrap: anywhere;
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 12px;
+  }
+
+  .conversation {
+    min-width: 0;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: 0 28px;
+    border-bottom: 1px solid #c9cec9;
+    background: rgba(243, 243, 239, 0.94);
+  }
+
+  #status {
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 12px;
+    color: #336b4b;
+  }
+
+  #transcript {
+    overflow-y: auto;
+    padding: 32px clamp(20px, 6vw, 88px);
+  }
+
+  .message {
+    max-width: 760px;
+    margin: 0 0 26px;
+  }
+
+  .message-user {
+    margin-left: auto;
+    padding-left: 15%;
+  }
+
+  .message-role {
+    color: #68716b;
+  }
+
+  .message p {
+    margin: 7px 0 0;
+    white-space: pre-wrap;
+    line-height: 1.65;
+  }
+
+  form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 18px clamp(20px, 6vw, 88px) 26px;
+    border-top: 1px solid #c9cec9;
+    background: #f3f3ef;
+  }
+
+  textarea {
+    min-height: 52px;
+    max-height: 180px;
+    resize: vertical;
+    border: 1px solid #8d9690;
+    border-radius: 4px;
+    padding: 14px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+  }
+
+  textarea:focus {
+    outline: 2px solid #2e7650;
+    outline-offset: 1px;
+  }
+
+  button {
+    min-width: 96px;
+    border: 0;
+    border-radius: 4px;
+    padding: 0 20px;
+    background: #d7f236;
+    color: #172014;
+    font: 700 14px "IBM Plex Mono", "SFMono-Regular", monospace;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: wait;
+    opacity: 0.5;
+  }
+
+  @media (max-width: 720px) {
+    main {
+      grid-template-columns: 1fr;
+    }
+
+    aside {
+      min-height: auto;
+      padding: 20px;
+    }
+
+    .workspace {
+      display: none;
+    }
+
+    form {
+      grid-template-columns: 1fr;
+    }
+
+    button {
+      min-height: 48px;
+    }
+  }
+</style>
+<main>
+  <aside>
+    <div class="eyebrow">Runtime console</div>
+    <h1>Blade Agent</h1>
+    <div
+      class="workspace"
+      role="img"
+      aria-label="Active runtime console"
+    >
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+      <span class="workspace-line"></span>
+    </div>
+    <div class="meta">
+      <span class="meta-label">Session</span>
+      <strong id="session-id">Not started</strong>
+    </div>
+  </aside>
+  <section class="conversation">
+    <header>
+      <span>Conversation</span>
+      <strong id="status">Starting</strong>
+    </header>
+    <section id="transcript" aria-live="polite"></section>
+    <form id="prompt-form">
+      <textarea
+        id="prompt"
+        name="prompt"
+        required
+        placeholder="Ask the agent"
+        aria-label="Prompt"
+      ></textarea>
+      <button id="submit" type="submit">Send</button>
+    </form>
+  </section>
+</main>
+<script type="module" src="/client.js"></script>

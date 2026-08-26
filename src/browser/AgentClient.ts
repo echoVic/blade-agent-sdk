@@ -105,10 +105,11 @@ export class AgentClient {
   private initialization?: Promise<AgentInitializationData>;
 
   constructor(private readonly options: AgentClientOptions) {
-    this.fetchImpl = options.fetch ?? globalThis.fetch;
-    if (!this.fetchImpl) {
+    const fetchImpl = options.fetch ?? globalThis.fetch;
+    if (!fetchImpl) {
       throw new Error('AgentClient requires a fetch implementation');
     }
+    this.fetchImpl = (input, init) => fetchImpl(input, init);
     this.baseUrl = options.baseUrl.replace(/\/+$/g, '');
     this.maxCommandAttempts = options.maxCommandAttempts ?? 3;
     this.maxEventReconnectAttempts = options.maxEventReconnectAttempts ?? 5;

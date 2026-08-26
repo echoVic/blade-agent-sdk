@@ -6,14 +6,20 @@ Provider SDK。
 
 ## 支持的 Provider
 
-| Provider | `type` 值 | 说明 |
-|----------|-----------|------|
-| OpenAI | `'openai'` | 官方 OpenAI API |
-| Anthropic | `'anthropic'` | Claude 系列模型 |
-| Azure OpenAI | `'azure-openai'` | Azure 托管的 OpenAI |
-| Gemini | `'gemini'` | Google Gemini 系列 |
-| DeepSeek | `'deepseek'` | DeepSeek 模型 |
-| OpenAI 兼容 | `'openai-compatible'` | 任何兼容 OpenAI API 的服务 |
+| Provider | `type` 值 | adapter 包 |
+|----------|-----------|------------|
+| OpenAI | `'openai'` | 内置 `@ai-sdk/openai` |
+| Anthropic | `'anthropic'` | 可选 peer `@ai-sdk/anthropic` |
+| Azure OpenAI | `'azure-openai'` | 可选 peer `@ai-sdk/azure` |
+| Gemini | `'gemini'` | 可选 peer `@ai-sdk/google` |
+| DeepSeek | `'deepseek'` | 可选 peer `@ai-sdk/deepseek` |
+| OpenAI 兼容 | `'openai-compatible'` | 内置 `@ai-sdk/openai-compatible` |
+
+Provider adapter 按需加载。使用非内置 Provider adapter 时安装对应 peer，例如：
+
+```bash
+pnpm add @blade-ai/agent-sdk @ai-sdk/anthropic
+```
 
 ## ProviderConnectionConfig
 
