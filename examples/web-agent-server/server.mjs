@@ -4,12 +4,16 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { AgentClient } from '@blade-ai/agent-sdk/browser';
 import {
   AgentServer,
   ProviderRegistry,
 } from '@blade-ai/agent-sdk/server';
 
 const apiKey = process.env.OPENAI_API_KEY;
+const smoke = process.argv.includes('--smoke');
+const startedAt = performance.now();
+const FIRST_RESULT_BUDGET_MS = 2 * 60 * 1_000;
 const demoProvider = new ProviderRegistry([{
   type: 'golden-path-demo',
   create(config) {
@@ -44,10 +48,11 @@ const demoProvider = new ProviderRegistry([{
 }]);
 
 const root = dirname(fileURLToPath(import.meta.url));
+const webRoot = root;
 const generated = join(root, '.generated');
 await mkdir(generated, { recursive: true });
 await build({
-  entryPoints: [join(root, 'client.js')],
+  entryPoints: [join(webRoot, 'client.js')],
   outfile: join(generated, 'client.js'),
   bundle: true,
   format: 'esm',
@@ -90,7 +95,7 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     if (request.method === 'GET' && url.pathname === '/') {
-      const html = await readFile(join(root, 'index.html'));
+      const html = await readFile(join(webRoot, 'index.html'));
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(html);
       return;
@@ -126,15 +131,147 @@ const server = createServer(async (request, response) => {
   }
 });
 
-const port = Number(process.env.PORT || 8787);
-server.listen(port, '127.0.0.1', () => {
-  process.stdout.write(`Web Agent example: http://127.0.0.1:${port}\n`);
-});
+function listen(port) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      server.removeListener('error', reject);
+      resolve();
+    });
+  });
+}
 
+function closeServer() {
+  return new Promise((resolve, reject) => {
+    if (!server.listening) {
+      resolve();
+      return;
+    }
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+    server.closeAllConnections();
+  });
+}
+
+async function runSmoke(baseUrl) {
+  const client = new AgentClient({
+    baseUrl: `${baseUrl}/v1/agent`,
+    client: {
+      name: 'blade-web-starter-smoke',
+      version: '1.0.0',
+    },
+    headers: {
+      authorization: 'Bearer local-demo',
+    },
+  });
+  const session = await client.createSession({ source: 'web-starter-smoke' });
+  const eventController = new AbortController();
+  const deadline = setTimeout(
+    () => eventController.abort(new Error('Two-minute Web first-result budget exceeded')),
+    Math.max(1, FIRST_RESULT_BUDGET_MS - (performance.now() - startedAt)),
+  );
+  let resolveResult;
+  let rejectResult;
+  let resultSettled = false;
+  const resultReceived = new Promise((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const events = (async () => {
+    let output = '';
+    try {
+      for await (const event of session.events({ signal: eventController.signal })) {
+        if (event.type === 'session.stream' && event.data.type === 'content') {
+          output += event.data.delta;
+        }
+        if (event.type === 'session.stream' && event.data.type === 'result') {
+          resultSettled = true;
+          resolveResult({
+            output,
+            result: event.data,
+          });
+        }
+        if (event.type === 'session.closed') {
+          if (!resultSettled) {
+            rejectResult(new Error('Session closed before producing a result'));
+          }
+          return;
+        }
+      }
+      throw new Error('Session event stream ended before session.closed');
+    } catch (error) {
+      if (!resultSettled) {
+        rejectResult(error);
+      }
+      throw error;
+    }
+  })();
+  try {
+    const input = 'minimal web starter smoke';
+    await session.send(input);
+    const completed = await resultReceived;
+    const expected = `AgentServer received: ${input}`;
+    if (completed.output !== expected || completed.result.subtype !== 'success') {
+      throw new Error(`Unexpected Web starter result: ${JSON.stringify(completed)}`);
+    }
+    const firstResultMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    if (firstResultMs > FIRST_RESULT_BUDGET_MS) {
+      throw new Error(`Web first result exceeded ${FIRST_RESULT_BUDGET_MS}ms`);
+    }
+    await session.close();
+    await events;
+    return {
+      firstResultMs,
+      output: completed.output,
+    };
+  } finally {
+    clearTimeout(deadline);
+    eventController.abort();
+    await events.catch(() => undefined);
+  }
+}
+
+let shutdownStarted = false;
 async function shutdown() {
-  server.close();
+  if (shutdownStarted) {
+    return;
+  }
+  shutdownStarted = true;
+  await closeServer();
   await agent.close();
 }
 
-process.once('SIGINT', shutdown);
-process.once('SIGTERM', shutdown);
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    void shutdown().then(
+      () => process.exit(0),
+      (error) => {
+        process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+        process.exit(1);
+      },
+    );
+  });
+}
+
+const requestedPort = smoke ? 0 : Number(process.env.PORT || 8787);
+await listen(requestedPort);
+const address = server.address();
+if (!address || typeof address === 'string') {
+  throw new Error('Web Agent example did not expose a TCP address');
+}
+const baseUrl = `http://127.0.0.1:${address.port}`;
+
+if (smoke) {
+  try {
+    process.stdout.write(`${JSON.stringify(await runSmoke(baseUrl), null, 2)}\n`);
+  } finally {
+    await shutdown();
+  }
+} else {
+  process.stdout.write(`Web Agent example: ${baseUrl}\n`);
+}

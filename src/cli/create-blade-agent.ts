@@ -4,14 +4,16 @@ import {
   createBladeAgent,
   type CreateBladeAgentOptions,
   type CreateBladeAgentPackageManager,
+  type CreateBladeAgentPreset,
   getBladeAgentSdkVersion,
 } from './createBladeAgent.js';
 
 const HELP = `create-blade-agent [directory] [options]
 
-Create a runnable Browser → AgentServer → PostgreSQL → AgentWorker → Docker project.
+Create a runnable local, Web, or production Agent project.
 
 Options:
+  --preset <local|web|production>        Starter topology (default: production)
   --package-manager <npm|pnpm|yarn|bun>  Package manager used for installation
   --sdk-version <version-or-specifier>   SDK dependency (defaults to this CLI version)
   --skip-install                        Generate files without installing dependencies
@@ -41,9 +43,17 @@ function parsePackageManager(value: string): CreateBladeAgentPackageManager {
   throw new Error(`Unsupported package manager: ${value}`);
 }
 
+function parsePreset(value: string): CreateBladeAgentPreset {
+  if (value === 'local' || value === 'web' || value === 'production') {
+    return value;
+  }
+  throw new Error(`Unsupported starter preset: ${value}`);
+}
+
 export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArguments {
   let directory: string | undefined;
   let packageManager: CreateBladeAgentPackageManager | undefined;
+  let preset: CreateBladeAgentPreset | undefined;
   let sdkSpecifier: string | undefined;
   let skipInstall = false;
   let verify = false;
@@ -73,6 +83,11 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
       index += 1;
       continue;
     }
+    if (argument === '--preset') {
+      preset = parsePreset(requiredValue(args, index, argument));
+      index += 1;
+      continue;
+    }
     if (argument === '--sdk-version') {
       sdkSpecifier = requiredValue(args, index, argument);
       index += 1;
@@ -80,6 +95,10 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
     }
     if (argument?.startsWith('--package-manager=')) {
       packageManager = parsePackageManager(argument.slice('--package-manager='.length));
+      continue;
+    }
+    if (argument?.startsWith('--preset=')) {
+      preset = parsePreset(argument.slice('--preset='.length));
       continue;
     }
     if (argument?.startsWith('--sdk-version=')) {
@@ -101,6 +120,7 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
     options: {
       ...(directory ? { directory } : {}),
       ...(packageManager ? { packageManager } : {}),
+      ...(preset ? { preset } : {}),
       ...(sdkSpecifier ? { sdkSpecifier } : {}),
       skipInstall,
       verify,
@@ -128,7 +148,7 @@ export async function runCreateBladeAgentCli(args = process.argv.slice(2)): Prom
     [
       `Created ${result.directory}`,
       result.verified
-        ? `Verified first result in ${(result.elapsedMs / 1000).toFixed(2)}s`
+        ? `Verified ${result.preset} first result in ${(result.elapsedMs / 1000).toFixed(2)}s`
         : [`Next in ${result.directory}:`, ...next].join('\n'),
       '',
     ].join('\n'),

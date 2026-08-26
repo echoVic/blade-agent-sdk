@@ -6,7 +6,8 @@ import {
 } from '@blade-ai/agent-sdk/node';
 
 const apiKey = process.env.OPENAI_API_KEY;
-const useDemoProvider = process.env.BLADE_DEMO_MODE === 'mock';
+const smoke = process.argv.includes('--smoke');
+const useDemoProvider = smoke || process.env.BLADE_DEMO_MODE === 'mock';
 if (!apiKey && !useDemoProvider) {
   throw new Error(
     'Set OPENAI_API_KEY, or set BLADE_DEMO_MODE=mock for an offline smoke test',
@@ -46,14 +47,21 @@ const demoProvider = new ProviderRegistry([{
   },
 }]);
 
-const promptArguments = process.argv.slice(2);
+const promptArguments = process.argv.slice(2).filter((argument) => argument !== '--smoke');
 const prompt =
   (promptArguments[0] === '--' ? promptArguments.slice(1) : promptArguments)
     .join(' ')
     .trim()
-  || 'Inspect this repository and summarize its public API.';
-const storagePath = resolve('.data/local-cli-agent');
-await mkdir(storagePath, { recursive: true });
+  || (smoke
+    ? 'minimal local starter smoke'
+    : 'Inspect this repository and summarize its public API.');
+const persistSession = true;
+const storagePath = persistSession
+  ? resolve('.data/local-cli-agent')
+  : undefined;
+if (storagePath) {
+  await mkdir(storagePath, { recursive: true });
+}
 
 const session = await createSession({
   provider: useDemoProvider
@@ -61,7 +69,7 @@ const session = await createSession({
     : { type: 'openai', apiKey },
   providerRegistry: useDemoProvider ? demoProvider : undefined,
   model: useDemoProvider ? 'demo' : process.env.OPENAI_MODEL || 'gpt-5-mini',
-  storagePath,
+  ...(storagePath ? { storagePath } : {}),
   defaultContext: {
     capabilities: {
       filesystem: {

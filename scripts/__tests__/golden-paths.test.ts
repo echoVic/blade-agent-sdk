@@ -88,7 +88,7 @@ describe('golden paths', () => {
     expect(html).not.toMatch(/(?:src|href)=["']https?:\/\//);
   });
 
-  it('documents the installed create-blade-agent verification path in both locales', () => {
+  it('documents every installed create-blade-agent preset in both locales', () => {
     for (const file of [
       'README.md',
       'README.zh-CN.md',
@@ -96,7 +96,11 @@ describe('golden paths', () => {
       'docs/en/golden-paths.md',
     ]) {
       const source = readFileSync(resolve(file), 'utf8');
-      expect(source, file).toContain('create-blade-agent my-agent --verify');
+      for (const preset of ['local', 'web', 'production']) {
+        expect(source, file).toContain(
+          `create-blade-agent my-agent --preset ${preset} --verify`,
+        );
+      }
       expect(source, file).toMatch(/five minutes|five-minute|五分钟/);
     }
   });

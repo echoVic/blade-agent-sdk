@@ -1,18 +1,25 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_DIRECTORY = 'blade-agent';
-const FIRST_SUCCESS_BUDGET_MS = 5 * 60 * 1_000;
+const DEFAULT_PRESET: CreateBladeAgentPreset = 'production';
+const FIRST_SUCCESS_BUDGET_MS: Readonly<Record<CreateBladeAgentPreset, number>> = {
+  local: 60 * 1_000,
+  web: 2 * 60 * 1_000,
+  production: 5 * 60 * 1_000,
+};
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 export type CreateBladeAgentPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
+export type CreateBladeAgentPreset = 'local' | 'web' | 'production';
 
 export interface CreateBladeAgentOptions {
   readonly directory?: string;
   readonly cwd?: string;
   readonly packageManager?: CreateBladeAgentPackageManager;
+  readonly preset?: CreateBladeAgentPreset;
   readonly sdkSpecifier?: string;
   readonly skipInstall?: boolean;
   readonly verify?: boolean;
@@ -21,8 +28,10 @@ export interface CreateBladeAgentOptions {
 export interface CreateBladeAgentResult {
   readonly directory: string;
   readonly packageManager: CreateBladeAgentPackageManager;
+  readonly preset: CreateBladeAgentPreset;
   readonly installed: boolean;
   readonly verified: boolean;
+  readonly budgetMs: number;
   readonly elapsedMs: number;
 }
 
@@ -37,10 +46,11 @@ interface ProcessOptions {
   readonly timeoutMs?: number;
 }
 
-function remainingFirstSuccessBudget(startedAt: number): number {
-  const remainingMs = Math.floor(FIRST_SUCCESS_BUDGET_MS - (performance.now() - startedAt));
+function remainingFirstSuccessBudget(startedAt: number, preset: CreateBladeAgentPreset): number {
+  const budgetMs = FIRST_SUCCESS_BUDGET_MS[preset];
+  const remainingMs = Math.floor(budgetMs - (performance.now() - startedAt));
   if (remainingMs <= 0) {
-    throw new Error('Project setup exceeded the five-minute first-success budget');
+    throw new Error(`${preset} project setup exceeded its ${budgetMs}ms first-success budget`);
   }
   return remainingMs;
 }
@@ -50,6 +60,14 @@ function detectPackageManager(
 ): CreateBladeAgentPackageManager {
   const name = userAgent?.split('/')[0];
   return name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : 'npm';
+}
+
+function resolvePreset(preset: CreateBladeAgentPreset | undefined): CreateBladeAgentPreset {
+  const value = preset ?? DEFAULT_PRESET;
+  if (value === 'local' || value === 'web' || value === 'production') {
+    return value;
+  }
+  throw new TypeError(`Unsupported starter preset: ${String(value)}`);
 }
 
 function packageName(directory: string): string {
@@ -121,8 +139,13 @@ export async function getBladeAgentSdkVersion(): Promise<string> {
   return (await readManifest()).version;
 }
 
-async function copyTemplate(directory: string): Promise<void> {
-  const sourceRoot = join(PACKAGE_ROOT, 'examples');
+async function copyFile(sourceRoot: string, directory: string, source: string, target: string) {
+  const destination = join(directory, target);
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, await readFile(join(sourceRoot, source)));
+}
+
+async function copyProductionTemplate(sourceRoot: string, directory: string): Promise<void> {
   const files = [
     {
       source: 'production-stack/QueuedSessionExecutor.mjs',
@@ -147,9 +170,7 @@ async function copyTemplate(directory: string): Promise<void> {
   ] as const;
 
   for (const file of files) {
-    const target = join(directory, file.target);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, await readFile(join(sourceRoot, file.source)));
+    await copyFile(sourceRoot, directory, file.source, file.target);
   }
 
   const runnerSource = await readFile(join(sourceRoot, 'production-stack/run.mjs'), 'utf8');
@@ -173,6 +194,54 @@ async function copyTemplate(directory: string): Promise<void> {
   await writeFile(join(directory, 'src/server.mjs'), runner);
 }
 
+async function copyWebTemplate(sourceRoot: string, directory: string): Promise<void> {
+  for (const file of [
+    ['web-agent-server/index.html', 'web/index.html'],
+    ['web-agent-server/client.js', 'web/client.js'],
+  ] as const) {
+    await copyFile(sourceRoot, directory, file[0], file[1]);
+  }
+  const serverSource = await readFile(join(sourceRoot, 'web-agent-server/server.mjs'), 'utf8');
+  for (const marker of ['const webRoot = root;', "const generated = join(root, '.generated');"]) {
+    if (!serverSource.includes(marker)) {
+      throw new Error(`Web template marker is missing: ${marker}`);
+    }
+  }
+  const server = serverSource
+    .replace('const webRoot = root;', "const webRoot = join(root, '../web');")
+    .replace(
+      "const generated = join(root, '.generated');",
+      "const generated = join(root, '../.generated');",
+    );
+  await mkdir(join(directory, 'src'), { recursive: true });
+  await writeFile(join(directory, 'src/server.mjs'), server);
+}
+
+async function copyTemplate(directory: string, preset: CreateBladeAgentPreset): Promise<void> {
+  const sourceRoot = join(PACKAGE_ROOT, 'examples');
+  if (preset === 'local') {
+    const localSource = await readFile(
+      join(sourceRoot, 'local-cli-agent/index.mjs'),
+      'utf8',
+    );
+    const marker = 'const persistSession = true;';
+    if (!localSource.includes(marker)) {
+      throw new Error(`Local template marker is missing: ${marker}`);
+    }
+    await mkdir(join(directory, 'src'), { recursive: true });
+    await writeFile(
+      join(directory, 'src/index.mjs'),
+      localSource.replace(marker, 'const persistSession = false;'),
+    );
+    return;
+  }
+  if (preset === 'web') {
+    await copyWebTemplate(sourceRoot, directory);
+    return;
+  }
+  await copyProductionTemplate(sourceRoot, directory);
+}
+
 function readDependency(
   dependencies: Readonly<Record<string, string>> | undefined,
   name: string,
@@ -184,11 +253,97 @@ function readDependency(
   return version;
 }
 
-function readme(name: string, packageManager: CreateBladeAgentPackageManager): string {
-  const run = packageManager === 'yarn' ? 'yarn' : `${packageManager} run`;
+function scripts(preset: CreateBladeAgentPreset): Readonly<Record<string, string>> {
+  if (preset === 'local') {
+    return {
+      start: 'node src/index.mjs',
+      smoke: 'node src/index.mjs --smoke',
+    };
+  }
+  return {
+    start: 'node src/server.mjs',
+    smoke: 'node src/server.mjs --smoke',
+  };
+}
+
+function dependencies(
+  preset: CreateBladeAgentPreset,
+  manifest: PackageManifest,
+  sdkSpecifier: string,
+): Readonly<Record<string, string>> {
+  return {
+    '@blade-ai/agent-sdk': sdkSpecifier,
+    ...(preset === 'web' || preset === 'production'
+      ? { esbuild: readDependency(manifest.devDependencies, 'esbuild') }
+      : {}),
+    ...(preset === 'production' ? { pg: readDependency(manifest.peerDependencies, 'pg') } : {}),
+  };
+}
+
+function localReadme(name: string, run: string): string {
   return `# ${name}
 
-Generated by \`create-blade-agent\`.
+Generated by \`create-blade-agent --preset local\`.
+
+Requires Node.js 22.14 or later. Run with OpenAI:
+
+\`\`\`bash
+OPENAI_API_KEY=... ${run} start -- "Summarize this repository"
+\`\`\`
+
+Run the offline first-result check:
+
+\`\`\`bash
+${run} smoke
+\`\`\`
+
+This preset uses \`@blade-ai/agent-sdk/node\` with an in-memory Session and no
+PostgreSQL or Docker. Move to the \`web\` or \`production\` preset when the
+Agent must serve remote clients.
+`;
+}
+
+function webReadme(name: string, run: string): string {
+  return `# ${name}
+
+Generated by \`create-blade-agent --preset web\`.
+
+Requires Node.js 22.14 or later.
+
+## Run
+
+\`\`\`bash
+${run} start
+\`\`\`
+
+Open the printed URL and send a prompt. Without \`OPENAI_API_KEY\`, the server
+uses a deterministic local provider. Set \`OPENAI_API_KEY\` and optionally
+\`OPENAI_MODEL\` to use OpenAI.
+
+Run the non-interactive two-minute acceptance check with:
+
+\`\`\`bash
+${run} smoke
+\`\`\`
+
+The request traverses:
+
+\`\`\`text
+Browser AgentClient
+→ AgentServer
+→ in-process Session
+→ SSE
+\`\`\`
+
+This scaffold is for local development. Replace the demo authentication
+callback before exposing it on a network.
+`;
+}
+
+function productionReadme(name: string, run: string): string {
+  return `# ${name}
+
+Generated by \`create-blade-agent --preset production\`.
 
 Requires Node.js 22.14 or later and Docker with the Compose plugin.
 
@@ -226,6 +381,21 @@ network.
 `;
 }
 
+function readme(
+  name: string,
+  packageManager: CreateBladeAgentPackageManager,
+  preset: CreateBladeAgentPreset,
+): string {
+  const run = packageManager === 'yarn' ? 'yarn' : `${packageManager} run`;
+  if (preset === 'local') {
+    return localReadme(name, run);
+  }
+  if (preset === 'web') {
+    return webReadme(name, run);
+  }
+  return productionReadme(name, run);
+}
+
 export async function createBladeAgent(
   options: CreateBladeAgentOptions = {},
 ): Promise<CreateBladeAgentResult> {
@@ -236,6 +406,7 @@ export async function createBladeAgent(
   const cwd = resolve(options.cwd ?? process.cwd());
   const directory = resolve(cwd, options.directory ?? DEFAULT_DIRECTORY);
   const packageManager = options.packageManager ?? detectPackageManager();
+  const preset = resolvePreset(options.preset);
   const manifest = await readManifest();
   const sdkSpecifier = options.sdkSpecifier ?? manifest.version;
   if (!sdkSpecifier.trim()) {
@@ -243,7 +414,7 @@ export async function createBladeAgent(
   }
 
   await assertEmptyDirectory(directory);
-  await copyTemplate(directory);
+  await copyTemplate(directory, preset);
   const name = packageName(directory);
   await writeFile(
     join(directory, 'package.json'),
@@ -256,45 +427,41 @@ export async function createBladeAgent(
         engines: {
           node: '>=22.14.0',
         },
-        scripts: {
-          start: 'node src/server.mjs',
-          smoke: 'node src/server.mjs --smoke',
-        },
-        dependencies: {
-          '@blade-ai/agent-sdk': sdkSpecifier,
-          esbuild: readDependency(manifest.devDependencies, 'esbuild'),
-          pg: readDependency(manifest.peerDependencies, 'pg'),
-        },
+        scripts: scripts(preset),
+        dependencies: dependencies(preset, manifest, sdkSpecifier),
       },
       null,
       2,
     )}\n`,
   );
-  await writeFile(join(directory, '.gitignore'), 'node_modules/\n.generated/\n.env\n*.log\n');
-  await writeFile(join(directory, 'README.md'), readme(name, packageManager));
+  await writeFile(
+    join(directory, '.gitignore'),
+    'node_modules/\n.data/\n.generated/\n.env\n*.log\n',
+  );
+  await writeFile(join(directory, 'README.md'), readme(name, packageManager, preset));
 
   if (!options.skipInstall) {
     const [command, args] = commandFor(packageManager);
     await runProcess(command, args, {
       cwd: directory,
-      ...(options.verify
-        ? { timeoutMs: remainingFirstSuccessBudget(startedAt) }
-        : {}),
+      ...(options.verify ? { timeoutMs: remainingFirstSuccessBudget(startedAt, preset) } : {}),
     });
   }
   if (options.verify) {
     const [command, args] = commandFor(packageManager, 'smoke');
     await runProcess(command, args, {
       cwd: directory,
-      timeoutMs: remainingFirstSuccessBudget(startedAt),
+      timeoutMs: remainingFirstSuccessBudget(startedAt, preset),
     });
   }
 
   return {
     directory,
     packageManager,
+    preset,
     installed: !options.skipInstall,
     verified: options.verify ?? false,
+    budgetMs: FIRST_SUCCESS_BUDGET_MS[preset],
     elapsedMs: Math.round((performance.now() - startedAt) * 100) / 100,
   };
 }
