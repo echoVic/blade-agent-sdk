@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "minimumSampleSize": {
+    "sessions": 100,
+    "events": 1000,
+    "effects": 100,
+    "crashPoints": 4
+  },
+  "thresholds": {
+    "storeInitializationMs": {
+      "maximum": 5000
+    },
+    "firstClaimLatencyMs": {
+      "maximum": 2000
+    },
+    "sessionThroughputPerSecond": {
+      "minimum": 20
+    },
+    "sessionCompletionDurationMs": {
+      "maximum": 10000
+    },
+    "recoveryDurationMs": {
+      "maximum": 1000
+    },
+    "eventLossRate": {
+      "maximum": 0
+    },
+    "nonIdempotentDuplicateRate": {
+      "maximum": 0
+    },
+    "processTerminationMs": {
+      "maximum": 2000
+    },
+    "leaseExpiryWaitMs": {
+      "maximum": 2500
+    },
+    "failureDetectionMs": {
+      "maximum": 3500
+    },
+    "recoveryScanMs": {
+      "maximum": 1000
+    },
+    "reclaimAndRestoreMs": {
+      "maximum": 10000
+    },
+    "checkpointRestoreMs": {
+      "maximum": 5000
+    },
+    "fullRecoveryRtoMs": {
+      "maximum": 15000
+    },
+    "faultInjectionPassRate": {
+      "minimum": 1
+    },
+    "faultInjectionDuplicateRate": {
+      "maximum": 0
+    },
+    "maximumFaultRecoveryRtoMs": {
+      "maximum": 5000
+    }
+  }
+}

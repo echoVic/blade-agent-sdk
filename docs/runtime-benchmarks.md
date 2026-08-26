@@ -21,6 +21,19 @@ TEST_POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/blade_agent_test
 脚本为每次运行创建独立 schema，并在结束时删除。它输出 JSON，CI 或历史采集器
 可以直接保存和比较结果。
 
+完整 CI 回归门禁：
+
+```bash
+TEST_POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/blade_agent_test \
+TEST_DOCKER_IMAGE=alpine@sha256:... \
+  pnpm verify:runtime-regression
+```
+
+该命令执行稳态 benchmark、真实 Docker checkpoint failover 和四点 `SIGKILL`
+fault matrix，写入 `artifacts/runtime-regression.json`，再应用
+[`benchmarks/runtime-regression-policy.json`](https://github.com/echoVic/blade-agent-sdk/blob/main/benchmarks/runtime-regression-policy.json)。
+PR CI 保留报告 30 天，Release CI 保留 90 天。
+
 ## 指标定义
 
 | 指标 | 定义 |
@@ -31,9 +44,45 @@ TEST_POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/blade_agent_test
 | `recoveryDurationMs` | 已确认 lease 过期后，执行恢复扫描并由第二个 worker 领取的耗时 |
 | `eventLossRate` | 写入事件数与按 cursor 分页读回事数量之差占比；sequence 不连续也记为 `1` |
 | `nonIdempotentDuplicateRate` | 两个 dispatcher 并发消费时，at-most-once effect 的重复 handler 调用占比 |
+| `processTerminationMs` | 发出 `SIGKILL` 到观察到 Worker 进程退出 |
+| `leaseExpiryWaitMs` | 进程退出到数据库 lease 到期 |
+| `failureDetectionMs` | 发出 `SIGKILL` 到 recovery scan 完成并识别失效 owner |
+| `recoveryScanMs` | PostgreSQL recovery transaction 本身耗时 |
+| `reclaimAndRestoreMs` | recovery scan 完成到第二个 Worker 恢复 checkpoint 并完成 Session |
+| `checkpointRestoreMs` | `DockerExecutionHost.restore()` 的独立耗时 |
+| `fullRecoveryRtoMs` | 发出 `SIGKILL` 到恢复后的 Session 完成；这是完整 RTO |
+| `faultInjectionPassRate` | 四个 crash point 的期望执行次数与终态全部匹配的比例 |
+| `faultInjectionDuplicateRate` | fault matrix 中超出期望次数的非幂等 effect 执行占比 |
+| `maximumFaultRecoveryRtoMs` | 四个 effect crash point 中最慢的 kill-to-settlement 耗时 |
 
 Session throughput 是运行时上限测试，不包含模型或外部工具延迟。
 `recoveryDurationMs` 不包含等待 lease TTL 到期的时间。
+容量规划和故障恢复应使用 `fullRecoveryRtoMs`，而不是旧的
+`recoveryDurationMs`。
+
+## CI 门禁
+
+CI 固定使用至少 `100` 个 Session、`1000` 个 event、`100` 个 effect，以及
+全部四个 crash point：
+
+| Crash point | 期望执行次数 | 期望终态 |
+|-------------|-------------|---------|
+| `after_claim` | `1` | `completed` |
+| `after_start` | `0` | `uncertain` |
+| `after_side_effect` | `1` | `uncertain` |
+| `after_complete` | `1` | `completed` |
+
+当前绝对阈值：
+
+- Session throughput 不低于 `20 sessions/s`；100 个 Session 在 `10s` 内完成。
+- 完整 Docker failover RTO 不超过 `15s`，其中 failure detection 不超过
+  `3.5s`、checkpoint restore 不超过 `5s`。
+- 每个 effect fault point 的 kill-to-settlement RTO 不超过 `5s`。
+- event loss、正常并发重复和 fault-injection 重复率都必须严格为 `0`。
+- fault matrix pass rate 必须为 `1`。
+
+这些是跨 CI runner 的宽松绝对 guardrail，不把不同机器上的微基准差异误判为
+回归。调整阈值必须修改版本化 policy 并接受代码审查；不能通过降低样本数绕过。
 
 ## 2026-08-26 基线
 
@@ -63,6 +112,6 @@ PostgreSQL 16.15（Colima）
 
 发布回归门槛：
 
-- `eventLossRate` 必须为 `0`。
-- `nonIdempotentDuplicateRate` 必须为 `0`。
-- 性能指标必须保留原始 JSON 和环境信息；跨机器结果不能直接比较。
+- 上述历史 JSON 是开发机基线，不是 CI 的唯一判据。
+- CI 使用版本化绝对 policy，并保留包含原始子报告、逐项 check 和环境信息的
+  完整 artifact。

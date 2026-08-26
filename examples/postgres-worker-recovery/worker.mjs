@@ -49,6 +49,21 @@ const host = new DockerExecutionHost({
   rootDirectory,
   checkpointDirectory,
 });
+const executionMetrics = {};
+const observedHost = {
+  provision: (request) => host.provision(request),
+  exec: (executionId, request) => host.exec(executionId, request),
+  checkpoint: (executionId, metadata) =>
+    host.checkpoint(executionId, metadata),
+  async restore(request) {
+    const startedAt = performance.now();
+    const execution = await host.restore(request);
+    executionMetrics.checkpointRestoreMs =
+      Math.round((performance.now() - startedAt) * 100) / 100;
+    return execution;
+  },
+  terminate: (executionId) => host.terminate(executionId),
+};
 const runner = new ExecutionHostSessionRunner({
   resolvePlan: () => ({
     provision: {
@@ -82,7 +97,7 @@ const worker = new AgentWorker({
   tenantId,
   capacity: 1,
   sessionRunner: runner,
-  executionHost: host,
+  executionHost: observedHost,
   workerTtlMs: 1_000,
   sessionLeaseTtlMs: 1_000,
   heartbeatIntervalMs: 200,
@@ -122,7 +137,10 @@ if (mode === 'park') {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   await worker.shutdown();
-  process.stdout.write(JSON.stringify(worker.getSnapshot()) + '\n');
+  process.stdout.write(JSON.stringify({
+    snapshot: worker.getSnapshot(),
+    executionMetrics,
+  }) + '\n');
   await store.close();
   if (state !== 'completed') {
     throw new Error(`Restore Session ended in ${state ?? 'unknown'} state`);
