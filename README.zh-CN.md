@@ -19,20 +19,34 @@ npm install @blade-ai/agent-sdk
 pnpm add @blade-ai/agent-sdk
 ```
 
-## 创建完整生产拓扑 Agent
+## 选择起点
 
-本机具备 Node.js 22.14+ 和 Docker 时，可以用一条命令生成独立项目、安装依赖并
-完成验收：
+只需本地 Node.js、无需 PostgreSQL 或 Docker：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --verify
+  create-blade-agent my-agent --preset local --verify
 ```
 
-生成项目包含浏览器客户端、`AgentServer`、PostgreSQL、`AgentWorker`、
-`DockerExecutionHost`、健康检查、队列指标和 uncertain effect 运维入口。
-`--verify` 的五分钟预算覆盖项目生成、依赖安装和 Docker 首次结果；超时会直接
-失败。省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
+创建 Browser + AgentServer 应用、使用进程内 Session：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset web --verify
+```
+
+创建完整生产拓扑：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset production --verify
+```
+
+三个 preset 使用同一套 Session 与协议语义。`local` 的首次结果预算为一分钟，
+`web` 为两分钟，`production` 为五分钟；预算均覆盖生成、依赖安装和实际 smoke。
+`production` 包含浏览器客户端、`AgentServer`、PostgreSQL、`AgentWorker`、
+`DockerExecutionHost` 和运维入口。省略 `--preset` 时仍生成 production
+拓扑；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
 
 ## 快速开始
 

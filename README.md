@@ -19,22 +19,36 @@ npm install @blade-ai/agent-sdk
 pnpm add @blade-ai/agent-sdk
 ```
 
-## Create a Full-Stack Agent
+## Choose a Starting Point
 
-With Node.js 22.14+ and Docker running, generate, install, and verify a
-standalone production-topology project in one command:
+Create a local Node.js Agent without PostgreSQL or Docker:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --verify
+  create-blade-agent my-agent --preset local --verify
 ```
 
-The generated project includes a browser client, `AgentServer`, PostgreSQL,
-`AgentWorker`, `DockerExecutionHost`, health probes, queue metrics, and
-uncertain-effect operations. The `--verify` budget covers project generation,
-dependency installation, and the first Docker-produced result, and fails after
-five minutes. Omit `--verify` to generate and install without starting the
-stack; use `--skip-install` for files only.
+Create a Browser + AgentServer application with in-process Sessions:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset web --verify
+```
+
+Create the complete production topology:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset production --verify
+```
+
+All three presets use the same Session and protocol semantics. Their
+generation, installation, and real-smoke budgets are one minute for `local`,
+two minutes for `web`, and five minutes for `production`. The production
+preset includes the browser client, `AgentServer`, PostgreSQL, `AgentWorker`,
+`DockerExecutionHost`, and operations endpoints. Omitting `--preset` preserves
+the production default. Omit `--verify` to avoid running the smoke, or use
+`--skip-install` to write files only.
 
 ## Quick Start
 

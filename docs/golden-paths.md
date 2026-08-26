@@ -37,18 +37,40 @@ Docker worker 生成的精确结果后才成功。
 
 ## 生成独立项目
 
-已发布的 SDK 自带 `create-blade-agent` 可执行文件。以下单命令会临时安装 CLI、
-生成独立项目、安装项目依赖并运行完整 production smoke：
+已发布的 SDK 自带 `create-blade-agent` 可执行文件。使用 `--preset` 选择所需
+拓扑：
+
+| Preset | 路径 | 额外基础设施 | 首次结果预算 |
+|--------|------|--------------|----------------|
+| `local` | Node + 进程内 Session | 无 | 1 分钟 |
+| `web` | Browser AgentClient → AgentServer → 进程内 Session | 无 | 2 分钟 |
+| `production` | Browser → AgentServer → PostgreSQL → Worker → Docker | Docker | 5 分钟 |
+
+最小本地 Agent：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --verify
+  create-blade-agent my-agent --preset local --verify
 ```
 
-五分钟预算从 CLI 启动开始计算，覆盖生成、安装、PostgreSQL 编排、Worker
-启动和首个 Docker 结果。PR 与 Release CI 会从当前 SDK tarball 安装 CLI，
-执行相同流程，并对生成项目运行 production dependency audit。省略 `--verify`
-时不会启动 stack；`--skip-install` 只生成文件。
+Web Agent：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset web --verify
+```
+
+完整生产拓扑：
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset production --verify
+```
+
+预算从 CLI 启动开始计算，覆盖生成、安装和首个真实结果。PR 与 Release CI
+会从当前 SDK tarball 安装 CLI，执行三个 preset，并分别审计生成项目的
+production dependency tree。省略 `--preset` 时保持原有 production 默认值；
+省略 `--verify` 时不会执行 smoke；`--skip-install` 只生成文件。
 
 ## 本地 CLI Agent
 

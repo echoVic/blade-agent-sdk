@@ -83,8 +83,10 @@
   "files": [
     "dist",
     "examples/production-stack",
+    "examples/local-cli-agent/index.mjs",
     "examples/web-agent-server/client.js",
     "examples/web-agent-server/index.html",
+    "examples/web-agent-server/server.mjs",
     "vendor/ripgrep/**",
     "README.md",
     "README.zh-CN.md",

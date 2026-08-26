@@ -106,9 +106,11 @@ describe('package entrypoints', () => {
     });
     expect(packageJson.files).toEqual(
       expect.arrayContaining([
+        'examples/local-cli-agent/index.mjs',
         'examples/production-stack',
         'examples/web-agent-server/client.js',
         'examples/web-agent-server/index.html',
+        'examples/web-agent-server/server.mjs',
       ]),
     );
     expect(existsSync(join(process.cwd(), 'src/cli/create-blade-agent.ts'))).toBe(true);
