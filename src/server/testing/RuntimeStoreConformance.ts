@@ -442,6 +442,20 @@ export async function assertRuntimeStoreConformance(
     staleFenceRejected = true;
   }
   assert(staleFenceRejected, 'Previous worker fence must be rejected');
+  let staleSettlementRejected = false;
+  try {
+    await store.settleSession(
+      workerTenantId,
+      firstClaim.lease,
+      { state: 'completed' },
+    );
+  } catch {
+    staleSettlementRejected = true;
+  }
+  assert(
+    staleSettlementRejected,
+    'Previous worker fence must not settle a Session claimed by its successor',
+  );
   let staleAppendRejected = false;
   try {
     await workerSessions.append(
@@ -470,6 +484,70 @@ export async function assertRuntimeStoreConformance(
     { expectedState: 'running', state: 'completed' },
   );
   assert(completed.state === 'completed', 'Session must enter completed');
+
+  const idleSessionId = SessionId(`idle-${suffix}`);
+  await store.enqueueSession(workerTenantId, idleSessionId, { priority: 100 });
+  const idleClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: secondWorkerId,
+    leaseId: ExecutionLeaseId(`idle-lease-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(idleClaim !== null, 'Worker must claim Session that will become idle');
+  if (!idleClaim) {
+    throw new Error('unreachable');
+  }
+  await store.transitionSession(
+    workerTenantId,
+    idleClaim.lease,
+    { expectedState: 'provisioning', state: 'running' },
+  );
+  const idleHandoff = await store.handoffSession(
+    workerTenantId,
+    idleClaim.lease,
+    { reason: 'settlement-check' },
+  );
+  assert(
+    idleHandoff.state === 'suspended',
+    'Session settlement must follow a completed handoff',
+  );
+  const idle = await store.settleSession(
+    workerTenantId,
+    idleClaim.lease,
+    {
+      state: 'idle',
+      metadata: { reason: 'settled' },
+    },
+  );
+  assert(idle.state === 'idle', 'Settled interactive Session must enter idle');
+  assert(
+    (
+      await store.enqueueSession(
+        workerTenantId,
+        idleSessionId,
+        { priority: 100 },
+      )
+    ).state === 'queued',
+    'Idle Session must be requeueable for a later request',
+  );
+  const resumedIdleClaim = await store.claimSession({
+    tenantId: workerTenantId,
+    ownerId: secondWorkerId,
+    leaseId: ExecutionLeaseId(`idle-resumed-lease-${suffix}`),
+    ttlMs: 10_000,
+  });
+  assert(
+    resumedIdleClaim?.route.sessionId === idleSessionId,
+    'Requeued idle Session must be claimable',
+  );
+  if (!resumedIdleClaim) {
+    throw new Error('unreachable');
+  }
+  await store.transitionSession(
+    workerTenantId,
+    resumedIdleClaim.lease,
+    { expectedState: 'provisioning', state: 'failed' },
+  );
 
   const failedClaim = await store.claimSession({
     tenantId: workerTenantId,
@@ -653,11 +731,13 @@ export async function assertRuntimeStoreConformance(
     invalidRetryRejected,
     'Empty effect retryAt must fail with a stable validation error',
   );
-  await new Promise((resolve) => setTimeout(resolve, 700));
-  const uncertainRecovery = await store.recoverExpiredWork();
+  const markedUncertain = await store.markEffectUncertain(
+    uncertainLease,
+    { reason: 'outcome_unknown' },
+  );
   assert(
-    uncertainRecovery.uncertainEffects >= 1,
-    'Expired started at-most-once effect must become uncertain',
+    markedUncertain.status === 'uncertain',
+    'Started at-most-once effect must support explicit uncertainty',
   );
 
   const [unstartedEffectClaim] = await store.claimEffects({

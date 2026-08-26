@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AgentCommandType, type AgentPrincipal } from '../../protocol/index.js';
+import { createSession } from '../../session/Session.js';
 import { DurableExecutionLease } from '../../session/events/DurableExecutionLease.js';
 import {
   CommandId,
@@ -10,7 +11,13 @@ import {
   WorkerId,
 } from '../../types/identifiers.js';
 import { AgentServer } from '../AgentServer.js';
+import { AgentWorker } from '../AgentWorker.js';
+import {
+  EffectDispatcher,
+  UncertainRuntimeEffectError,
+} from '../EffectDispatcher.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
+import { SdkSessionRunner } from '../SdkSessionRunner.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
 import { effectLease } from '../WorkerRuntime.js';
 
@@ -342,7 +349,7 @@ describePostgres('PostgresRuntimeStore', () => {
           WHERE table_schema = $1 AND table_name = 'runtime_outbox'`,
         [migrationSchema],
       );
-      expect(version.rows[0]?.value).toBe('2');
+      expect(version.rows[0]?.value).toBe('3');
       expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
         expect.arrayContaining([
           'execution_mode',
@@ -390,6 +397,97 @@ describePostgres('PostgresRuntimeStore', () => {
       await expect(
         migrated.startEffect(effectLease(claim)),
       ).resolves.toMatchObject({ status: 'executing' });
+    } finally {
+      await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
+    }
+  });
+
+  it('migrates v2 Session routes to support the idle state', async () => {
+    if (!pool) {
+      throw new Error('TEST_POSTGRES_URL is required');
+    }
+    const migrationSchema = `${schema}_migration_v2`;
+    const original = new PostgresRuntimeStore({
+      pool,
+      schema: migrationSchema,
+      tablePrefix: 'runtime',
+    });
+    await original.initialize();
+    const constraints = await pool.query(
+      `SELECT constraint_row.conname
+         FROM pg_constraint constraint_row
+         JOIN LATERAL unnest(constraint_row.conkey)
+           AS column_number(attnum) ON TRUE
+         JOIN pg_attribute attribute
+           ON attribute.attrelid = constraint_row.conrelid
+          AND attribute.attnum = column_number.attnum
+        WHERE constraint_row.conrelid =
+              '"${migrationSchema}"."runtime_session_routes"'::regclass
+          AND constraint_row.contype = 'c'
+          AND attribute.attname = 'state'`,
+    );
+    for (const { conname } of constraints.rows) {
+      await pool.query(
+        `ALTER TABLE "${migrationSchema}"."runtime_session_routes"
+           DROP CONSTRAINT "${conname}"`,
+      );
+    }
+    await pool.query(`
+      ALTER TABLE "${migrationSchema}"."runtime_session_routes"
+        ADD CONSTRAINT runtime_session_routes_state_check CHECK (
+          state IN (
+            'queued', 'provisioning', 'running', 'waiting_approval',
+            'suspended', 'completed', 'failed'
+          )
+        );
+      UPDATE "${migrationSchema}"."runtime_metadata"
+         SET value = '2'
+       WHERE key = 'schema_version';
+    `);
+
+    const migrated = new PostgresRuntimeStore({
+      pool,
+      schema: migrationSchema,
+      tablePrefix: 'runtime',
+    });
+    try {
+      await migrated.initialize();
+      const workerId = WorkerId('migration-v2-worker');
+      const sessionId = SessionId('migration-v2-session');
+      await migrated.registerWorker({
+        workerId,
+        capacity: 1,
+        ttlMs: 10_000,
+      });
+      await migrated.enqueueSession('migration-v2-tenant', sessionId);
+      const claim = await migrated.claimSession({
+        tenantId: 'migration-v2-tenant',
+        ownerId: workerId,
+        leaseId: ExecutionLeaseId('migration-v2-lease'),
+        ttlMs: 10_000,
+      });
+      expect(claim).not.toBeNull();
+      if (!claim) {
+        throw new Error('Migrated Session route was not claimed');
+      }
+      await migrated.transitionSession(
+        'migration-v2-tenant',
+        claim.lease,
+        { expectedState: 'provisioning', state: 'running' },
+      );
+      await expect(
+        migrated.transitionSession(
+          'migration-v2-tenant',
+          claim.lease,
+          { expectedState: 'running', state: 'idle' },
+        ),
+      ).resolves.toMatchObject({ state: 'idle' });
+      const version = await pool.query(
+        `SELECT value
+           FROM "${migrationSchema}"."runtime_metadata"
+          WHERE key = 'schema_version'`,
+      );
+      expect(version.rows[0]?.value).toBe('3');
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
     }
@@ -722,5 +820,148 @@ describePostgres('PostgresRuntimeStore', () => {
     } finally {
       await secondPool.end();
     }
+  });
+
+  it('dispatches persisted effects with explicit terminal outcomes', async () => {
+    const suffix = `dispatcher-${Date.now()}`;
+    const tenantId = `tenant-${suffix}`;
+    const sessionId = SessionId(`session-${suffix}`);
+    const commandId = CommandId(`command-${suffix}`);
+    const workerId = WorkerId(`worker-${suffix}`);
+    await store.registerWorker({
+      workerId,
+      capacity: 1,
+      ttlMs: 10_000,
+    });
+    await store.commitRuntimeTransaction({
+      tenantId,
+      sessionId,
+      command: {
+        commandId,
+        fingerprint: `fingerprint-${commandId}`,
+        result: {
+          protocolVersion: 1,
+          commandId,
+          ok: true,
+          data: {},
+        },
+      },
+      effects: [
+        {
+          effectId: `complete-${suffix}`,
+          type: 'complete',
+          payload: {},
+          idempotencyKey: `complete-${suffix}`,
+        },
+        {
+          effectId: `uncertain-${suffix}`,
+          type: 'uncertain',
+          payload: {},
+          idempotencyKey: `uncertain-${suffix}`,
+          executionMode: 'at_most_once',
+        },
+      ],
+    });
+    const dispatcher = new EffectDispatcher({
+      store,
+      workerId,
+      tenantId,
+      claimLimit: 2,
+      handlers: [
+        {
+          type: 'complete',
+          async execute() {
+            return { delivered: true };
+          },
+        },
+        {
+          type: 'uncertain',
+          async execute() {
+            throw new UncertainRuntimeEffectError('receipt unavailable');
+          },
+        },
+      ],
+    });
+
+    await expect(dispatcher.runOnce()).resolves.toBe(2);
+    await expect(dispatcher.runOnce()).resolves.toBe(0);
+    await expect(store.listEffects(tenantId, { sessionId })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          effectId: `complete-${suffix}`,
+          status: 'completed',
+          attempts: 1,
+        }),
+        expect.objectContaining({
+          effectId: `uncertain-${suffix}`,
+          status: 'uncertain',
+          attempts: 1,
+        }),
+      ]),
+    );
+  });
+
+  it('runs an accepted durable Session request through AgentWorker', async () => {
+    const tenantId = `tenant-sdk-worker-${Date.now()}`;
+    const tenantStore = store.forTenant(tenantId);
+    const session = await createSession({
+      provider: {
+        type: 'openai-compatible',
+        apiKey: 'test-key',
+      },
+      model: 'test-model',
+      sessionRepository: tenantStore,
+      sessionEventStore: tenantStore,
+      durableEventStore: tenantStore,
+      allowedTools: [],
+    });
+    await session.send('run on a worker');
+    await session.suspendForHandoff();
+    await store.enqueueSession(tenantId, session.sessionId);
+
+    const workerErrors: unknown[] = [];
+    const worker = new AgentWorker({
+      store,
+      workerId: WorkerId(`sdk-worker-${Date.now()}`),
+      capacity: 1,
+      tenantId,
+      sessionRunner: new SdkSessionRunner({
+        resolveSessionOptions: () => ({
+          provider: {
+            type: 'openai-compatible',
+            apiKey: 'test-key',
+          },
+          model: 'test-model',
+          allowedTools: [],
+        }),
+      }),
+      workerTtlMs: 5_000,
+      sessionLeaseTtlMs: 5_000,
+      heartbeatIntervalMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 500,
+      onError: (error) => workerErrors.push(error),
+    });
+    await worker.start();
+    try {
+      try {
+        await vi.waitFor(
+          async () => {
+            await expect(
+              store.getSessionRoute(tenantId, session.sessionId),
+            ).resolves.toMatchObject({ state: 'idle' });
+          },
+          { timeout: 10_000 },
+        );
+      } catch (error) {
+        throw new AggregateError([error, ...workerErrors]);
+      }
+    } finally {
+      await worker.shutdown();
+    }
+
+    const durable = await tenantStore.read(session.sessionId);
+    expect(durable.events.some(({ type }) => type === 'request_completed')).toBe(true);
+    expect(worker.getSnapshot().metrics.sessionsIdle).toBe(1);
   });
 });

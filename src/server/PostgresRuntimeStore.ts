@@ -84,6 +84,7 @@ import type {
   RuntimeSessionClaim,
   RuntimeSessionClaimOptions,
   RuntimeSessionRoute,
+  RuntimeSessionSettlement,
   RuntimeSessionTransition,
   RuntimeWorkerRecord,
   RuntimeWorkerRegistration,
@@ -962,6 +963,18 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
   }
 
+  settleSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    settlement: RuntimeSessionSettlement,
+  ): Promise<RuntimeSessionRoute> {
+    return this.workerRuntime.settleSession(
+      tenantId,
+      lease,
+      settlement,
+    );
+  }
+
   handoffSession(
     tenantId: string,
     lease: DurableExecutionLease,
@@ -1028,6 +1041,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
     options?: RuntimeEffectFailureOptions,
   ): Promise<RuntimeEffectRecord> {
     return this.workerRuntime.failEffect(lease, error, options);
+  }
+
+  markEffectUncertain(
+    lease: RuntimeEffectLease,
+    error: JsonObject,
+  ): Promise<RuntimeEffectRecord> {
+    return this.workerRuntime.markEffectUncertain(lease, error);
   }
 
   reconcileEffect(
@@ -1634,6 +1654,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         : 1;
       if (
         previousSchemaVersion !== 1 &&
+        previousSchemaVersion !== 2 &&
         previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
       ) {
         throw new RuntimeStoreError(
@@ -1646,7 +1667,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         `INSERT INTO ${this.table('metadata')} AS metadata (key, value)
          VALUES ('schema_version', $1)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-         WHERE metadata.value = '1'`,
+         WHERE metadata.value IN ('1', '2')`,
         [String(RUNTIME_STORE_SCHEMA_VERSION)],
       );
     } finally {

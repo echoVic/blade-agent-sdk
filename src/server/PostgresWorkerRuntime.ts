@@ -37,6 +37,7 @@ import {
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
   type RuntimeSessionRoute,
+  type RuntimeSessionSettlement,
   type RuntimeSessionState,
   type RuntimeWorkerRecord,
   type RuntimeWorkerRegistration,
@@ -292,7 +293,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         state TEXT NOT NULL CHECK (
           state IN (
             'queued', 'provisioning', 'running', 'waiting_approval',
-            'suspended', 'completed', 'failed'
+              'suspended', 'idle', 'completed', 'failed'
           )
         ),
         priority INTEGER NOT NULL DEFAULT 0,
@@ -362,6 +363,36 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         ALTER TABLE ${this.table('outbox')}
           ADD CONSTRAINT ${this.prefix}_outbox_execution_mode_check CHECK (
             execution_mode IN ('idempotent', 'at_most_once')
+          );
+      `);
+    }
+    if (previousSchemaVersion < 3) {
+      const constraints = await client.query<ConstraintRow>(
+        `SELECT DISTINCT constraint_row.conname
+           FROM pg_constraint constraint_row
+           JOIN LATERAL unnest(constraint_row.conkey)
+             AS column_number(attnum) ON TRUE
+           JOIN pg_attribute attribute
+             ON attribute.attrelid = constraint_row.conrelid
+            AND attribute.attnum = column_number.attnum
+          WHERE constraint_row.conrelid = $1::regclass
+            AND constraint_row.contype = 'c'
+            AND attribute.attname = 'state'`,
+        [this.table('session_routes')],
+      );
+      for (const constraint of constraints.rows) {
+        await client.query(
+          `ALTER TABLE ${this.table('session_routes')}
+             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+        );
+      }
+      await client.query(`
+        ALTER TABLE ${this.table('session_routes')}
+          ADD CONSTRAINT ${this.prefix}_session_routes_state_check CHECK (
+            state IN (
+              'queued', 'provisioning', 'running', 'waiting_approval',
+              'suspended', 'idle', 'completed', 'failed'
+            )
           );
       `);
     }
@@ -497,6 +528,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         current
         && current.state !== 'queued'
         && current.state !== 'suspended'
+        && current.state !== 'idle'
       ) {
         throw new WorkerRuntimeError(
           'SESSION_STATE_CONFLICT',
@@ -702,7 +734,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       }
       assertRuntimeSessionTransition(current.state, transition.state);
       const terminal =
-        transition.state === 'completed'
+        transition.state === 'idle'
+        || transition.state === 'completed'
         || transition.state === 'failed'
         || transition.state === 'suspended';
       const updated = await client.query<SessionRouteRow>(
@@ -733,6 +766,113 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         throw this.leaseLost(lease);
       }
       if (terminal) {
+        await this.releaseExecutionLeaseRow(
+          client,
+          tenantId,
+          lease.sessionId,
+          lease.leaseId,
+          lease.fencingToken,
+        );
+      }
+      return this.routeRecord(row);
+    });
+  }
+
+  async settleSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    settlement: RuntimeSessionSettlement,
+  ): Promise<RuntimeSessionRoute> {
+    this.assertTenantSession(tenantId, lease.sessionId);
+    if (settlement.metadata) {
+      assertJsonObject(settlement.metadata, 'Session settlement metadata');
+    }
+    if (settlement.failure) {
+      assertJsonObject(settlement.failure, 'Session settlement failure');
+    }
+    if (settlement.state === 'failed' && !settlement.failure) {
+      throw new WorkerRuntimeError(
+        'WORKER_INVALID',
+        'Failed Session settlement requires failure details',
+      );
+    }
+    await this.ensureInitialized();
+    return this.transaction(async (client) => {
+      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+      const current = await this.loadRoute(
+        client,
+        tenantId,
+        lease.sessionId,
+        true,
+      );
+      const persistedLease = await this.loadExecutionLease(
+        client,
+        tenantId,
+        lease.sessionId,
+        true,
+      );
+      if (!current) {
+        throw new WorkerRuntimeError(
+          'SESSION_ROUTE_NOT_FOUND',
+          `Session route ${tenantId}/${lease.sessionId} was not found`,
+        );
+      }
+      const sameLease =
+        persistedLease?.lease_id === lease.leaseId
+        && persistedLease.owner_id === lease.ownerId
+        && asNumber(persistedLease.fencing_token) === lease.fencingToken;
+      if (current.state === settlement.state && sameLease) {
+        return this.routeRecord(current);
+      }
+      const wasHandedOff =
+        current.state === 'suspended'
+        && persistedLease?.released_at !== null
+        && sameLease;
+      if (!wasHandedOff) {
+        await this.assertExecutionLeaseWithClient(
+          client,
+          tenantId,
+          lease,
+          true,
+        );
+      }
+      assertRuntimeSessionTransition(current.state, settlement.state);
+      const updated = await client.query<SessionRouteRow>(
+        `UPDATE ${this.table('session_routes')}
+            SET state = $5,
+                worker_id = NULL,
+                lease_id = NULL,
+                lease_expires_at = NULL,
+                metadata = COALESCE($6::jsonb, metadata),
+                failure = $7::jsonb,
+                updated_at = NOW()
+          WHERE tenant_id = $1 AND session_id = $2
+            AND fencing_token = $4
+            AND (
+              (lease_id = $3)
+              OR (
+                state = 'suspended'
+                AND lease_id IS NULL
+                AND $8::boolean
+              )
+            )
+          RETURNING *`,
+        [
+          tenantId,
+          lease.sessionId,
+          lease.leaseId,
+          lease.fencingToken,
+          settlement.state,
+          settlement.metadata ? JSON.stringify(settlement.metadata) : null,
+          settlement.failure ? JSON.stringify(settlement.failure) : null,
+          wasHandedOff,
+        ],
+      );
+      const row = updated.rows[0];
+      if (!row) {
+        throw this.leaseLost(lease);
+      }
+      if (!persistedLease?.released_at) {
         await this.releaseExecutionLeaseRow(
           client,
           tenantId,
@@ -1224,6 +1364,36 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       return this.requireEffectMutation(updated.rows[0], lease);
     });
+  }
+
+  async markEffectUncertain(
+    lease: RuntimeEffectLease,
+    error: JsonObject,
+  ): Promise<RuntimeEffectRecord> {
+    assertJsonObject(error, 'Effect uncertainty');
+    await this.ensureInitialized();
+    const updated = await this.queryClient().query<EffectRow>(
+      `UPDATE ${this.table('outbox')}
+          SET status = 'uncertain',
+              error = $6::jsonb,
+              completed_at = NOW()
+        WHERE tenant_id = $1
+          AND effect_id = $2
+          AND worker_id = $3
+          AND lease_id = $4
+          AND fencing_token = $5
+          AND status = 'executing'
+        RETURNING *`,
+      [
+        lease.tenantId,
+        lease.effectId,
+        lease.workerId,
+        lease.leaseId,
+        lease.fencingToken,
+        JSON.stringify(error),
+      ],
+    );
+    return this.requireEffectMutation(updated.rows[0], lease);
   }
 
   async reconcileEffect(
