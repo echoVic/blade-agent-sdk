@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Gate releases on complete failover RTO, throughput, event-loss, and four-point non-idempotent fault metrics with retained CI reports.",
-  "zh-CN": "将完整故障恢复 RTO、吞吐、事件丢失与四点非幂等故障指标纳入发布门禁，并保留 CI 报告。"
-}

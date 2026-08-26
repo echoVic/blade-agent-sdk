@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.4] - 2026-08-26
+
+### Fixes
+
+- Gate releases on complete failover RTO, throughput, event-loss, and four-point non-idempotent fault metrics with retained CI reports.
+
 ## [6.0.3] - 2026-08-26
 
 ### Fixes
