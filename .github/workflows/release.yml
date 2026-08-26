@@ -76,6 +76,11 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Verify package surfaces
+        run: |
+          node scripts/verify-entrypoints.mjs
+          node scripts/verify-minimal-install.mjs
+
       - name: Build documentation
         run: pnpm run docs:build
 

@@ -42,6 +42,11 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/server/postgres.js"
     },
+    "./server/otel": {
+      "types": "./dist/server/otel.d.ts",
+      "browser": "./dist/browser/server-only-stub.js",
+      "import": "./dist/server/otel.js"
+    },
     "./server/testing": {
       "types": "./dist/server/testing/index.d.ts",
       "import": "./dist/server/testing/index.js"
@@ -88,12 +93,17 @@
     "type-check": "tsc --noEmit",
     "audit:prod": "pnpm audit --prod --audit-level low",
     "verify:entrypoints": "pnpm run build && node scripts/verify-entrypoints.mjs",
+    "verify:install": "pnpm run build && node scripts/verify-minimal-install.mjs",
     "changelog:check": "node scripts/semantic-release-bilingual-changelog.cjs --check",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "benchmark:runtime": "pnpm run build && node benchmarks/runtime.mjs",
+    "example:local": "pnpm run build && node examples/local-cli-agent/index.mjs",
+    "example:web": "pnpm run build && node examples/web-agent-server/server.mjs",
+    "example:worker-recovery": "pnpm run build && node examples/postgres-worker-recovery/run.mjs"
   },
   "keywords": [
     "sdk",
@@ -110,34 +120,62 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/azure": "^3.0.54",
     "@ai-sdk/deepseek": "^2.0.29",
     "@ai-sdk/google": "^3.0.64",
+    "@opentelemetry/api": "^1.9.0",
     "@vscode/ripgrep": "^1.17.0",
-    "node-pty": "1.0.0"
+    "fs-native-extensions": "1.5.0",
+    "koffi": "3.1.6",
+    "pg": "8.23.0"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/anthropic": {
+      "optional": true
+    },
+    "@ai-sdk/azure": {
+      "optional": true
+    },
+    "@ai-sdk/deepseek": {
+      "optional": true
+    },
+    "@ai-sdk/google": {
+      "optional": true
+    },
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "@vscode/ripgrep": {
+      "optional": true
+    },
+    "fs-native-extensions": {
+      "optional": true
+    },
+    "koffi": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@opentelemetry/api": "^1.9.0",
     "ai": "^6.0.168",
     "async-mutex": "^0.5.0",
     "chalk": "^5.6.2",
     "diff": "^9.0.0",
     "fast-glob": "^3.3.3",
-    "fs-native-extensions": "1.5.0",
     "fuse.js": "^7.3.0",
     "gray-matter": "^4.0.3",
     "js-tiktoken": "^1.0.21",
-    "koffi": "3.1.6",
     "lodash-es": "^4.18.1",
     "lru-cache": "^11.3.5",
     "nanoid": "^5.1.16",
     "open": "^11.0.0",
-    "pg": "8.23.0",
     "picomatch": "^4.0.4",
     "semver": "^7.7.4",
     "undici": "^7.29.0",
@@ -148,7 +186,12 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/azure": "^3.0.54",
+    "@ai-sdk/deepseek": "^2.0.29",
+    "@ai-sdk/google": "^3.0.64",
     "@biomejs/biome": "^2.4.12",
+    "@opentelemetry/api": "^1.9.0",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/git": "10.0.1",
     "@types/json-schema": "^7.0.15",
@@ -158,7 +201,11 @@
     "@types/picomatch": "^4.0.2",
     "@types/semver": "^7.7.1",
     "@types/write-file-atomic": "^4.0.3",
+    "@vscode/ripgrep": "^1.17.0",
     "esbuild": "0.27.4",
+    "fs-native-extensions": "1.5.0",
+    "koffi": "3.1.6",
+    "pg": "8.23.0",
     "semantic-release": "^25.0.5",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

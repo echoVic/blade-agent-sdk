@@ -37,6 +37,11 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/server/postgres.js',
       },
+      './server/otel': {
+        types: './dist/server/otel.d.ts',
+        browser: './dist/browser/server-only-stub.js',
+        import: './dist/server/otel.js',
+      },
       './server/testing': {
         types: './dist/server/testing/index.d.ts',
         import: './dist/server/testing/index.js',
@@ -73,6 +78,7 @@ describe('package entrypoints', () => {
       'src/browser/server-only-stub.ts',
       'src/protocol/index.ts',
       'src/server/index.ts',
+      'src/server/otel.ts',
       'src/server/postgres.ts',
       'src/server/testing/index.ts',
       'src/tools/index.ts',
@@ -130,7 +136,7 @@ describe('package entrypoints', () => {
     expect(() => new serverOnly.WorkerRuntimeError()).toThrow(
       /server-only.*WorkerRuntimeError/,
     );
-    expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(2);
+    expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(3);
     expect(serverOnly.RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION).toBe(1);
     expect(serverOnly.RUNTIME_SESSION_STATES).toEqual([
       'queued',
@@ -138,11 +144,21 @@ describe('package entrypoints', () => {
       'running',
       'waiting_approval',
       'suspended',
+      'idle',
       'completed',
       'failed',
     ]);
     expect(() => new serverOnly.InProcessSessionExecutor()).toThrow(
       /server-only.*InProcessSessionExecutor/,
+    );
+    expect(() => new serverOnly.AgentWorker()).toThrow(
+      /server-only.*AgentWorker/,
+    );
+    expect(() => new serverOnly.EffectDispatcher()).toThrow(
+      /server-only.*EffectDispatcher/,
+    );
+    expect(() => new serverOnly.ExecutionHostSessionRunner()).toThrow(
+      /server-only.*ExecutionHostSessionRunner/,
     );
   });
 
@@ -150,12 +166,21 @@ describe('package entrypoints', () => {
     const root = await import('../index.js');
     const server = await import('../server/index.js');
     const node = await import('../node/index.js');
+    const otel = await import('../server/otel.js');
+    const postgres = await import('../server/postgres.js');
 
     expect(server.createSession).toBe(root.createSession);
     expect(node.createSession).not.toBe(server.createSession);
     expect(server.AgentServer).toBeTypeOf('function');
     expect(server.InProcessSessionExecutor).toBeTypeOf('function');
-    expect(server.PostgresRuntimeStore).toBeTypeOf('function');
+    expect(server.AgentWorker).toBeTypeOf('function');
+    expect(server.EffectDispatcher).toBeTypeOf('function');
+    expect(server.SdkSessionRunner).toBeTypeOf('function');
+    expect(server.ExecutionHostSessionRunner).toBeTypeOf('function');
+    expect('PostgresRuntimeStore' in server).toBe(false);
+    expect(postgres.PostgresRuntimeStore).toBeTypeOf('function');
+    expect('OpenTelemetryAgentServerTelemetry' in server).toBe(false);
+    expect(otel.OpenTelemetryAgentServerTelemetry).toBeTypeOf('function');
     expect(server.EphemeralCredentialBroker).toBeTypeOf('function');
     expect(server.ExecutionHostError).toBeTypeOf('function');
     expect(server.WorkerRuntimeError).toBeTypeOf('function');
@@ -165,6 +190,7 @@ describe('package entrypoints', () => {
       'running',
       'waiting_approval',
       'suspended',
+      'idle',
       'completed',
       'failed',
     ]);

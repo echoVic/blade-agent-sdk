@@ -17,9 +17,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@3.25.76)
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
       ai:
         specifier: ^6.0.168
         version: 6.0.168(zod@3.25.76)
@@ -35,9 +32,6 @@ importers:
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
-      fs-native-extensions:
-        specifier: 1.5.0
-        version: 1.5.0
       fuse.js:
         specifier: ^7.3.0
         version: 7.3.0
@@ -47,9 +41,6 @@ importers:
       js-tiktoken:
         specifier: ^1.0.21
         version: 1.0.21
-      koffi:
-        specifier: 3.1.6
-        version: 3.1.6
       lodash-es:
         specifier: ^4.18.1
         version: 4.18.1
@@ -62,9 +53,6 @@ importers:
       open:
         specifier: ^11.0.0
         version: 11.0.0
-      pg:
-        specifier: 8.23.0
-        version: 8.23.0
       picomatch:
         specifier: ^4.0.4
         version: 4.0.4
@@ -90,9 +78,24 @@ importers:
         specifier: ^5.0.12
         version: 5.0.12
     devDependencies:
+      '@ai-sdk/anthropic':
+        specifier: ^3.0.71
+        version: 3.0.71(zod@3.25.76)
+      '@ai-sdk/azure':
+        specifier: ^3.0.54
+        version: 3.0.54(zod@3.25.76)
+      '@ai-sdk/deepseek':
+        specifier: ^2.0.29
+        version: 2.0.29(zod@3.25.76)
+      '@ai-sdk/google':
+        specifier: ^3.0.64
+        version: 3.0.64(zod@3.25.76)
       '@biomejs/biome':
         specifier: ^2.4.12
         version: 2.4.12
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
       '@semantic-release/commit-analyzer':
         specifier: 13.0.1
         version: 13.0.1(semantic-release@25.0.5(typescript@6.0.3))
@@ -120,9 +123,21 @@ importers:
       '@types/write-file-atomic':
         specifier: ^4.0.3
         version: 4.0.3
+      '@vscode/ripgrep':
+        specifier: ^1.17.0
+        version: 1.17.1
       esbuild:
         specifier: 0.27.4
         version: 0.27.4
+      fs-native-extensions:
+        specifier: 1.5.0
+        version: 1.5.0
+      koffi:
+        specifier: 3.1.6
+        version: 3.1.6
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
       semantic-release:
         specifier: ^25.0.5
         version: 25.0.5(typescript@6.0.3)
@@ -138,25 +153,6 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(yaml@2.8.3)
-    optionalDependencies:
-      '@ai-sdk/anthropic':
-        specifier: ^3.0.71
-        version: 3.0.71(zod@3.25.76)
-      '@ai-sdk/azure':
-        specifier: ^3.0.54
-        version: 3.0.54(zod@3.25.76)
-      '@ai-sdk/deepseek':
-        specifier: ^2.0.29
-        version: 2.0.29(zod@3.25.76)
-      '@ai-sdk/google':
-        specifier: ^3.0.64
-        version: 3.0.64(zod@3.25.76)
-      '@vscode/ripgrep':
-        specifier: ^1.17.0
-        version: 1.17.1
-      node-pty:
-        specifier: 1.0.0
-        version: 1.0.0
 
 packages:
 

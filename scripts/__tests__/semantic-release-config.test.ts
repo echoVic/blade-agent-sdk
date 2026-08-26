@@ -105,6 +105,11 @@ describe('release workflow', () => {
       'pnpm run lint',
       'pnpm run type-check',
       'pnpm run build',
+      [
+        'node scripts/verify-entrypoints.mjs',
+        'node scripts/verify-minimal-install.mjs',
+        '',
+      ].join('\n'),
       'pnpm run docs:build',
       'pnpm run test',
       'pnpm exec semantic-release',
@@ -145,6 +150,13 @@ describe('pull request workflow', () => {
     );
     expect(commands).toContain(
       'pnpm run changelog:check -- --base "${{ github.event.pull_request.base.sha }}"'
+    );
+    expect(commands).toContain(
+      [
+        'node scripts/verify-entrypoints.mjs',
+        'node scripts/verify-minimal-install.mjs',
+        '',
+      ].join('\n'),
     );
     expect(commands).toContain('pnpm run docs:build');
   });
