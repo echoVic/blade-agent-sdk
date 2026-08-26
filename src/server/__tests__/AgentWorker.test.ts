@@ -300,4 +300,59 @@ describe('AgentWorker', () => {
     expect(onError).toHaveBeenCalledWith(effectError);
     await worker.shutdown();
   });
+
+  it('treats an in-flight claim rejection during drain as normal shutdown', async () => {
+    const sessionClaim = claim();
+    const store = createStore(sessionClaim);
+    let claimCalls = 0;
+    let markSecondClaimStarted: () => void = () => undefined;
+    const secondClaimStarted = new Promise<void>((resolve) => {
+      markSecondClaimStarted = resolve;
+    });
+    let rejectSecondClaim: (error: unknown) => void = () => undefined;
+    const blockedClaim = new Promise<null>((_resolve, reject) => {
+      rejectSecondClaim = reject;
+    });
+    vi.mocked(store.claimSession).mockImplementation(async () => {
+      claimCalls += 1;
+      if (claimCalls === 1) {
+        return sessionClaim;
+      }
+      markSecondClaimStarted();
+      return blockedClaim;
+    });
+    let finishDrain: () => void = () => undefined;
+    vi.mocked(store.drainWorker).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishDrain = () => resolve(workerRecord('draining'));
+        }),
+    );
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run(context) {
+          await context.transition('running');
+          return { status: 'completed' };
+        },
+      },
+      heartbeatIntervalMs: 50,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
+
+    await worker.start();
+    await secondClaimStarted;
+    const shutdown = worker.shutdown();
+    expect(worker.getSnapshot().status).toBe('draining');
+    rejectSecondClaim(new Error('worker became unavailable while draining'));
+    finishDrain();
+
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(worker.getSnapshot().status).toBe('stopped');
+  });
 });

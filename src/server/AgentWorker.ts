@@ -332,13 +332,21 @@ export class AgentWorker {
         this.status === 'running' &&
         this.activeSessions.size < this.options.capacity
       ) {
-        const claim = await this.options.store.claimSession({
-          ownerId: this.options.workerId,
-          leaseId: ExecutionLeaseId(`session-lease-${nanoid()}`),
-          ttlMs: this.sessionLeaseTtlMs,
-          signal,
-          ...(this.options.tenantId ? { tenantId: this.options.tenantId } : {}),
-        });
+        let claim: RuntimeSessionClaim | null;
+        try {
+          claim = await this.options.store.claimSession({
+            ownerId: this.options.workerId,
+            leaseId: ExecutionLeaseId(`session-lease-${nanoid()}`),
+            ttlMs: this.sessionLeaseTtlMs,
+            signal,
+            ...(this.options.tenantId ? { tenantId: this.options.tenantId } : {}),
+          });
+        } catch (error) {
+          if (signal.aborted || this.hasStoppedClaiming()) {
+            return;
+          }
+          throw error;
+        }
         if (!claim) {
           break;
         }
@@ -365,6 +373,10 @@ export class AgentWorker {
       }
     }
     await this.waitForIdle();
+  }
+
+  private hasStoppedClaiming(): boolean {
+    return this.status !== 'running';
   }
 
   private startSession(claim: RuntimeSessionClaim): void {
