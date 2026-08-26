@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.3] - 2026-08-26
+
+### Fixes
+
+- Ship create-blade-agent with a five-minute full-stack verification path and an audited generated dependency tree.
+
 ## [6.0.2] - 2026-08-26
 
 ### Fixes
