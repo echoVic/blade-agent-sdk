@@ -7,7 +7,7 @@ event、effect outbox 和 projection checkpoint 放进同一个事务，同时�
 ## 安装与导入
 
 ```bash
-pnpm add @blade-ai/agent-sdk
+pnpm add @blade-ai/agent-sdk pg
 ```
 
 ```ts
@@ -123,9 +123,10 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 参数化查询。并发 command 和 stream append 使用 transaction-scoped advisory lock；
 PostgreSQL 是事实源，Redis 不参与 correctness path。
 
-当前数据库 schema 版本为 `2`。`initialize()` 会在全局 advisory lock 内将
-v1 outbox 原地迁移到 worker/effect lease schema；domain event schema 继续保持
-版本 `1`，已有事件不需要重写。
+当前数据库 schema 版本为 `3`。`initialize()` 会在全局 advisory lock 内将
+v1 outbox 原地迁移到 worker/effect lease schema，并将 v2 Session route
+状态约束升级为支持 `idle`；domain event schema 继续保持版本 `1`，已有事件
+不需要重写。
 
 `InMemoryAgentServerStore` 仍只适合测试和单进程。生产环境不得把它与
 PostgreSQL transcript 混用。

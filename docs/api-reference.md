@@ -2,7 +2,9 @@
 
 `@blade-ai/agent-sdk` 根包保持 session-first 体验，并采用服务端安全默认值。需要访问本机文件、进程或 Sandbox 的 Node.js 应用使用 `/node`；不应隐式访问宿主资源的服务端应用使用 `/server`。浏览器端应优先从 `/browser` 或 `/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `node` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 
-`/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口；本次拆分隔离的是默认能力与公开 API，不是 npm 依赖的物理分包。
+`/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
+OpenTelemetry、非默认 Provider 与原生 Node 增强使用可选 peer dependency；
+`/server` 不再静态加载对应 adapter。部分依赖仍可能由基础依赖间接安装。
 
 ## 包入口
 
@@ -11,6 +13,7 @@
 | `@blade-ai/agent-sdk` | Node.js server | 默认服务端入口；仅加载显式配置的工具、Agent、middleware 和 MCP |
 | `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的服务端入口，行为等价于 root |
 | `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
+| `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metric、trace 与 audit adapter |
 | `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
 | `@blade-ai/agent-sdk/node` | Node.js local process | 具备本机访问能力的入口；默认启用本地工具和工作区发现，并导出 Node 宿主适配器 |
 | `@blade-ai/agent-sdk/session` | Node.js server | 底层 Session API 子入口，采用 server profile |
@@ -74,12 +77,16 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
 | `AgentServer` | server | 多租户 command 调度、Session 管理和 Fetch-compatible HTTP/SSE transport |
 | `InProcessSessionExecutor` | server | `SessionExecutor` 的进程内参考实现，负责 Session 生命周期与 stream pump |
+| `SdkSessionRunner` | server | 在 worker fencing 下恢复并执行 durable SDK Session |
+| `ExecutionHostSessionRunner` | server | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
+| `AgentWorker` | server | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
+| `EffectDispatcher` | server | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
 | `PostgresRuntimeStore` | server/postgres | 共享 command、event、outbox、projection 和 Session persistence |
 | `RuntimeStoreError` | server | Runtime transaction 的稳定错误类型 |
 | `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
-| `OpenTelemetryAgentServerTelemetry` | server | 默认不采集 payload 的 metric、trace 与 audit adapter |
+| `OpenTelemetryAgentServerTelemetry` | server/otel | 默认不采集 payload 的 metric、trace 与 audit adapter |
 | `JsonlSessionRepository` | node | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
@@ -159,8 +166,11 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
 | `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
 | `RuntimeWorkerRecord` / `RuntimeWorkerRegistration` | worker heartbeat、容量与 drain 状态 |
-| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、七态状态机与 execution lease |
+| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、含可重入 `idle` 的八态状态机与 execution lease |
 | `RuntimeEffectClaim` / `RuntimeEffectLease` / `RuntimeEffectExecutionMode` / `RuntimeEffectReconciliation` | effect 领取、fencing、at-most-once 与人工对账语义 |
+| `RuntimeEffectHandler` / `RuntimeEffectHandlerContext` | 类型化 outbox effect handler |
+| `RetryableRuntimeEffectError` / `UncertainRuntimeEffectError` | 显式声明 effect 可重试或结果未知 |
+| `SessionRunner` / `SessionRunnerContext` / `SessionRunResult` | 单个 fenced Session 的执行边界 |
 | `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
 | `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
 

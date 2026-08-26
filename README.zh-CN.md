@@ -62,6 +62,7 @@ console.log(result.usage);
 - Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 可转向请求：持久化的 `now`、`next`、`later` 输入，支持取消和待处理输入查询
 - Durable 恢复：带 fencing 的执行租约、受控 worker handoff、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
+- 执行平面：`AgentWorker`、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
 - 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用
@@ -130,6 +131,8 @@ import { createSession as createServerSession } from '@blade-ai/agent-sdk/server
 import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
 import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
+import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
@@ -138,6 +141,7 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 - 根入口与 `/server`：服务端 Agent；提供可注入 `SessionExecutor` 的 `AgentServer`，只加载显式传入的能力
 - `/server/postgres`：共享 PostgreSQL Runtime Store，统一承载 command、event、effect、projection、worker lease、路由、transcript 和 durable journal
+- `/server/otel`：OpenTelemetry metric、trace 与审计 adapter
 - `/server/testing`：不依赖测试框架的 Runtime Store conformance suite
 - `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
 - `/browser`：browser-safe `AgentClient`、协议视图和明确的 server-only stub
@@ -149,6 +153,15 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 - `/session`：底层服务端 Session API
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
+
+PostgreSQL、OpenTelemetry、非默认 Provider 和本机原生增强是按需 peer：
+
+```bash
+pnpm add pg                         # /server/postgres
+pnpm add @opentelemetry/api         # /server/otel
+pnpm add @ai-sdk/anthropic          # provider: anthropic
+pnpm add fs-native-extensions        # Node JSONL 跨进程锁
+```
 
 ## 持久化与 Workspace
 
@@ -196,6 +209,8 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 - [Execution Host](./docs/execution-host.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
+- [可运行 Golden Paths](./examples/README.md)
+- [Runtime 基准](./docs/runtime-benchmarks.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)
 - [English changelog](./CHANGELOG.md)
 

@@ -8,14 +8,18 @@ does not load a concrete provider SDK.
 
 | Provider | `type` | Package |
 |----------|--------|---------|
-| OpenAI | `openai` | `@ai-sdk/openai` |
-| Anthropic | `anthropic` | `@ai-sdk/anthropic` |
-| Azure OpenAI | `azure-openai` | `@ai-sdk/azure` |
-| Google Gemini | `gemini` | `@ai-sdk/google` |
-| DeepSeek | `deepseek` | `@ai-sdk/deepseek` |
-| OpenAI-compatible | `openai-compatible` | `@ai-sdk/openai-compatible` |
+| OpenAI | `openai` | Bundled `@ai-sdk/openai` |
+| Anthropic | `anthropic` | Optional peer `@ai-sdk/anthropic` |
+| Azure OpenAI | `azure-openai` | Optional peer `@ai-sdk/azure` |
+| Google Gemini | `gemini` | Optional peer `@ai-sdk/google` |
+| DeepSeek | `deepseek` | Optional peer `@ai-sdk/deepseek` |
+| OpenAI-compatible | `openai-compatible` | Bundled `@ai-sdk/openai-compatible` |
 
 Provider adapters are loaded lazily. Optional adapters only need to be installed when you use them.
+
+```bash
+pnpm add @blade-ai/agent-sdk @ai-sdk/anthropic
+```
 
 ## ProviderConnectionConfig
 

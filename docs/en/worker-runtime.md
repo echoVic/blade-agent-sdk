@@ -5,6 +5,51 @@ effect outbox recovery on the shared `RuntimeStore`. PostgreSQL remains the
 only coordination source of truth. Redis may provide notifications, wake-ups,
 and short-lived quotas only.
 
+## AgentWorker
+
+`AgentWorker` combines worker registration, heartbeat, Session claims, lease
+renewal, recovery scans, and effect consumption into one long-running execution
+loop. A `SessionRunner` executes one already-fenced Session:
+
+```ts
+import {
+  AgentWorker,
+  SdkSessionRunner,
+} from '@blade-ai/agent-sdk/server';
+import {
+  PostgresRuntimeStore,
+} from '@blade-ai/agent-sdk/server/postgres';
+import { WorkerId } from '@blade-ai/agent-sdk/core';
+
+const store = new PostgresRuntimeStore({
+  connectionString: process.env.DATABASE_URL!,
+});
+const worker = new AgentWorker({
+  store,
+  workerId: WorkerId(crypto.randomUUID()),
+  capacity: 8,
+  sessionRunner: new SdkSessionRunner({
+    resolveSessionOptions: () => ({
+      provider,
+      model,
+      allowedTools: [],
+    }),
+  }),
+});
+
+await worker.run(shutdownSignal);
+```
+
+`SdkSessionRunner` resumes an already-persisted Request and injects the current
+tenant Store and worker lease. After a turn settles, the route enters `idle`
+and releases its lease so later input can enqueue it again.
+
+Use `ExecutionHostSessionRunner` when the workload needs an isolated workspace.
+It persists checkpoint references in route metadata so a successor worker can
+restore through the same `ExecutionHost` backend. See the runnable
+[`examples/postgres-worker-recovery`](https://github.com/echoVic/blade-agent-sdk/tree/main/examples/postgres-worker-recovery)
+example.
+
 ## Worker lifecycle
 
 ```ts
@@ -14,7 +59,6 @@ import {
   WorkerId,
 } from '@blade-ai/agent-sdk';
 import {
-  effectLease,
   PostgresRuntimeStore,
 } from '@blade-ai/agent-sdk/server/postgres';
 
@@ -82,9 +126,10 @@ Public states:
 |-------|---------|---------------------|
 | `queued` | Waiting for a worker | `provisioning`, `failed` |
 | `provisioning` | Claimed while the execution environment is prepared | `running`, `suspended`, `failed` |
-| `running` | Session execution is active | `waiting_approval`, `suspended`, `completed`, `failed` |
+| `running` | Session execution is active | `waiting_approval`, `suspended`, `idle`, `completed`, `failed` |
 | `waiting_approval` | Waiting for external approval while retaining the lease | `running`, `suspended`, `failed` |
-| `suspended` | Unowned and available for recovery | `queued`, `provisioning`, `completed`, `failed` |
+| `suspended` | Unowned and available for recovery | `queued`, `provisioning`, `idle`, `completed`, `failed` |
+| `idle` | The turn settled without an owner and may be queued again | `queued`, `completed`, `failed` |
 | `completed` | Successful terminal state | None |
 | `failed` | Failed terminal state | None |
 
@@ -128,6 +173,8 @@ Effects support two execution modes:
   effect enters `executing`, it is never retried automatically.
 
 ```ts
+import { EffectDispatcher } from '@blade-ai/agent-sdk/server';
+
 await store.commitRuntimeTransaction({
   tenantId,
   sessionId,
@@ -141,19 +188,22 @@ await store.commitRuntimeTransaction({
   }],
 });
 
-const [effect] = await store.claimEffects({
-  tenantId,
+const dispatcher = new EffectDispatcher({
+  store,
   workerId,
-  ttlMs: 30_000,
-  limit: 1,
+  handlers: [{
+    type: 'payment.capture',
+    async execute({ effect, signal }) {
+      return paymentProvider.capture(
+        effect.payload,
+        effect.idempotencyKey,
+        signal,
+      );
+    },
+  }],
 });
 
-if (effect) {
-  const lease = effectLease(effect);
-  await store.startEffect(lease);
-  await executeExternalEffect(effect.payload);
-  await store.completeEffect(lease, { delivered: true });
-}
+await dispatcher.run(shutdownSignal);
 ```
 
 Workers must preserve the
@@ -170,6 +220,9 @@ At-most-once delivery prevents duplicates but does not guarantee execution.
 An `uncertain` effect must not be retried directly. After business
 reconciliation, use `reconcileEffect()` to resolve it explicitly to
 `completed` or `failed`.
+When a handler has sent a request but cannot prove its outcome, it should throw
+`UncertainRuntimeEffectError`. Explicitly retryable idempotent failures use
+`RetryableRuntimeEffectError`.
 
 Long-running work must renew both worker heartbeat and the effect lease:
 

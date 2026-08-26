@@ -2,9 +2,10 @@
 
 This page inventories the public package surface. Detailed behavior is documented on the feature pages.
 
-`/server` currently targets Node.js server processes, not edge runtimes. This
-split isolates default capabilities and public APIs; it does not physically
-split npm dependencies into separate packages.
+`/server` currently targets Node.js server processes, not edge runtimes.
+PostgreSQL, OpenTelemetry, non-default providers, and native Node enhancements
+are optional peers, and `/server` no longer statically loads their adapters.
+Some packages can still be present transitively through base dependencies.
 
 ## Entry points
 
@@ -13,6 +14,7 @@ split npm dependencies into separate packages.
 | `@blade-ai/agent-sdk` | Node.js server | Server-first Session API; only explicit tools, agents, middleware, and MCP servers are loaded |
 | `@blade-ai/agent-sdk/server` | Node.js server | Server entry without implicit local host access, equivalent to root |
 | `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
+| `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metrics, traces, and audit adapter |
 | `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
 | `@blade-ai/agent-sdk/node` | Local Node.js process | Entry with local tools, workspace discovery, and Node host adapters enabled |
 | `@blade-ai/agent-sdk/session` | Node.js server | Lower-level Session functions and types using the server profile |
@@ -92,13 +94,15 @@ Runtime:
 
 - `AgentServer`
 - `InProcessSessionExecutor`
+- `SdkSessionRunner`
+- `ExecutionHostSessionRunner`
+- `AgentWorker`
+- `EffectDispatcher`
 - `AgentClient`
 - `RemoteAgentSession`
 - `InMemoryAgentServerStore`
-- `PostgresRuntimeStore`
 - `RuntimeStoreError`
 - `TenantAdmissionController`
-- `OpenTelemetryAgentServerTelemetry`
 - `JsonlSessionRepository` (`/node` only)
 - `AgentProtocolError`
 - `AGENT_PROTOCOL_VERSION`
@@ -140,6 +144,13 @@ Types:
 - `RuntimeEffectLease`
 - `RuntimeEffectExecutionMode`
 - `RuntimeEffectReconciliation`
+- `RuntimeEffectHandler`
+- `RuntimeEffectHandlerContext`
+- `RetryableRuntimeEffectError`
+- `UncertainRuntimeEffectError`
+- `SessionRunner`
+- `SessionRunnerContext`
+- `SessionRunResult`
 - `WorkerRuntimeStore`
 - `WorkerRuntimeError`
 - `RuntimeProjectionCheckpoint`
@@ -163,6 +174,9 @@ Types:
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
 - `assertRuntimeStoreConformance` (`/server/testing`)
+
+`PostgresRuntimeStore` is exported by `/server/postgres`.
+`OpenTelemetryAgentServerTelemetry` is exported by `/server/otel`.
 
 See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 [Worker Runtime](./worker-runtime), and

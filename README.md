@@ -62,6 +62,7 @@ console.log(result.usage);
 - Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
 - Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
 - Durable recovery: lease-fenced execution ownership, controlled worker handoff, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
+- Execution plane: `AgentWorker`, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
@@ -130,6 +131,8 @@ import { createSession as createServerSession } from '@blade-ai/agent-sdk/server
 import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
 import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
+import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
@@ -138,6 +141,7 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 - Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
 - `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, worker leases, routing, transcripts, and durable journals
+- `/server/otel`: OpenTelemetry metrics, traces, and audit adapter
 - `/server/testing`: framework-independent Runtime Store conformance suite
 - `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
 - `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
@@ -149,6 +153,16 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 - `/session`: lower-level server Session API
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
+
+PostgreSQL, OpenTelemetry, non-default providers, and native Node enhancements
+are opt-in peers:
+
+```bash
+pnpm add pg                         # /server/postgres
+pnpm add @opentelemetry/api         # /server/otel
+pnpm add @ai-sdk/anthropic          # provider: anthropic
+pnpm add fs-native-extensions        # cross-process Node JSONL locks
+```
 
 ## Persistence and Workspace
 
@@ -199,6 +213,8 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 - [Execution Host](./docs/en/execution-host.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
+- [Runnable golden paths](./examples/README.md)
+- [Runtime benchmarks](./docs/en/runtime-benchmarks.md)
 - [English changelog](./CHANGELOG.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)
 
