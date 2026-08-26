@@ -71,10 +71,16 @@ function withExecutionMetadata(
   checkpoint?: ExecutionCheckpoint,
 ): JsonObject {
   const previous = executionMetadata(routeMetadata);
+  const {
+    checkpointId: _checkpointId,
+    checkpointCreatedAt: _checkpointCreatedAt,
+    checkpointSizeBytes: _checkpointSizeBytes,
+    ...carried
+  } = previous ?? {};
   return {
     ...routeMetadata,
     [EXECUTION_HOST_ROUTE_METADATA_KEY]: {
-      ...previous,
+      ...carried,
       version: EXECUTION_HOST_ROUTE_METADATA_VERSION,
       executionId: execution.executionId,
       sourceExecutionId: execution.executionId,

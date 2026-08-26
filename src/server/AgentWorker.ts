@@ -108,6 +108,15 @@ function activeSessionKey(route: RuntimeSessionRoute): string {
   return `${route.tenantId}\0${route.sessionId}`;
 }
 
+function isFatalWorkerStateError(error: unknown): boolean {
+  const code = getErrorCode(error);
+  return (
+    code === 'WORKER_INVALID'
+    || code === 'WORKER_NOT_FOUND'
+    || code === 'WORKER_UNAVAILABLE'
+  );
+}
+
 /**
  * Supervises durable Session claims and effect delivery for one worker.
  *
@@ -168,6 +177,7 @@ export class AgentWorker {
         pollIntervalMs: this.pollIntervalMs,
         claimLimit: options.effectClaimLimit,
         tenantId: options.tenantId,
+        onError: options.onError,
       });
     }
   }
@@ -574,17 +584,34 @@ export class AgentWorker {
       if (signal.aborted) {
         return;
       }
-      await this.options.store.heartbeatWorker(this.options.workerId, this.workerTtlMs);
+      try {
+        await this.options.store.heartbeatWorker(
+          this.options.workerId,
+          this.workerTtlMs,
+        );
+      } catch (error) {
+        if (isFatalWorkerStateError(error)) {
+          throw error;
+        }
+        this.reportError(error);
+      }
     }
   }
 
   private async recoveryLoop(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
       const startedAt = performance.now();
-      await this.options.store.recoverExpiredWork();
-      this.recoveryRuns += 1;
-      this.recoveryDurationMs += performance.now() - startedAt;
-      this.publishSnapshot();
+      try {
+        await this.options.store.recoverExpiredWork();
+        this.recoveryRuns += 1;
+        this.recoveryDurationMs += performance.now() - startedAt;
+        this.publishSnapshot();
+      } catch (error) {
+        if (isFatalWorkerStateError(error)) {
+          throw error;
+        }
+        this.reportError(error);
+      }
       await abortableDelay(this.recoveryIntervalMs, signal).catch((error) => {
         if (!signal.aborted) {
           throw error;
@@ -601,7 +628,15 @@ export class AgentWorker {
       if (this.status === 'draining') {
         return;
       }
-      const count = await this.effectDispatcher.runOnce(signal);
+      let count = 0;
+      try {
+        count = await this.effectDispatcher.runOnce(signal);
+      } catch (error) {
+        if (isFatalWorkerStateError(error)) {
+          throw error;
+        }
+        this.reportError(error);
+      }
       this.publishSnapshot();
       if (count === 0) {
         await abortableDelay(this.pollIntervalMs, signal).catch((error) => {

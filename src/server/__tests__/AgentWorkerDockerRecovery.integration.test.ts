@@ -225,10 +225,10 @@ describeRuntime('AgentWorker PostgreSQL and Docker recovery', () => {
       fencingToken: 2,
       metadata: {
         bladeExecution: {
-          checkpointId: checkpoint.checkpointId,
           lastExitCode: 0,
         },
       },
     });
+    expect(completed?.metadata.bladeExecution).not.toHaveProperty('checkpointId');
   }, 60_000);
 });

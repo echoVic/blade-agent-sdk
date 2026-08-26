@@ -171,5 +171,13 @@ describe('ExecutionHostSessionRunner', () => {
     });
     expect(host.provision).not.toHaveBeenCalled();
     expect(result.status).toBe('completed');
+    expect(result.metadata?.bladeExecution).toMatchObject({
+      version: 1,
+      executionId: 'execution-1',
+      lastExitCode: 0,
+    });
+    expect(result.metadata?.bladeExecution).not.toHaveProperty('checkpointId');
+    expect(result.metadata?.bladeExecution).not.toHaveProperty('checkpointCreatedAt');
+    expect(result.metadata?.bladeExecution).not.toHaveProperty('checkpointSizeBytes');
   });
 });

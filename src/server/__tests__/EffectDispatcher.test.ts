@@ -122,6 +122,63 @@ describe('EffectDispatcher', () => {
     expect(dispatcher.getMetrics().retried).toBe(1);
   });
 
+  it('clamps handler retry delays to the configured bounds', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T00:00:00.000Z'));
+    try {
+      const claim = effect('idempotent');
+      const store = createStore(claim);
+      const dispatcher = new EffectDispatcher({
+        store,
+        workerId: WorkerId('worker-1'),
+        retryDelayMs: 50,
+        maxRetryDelayMs: 500,
+        handlers: [
+          {
+            type: 'notify',
+            async execute() {
+              throw new RetryableRuntimeEffectError('temporary', 0.5);
+            },
+          },
+        ],
+      });
+
+      await dispatcher.runOnce();
+
+      expect(store.failEffect).toHaveBeenCalledWith(
+        expect.objectContaining({ effectId: 'effect-1' }),
+        expect.objectContaining({ message: 'temporary' }),
+        { retryAt: '2026-08-26T00:00:00.050Z' },
+      );
+
+      const upperStore = createStore(claim);
+      const upperDispatcher = new EffectDispatcher({
+        store: upperStore,
+        workerId: WorkerId('worker-1'),
+        retryDelayMs: 50,
+        maxRetryDelayMs: 500,
+        handlers: [
+          {
+            type: 'notify',
+            async execute() {
+              throw new RetryableRuntimeEffectError('temporary', 5_000);
+            },
+          },
+        ],
+      });
+
+      await upperDispatcher.runOnce();
+
+      expect(upperStore.failEffect).toHaveBeenCalledWith(
+        expect.objectContaining({ effectId: 'effect-1' }),
+        expect.objectContaining({ message: 'temporary' }),
+        { retryAt: '2026-08-26T00:00:00.500Z' },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('marks an at-most-once effect uncertain when its outcome cannot be proven', async () => {
     const claim = effect('at_most_once');
     const store = createStore(claim);
@@ -172,6 +229,43 @@ describe('EffectDispatcher', () => {
       expect.objectContaining({
         message: 'Effect handler completed but its durable completion is unknown',
       }),
+    );
+  });
+
+  it('isolates one effect persistence failure from the rest of the batch', async () => {
+    const first = effect();
+    const second = {
+      ...effect(),
+      effectId: 'effect-2',
+      idempotencyKey: 'notify:2',
+    };
+    const store = createStore(first);
+    vi.mocked(store.claimEffects).mockResolvedValueOnce([first, second]);
+    vi.mocked(store.startEffect).mockImplementation(async (lease) => {
+      if (lease.effectId === first.effectId) {
+        throw new Error('database connection lost');
+      }
+      return { ...second, status: 'executing' };
+    });
+    const execute = vi.fn(async () => ({ delivered: true }));
+    const onError = vi.fn();
+    const dispatcher = new EffectDispatcher({
+      store,
+      workerId: WorkerId('worker-1'),
+      handlers: [{ type: 'notify', execute }],
+      onError,
+    });
+
+    await expect(dispatcher.runOnce()).resolves.toBe(2);
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(store.completeEffect).toHaveBeenCalledWith(
+      expect.objectContaining({ effectId: 'effect-2' }),
+      { delivered: true },
+    );
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'database connection lost' }),
+      first,
     );
   });
 });

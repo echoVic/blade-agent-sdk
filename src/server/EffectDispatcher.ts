@@ -47,6 +47,10 @@ export interface EffectDispatcherOptions {
   readonly retryDelayMs?: number;
   readonly maxRetryDelayMs?: number;
   readonly onMetrics?: (metrics: EffectDispatcherMetrics) => void;
+  readonly onError?: (
+    error: unknown,
+    effect: RuntimeEffectClaim,
+  ) => void;
 }
 
 export class RetryableRuntimeEffectError extends SdkError {
@@ -192,7 +196,17 @@ export class EffectDispatcher {
     });
     this.metrics.claimed += claims.length;
     this.publishMetrics();
-    await Promise.all(claims.map((claim) => this.dispatch(claim, signal)));
+    const outcomes = await Promise.allSettled(
+      claims.map((claim) => this.dispatch(claim, signal)),
+    );
+    for (const [index, outcome] of outcomes.entries()) {
+      if (outcome.status === 'rejected') {
+        const claim = claims[index];
+        if (claim) {
+          this.reportError(outcome.reason, claim);
+        }
+      }
+    }
     return claims.length;
   }
 
@@ -280,8 +294,13 @@ export class EffectDispatcher {
         this.maxRetryDelayMs,
         this.retryDelayMs * 2 ** claim.attempts,
       );
-      const delay = requestedDelay ?? exponentialDelay;
-      assertPositiveInteger(delay, 'retryAfterMs');
+      const delay =
+        requestedDelay === undefined || !Number.isFinite(requestedDelay)
+          ? exponentialDelay
+          : Math.min(
+              this.maxRetryDelayMs,
+              Math.max(this.retryDelayMs, Math.ceil(requestedDelay)),
+            );
       await this.options.store.failEffect(lease, details, {
         retryAt: new Date(Date.now() + delay).toISOString(),
       });
@@ -312,6 +331,14 @@ export class EffectDispatcher {
       this.options.onMetrics?.(this.getMetrics());
     } catch {
       // Metrics are observational and must not change effect settlement.
+    }
+  }
+
+  private reportError(error: unknown, effect: RuntimeEffectClaim): void {
+    try {
+      this.options.onError?.(error, effect);
+    } catch {
+      // Error reporting is observational and must not change effect settlement.
     }
   }
 }
