@@ -154,6 +154,15 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
+Run the complete browser-to-worker production topology locally with one command:
+
+```bash
+pnpm example:production
+```
+
+This starts PostgreSQL, `AgentServer`, `AgentWorker`, and an isolated Docker
+execution host. See [Runnable golden paths](./examples/README.md).
+
 PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node enhancements
 are opt-in peers:
 

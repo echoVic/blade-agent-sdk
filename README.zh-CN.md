@@ -154,6 +154,15 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
 
+使用一条命令在本地运行完整的浏览器到 Worker 生产拓扑：
+
+```bash
+pnpm example:production
+```
+
+该命令会启动 PostgreSQL、`AgentServer`、`AgentWorker` 和隔离的 Docker
+执行环境。详见[可运行 Golden Paths](./examples/README.md)。
+
 PostgreSQL、OpenTelemetry、非内置 Provider adapter 和本机原生增强是按需 peer：
 
 ```bash

@@ -1,7 +1,38 @@
 # Golden Paths
 
-The repository includes three directly runnable paths. Every example imports
-only public package entrypoints.
+The repository provides four runnable paths. Every example imports only public
+package entrypoints.
+
+## Single-command production loop
+
+```bash
+pnpm example:production
+```
+
+Open the local URL printed by the command. It starts PostgreSQL and cleans up
+PostgreSQL, worker-created Docker containers, volumes, and temporary files on
+exit. Each request traverses the complete path:
+
+```text
+Browser AgentClient
+→ AgentServer
+→ PostgreSQL route queue
+→ AgentWorker
+→ DockerExecutionHost
+→ PostgreSQL event log
+→ SSE
+```
+
+Run the non-interactive acceptance check with:
+
+```bash
+pnpm run build
+pnpm verify:production-example
+```
+
+The reported `firstResultMs` starts before infrastructure orchestration. The
+smoke command succeeds only after receiving the exact Docker worker output
+within five minutes.
 
 ## Local CLI Agent
 

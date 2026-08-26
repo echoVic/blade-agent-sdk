@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Add a one-command Web-to-Docker production stack example with an automated end-to-end smoke check.",
+  "zh-CN": "新增单命令 Web 到 Docker 生产闭环示例及自动化端到端 smoke 验证。"
+}
