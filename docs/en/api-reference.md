@@ -7,9 +7,10 @@ PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
 enhancements are optional peers, and `/server` no longer statically loads their adapters.
 Some packages can still be present transitively through base dependencies.
 
-The package also ships the `create-blade-agent` executable for generating and
-verifying a standalone full production topology. It is an npm binary, not a
-JavaScript package export.
+The package also ships the `create-blade-agent` executable. Its
+`--preset <local|web|production>` option generates and verifies a standalone
+topology; omitting `--preset` preserves the production default. It is an npm
+binary, not a JavaScript package export.
 
 ## Entry points
 

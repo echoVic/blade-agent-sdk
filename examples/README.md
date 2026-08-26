@@ -38,15 +38,22 @@ pnpm verify:production-example
 The smoke command prints `firstResultMs` and fails unless the browser protocol
 receives the exact output produced by the Docker worker within five minutes.
 
-Generate this topology as an independent project from the published package:
+Generate any Golden Path as an independent project from the published package:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --verify
+  create-blade-agent my-agent --preset local --verify
+
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset web --verify
+
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset production --verify
 ```
 
-The CLI installs the generated dependencies and includes setup time in the
-five-minute first-result budget.
+The CLI installs the generated dependencies and includes setup time in each
+first-result budget: one minute for local, two minutes for Web, and five minutes
+for production. Omitting `--preset` keeps the production default.
 
 ## Local CLI Agent
 

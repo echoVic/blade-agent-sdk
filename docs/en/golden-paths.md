@@ -41,20 +41,41 @@ Session.
 
 ## Generate a standalone project
 
-The published SDK includes the `create-blade-agent` executable. This command
-temporarily installs the CLI, generates a standalone project, installs its
-dependencies, and runs the complete production smoke:
+The published SDK includes the `create-blade-agent` executable. Select the
+required topology with `--preset`:
+
+| Preset | Path | Extra infrastructure | First-result budget |
+|--------|------|----------------------|---------------------|
+| `local` | Node + in-memory Session | None | 1 minute |
+| `web` | Browser AgentClient → AgentServer → in-process Session | None | 2 minutes |
+| `production` | Browser → AgentServer → PostgreSQL → Worker → Docker | Docker | 5 minutes |
+
+Minimal local Agent:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --verify
+  create-blade-agent my-agent --preset local --verify
 ```
 
-The five-minute budget starts with the CLI and covers generation, installation,
-PostgreSQL orchestration, Worker startup, and the first Docker-produced result.
-PR and Release CI install the CLI from the current SDK tarball, run the same
-flow, and audit the generated production dependency tree. Omit `--verify` to
-avoid starting the stack; `--skip-install` writes files only.
+Web Agent:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset web --verify
+```
+
+Complete production topology:
+
+```bash
+npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
+  create-blade-agent my-agent --preset production --verify
+```
+
+Each budget starts with the CLI and covers generation, installation, and the
+first real smoke result. PR and Release CI install the CLI from the current SDK
+tarball, run all three presets, and audit every generated production dependency
+tree. Omitting `--preset` preserves the production default. Omit `--verify` to
+avoid running the smoke; `--skip-install` writes files only.
 
 ## Local CLI Agent
 
