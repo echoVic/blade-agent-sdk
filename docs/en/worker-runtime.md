@@ -254,6 +254,81 @@ The operation:
 4. Requeues executing `idempotent` effects only.
 5. Marks executing `at_most_once` effects `uncertain`.
 
+## Production operations
+
+`AgentRuntimeOperations` exposes an operations surface separate from the Agent
+protocol. Every endpoint except liveness and readiness requires caller-supplied
+authorization and is scoped to the tenant returned by that callback:
+
+```ts
+import {
+  AgentRuntimeOperations,
+} from '@blade-ai/agent-sdk/server';
+
+const operations = new AgentRuntimeOperations({
+  store,
+  workers: () => [worker],
+  authorize: async (request, action) => {
+    const operator = await authenticateOperator(request, action);
+    return operator
+      ? { tenantId: operator.tenantId, subject: operator.id }
+      : null;
+  },
+});
+
+const response = await operations.handle(request);
+```
+
+Default routes:
+
+| Route | Purpose |
+|-------|---------|
+| `GET /v1/runtime/healthz` | Process and Worker liveness |
+| `GET /v1/runtime/readyz` | Store and configured-Worker readiness |
+| `GET /v1/runtime/metrics` | Tenant Session/effect backlog and global Worker capacity |
+| `GET /v1/runtime/effects/uncertain` | Redacted uncertain-effect list |
+| `POST /v1/runtime/effects/:id/reconcile` | Resolve an effect to `completed` or `failed` |
+
+A reconciliation body is either:
+
+```json
+{ "status": "completed", "result": { "receiptId": "provider-123" } }
+```
+
+or:
+
+```json
+{ "status": "failed", "error": { "reason": "provider_rejected" } }
+```
+
+The HTTP list omits effect payloads and idempotency keys. The underlying
+`reconcileEffect()` operation still accepts only `uncertain` effects.
+Unauthenticated health/readiness responses expose aggregate counts only, not
+Worker IDs, Session IDs, Store details, or failure payloads. When no local
+Workers are configured, readiness depends on the Store alone.
+
+`worker.getHealth()` is a local, I/O-free snapshot. Readiness requires a
+`running` worker and a successful heartbeat newer than the worker TTL.
+`draining` and `stopped` workers remain live but are not ready.
+
+## Worker OpenTelemetry
+
+```ts
+import {
+  OpenTelemetryAgentWorkerTelemetry,
+} from '@blade-ai/agent-sdk/server/otel';
+
+const worker = new AgentWorker({
+  // ...
+  telemetry: new OpenTelemetryAgentWorkerTelemetry(),
+});
+```
+
+The adapter exports readiness, active Session, claim, success/failure,
+recovery-duration, and uncertain-effect instruments. It omits prompts, effect
+payloads, Session IDs, credentials, and Worker IDs by default. Set
+`includeWorkerIdAttribute: true` to opt into Worker ID attributes.
+
 ## Failure boundaries
 
 - Session and effect leases use monotonic fencing tokens.

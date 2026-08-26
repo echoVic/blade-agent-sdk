@@ -11,6 +11,7 @@ import {
   WorkerId,
 } from '../../types/identifiers.js';
 import { AgentServer } from '../AgentServer.js';
+import { AgentRuntimeOperations } from '../AgentRuntimeOperations.js';
 import { AgentWorker } from '../AgentWorker.js';
 import {
   EffectDispatcher,
@@ -92,6 +93,7 @@ describePostgres('PostgresRuntimeStore', () => {
       'atomic-runtime-commit',
       'transaction-rollback',
       'projection-checkpoint',
+      'queue-metrics',
       'worker-routing',
       'worker-recovery',
       'effect-delivery',
@@ -822,6 +824,95 @@ describePostgres('PostgresRuntimeStore', () => {
     }
   });
 
+  it('reports tenant-scoped queue metrics with global worker capacity', async () => {
+    const suffix = `metrics-${Date.now()}`;
+    const tenantId = `tenant-${suffix}`;
+    const otherTenantId = `tenant-other-${suffix}`;
+    const workerId = WorkerId(`worker-${suffix}`);
+    await store.registerWorker({
+      workerId,
+      capacity: 3,
+      ttlMs: 60_000,
+    });
+    await Promise.all([
+      store.enqueueSession(tenantId, SessionId(`session-a-${suffix}`)),
+      store.enqueueSession(tenantId, SessionId(`session-b-${suffix}`)),
+      store.enqueueSession(otherTenantId, SessionId(`session-other-${suffix}`)),
+    ]);
+    const commandId = CommandId(`command-${suffix}`);
+    await store.commitRuntimeTransaction({
+      tenantId,
+      sessionId: SessionId(`effect-session-${suffix}`),
+      command: {
+        commandId,
+        fingerprint: `fingerprint-${commandId}`,
+        result: {
+          protocolVersion: 1,
+          commandId,
+          ok: true,
+          data: {},
+        },
+      },
+      effects: [{
+        effectId: `effect-${suffix}`,
+        type: 'metrics',
+        payload: {},
+        idempotencyKey: `effect-${suffix}`,
+      }],
+    });
+
+    const metrics = await store.getQueueMetrics(tenantId);
+
+    expect(metrics).toMatchObject({
+      tenantId,
+      sessions: {
+        counts: { queued: 2 },
+        claimable: 2,
+      },
+      effects: {
+        counts: { pending: 1 },
+        claimable: 1,
+      },
+      workers: {
+        counts: {
+          active: expect.any(Number),
+          draining: expect.any(Number),
+          offline: expect.any(Number),
+        },
+        capacity: expect.any(Number),
+        activeSessions: expect.any(Number),
+        availableCapacity: expect.any(Number),
+      },
+    });
+    expect(metrics.sessions.oldestClaimableAgeMs).toBeGreaterThanOrEqual(0);
+    expect(metrics.effects.oldestClaimableAgeMs).toBeGreaterThanOrEqual(0);
+    expect(metrics.workers.capacity).toBeGreaterThanOrEqual(3);
+
+    const claimed = await store.claimSession({
+      tenantId,
+      ownerId: workerId,
+      leaseId: ExecutionLeaseId(`metrics-lease-${suffix}`),
+      ttlMs: 60_000,
+    });
+    expect(claimed).not.toBeNull();
+    const claimedMetrics = await store.getQueueMetrics(tenantId);
+    expect(claimedMetrics.workers.activeSessions).toBe(
+      metrics.workers.activeSessions + 1,
+    );
+    expect(claimedMetrics.workers.availableCapacity).toBe(
+      metrics.workers.availableCapacity - 1,
+    );
+
+    await store.drainWorker(workerId);
+    const drainingMetrics = await store.getQueueMetrics(tenantId);
+    expect(drainingMetrics.workers.capacity).toBe(
+      claimedMetrics.workers.capacity - 3,
+    );
+    expect(drainingMetrics.workers.activeSessions).toBe(
+      claimedMetrics.workers.activeSessions - 1,
+    );
+  });
+
   it('dispatches persisted effects with explicit terminal outcomes', async () => {
     const suffix = `dispatcher-${Date.now()}`;
     const tenantId = `tenant-${suffix}`;
@@ -896,6 +987,53 @@ describePostgres('PostgresRuntimeStore', () => {
           effectId: `uncertain-${suffix}`,
           status: 'uncertain',
           attempts: 1,
+        }),
+      ]),
+    );
+
+    const operations = new AgentRuntimeOperations({
+      store,
+      authorize: () => ({ tenantId, subject: 'operator' }),
+    });
+    const listResponse = await operations.handle(
+      new Request('http://localhost/v1/runtime/effects/uncertain'),
+    );
+    const listed = (await listResponse.json()) as {
+      effects: Record<string, unknown>[];
+    };
+    expect(listResponse.status).toBe(200);
+    expect(listed.effects).toEqual([
+      expect.objectContaining({
+        effectId: `uncertain-${suffix}`,
+        status: 'uncertain',
+      }),
+    ]);
+    expect(listed.effects[0]).not.toHaveProperty('payload');
+
+    const reconcileResponse = await operations.handle(
+      new Request(
+        `http://localhost/v1/runtime/effects/uncertain-${suffix}/reconcile`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            status: 'completed',
+            result: { receiptId: `receipt-${suffix}` },
+          }),
+        },
+      ),
+    );
+    expect(reconcileResponse.status).toBe(200);
+    await expect(
+      store.listEffects(tenantId, {
+        sessionId,
+        status: 'completed',
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          effectId: `uncertain-${suffix}`,
+          status: 'completed',
+          result: { receiptId: `receipt-${suffix}` },
         }),
       ]),
     );

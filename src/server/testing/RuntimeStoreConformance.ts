@@ -420,6 +420,23 @@ export async function assertRuntimeStoreConformance(
     capacity: 4,
     ttlMs: 10_000,
   });
+  if (store.getQueueMetrics) {
+    const queueMetrics = await store.getQueueMetrics(workerTenantId);
+    assert(
+      queueMetrics.tenantId === workerTenantId
+      && queueMetrics.sessions.claimable >= 2
+      && queueMetrics.sessions.counts.queued >= 1
+      && queueMetrics.sessions.counts.suspended >= 1,
+      'Queue metrics must report tenant-scoped claimable Sessions',
+    );
+    assert(
+      queueMetrics.effects.counts.pending === 0
+      && queueMetrics.workers.capacity >= 4
+      && queueMetrics.workers.availableCapacity >= 0,
+      'Queue metrics must report effect backlog and global worker capacity',
+    );
+    checks.push('queue-metrics');
+  }
   const secondClaim = await store.claimSession({
     tenantId: workerTenantId,
     ownerId: secondWorkerId,

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/identifiers.js';
 import { AgentWorker } from '../AgentWorker.js';
+import type { AgentWorkerTelemetry } from '../AgentWorkerTelemetry.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
 import type { SessionRunner } from '../SessionRunner.js';
 import type {
@@ -8,6 +9,7 @@ import type {
   RuntimeSessionRoute,
   RuntimeWorkerRecord,
 } from '../WorkerRuntime.js';
+import { WorkerRuntimeError } from '../WorkerRuntime.js';
 
 const workerId = WorkerId('worker-1');
 const sessionId = SessionId('session-1');
@@ -131,6 +133,103 @@ function createStore(sessionClaim: RuntimeSessionClaim) {
 }
 
 describe('AgentWorker', () => {
+  it('reports readiness and emits telemetry snapshots across its lifecycle', async () => {
+    const sessionClaim = claim();
+    const store = createStore(sessionClaim);
+    const telemetry: AgentWorkerTelemetry = {
+      recordSnapshot: vi.fn(),
+      recordError: vi.fn(),
+    };
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run(context) {
+          await context.transition('running');
+          return { status: 'completed' };
+        },
+      },
+      telemetry,
+      heartbeatIntervalMs: 50,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
+
+    expect(worker.getHealth()).toMatchObject({
+      status: 'not_ready',
+      live: true,
+      ready: false,
+      workerStatus: 'idle',
+    });
+    await worker.start();
+    await vi.waitFor(() => {
+      expect(worker.getSnapshot().metrics.sessionsCompleted).toBe(1);
+    });
+    expect(worker.getHealth()).toMatchObject({
+      status: 'ready',
+      live: true,
+      ready: true,
+      workerStatus: 'running',
+    });
+    await worker.shutdown();
+
+    expect(worker.getHealth()).toMatchObject({
+      status: 'not_ready',
+      live: true,
+      ready: false,
+      workerStatus: 'stopped',
+    });
+    expect(telemetry.recordSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workerId,
+        health: expect.objectContaining({ ready: true }),
+      }),
+    );
+    expect(telemetry.recordError).not.toHaveBeenCalled();
+  });
+
+  it('refreshes telemetry after a successful heartbeat', async () => {
+    const store = createStore(claim());
+    vi.mocked(store.claimSession).mockResolvedValue(null);
+    const telemetry: AgentWorkerTelemetry = {
+      recordSnapshot: vi.fn(),
+      recordError: vi.fn(),
+    };
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run() {
+          return { status: 'completed' };
+        },
+      },
+      telemetry,
+      heartbeatIntervalMs: 100,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 100,
+      recoveryIntervalMs: 10_000,
+    });
+
+    await worker.start();
+    await vi.waitFor(() => {
+      expect(store.recoverExpiredWork).toHaveBeenCalledOnce();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.mocked(telemetry.recordSnapshot).mockClear();
+    await vi.waitFor(() => {
+      expect(store.heartbeatWorker).toHaveBeenCalled();
+      expect(telemetry.recordSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ health: expect.objectContaining({ ready: true }) }),
+      );
+    });
+    await worker.shutdown();
+  });
+
   it('claims a Session, runs it under a lease, and releases it into idle', async () => {
     const sessionClaim = claim();
     const store = createStore(sessionClaim);
@@ -299,6 +398,50 @@ describe('AgentWorker', () => {
     expect(onError).toHaveBeenCalledWith(recoveryError);
     expect(onError).toHaveBeenCalledWith(effectError);
     await worker.shutdown();
+  });
+
+  it('reports a fatal heartbeat failure through health and telemetry', async () => {
+    const store = createStore(claim());
+    vi.mocked(store.claimSession).mockResolvedValue(null);
+    vi.mocked(store.heartbeatWorker).mockRejectedValue(
+      new WorkerRuntimeError('WORKER_NOT_FOUND', 'worker lease was removed'),
+    );
+    const telemetry: AgentWorkerTelemetry = {
+      recordSnapshot: vi.fn(),
+      recordError: vi.fn(),
+    };
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run() {
+          return { status: 'completed' };
+        },
+      },
+      telemetry,
+      heartbeatIntervalMs: 10,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
+
+    await worker.start();
+    await expect(worker.wait()).rejects.toMatchObject({
+      code: 'WORKER_NOT_FOUND',
+    });
+
+    expect(worker.getHealth()).toMatchObject({
+      status: 'failed',
+      live: false,
+      ready: false,
+    });
+    expect(telemetry.recordError).toHaveBeenCalledWith({
+      workerId,
+      workerStatus: 'failed',
+      errorCode: 'WORKER_NOT_FOUND',
+    });
   });
 
   it('treats an in-flight claim rejection during drain as normal shutdown', async () => {

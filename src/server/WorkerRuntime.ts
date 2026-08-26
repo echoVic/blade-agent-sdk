@@ -26,9 +26,38 @@ export const RUNTIME_SESSION_STATES = [
   'failed',
 ] as const;
 
+export const RUNTIME_WORKER_STATUSES = [
+  'active',
+  'draining',
+  'offline',
+] as const;
+
 export type RuntimeSessionState = typeof RUNTIME_SESSION_STATES[number];
-export type RuntimeWorkerStatus = 'active' | 'draining' | 'offline';
+export type RuntimeWorkerStatus = typeof RUNTIME_WORKER_STATUSES[number];
 export type RuntimeEffectExecutionMode = 'idempotent' | 'at_most_once';
+
+export interface RuntimeQueueMetrics {
+  readonly collectedAt: string;
+  readonly tenantId?: string;
+  readonly sessions: {
+    readonly counts: Readonly<Record<RuntimeSessionState, number>>;
+    readonly claimable: number;
+    readonly oldestClaimableAt?: string;
+    readonly oldestClaimableAgeMs?: number;
+  };
+  readonly effects: {
+    readonly counts: Readonly<Record<RuntimeEffectStatus, number>>;
+    readonly claimable: number;
+    readonly oldestClaimableAt?: string;
+    readonly oldestClaimableAgeMs?: number;
+  };
+  readonly workers: {
+    readonly counts: Readonly<Record<RuntimeWorkerStatus, number>>;
+    readonly capacity: number;
+    readonly activeSessions: number;
+    readonly availableCapacity: number;
+  };
+}
 
 export interface RuntimeWorkerRegistration {
   readonly workerId: WorkerId;
@@ -188,6 +217,7 @@ export interface WorkerRuntimeStore {
   listWorkerSessions(
     workerId: WorkerId,
   ): Promise<readonly RuntimeSessionRoute[]>;
+  getQueueMetrics?(tenantId?: string): Promise<RuntimeQueueMetrics>;
   recoverExpiredWork(): Promise<RuntimeRecoveryResult>;
   claimEffects(
     options: RuntimeEffectClaimOptions,

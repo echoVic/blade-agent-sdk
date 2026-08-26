@@ -31,6 +31,10 @@ pnpm verify:production-example
 输出中的 `firstResultMs` 从基础设施编排开始计时；smoke 只有在五分钟内收到
 Docker worker 生成的精确结果后才成功。
 
+同一 smoke 还会验证无需鉴权的 `/v1/runtime/readyz`，以及使用本地 operator
+令牌访问的、按租户隔离的 `/v1/runtime/metrics`。只有 Worker ready 且队列指标
+反映已完成的 Session 时，验收才会通过。
+
 ## 本地 CLI Agent
 
 ```bash

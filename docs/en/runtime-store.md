@@ -165,6 +165,26 @@ Each PostgreSQL transcript append writes a `transcript` event and updates the
 `session` projection in the same transaction. Reads, resume, and fork use only
 that projection.
 
+## Queue metrics capability
+
+The PostgreSQL adapter implements the optional
+`getQueueMetrics(tenantId?)` capability:
+
+```ts
+const metrics = await runtimeStore.getQueueMetrics?.(tenantId);
+```
+
+The result contains zero-filled counts for every Session and effect state,
+current claimable counts, oldest-backlog timestamps and ages, plus global
+active/draining/offline Worker counts, total capacity, active Sessions, and
+available capacity. Session and effect values are tenant-scoped; Worker
+capacity describes the shared scheduler.
+
+The method remains optional on `WorkerRuntimeStore`, preserving compatibility
+for existing third-party Store implementations throughout `6.0.x`.
+`AgentRuntimeOperations` returns HTTP `501` when a Store does not expose the
+capability.
+
 ## Conformance
 
 Third-party Stores can run the public framework-independent conformance suite:
@@ -183,7 +203,8 @@ await assertRuntimeStoreConformance(runtimeStore, {
 The suite verifies health, Session projection, tenant isolation, command
 receipts, agent and durable events, atomic commits, transaction rollback,
 projection checkpoints, worker routing, lease recovery, and effect delivery.
-Run it against a dedicated schema or test database.
+When the Store exposes queue metrics, the suite also verifies tenant scoping
+and capacity accounting. Run it against a dedicated schema or test database.
 
 ## Operational boundaries
 

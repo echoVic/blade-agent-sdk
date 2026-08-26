@@ -20,6 +20,14 @@ route, executes the prompt in a network-disabled Docker container, and publishes
 the result through the durable SSE event log. `Ctrl+C` removes the PostgreSQL
 container, execution containers, volumes, and temporary files.
 
+The same process exposes runtime readiness and tenant-scoped queue metrics:
+
+```bash
+curl http://127.0.0.1:8787/v1/runtime/readyz
+curl -H 'Authorization: Bearer local-demo' \
+  http://127.0.0.1:8787/v1/runtime/metrics
+```
+
 For a non-interactive end-to-end check:
 
 ```bash

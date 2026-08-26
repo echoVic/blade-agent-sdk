@@ -158,6 +158,23 @@ interface SessionEventStore {
 PostgreSQL transcript append 会在同一个 transaction 中追加 `transcript`
 event 并更新 `session` projection。读取、恢复和 fork 只访问 projection。
 
+## Queue metrics capability
+
+PostgreSQL adapter 实现可选的 `getQueueMetrics(tenantId?)` capability：
+
+```ts
+const metrics = await runtimeStore.getQueueMetrics?.(tenantId);
+```
+
+结果包含所有 Session/effect 状态的零填充计数、当前可领取数量、最老 backlog
+时间与年龄，以及全局 active/draining/offline Worker、总容量、活动 Session
+和可用容量。Session/effect 数据按 tenant 过滤；Worker capacity 是共享调度层的
+全局视图。
+
+该方法在 `WorkerRuntimeStore` 上保持可选，以确保现有第三方 Store 在 `6.0.x`
+中继续兼容。`AgentRuntimeOperations` 遇到不支持该 capability 的 Store 时返回
+HTTP `501`。
+
 ## Conformance
 
 第三方 Store 可以直接运行公开的无测试框架 conformance：
@@ -175,7 +192,8 @@ await assertRuntimeStoreConformance(runtimeStore, {
 
 该套件验证 health、Session projection、tenant isolation、command receipt、
 agent/durable event、原子 commit、事务回滚、projection checkpoint、worker
-路由、lease 恢复与 effect delivery。应在专用 schema 或测试数据库中运行。
+路由、lease 恢复与 effect delivery。Store 提供 queue metrics capability 时也会
+验证其 tenant 隔离与容量统计。应在专用 schema 或测试数据库中运行。
 
 ## 运维边界
 
