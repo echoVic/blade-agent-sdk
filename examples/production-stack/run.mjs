@@ -10,6 +10,7 @@ import { build } from 'esbuild';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
 import { WorkerId } from '@blade-ai/agent-sdk/core';
 import {
+  AgentRuntimeOperations,
   AgentServer,
   AgentWorker,
 } from '@blade-ai/agent-sdk/server';
@@ -34,6 +35,7 @@ const generated = join(temporaryRoot, 'web');
 let store;
 let worker;
 let agent;
+let operations;
 let httpServer;
 let composeStarted = false;
 let cleanupStarted = false;
@@ -178,12 +180,28 @@ async function runSmoke(baseUrl) {
       async () =>
         (await store.getSessionRoute(tenantId, session.sessionId))?.state === 'idle',
     );
+    const headers = { authorization: 'Bearer local-demo' };
+    const [readyResponse, metricsResponse] = await Promise.all([
+      fetch(`${baseUrl}/v1/runtime/readyz`),
+      fetch(`${baseUrl}/v1/runtime/metrics`, { headers }),
+    ]);
+    if (!readyResponse.ok || !metricsResponse.ok) {
+      throw new Error(
+        `Runtime operations failed: ready=${readyResponse.status}, metrics=${metricsResponse.status}`,
+      );
+    }
+    const health = await readyResponse.json();
+    const metrics = await metricsResponse.json();
     await session.close();
     await events;
     return {
       sessionId: session.sessionId,
       firstResultMs,
       output: completed.output,
+      operations: {
+        health,
+        queue: metrics.queue,
+      },
       worker: worker.getSnapshot(),
     };
   } finally {
@@ -292,6 +310,19 @@ try {
     recoveryIntervalMs: 250,
   });
   await worker.start();
+  operations = new AgentRuntimeOperations({
+    store,
+    workers: () => [worker],
+    authorize(request) {
+      if (request.headers.get('authorization') !== 'Bearer local-demo') {
+        return null;
+      }
+      return {
+        tenantId,
+        subject: 'local-operator',
+      };
+    },
+  });
 
   await build({
     entryPoints: [join(webRoot, 'client.js')],
@@ -324,14 +355,18 @@ try {
         return;
       }
       const body = await requestBody(request);
-      const upstream = await agent.handle(
-        new Request(`http://127.0.0.1${request.url || '/'}`, {
+      const upstreamRequest = new Request(
+        `http://127.0.0.1${request.url || '/'}`,
+        {
           method: request.method,
           headers: request.headers,
           signal: requestController.signal,
           ...(body ? { body } : {}),
-        }),
+        },
       );
+      const upstream = url.pathname.startsWith('/v1/runtime/')
+        ? await operations.handle(upstreamRequest)
+        : await agent.handle(upstreamRequest);
       response.writeHead(upstream.status, Object.fromEntries(upstream.headers));
       if (!upstream.body) {
         response.end();

@@ -25,8 +25,10 @@ import type {
   RuntimeEffectRecord,
   RuntimeEffectStatus,
 } from './RuntimeStore.js';
+import { RUNTIME_EFFECT_STATUSES } from './RuntimeStore.js';
 import {
   assertRuntimeSessionTransition,
+  type RuntimeQueueMetrics,
   type RuntimeEffectClaim,
   type RuntimeEffectClaimOptions,
   type RuntimeEffectExecutionMode,
@@ -39,8 +41,11 @@ import {
   type RuntimeSessionRoute,
   type RuntimeSessionSettlement,
   type RuntimeSessionState,
+  RUNTIME_SESSION_STATES,
   type RuntimeWorkerRecord,
   type RuntimeWorkerRegistration,
+  type RuntimeWorkerStatus,
+  RUNTIME_WORKER_STATUSES,
   WorkerRuntimeError,
   type WorkerRuntimeStore,
 } from './WorkerRuntime.js';
@@ -117,6 +122,25 @@ interface EffectRow extends QueryResultRow {
   error: unknown | null;
 }
 
+interface MetricCountRow extends QueryResultRow {
+  metric_state: string;
+  metric_count: string | number;
+}
+
+interface ClaimableMetricRow extends QueryResultRow {
+  claimable: string | number;
+  oldest_claimable_at: Date | string | null;
+  collected_at: Date | string;
+}
+
+interface WorkerMetricRow extends QueryResultRow {
+  active_workers: string | number;
+  draining_workers: string | number;
+  offline_workers: string | number;
+  capacity: string | number;
+  active_sessions: string | number;
+}
+
 interface ConstraintRow extends QueryResultRow {
   conname: string;
 }
@@ -141,6 +165,10 @@ function asNumber(value: string | number): number {
 
 function asIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function ageMs(collectedAt: string, oldestAt: string): number {
+  return Math.max(0, Date.parse(collectedAt) - Date.parse(oldestAt));
 }
 
 function asJsonObject(value: unknown): JsonObject {
@@ -1055,6 +1083,161 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       [workerId],
     );
     return result.rows.map((row) => this.routeRecord(row));
+  }
+
+  async getQueueMetrics(tenantId?: string): Promise<RuntimeQueueMetrics> {
+    if (tenantId !== undefined && !tenantId.trim()) {
+      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId must not be empty');
+    }
+    await this.ensureInitialized();
+    return this.transaction(async (client) => {
+      const sessionCountsResult = await client.query<MetricCountRow>(
+        `SELECT state AS metric_state, COUNT(*) AS metric_count
+           FROM ${this.table('session_routes')}
+          WHERE ($1::text IS NULL OR tenant_id = $1)
+          GROUP BY state`,
+        [tenantId ?? null],
+      );
+      const sessionClaimableResult = await client.query<ClaimableMetricRow>(
+        `SELECT COUNT(*) AS claimable,
+                MIN(queued_at) AS oldest_claimable_at,
+                NOW() AS collected_at
+           FROM ${this.table('session_routes')}
+          WHERE state IN ('queued', 'suspended')
+            AND worker_id IS NULL
+            AND ($1::text IS NULL OR tenant_id = $1)`,
+        [tenantId ?? null],
+      );
+      const effectCountsResult = await client.query<MetricCountRow>(
+        `SELECT status AS metric_state, COUNT(*) AS metric_count
+           FROM ${this.table('outbox')}
+          WHERE ($1::text IS NULL OR tenant_id = $1)
+          GROUP BY status`,
+        [tenantId ?? null],
+      );
+      const effectClaimableResult = await client.query<ClaimableMetricRow>(
+        `SELECT COUNT(*) AS claimable,
+                MIN(available_at) AS oldest_claimable_at,
+                NOW() AS collected_at
+           FROM ${this.table('outbox')}
+          WHERE status = 'pending'
+            AND available_at <= NOW()
+            AND ($1::text IS NULL OR tenant_id = $1)`,
+        [tenantId ?? null],
+      );
+      const workerResult = await client.query<WorkerMetricRow>(
+        `WITH effective_workers AS (
+           SELECT worker_id,
+                  CASE
+                    WHEN lease_expires_at <= NOW() THEN 'offline'
+                    ELSE status
+                  END AS status,
+                  capacity
+             FROM ${this.table('workers')}
+         ),
+         active_sessions AS (
+           SELECT worker_id,
+                  COUNT(*) AS count
+             FROM ${this.table('session_routes')}
+            WHERE state = ANY($1::text[])
+              AND worker_id IS NOT NULL
+              AND lease_expires_at > NOW()
+            GROUP BY worker_id
+         )
+         SELECT COUNT(*) FILTER (WHERE status = 'active') AS active_workers,
+                COUNT(*) FILTER (WHERE status = 'draining') AS draining_workers,
+                COUNT(*) FILTER (WHERE status = 'offline') AS offline_workers,
+                COALESCE(
+                  SUM(capacity) FILTER (WHERE status = 'active'),
+                  0
+                ) AS capacity,
+                COALESCE(
+                  SUM(COALESCE(active_sessions.count, 0))
+                    FILTER (WHERE status = 'active'),
+                  0
+                ) AS active_sessions
+           FROM effective_workers
+           LEFT JOIN active_sessions USING (worker_id)`,
+        [ACTIVE_SESSION_STATES],
+      );
+
+      const sessionCounts = Object.fromEntries(
+        RUNTIME_SESSION_STATES.map((state) => [state, 0]),
+      ) as Record<RuntimeSessionState, number>;
+      for (const row of sessionCountsResult.rows) {
+        if (!RUNTIME_SESSION_STATES.includes(row.metric_state as RuntimeSessionState)) {
+          throw new WorkerRuntimeError(
+            'WORKER_INVALID',
+            `PostgreSQL returned an unknown Session state: ${row.metric_state}`,
+          );
+        }
+        sessionCounts[row.metric_state as RuntimeSessionState] = asNumber(row.metric_count);
+      }
+
+      const effectCounts = Object.fromEntries(
+        RUNTIME_EFFECT_STATUSES.map((status) => [status, 0]),
+      ) as Record<RuntimeEffectStatus, number>;
+      for (const row of effectCountsResult.rows) {
+        if (!RUNTIME_EFFECT_STATUSES.includes(row.metric_state as RuntimeEffectStatus)) {
+          throw new WorkerRuntimeError(
+            'WORKER_INVALID',
+            `PostgreSQL returned an unknown Effect status: ${row.metric_state}`,
+          );
+        }
+        effectCounts[row.metric_state as RuntimeEffectStatus] = asNumber(row.metric_count);
+      }
+
+      const workerCounts = Object.fromEntries(
+        RUNTIME_WORKER_STATUSES.map((status) => [status, 0]),
+      ) as Record<RuntimeWorkerStatus, number>;
+      workerCounts.active = asNumber(workerResult.rows[0]?.active_workers ?? 0);
+      workerCounts.draining = asNumber(workerResult.rows[0]?.draining_workers ?? 0);
+      workerCounts.offline = asNumber(workerResult.rows[0]?.offline_workers ?? 0);
+      const capacity = asNumber(workerResult.rows[0]?.capacity ?? 0);
+      const activeSessions = asNumber(workerResult.rows[0]?.active_sessions ?? 0);
+      const sessionClaimable = sessionClaimableResult.rows[0];
+      const effectClaimable = effectClaimableResult.rows[0];
+      const collectedAt = asIso(
+        sessionClaimable?.collected_at ?? new Date().toISOString(),
+      );
+      const oldestSessionAt = sessionClaimable?.oldest_claimable_at
+        ? asIso(sessionClaimable.oldest_claimable_at)
+        : undefined;
+      const oldestEffectAt = effectClaimable?.oldest_claimable_at
+        ? asIso(effectClaimable.oldest_claimable_at)
+        : undefined;
+
+      return {
+        collectedAt,
+        ...(tenantId ? { tenantId } : {}),
+        sessions: {
+          counts: sessionCounts,
+          claimable: asNumber(sessionClaimable?.claimable ?? 0),
+          ...(oldestSessionAt
+            ? {
+                oldestClaimableAt: oldestSessionAt,
+                oldestClaimableAgeMs: ageMs(collectedAt, oldestSessionAt),
+              }
+            : {}),
+        },
+        effects: {
+          counts: effectCounts,
+          claimable: asNumber(effectClaimable?.claimable ?? 0),
+          ...(oldestEffectAt
+            ? {
+                oldestClaimableAt: oldestEffectAt,
+                oldestClaimableAgeMs: ageMs(collectedAt, oldestEffectAt),
+              }
+            : {}),
+        },
+        workers: {
+          counts: workerCounts,
+          capacity,
+          activeSessions,
+          availableCapacity: Math.max(0, capacity - activeSessions),
+        },
+      };
+    });
   }
 
   async recoverExpiredWork(): Promise<RuntimeRecoveryResult> {

@@ -174,7 +174,7 @@ const subpathOutput = run(process.execPath, [
     "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof otel.OpenTelemetryAgentServerTelemetry, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware, model.PROVIDER_TYPES.length);",
     "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
     "console.log(typeof server.EphemeralCredentialBroker, typeof server.ExecutionHostError, typeof node.DockerExecutionHost, core.ExecutionId('execution-1'), core.ExecutionCheckpointId('checkpoint-1'), core.CredentialLeaseId('credential-1'));",
-    "console.log(typeof server.AgentWorker, typeof server.EffectDispatcher, typeof server.SdkSessionRunner, typeof server.ExecutionHostSessionRunner);",
+    "console.log(typeof server.AgentWorker, typeof server.EffectDispatcher, typeof server.SdkSessionRunner, typeof server.ExecutionHostSessionRunner, typeof server.AgentRuntimeOperations, typeof otel.OpenTelemetryAgentWorkerTelemetry);",
   ].join(' '),
 ]);
 assertIncludes(
@@ -194,7 +194,7 @@ assertIncludes(
 );
 assertIncludes(
   subpathOutput,
-  'function function function function',
+  'function function function function function function',
   'server worker exports',
 );
 

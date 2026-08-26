@@ -4,6 +4,7 @@ export {
 } from './PostgresRuntimeStore.js';
 export {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
+  RUNTIME_EFFECT_STATUSES,
   RUNTIME_STORE_SCHEMA_VERSION,
   RuntimeStoreError,
   type RuntimeCommandCommit,
@@ -26,6 +27,7 @@ export {
   effectLease,
   isTerminalRuntimeEffectStatus,
   RUNTIME_SESSION_STATES,
+  RUNTIME_WORKER_STATUSES,
   type RuntimeEffectClaim,
   type RuntimeEffectClaimOptions,
   type RuntimeEffectExecutionMode,
@@ -33,6 +35,7 @@ export {
   type RuntimeEffectLease,
   type RuntimeEffectReconciliation,
   type RuntimeRecoveryResult,
+  type RuntimeQueueMetrics,
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
   type RuntimeSessionRoute,

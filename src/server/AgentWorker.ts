@@ -12,6 +12,7 @@ import type {
   SessionRunResult,
 } from './SessionRunner.js';
 import type { RuntimeSessionClaim, RuntimeSessionRoute } from './WorkerRuntime.js';
+import type { AgentWorkerTelemetry } from './AgentWorkerTelemetry.js';
 
 const DEFAULT_WORKER_TTL_MS = 15_000;
 const DEFAULT_SESSION_LEASE_TTL_MS = 30_000;
@@ -39,9 +40,23 @@ export interface AgentWorkerMetrics {
 export interface AgentWorkerSnapshot {
   readonly workerId: WorkerId;
   readonly status: AgentWorkerStatus;
+  readonly health?: AgentWorkerHealth;
   readonly activeSessionIds: readonly SessionId[];
   readonly metrics: AgentWorkerMetrics;
   readonly effectMetrics?: ReturnType<EffectDispatcher['getMetrics']>;
+  readonly failure?: JsonObject;
+}
+
+export interface AgentWorkerHealth {
+  readonly workerId: WorkerId;
+  readonly status: 'ready' | 'not_ready' | 'failed';
+  readonly live: boolean;
+  readonly ready: boolean;
+  readonly workerStatus: AgentWorkerStatus;
+  readonly checkedAt: string;
+  readonly activeSessions: number;
+  readonly lastHeartbeatAt?: string;
+  readonly heartbeatAgeMs?: number;
   readonly failure?: JsonObject;
 }
 
@@ -60,6 +75,7 @@ export interface AgentWorkerOptions {
   readonly pollIntervalMs?: number;
   readonly recoveryIntervalMs?: number;
   readonly effectClaimLimit?: number;
+  readonly telemetry?: AgentWorkerTelemetry;
   readonly onSnapshot?: (snapshot: AgentWorkerSnapshot) => void;
   readonly onError?: (error: unknown) => void;
 }
@@ -137,6 +153,7 @@ export class AgentWorker {
   private externalAbortCleanup?: () => void;
   private failure?: JsonObject;
   private startedAtMs?: number;
+  private lastHeartbeatAtMs?: number;
   private firstClaimLatencyMs?: number;
   private sessionClaims = 0;
   private sessionsIdle = 0;
@@ -177,9 +194,38 @@ export class AgentWorker {
         pollIntervalMs: this.pollIntervalMs,
         claimLimit: options.effectClaimLimit,
         tenantId: options.tenantId,
-        onError: options.onError,
+        onError: (error) => this.reportError(error),
       });
     }
+  }
+
+  getHealth(): AgentWorkerHealth {
+    const checkedAtMs = Date.now();
+    const heartbeatAgeMs =
+      this.lastHeartbeatAtMs === undefined
+        ? undefined
+        : Math.max(0, checkedAtMs - this.lastHeartbeatAtMs);
+    const heartbeatFresh =
+      heartbeatAgeMs !== undefined && heartbeatAgeMs < this.workerTtlMs;
+    const ready =
+      this.status === 'running'
+      && heartbeatFresh
+      && this.failure === undefined;
+    const live = this.status !== 'failed';
+    return {
+      workerId: this.options.workerId,
+      status: ready ? 'ready' : this.status === 'failed' ? 'failed' : 'not_ready',
+      live,
+      ready,
+      workerStatus: this.status,
+      checkedAt: new Date(checkedAtMs).toISOString(),
+      activeSessions: this.activeSessions.size,
+      ...(this.lastHeartbeatAtMs !== undefined
+        ? { lastHeartbeatAt: new Date(this.lastHeartbeatAtMs).toISOString() }
+        : {}),
+      ...(heartbeatAgeMs !== undefined ? { heartbeatAgeMs } : {}),
+      ...(this.failure ? { failure: structuredClone(this.failure) } : {}),
+    };
   }
 
   getSnapshot(): AgentWorkerSnapshot {
@@ -189,6 +235,7 @@ export class AgentWorker {
     return {
       workerId: this.options.workerId,
       status: this.status,
+      health: this.getHealth(),
       activeSessionIds: [...this.activeSessions.values()].map(({ route }) => route.sessionId),
       metrics: {
         ...(this.startedAtMs !== undefined
@@ -225,6 +272,7 @@ export class AgentWorker {
       ttlMs: this.workerTtlMs,
       metadata: this.options.metadata,
     });
+    this.lastHeartbeatAtMs = Date.now();
     this.startedAtMs = Date.now();
     this.status = 'running';
     if (signal) {
@@ -308,6 +356,7 @@ export class AgentWorker {
       }
       this.failure = failureData(error);
       this.status = 'failed';
+      this.reportError(error);
       this.controller.abort(error);
       await Promise.allSettled(loops);
       await Promise.allSettled(
@@ -601,12 +650,14 @@ export class AgentWorker {
           this.options.workerId,
           this.workerTtlMs,
         );
+        this.lastHeartbeatAtMs = Date.now();
       } catch (error) {
         if (isFatalWorkerStateError(error)) {
           throw error;
         }
         this.reportError(error);
       }
+      this.publishSnapshot();
     }
   }
 
@@ -669,6 +720,16 @@ export class AgentWorker {
   }
 
   private reportError(error: unknown): void {
+    const errorCode = getErrorCode(error);
+    try {
+      this.options.telemetry?.recordError({
+        workerId: this.options.workerId,
+        workerStatus: this.status,
+        ...(errorCode ? { errorCode } : {}),
+      });
+    } catch {
+      // Telemetry is observational and cannot change worker state.
+    }
     try {
       this.options.onError?.(error);
     } catch {
@@ -677,8 +738,14 @@ export class AgentWorker {
   }
 
   private publishSnapshot(): void {
+    const snapshot = this.getSnapshot();
     try {
-      this.options.onSnapshot?.(this.getSnapshot());
+      this.options.telemetry?.recordSnapshot(snapshot);
+    } catch {
+      // Telemetry is observational and cannot change worker state.
+    }
+    try {
+      this.options.onSnapshot?.(snapshot);
     } catch {
       // Metrics are observational and cannot change worker state.
     }

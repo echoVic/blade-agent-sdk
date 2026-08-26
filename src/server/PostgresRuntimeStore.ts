@@ -80,6 +80,7 @@ import type {
   RuntimeEffectFailureOptions,
   RuntimeEffectLease,
   RuntimeEffectReconciliation,
+  RuntimeQueueMetrics,
   RuntimeRecoveryResult,
   RuntimeSessionClaim,
   RuntimeSessionClaimOptions,
@@ -1005,6 +1006,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
     workerId: WorkerId,
   ): Promise<readonly RuntimeSessionRoute[]> {
     return this.workerRuntime.listWorkerSessions(workerId);
+  }
+
+  getQueueMetrics(tenantId?: string): Promise<RuntimeQueueMetrics> {
+    return this.workerRuntime.getQueueMetrics(tenantId);
   }
 
   recoverExpiredWork(): Promise<RuntimeRecoveryResult> {

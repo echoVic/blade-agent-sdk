@@ -20,6 +20,14 @@ import type {
 
 export const RUNTIME_STORE_SCHEMA_VERSION = 3 as const;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1 as const;
+export const RUNTIME_EFFECT_STATUSES = [
+  'pending',
+  'claimed',
+  'executing',
+  'completed',
+  'failed',
+  'uncertain',
+] as const;
 
 export interface RuntimeDomainEventDraft {
   readonly eventId?: EventId;
@@ -48,13 +56,7 @@ export interface RuntimeEffectIntent {
   readonly executionMode?: RuntimeEffectExecutionMode;
 }
 
-export type RuntimeEffectStatus =
-  | 'pending'
-  | 'claimed'
-  | 'executing'
-  | 'completed'
-  | 'failed'
-  | 'uncertain';
+export type RuntimeEffectStatus = typeof RUNTIME_EFFECT_STATUSES[number];
 
 export interface RuntimeEffectRecord extends RuntimeEffectIntent {
   readonly tenantId: string;
