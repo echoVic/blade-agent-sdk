@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [6.0.0] - 2026-08-26
+
+### Breaking Changes
+
+- Add the production AgentWorker, SessionRunner, EffectDispatcher, and ExecutionHost recovery loop; move PostgreSQL and OpenTelemetry adapters to explicit optional entrypoints.
+
 ## [5.4.2] - 2026-08-25
 
 ### Refactoring

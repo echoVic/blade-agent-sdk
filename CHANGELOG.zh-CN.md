@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [6.0.0] - 2026-08-26
+
+### 破坏性变更
+
+- 新增生产级 AgentWorker、SessionRunner、EffectDispatcher 与 ExecutionHost 恢复闭环；将 PostgreSQL 和 OpenTelemetry adapter 移至显式可选入口。
+
 ## [5.4.2] - 2026-08-25
 
 ### 重构

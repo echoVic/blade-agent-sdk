@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Add the production AgentWorker, SessionRunner, EffectDispatcher, and ExecutionHost recovery loop; move PostgreSQL and OpenTelemetry adapters to explicit optional entrypoints.",
-  "zh-CN": "新增生产级 AgentWorker、SessionRunner、EffectDispatcher 与 ExecutionHost 恢复闭环；将 PostgreSQL 和 OpenTelemetry adapter 移至显式可选入口。"
-}
