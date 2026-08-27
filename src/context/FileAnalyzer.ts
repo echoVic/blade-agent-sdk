@@ -3,9 +3,14 @@
  * 用于从对话中提取重点文件并读取内容
  */
 
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import {
+    type FilesystemPathScope,
+    resolveAuthorizedFilesystemPath,
+} from '../tools/validation/filesystemPath.js';
+import { SensitiveFileDetector } from '../tools/validation/SensitiveFileDetector.js';
 import type { JsonObject } from '../types/json.js';
 
 /**
@@ -32,7 +37,7 @@ export interface FileContent {
   content: string;
   /** 是否被截断 */
   truncated: boolean;
-  /** 总行数 */
+  /** 读取内容中的行数；按字节截断时不代表文件总行数 */
   lines: number;
   /** 实际包含的行数 */
   includedLines: number;
@@ -43,6 +48,17 @@ const MAX_FILES = 5;
 
 /** 单个文件最大行数 */
 const MAX_LINES_PER_FILE = 1000;
+
+/** 单个文件最多读取 64 KiB */
+const MAX_BYTES_PER_FILE = 64 * 1024;
+
+/** 所有文件合计最多读取 256 KiB */
+const MAX_TOTAL_FILE_BYTES = 256 * 1024;
+
+export interface ReadFilesContentOptions {
+  filesystemScope?: FilesystemPathScope;
+  signal?: AbortSignal;
+}
 
 /**
  * 分析消息中提到的文件
@@ -110,17 +126,42 @@ export function analyzeFiles(messages: readonly ModelMessage[]): FileReference[]
  * @param filePaths - 文件路径列表
  * @returns 文件内容列表
  */
-export async function readFilesContent(filePaths: string[]): Promise<FileContent[]> {
+export async function readFilesContent(
+  filePaths: string[],
+  options: ReadFilesContentOptions = {},
+): Promise<FileContent[]> {
   const results: FileContent[] = [];
+  const scope = options.filesystemScope;
+  if (!scope || scope.filesystemRoots.length === 0) {
+    return results;
+  }
+  let remainingBytes = MAX_TOTAL_FILE_BYTES;
 
-  for (const path of filePaths) {
+  for (const path of filePaths.slice(0, MAX_FILES)) {
+    if (remainingBytes <= 0) {
+      break;
+    }
+    options.signal?.throwIfAborted();
     try {
-      const content = await readFile(path, 'utf-8');
+      const authorizedPath = await resolveAuthorizedFilesystemPath(path, scope, {
+        cwd: scope.cwd,
+      });
+      if (SensitiveFileDetector.check(authorizedPath).isSensitive) {
+        console.warn(`[FileAnalyzer] 跳过敏感文件: ${path}`);
+        continue;
+      }
+
+      const byteLimit = Math.min(MAX_BYTES_PER_FILE, remainingBytes);
+      const { content, truncated: byteTruncated } = await readBoundedUtf8(
+        authorizedPath,
+        byteLimit,
+        options.signal,
+      );
       const lines = content.split('\n');
       const totalLines = lines.length;
 
       let finalContent = content;
-      let truncated = false;
+      let truncated = byteTruncated;
       let includedLines = totalLines;
 
       if (totalLines > MAX_LINES_PER_FILE) {
@@ -130,21 +171,68 @@ export async function readFilesContent(filePaths: string[]): Promise<FileContent
         truncated = true;
         includedLines = MAX_LINES_PER_FILE;
       }
+      if (Buffer.byteLength(finalContent, 'utf8') > byteLimit) {
+        finalContent = truncateUtf8ToBytes(finalContent, byteLimit);
+        truncated = true;
+      }
 
       results.push({
-        path,
+        path: authorizedPath,
         content: finalContent,
         truncated,
         lines: totalLines,
         includedLines,
       });
+      remainingBytes -= Buffer.byteLength(finalContent, 'utf8');
     } catch (error) {
+      if (options.signal?.aborted) {
+        throw error;
+      }
       // 文件读取失败，记录警告但不阻塞流程
       console.warn(`[FileAnalyzer] 无法读取文件: ${path}`, error);
     }
   }
 
   return results;
+}
+
+async function readBoundedUtf8(
+  filePath: string,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<{ content: string; truncated: boolean }> {
+  signal?.throwIfAborted();
+  const handle = await open(filePath, 'r');
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
+    const buffer = Buffer.alloc(maxBytes + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    signal?.throwIfAborted();
+    const includedBytes = Math.min(bytesRead, maxBytes);
+    return {
+      content: buffer.subarray(0, includedBytes).toString('utf8'),
+      truncated: stats.size > includedBytes || bytesRead > maxBytes,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function truncateUtf8ToBytes(value: string, maxBytes: number): string {
+  let low = 0;
+  let high = value.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (Buffer.byteLength(value.slice(0, middle), 'utf8') <= maxBytes) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return value.slice(0, low);
 }
 
 /**

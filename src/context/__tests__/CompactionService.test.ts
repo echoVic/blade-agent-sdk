@@ -9,7 +9,7 @@ import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
 }));
-const mockSideQuery = vi.fn(async () => ({
+const mockSideQuery = vi.fn(async (..._args: unknown[]) => ({
   content: '<summary>ok</summary>',
 }));
 const mockCreateModelServiceAsync = vi.fn(async (config: ModelServiceConfig) => {
@@ -80,6 +80,31 @@ describe('CompactionService', () => {
       undefined,
     );
     expect(mockChat).not.toHaveBeenCalled();
+  });
+
+  it('chunks summary requests within the configured model input budget', async () => {
+    const modelName = 'gpt-5';
+    const maxContextTokens = 2_048;
+    const messages: ModelMessage[] = Array.from({ length: 4 }, (_, index) => ({
+      role: 'user',
+      content: `${index}:${'x'.repeat(5_000)}`,
+    }));
+
+    await compact(messages, {
+      trigger: 'manual',
+      modelName,
+      maxContextTokens,
+      apiKey: 'test-key',
+      baseURL: 'https://api.openai.com/v1',
+    });
+
+    expect(mockSideQuery.mock.calls.length).toBeGreaterThan(1);
+    for (const call of mockSideQuery.mock.calls) {
+      const requestMessages = call[0] as ModelMessage[];
+      expect(Buffer.byteLength(String(requestMessages[0]?.content), 'utf8')).toBeLessThanOrEqual(
+        1_383,
+      );
+    }
   });
 
   it('does not convert an aborted provider request into fallback compaction', async () => {

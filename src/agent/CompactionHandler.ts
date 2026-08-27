@@ -20,6 +20,7 @@ import type { ConversationState } from './state/ConversationState.js';
 export interface CompactionRuntimeContext {
   sessionId: SessionId;
   projectDir?: string;
+  filesystemRoots?: readonly string[];
   signal?: AbortSignal;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
@@ -136,6 +137,7 @@ export class CompactionHandler {
           customHeaders: modelConfig.customHeaders,
           actualPreTokens: actualPromptTokens,
           projectDir: runtimeCtx.projectDir,
+          filesystemRoots: runtimeCtx.filesystemRoots,
           signal: runtimeCtx.signal,
           assertExecutionLease: runtimeCtx.assertExecutionLease,
           hookRuntime: runtimeCtx.hookRuntime,
@@ -281,6 +283,7 @@ export class CompactionHandler {
         baseURL: modelConfig.baseUrl,
         customHeaders: modelConfig.customHeaders,
         projectDir: runtimeCtx.projectDir,
+        filesystemRoots: runtimeCtx.filesystemRoots,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
         hookRuntime: runtimeCtx.hookRuntime,

@@ -164,9 +164,11 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           id: messageId,
           role: 'user',
           content,
-          metadata: {
+          correlation: {
             inputId: input.inputId,
             requestId: runControl.requestId,
+          },
+          extensions: {
             inputPriority: input.priority,
           },
         };
@@ -179,6 +181,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const runtimeCtx: CompactionRuntimeContext = {
           sessionId: context.sessionId,
           projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+          filesystemRoots: context.snapshot?.filesystemRoots,
           signal: requestSignal,
           assertExecutionLease: context.assertExecutionLease,
           runWithExecutionLease: context.runWithExecutionLease,
@@ -212,6 +215,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               baseURL: cs.baseUrl,
               customHeaders: cs.customHeaders,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              filesystemRoots: context.snapshot?.filesystemRoots,
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               hookRuntime,
@@ -462,6 +466,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             const runtimeCtx: CompactionRuntimeContext = {
               sessionId: context.sessionId,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              filesystemRoots: context.snapshot?.filesystemRoots,
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
