@@ -19,7 +19,7 @@ import { createTaskListTool } from '../taskList.js';
 import { createTaskStopTool } from '../taskStop.js';
 import { createTaskUpdateTool } from '../taskUpdate.js';
 
-const { runAgenticLoop, createAgent } = vi.hoisted(() => ({
+const { runAgenticLoop, createAgent, destroyAgent } = vi.hoisted(() => ({
   runAgenticLoop:
     vi.fn<
       (
@@ -38,10 +38,12 @@ const { runAgenticLoop, createAgent } = vi.hoisted(() => ({
       }>
     >(),
   createAgent: vi.fn(),
+  destroyAgent: vi.fn(async () => {}),
 }));
 
 createAgent.mockImplementation(async () => ({
   runAgenticLoop,
+  destroy: destroyAgent,
 }));
 
 vi.mock('../../../../agent/Agent.js', () => ({
@@ -90,6 +92,7 @@ describe('task tools', () => {
   beforeEach(() => {
     createAgent.mockClear();
     runAgenticLoop.mockReset();
+    destroyAgent.mockClear();
     const store = AgentSessionStore.create();
     manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
   });

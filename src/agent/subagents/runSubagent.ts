@@ -110,7 +110,11 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     runWithExecutionLease,
   };
 
-  return loopOptions
-    ? agent.runAgenticLoop(prompt, chatContext, loopOptions)
-    : agent.runAgenticLoop(prompt, chatContext);
+  try {
+    return await (loopOptions
+      ? agent.runAgenticLoop(prompt, chatContext, loopOptions)
+      : agent.runAgenticLoop(prompt, chatContext));
+  } finally {
+    await agent.destroy();
+  }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/identifiers.js';
@@ -11,9 +11,11 @@ const runAgenticLoop = vi.fn(async () => ({
     tokensUsed: 0,
   },
 }));
+const destroyAgent = vi.fn(async () => {});
 
 const createAgent = vi.fn(async (_config: unknown, _options: unknown, deps: unknown) => ({
   runAgenticLoop,
+  destroy: destroyAgent,
   deps,
 }));
 
@@ -26,6 +28,12 @@ vi.mock('../../Agent.js', () => ({
 const { SubagentExecutor } = await import('../SubagentExecutor.js');
 
 describe('SubagentExecutor', () => {
+  beforeEach(() => {
+    createAgent.mockClear();
+    runAgenticLoop.mockClear();
+    destroyAgent.mockClear();
+  });
+
   it('should inherit the parent snapshot context when creating a subagent', async () => {
     const snapshot = createContextSnapshot(SessionId('parent-session'), 'turn-1', {
       capabilities: {
@@ -97,6 +105,7 @@ describe('SubagentExecutor', () => {
         signal: controller.signal,
       }),
     );
+    expect(destroyAgent).toHaveBeenCalledOnce();
   });
 
   it('passes configured context omissions into the child agent context', async () => {

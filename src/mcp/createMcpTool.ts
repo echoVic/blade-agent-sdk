@@ -5,6 +5,7 @@ import { ToolKind } from '../tools/types/kind.js';
 import { ToolErrorType } from '../tools/types/result.js';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
+import { createMcpServerTag } from './toolSource.js';
 import type { McpToolDefinition } from './types.js';
 
 /**
@@ -43,7 +44,7 @@ export function createMcpTool(
       ],
     },
     category: 'MCP tool',
-    tags: ['mcp', 'external', serverName],
+    tags: ['mcp', 'external', serverName, createMcpServerTag(serverName)],
 
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
     async *execute(params, _context) {

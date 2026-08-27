@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { JSONSchema7 } from 'json-schema';
+import { describe, expect, it, vi } from 'vitest';
 import { createMcpTool } from '../createMcpTool.js';
 
 const mockClient = {
@@ -7,20 +7,19 @@ const mockClient = {
 };
 
 function buildTool(schema: JSONSchema7) {
-  return createMcpTool(
-    mockClient as never,
-    'test-server',
-    {
-      name: 'schema_tool',
-      description: 'Schema test tool',
-      inputSchema: schema,
-    },
-  );
+  return createMcpTool(mockClient as never, 'test-server', {
+    name: 'schema_tool',
+    description: 'Schema test tool',
+    inputSchema: schema,
+  });
 }
 
 describe('createMcpTool', () => {
   it('classifies remote MCP tools conservatively', () => {
-    expect(buildTool({ type: 'object' }).sideEffect).toBe('non_idempotent');
+    const tool = buildTool({ type: 'object' });
+
+    expect(tool.sideEffect).toBe('non_idempotent');
+    expect(tool.tags).toContain('mcp-server:test-server');
   });
 
   it('should support enum values for strings and numbers', () => {

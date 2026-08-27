@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Report clear Agent lifecycle errors, release owned resources on destroy, and preserve MCP server source IDs.",
+  "zh-CN": "为 Agent 生命周期误用提供明确错误，在销毁时释放自有资源，并正确保留 MCP 服务来源标识。"
+}

@@ -849,6 +849,7 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('test_tool')).toBeDefined();
+    expect(runtime.getToolCatalog().getEntry('test_tool')?.source.sourceId).toBe('test');
 
     await runtime.mcpDisconnect('test');
     expect(await runtime.mcpListTools()).toEqual([]);
@@ -857,6 +858,7 @@ describe('SessionRuntime', () => {
     await runtime.mcpReconnect('test');
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('test_tool')).toBeDefined();
+    expect(runtime.getToolCatalog().getEntry('test_tool')?.source.sourceId).toBe('test');
 
     await runtime.close();
   });

@@ -13,6 +13,7 @@ import type { McpServerConfig } from '../mcp/config.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import { resolveMcpServerName } from '../mcp/toolSource.js';
 import { PluginHost } from '../middleware/PluginHost.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
@@ -532,7 +533,7 @@ export class SessionRuntime {
       this.toolCatalog.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: serverNameFromTool(tool),
+        sourceId: resolveMcpServerName(tool),
       });
     }
   }
@@ -603,14 +604,4 @@ export class SessionRuntime {
       async () => ({ behavior: 'ask' }) satisfies PermissionResult,
     ]);
   }
-}
-
-function serverNameFromTool(tool: Tool): string {
-  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__([^_]+)__/);
-  return match?.[1] ?? 'mcp';
 }

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { McpRegistry } from '../McpRegistry.js';
+import { McpConnectionStatus } from '../types.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
@@ -178,6 +179,18 @@ describe('McpRegistry', () => {
 
       const servers = registry.getAllServers();
       expect(servers.size).toBe(0);
+    });
+
+    it('should stop clients that are not currently connected', async () => {
+      await registry.registerServer('server1', { command: 'cmd1' });
+      const server = registry.getServerStatus('server1');
+      if (!server) throw new Error('Expected registered MCP server');
+      server.status = McpConnectionStatus.ERROR;
+      mockDisconnect.mockClear();
+
+      await registry.disconnectAll();
+
+      expect(mockDisconnect).toHaveBeenCalledOnce();
     });
   });
 

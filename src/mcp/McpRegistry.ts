@@ -499,13 +499,11 @@ export class McpRegistry extends EventEmitter {
     const disconnectPromises: Promise<void>[] = [];
 
     for (const [name, serverInfo] of this.servers) {
-      if (serverInfo.status === McpConnectionStatus.CONNECTED) {
-        disconnectPromises.push(
-          serverInfo.client.disconnect().catch((error) => {
-            console.warn(`断开 MCP 服务器 "${name}" 时出错:`, error);
-          }),
-        );
-      }
+      disconnectPromises.push(
+        serverInfo.client.disconnect().catch((error) => {
+          console.warn(`断开 MCP 服务器 "${name}" 时出错:`, error);
+        }),
+      );
     }
 
     await Promise.allSettled(disconnectPromises);

@@ -12,11 +12,13 @@
  */
 
 import type { ContextManager } from '../context/ContextManager.js';
+import { AbortError } from '../errors/AbortError.js';
 import { ConfigError } from '../errors/ConfigError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
+import { resolveMcpServerName } from '../mcp/toolSource.js';
 import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import type { ToolMiddleware } from '../middleware/ToolMiddleware.js';
 import type { ModelMessage } from '../model/message.js';
@@ -94,19 +96,26 @@ export class Agent {
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
+  private readonly ownsRuntimeMcpRegistry: boolean;
   private readonly subagentRegistry: SubagentRegistry;
   private readonly backgroundAgentManager: BackgroundAgentManager;
+  private readonly ownsBackgroundAgentManager: boolean;
   private readonly hookRuntime?: HookRuntime;
   private readonly localDiscovery: boolean;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
+  private readonly lifecycleController = new AbortController();
+  private readonly activeRuns = new Set<Promise<void>>();
+  private readonly activeStreams = new Set<AsyncGenerator<AgentEvent, LoopResult>>();
   private lastPreparedSkillCwd?: string;
   private tokenBudget?: TokenBudget;
+  private isDestroyed = false;
+  private destroyPromise?: Promise<void>;
 
   // 子模块
   private modelManager: ModelManager;
   private planExecutor: PlanExecutor;
-  private loopRunner!: LoopRunner;
+  private loopRunner?: LoopRunner;
 
   constructor(config: BladeConfig, runtimeOptions: AgentOptions = {}, deps: AgentRuntimeDeps = {}) {
     this.config = config;
@@ -120,11 +129,13 @@ export class Agent {
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.localDiscovery = runtimeOptions.localDiscovery ?? true;
+    this.ownsRuntimeMcpRegistry = deps.mcpRegistry === undefined && !this.runtimeManaged;
     this.runtimeMcpRegistry =
-      deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
+      deps.mcpRegistry ?? (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
     this.subagentRegistry =
       deps.subagentRegistry ??
       new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
+    this.ownsBackgroundAgentManager = deps.backgroundAgentManager === undefined;
     this.backgroundAgentManager =
       deps.backgroundAgentManager ??
       BackgroundAgentManager.create(
@@ -166,18 +177,33 @@ export class Agent {
     }
 
     const agent = new Agent(config, options, deps);
-    await agent.initialize();
+    try {
+      await agent.initialize();
 
-    if (options.toolWhitelist && options.toolWhitelist.length > 0) {
-      agent.applyToolWhitelist(options.toolWhitelist);
+      if (options.toolWhitelist && options.toolWhitelist.length > 0) {
+        agent.applyToolWhitelist(options.toolWhitelist);
+      }
+
+      return agent;
+    } catch (error) {
+      try {
+        await agent.destroy();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Agent initialization failed and cleanup was incomplete',
+        );
+      }
+      throw error;
     }
-
-    return agent;
   }
 
   // ===== 初始化 =====
 
   public async initialize(): Promise<void> {
+    if (this.isDestroyed) {
+      throw new Error('Agent has been destroyed and cannot be initialized again.');
+    }
     if (this.isInitialized) return;
 
     try {
@@ -233,24 +259,27 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): Promise<string> {
-    const prepared = await this.prepareContext(message, context, options);
-    const result = await this.executeWithPlanSupport(prepared);
+    this.assertInitialized();
+    return this.trackActiveRun(async () => {
+      const prepared = await this.prepareContext(message, context, options);
+      const result = await this.executeWithPlanSupport(prepared);
 
-    if (!result.success) {
-      if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
-      throw new Error(result.error?.message || '执行失败');
-    }
+      if (!result.success) {
+        if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
+        throw new Error(result.error?.message || '执行失败');
+      }
 
-    if (isPlanApprovalResult(result) && context.permissionMode === 'plan') {
-      return this.executePlanApproval(
-        prepared.enhancedMessage,
-        prepared.context,
-        prepared.loopOptions,
-        result,
-      );
-    }
+      if (isPlanApprovalResult(result) && context.permissionMode === 'plan') {
+        return this.executePlanApproval(
+          prepared.enhancedMessage,
+          prepared.context,
+          prepared.loopOptions,
+          result,
+        );
+      }
 
-    return result.finalMessage || '';
+      return result.finalMessage || '';
+    });
   }
 
   public streamChat(
@@ -258,14 +287,24 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): AsyncGenerator<AgentEvent, LoopResult> {
+    this.assertInitialized();
     const self = this;
-    const prepare = this.prepareContext(message, context, options);
+    let stream: AsyncGenerator<AgentEvent, LoopResult> | undefined;
 
     const wrapper = async function* (): AsyncGenerator<AgentEvent, LoopResult> {
-      const prepared = await prepare;
-      return yield* self.streamWithPlanSupport(prepared);
+      try {
+        const prepared = await self.prepareContext(message, context, options);
+        return yield* self.streamWithPlanSupport(prepared);
+      } finally {
+        if (stream) {
+          self.activeStreams.delete(stream);
+        }
+      }
     };
-    return wrapper();
+    const createdStream = wrapper();
+    stream = createdStream;
+    this.activeStreams.add(createdStream);
+    return createdStream;
   }
 
   public async runAgenticLoop(
@@ -273,40 +312,51 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): Promise<LoopResult> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
+    this.assertInitialized();
+    return this.trackActiveRun(async () => {
+      const loopRunner = this.getLoopRunner();
+      const chatContext: ChatContext = this.withBackgroundAgentManager({
+        messages: context.messages,
+        userId: context.userId || 'subagent',
+        sessionId: context.sessionId || SessionId(`subagent_${Date.now()}`),
+        snapshot: context.snapshot,
+        signal: context.signal,
+        confirmationHandler: context.confirmationHandler,
+        permissionMode: context.permissionMode,
+        systemPrompt: context.systemPrompt,
+        subagentInfo: context.subagentInfo,
+        backgroundAgentManager: context.backgroundAgentManager,
+        executionFence: context.executionFence,
+        assertExecutionLease: context.assertExecutionLease,
+        runWithExecutionLease: context.runWithExecutionLease,
+      });
+      const loopOptions: LoopOptions = {
+        ...options,
+        signal: this.withLifecycleSignal(options?.signal ?? context.signal),
+      };
 
-    const chatContext: ChatContext = this.withBackgroundAgentManager({
-      messages: context.messages,
-      userId: context.userId || 'subagent',
-      sessionId: context.sessionId || SessionId(`subagent_${Date.now()}`),
-      snapshot: context.snapshot,
-      signal: context.signal,
-      confirmationHandler: context.confirmationHandler,
-      permissionMode: context.permissionMode,
-      systemPrompt: context.systemPrompt,
-      subagentInfo: context.subagentInfo,
-      backgroundAgentManager: context.backgroundAgentManager,
-      executionFence: context.executionFence,
-      assertExecutionLease: context.assertExecutionLease,
-      runWithExecutionLease: context.runWithExecutionLease,
+      return loopRunner.runLoop(message, chatContext, loopOptions);
     });
-
-    return await this.loopRunner.runLoop(message, chatContext, options);
   }
 
   public async chatWithSystem(systemPrompt: string, message: string): Promise<string> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
-    const messages: ModelMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: message },
-    ];
-    const response = await this.modelManager.getModelService().chat(messages);
-    return response.content;
+    this.assertInitialized();
+    return this.trackActiveRun(async () => {
+      const messages: ModelMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message },
+      ];
+      const response = await this.modelManager
+        .getModelService()
+        .chat(messages, undefined, this.lifecycleController.signal);
+      return response.content;
+    });
   }
 
   // ===== Getters =====
 
   public getModelService(): ModelService {
+    this.assertInitialized();
     return this.modelManager.getModelService();
   }
   public getContextManager(): ContextManager | undefined {
@@ -320,6 +370,7 @@ export class Agent {
   }
 
   public getTokenBudgetSnapshot(): TokenBudgetSnapshot | undefined {
+    this.assertInitialized();
     return this.tokenBudget?.getSnapshot();
   }
 
@@ -327,7 +378,7 @@ export class Agent {
     return {
       initialized: this.isInitialized,
       components: {
-        modelService: this.modelManager.getModelService() ? 'ready' : 'not_loaded',
+        modelService: this.isInitialized ? 'ready' : 'not_loaded',
         contextManager: this.modelManager.getContextManager() ? 'ready' : 'not_loaded',
       },
     };
@@ -348,6 +399,7 @@ export class Agent {
   }
 
   public applyToolWhitelist(whitelist: string[]): void {
+    this.assertInitialized();
     const registry = this.executionPipeline.getRegistry();
     const allTools = registry.getAll();
     const toolsToRemove = allTools.filter((tool) => !whitelist.includes(tool.name));
@@ -358,25 +410,114 @@ export class Agent {
   }
 
   public clearSkillContext(): void {
-    this.loopRunner.clearSkillContext();
+    this.getLoopRunner().clearSkillContext();
   }
 
   public async setModel(model: string): Promise<void> {
-    await this.modelManager.setModel(model);
+    this.assertInitialized();
+    await this.trackActiveRun(() => this.modelManager.setModel(model));
   }
 
   /** @deprecated 建议通过 context.systemPrompt 传入 */
   public async getSystemPrompt(): Promise<string | undefined> {
-    return this.loopRunner.buildSystemPromptOnDemand();
+    const loopRunner = this.getLoopRunner();
+    return this.trackActiveRun(() => loopRunner.buildSystemPromptOnDemand());
   }
 
-  public async destroy(): Promise<void> {
-    this.log('销毁Agent...');
-    this.isInitialized = false;
-    this.log('Agent已销毁');
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) {
+      return this.destroyPromise;
+    }
+
+    const destroyPromise = this.destroyInternal();
+    this.destroyPromise = destroyPromise;
+    void destroyPromise.catch(() => {
+      if (this.destroyPromise === destroyPromise) {
+        this.destroyPromise = undefined;
+      }
+    });
+    return destroyPromise;
   }
 
   // ===== Private Helpers =====
+
+  private assertInitialized(): void {
+    if (this.isDestroyed) {
+      throw new Error('Agent has been destroyed.');
+    }
+    if (!this.isInitialized) {
+      throw new Error('Agent is not initialized. Call initialize() before using this method.');
+    }
+  }
+
+  private getLoopRunner(): LoopRunner {
+    this.assertInitialized();
+    const loopRunner = this.loopRunner;
+    if (!loopRunner) {
+      throw new Error('Agent is not initialized. Call initialize() before using this method.');
+    }
+    return loopRunner;
+  }
+
+  private withLifecycleSignal(signal?: AbortSignal): AbortSignal {
+    return signal
+      ? AbortSignal.any([signal, this.lifecycleController.signal])
+      : this.lifecycleController.signal;
+  }
+
+  private trackActiveRun<T>(operation: () => Promise<T>): Promise<T> {
+    const result = Promise.resolve().then(operation);
+    const completion = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.activeRuns.add(completion);
+    void completion.then(() => {
+      this.activeRuns.delete(completion);
+    });
+    return result;
+  }
+
+  private async destroyInternal(): Promise<void> {
+    this.log('销毁Agent...');
+    this.isDestroyed = true;
+    this.isInitialized = false;
+    this.lifecycleController.abort(new AbortError('Agent was destroyed'));
+
+    const streams = [...this.activeStreams];
+    const foregroundResults = await Promise.allSettled([
+      ...streams.map(async (stream) => {
+        try {
+          await stream.return(undefined as never);
+        } finally {
+          this.activeStreams.delete(stream);
+        }
+      }),
+      ...this.activeRuns,
+    ]);
+    const cleanupOperations: Promise<unknown>[] = [];
+    if (this.ownsBackgroundAgentManager) {
+      cleanupOperations.push(this.backgroundAgentManager.sealCancelAndWait());
+    }
+    if (this.ownsRuntimeMcpRegistry && this.runtimeMcpRegistry) {
+      cleanupOperations.push(this.runtimeMcpRegistry.disconnectAll());
+    }
+    const cleanupResults = await Promise.allSettled(cleanupOperations);
+
+    this.loopRunner = undefined;
+    this.lastPreparedSkillCwd = undefined;
+    this.log('Agent已销毁');
+
+    const errors = [...foregroundResults, ...cleanupResults].flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Agent destruction failed');
+    }
+  }
 
   private createDefaultPipeline(middleware: readonly ToolMiddleware[] = []): ExecutionPipeline {
     const registry = new ToolRegistry();
@@ -431,7 +572,7 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): Promise<PreparedContext> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
+    this.assertInitialized();
 
     const ctx = this.withBackgroundAgentManager(context);
     let enhancedMessage: UserMessageContent;
@@ -446,8 +587,8 @@ export class Agent {
       enhancedMessage = message;
     }
     const loopOptions: LoopOptions = {
-      signal: ctx.signal,
       ...options,
+      signal: this.withLifecycleSignal(options?.signal ?? ctx.signal),
       prepareInput: (input) =>
         this.localDiscovery ? this.prepareMessageForContext(input, ctx) : Promise.resolve(input),
     };
@@ -460,17 +601,18 @@ export class Agent {
    */
   private async executeWithPlanSupport(prepared: PreparedContext): Promise<LoopResult> {
     const { enhancedMessage, context, loopOptions } = prepared;
+    const loopRunner = this.getLoopRunner();
 
     if (context.permissionMode === 'plan') {
       return this.planExecutor.runPlanLoop(
         enhancedMessage,
         context,
         loopOptions,
-        (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
+        (msg, ctx, opts, sp) => loopRunner.executeLoop(msg, ctx, opts, sp),
       );
     }
 
-    return this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
+    return loopRunner.runLoop(enhancedMessage, context, loopOptions);
   }
 
   /**
@@ -480,13 +622,14 @@ export class Agent {
     prepared: PreparedContext,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const { enhancedMessage, context, loopOptions } = prepared;
+    const loopRunner = this.getLoopRunner();
 
     if (context.permissionMode === 'plan') {
       const planResult = yield* this.planExecutor.runPlanLoopStream(
         enhancedMessage,
         context,
         loopOptions,
-        (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
+        (msg, ctx, opts, sp) => loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
       );
 
       if (isPlanApprovalResult(planResult)) {
@@ -494,13 +637,13 @@ export class Agent {
         const planContent = planResult.metadata.planContent;
         const newContext: ChatContext = { ...context, permissionMode: targetMode };
         const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
-        return yield* this.loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
+        return yield* loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
       }
 
       return planResult;
     }
 
-    return yield* this.loopRunner.runLoopStream(enhancedMessage, context, loopOptions);
+    return yield* loopRunner.runLoopStream(enhancedMessage, context, loopOptions);
   }
 
   private async executePlanApproval(
@@ -516,7 +659,7 @@ export class Agent {
     const newContext: ChatContext = { ...context, permissionMode: targetMode };
     const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
 
-    const newResult = await this.loopRunner.runLoop(messageWithPlan, newContext, loopOptions);
+    const newResult = await this.getLoopRunner().runLoop(messageWithPlan, newContext, loopOptions);
     if (!newResult.success) throw new Error(newResult.error?.message || '执行失败');
     return newResult.finalMessage || '';
   }
@@ -602,7 +745,7 @@ export class Agent {
       this.toolCatalog.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveAgentMcpSourceId(tool),
+        sourceId: resolveMcpServerName(tool),
       });
     }
   }
@@ -687,14 +830,4 @@ export class Agent {
   private error(message: string, error?: unknown): void {
     this.logger.error(`[MainAgent] ${message}`, error || '');
   }
-}
-
-function resolveAgentMcpSourceId(tool: Tool): string {
-  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__([^_]+)__/);
-  return match?.[1] ?? 'mcp';
 }

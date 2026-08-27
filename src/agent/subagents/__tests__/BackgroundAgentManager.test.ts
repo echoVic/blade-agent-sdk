@@ -31,9 +31,11 @@ const runAgenticLoop = vi.fn<
     tokensUsed: 0,
   },
 }));
+const destroyAgent = vi.fn(async () => {});
 
 const createAgent = vi.fn(async (_config, _options, deps) => ({
   runAgenticLoop,
+  destroy: destroyAgent,
   deps,
 }));
 
@@ -70,6 +72,7 @@ describe('BackgroundAgentManager', () => {
   beforeEach(() => {
     createAgent.mockClear();
     runAgenticLoop.mockClear();
+    destroyAgent.mockClear();
     const store = AgentSessionStore.create();
     manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
   });
