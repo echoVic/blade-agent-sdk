@@ -372,6 +372,10 @@ behavior is unchanged.
 `getBuiltinTools()` is exported by the `/node` entry point. The `/node`
 Session facade registers this local host tool set automatically; memory tools
 are only included when a `MemoryManager` is supplied explicitly.
+Calling a returned tool's `execute()` method directly bypasses the
+`ExecutionPipeline`. Existing-file `Write` and `Edit` calls still require
+`ExecutionContext.sessionId`; without it, read-before-write cannot be verified
+and the operation fails closed.
 
 | Group | Tools |
 |-------|-------|
@@ -411,6 +415,10 @@ Built-in contracts:
 
 Permission decisions use the resolved behavior, so consumers should not infer
 kind or side effects from a tool name.
+`Bash` narrows only simple, explicitly allowlisted commands to read-only.
+Pipelines, redirections, heredocs, variable or command substitution, `eval`,
+nested shells, and unknown commands remain side-effecting. Classification
+informs permissions and scheduling; it is not a security sandbox.
 
 ## Select tools
 

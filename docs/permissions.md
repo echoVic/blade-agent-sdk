@@ -32,6 +32,10 @@ session.setPermissionMode(PermissionMode.YOLO);
 安全策略，仍只应在受控环境中使用。
 :::
 
+内置文件工具的敏感文件检测只根据规范化后的路径和文件名分类，不扫描文件内容。
+它是权限策略的一层防御，不是 secret scanner；生产环境仍应使用最小化的
+filesystem roots 和 OS sandbox。
+
 ## 自定义权限回调
 
 通过 `canUseTool` 实现完全自定义的权限逻辑：
@@ -96,6 +100,9 @@ interface CanUseToolOptions {
 `ConfirmationDetails.abortSignal` 收到同一信号。这些等待没有固定墙钟超时。
 忽略取消的回调会被持续跟踪，并阻止新的工具执行以及 Session close/handoff，
 直至其 Promise 结束。
+
+`permissionHandler` 是完整的底层权限接口，`canUseTool` 是兼容旧集成的简化接口。
+如果同时配置两者，SDK 只使用 `permissionHandler`，不会再调用 `canUseTool`。
 
 ## 权限与沙箱的关系
 

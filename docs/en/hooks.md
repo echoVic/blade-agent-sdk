@@ -101,6 +101,9 @@ failure policy cannot resume an already-cancelled Request.
 If a containment failure arrives after cancellation has already won an
 asynchronous tool or permission race, the execution pipeline is quarantined:
 later tool calls and Session close or handoff remain fail-closed.
+That state cannot be reset on the same pipeline. Stop using and recreate the
+owning Agent or Session runtime instead of retrying the quarantined instance.
+Closing the old runtime may report the same terminal failure.
 
 On POSIX, containment follows process-group semantics. A Hook command that
 deliberately creates a new session with `setsid()` leaves the SDK-owned process

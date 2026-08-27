@@ -968,6 +968,10 @@ await session.send('分析 shared-libs 中的依赖问题', {
 - `metadata`：浅合并，轮次级覆盖同名键
   :::
 
+内置 `Read`、`Write`、`Edit`、`NotebookEdit`、`Glob` 和 `Grep` 会在执行前
+解析真实路径，并拒绝 `filesystem.roots` 之外的目标。新文件通过最近存在的父目录
+完成规范化，因此目录符号链接也不能逃逸授权范围。
+
 ## 上下文自动压缩
 
 SDK 自动管理上下文窗口大小。当对话历史的 token 数接近模型上限时，会按优先级依次触发多层压缩策略，无需手动干预。
@@ -1002,6 +1006,9 @@ Microcompact 是最轻量的压缩方式，不调用 LLM，只替换旧的大型
 
 整个恢复过程对上层透明。`recovery` 是内部 Agent 事件，不属于公开
 `SessionStreamEvent`；调用方通过最终的 `result` 或 `error` 观察结果。
+
+压缩只会附加当前 `filesystem.roots` 内的非敏感文件。文件读取具有单文件和总字节
+预算，摘要请求按模型上下文预算分块，不会把无界历史或文件内容塞入单次请求。
 
 ### 动态更新上下文
 

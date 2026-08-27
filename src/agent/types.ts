@@ -122,7 +122,9 @@ export interface AgentOptions {
   modelId?: string;
 
   // 权限控制
+  /** Full permission callback. Takes precedence when canUseTool is also provided. */
   permissionHandler?: PermissionHandler;
+  /** Legacy permission callback, used only when permissionHandler is absent. */
   canUseTool?: CanUseTool;
 
   // MCP 配置

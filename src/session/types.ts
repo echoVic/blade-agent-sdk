@@ -263,7 +263,9 @@ export interface SessionOptions {
   tools?: SessionTool[];
 
   permissionMode?: PermissionMode;
+  /** Full permission callback. Takes precedence when canUseTool is also provided. */
   permissionHandler?: PermissionHandler;
+  /** Legacy permission callback, used only when permissionHandler is absent. */
   canUseTool?: CanUseTool;
   confirmationHandler?: ConfirmationHandler;
   /** Creates a Session-bound confirmation handler after the Session ID exists. */

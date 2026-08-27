@@ -96,6 +96,8 @@ Hook 超时时会终止进程组，先发送 `SIGTERM` 并短暂等待，必要�
 默认的 `ignore` 失败策略不会让已取消的 Request 继续执行。
 如果 containment failure 在取消已赢得异步工具或权限竞态后才到达，执行管道会
 进入隔离状态；后续工具调用以及 Session close/handoff 都会继续 fail-closed。
+该状态不可在原 pipeline 上恢复；调用方必须停止使用并重新创建所属 Agent 或
+Session runtime，不能重试同一个实例。关闭旧 runtime 时仍可能返回同一个终态错误。
 
 POSIX containment 以进程组为边界。若 Hook 命令主动通过 `setsid()` 创建新会话，
 该进程会离开 SDK 管理的进程组，不属于可移植清理边界。

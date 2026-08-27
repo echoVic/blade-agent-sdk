@@ -83,6 +83,18 @@ When enabled and available:
 
 The wrapper only covers the built-in `Bash` tool. Custom tools and remote MCP servers need their own process, container, or service boundary.
 
+## Environment boundary
+
+Built-in `Bash` does not inherit the complete `process.env`. Child processes
+receive only basic command-execution variables such as `PATH`, `HOME`, `USER`,
+`SHELL`, locale, terminal, and temporary-directory settings. This prevents
+database passwords, cloud credentials, and API tokens owned by a server process
+from entering shell output accidentally.
+
+Pass application variables explicitly through `defaultContext.environment`,
+per-turn `context.environment`, or the Bash call's `env`; later sources take
+precedence. Foreground and background Bash use the same policy.
+
 ## Network settings
 
 ```ts

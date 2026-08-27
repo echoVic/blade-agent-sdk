@@ -116,6 +116,9 @@ function getBuiltinTools(opts?: {
 `getBuiltinTools()` 仅从 `/node` 导出；`/node` Session 会自动注册 Coding
 Agent 工具集合。`MemoryRead` 和 `MemoryWrite` 默认不会注册，只有在显式传入
 `memoryManager` 时才会加入集合。
+直接调用返回工具的 `execute()` 会绕过 `ExecutionPipeline`。已有文件的
+`Write`/`Edit` 仍要求 `ExecutionContext.sessionId`，否则无法验证
+read-before-write，并会 fail closed。
 
 ```ts
 import {
@@ -463,3 +466,7 @@ generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义�
 工具响应 `now` 转向时，应使用 `createTool()` 并声明 `cancel`。
 
 内置的 `Read`、`Glob`、`Grep`、`WebFetch`、`WebSearch` 和前台 `Bash` 明确声明为 `cancel`；后台 `Bash` 及其他内置工具为 `block`。动态 MCP 工具默认 `block`。
+
+`Bash` 只会把简单且明确列入白名单的命令动态收窄为只读。管道、重定向、
+heredoc、变量/命令替换、`eval`、shell 嵌套和未知命令均按有副作用执行处理。
+分类器用于权限与调度提示，不是安全沙箱。

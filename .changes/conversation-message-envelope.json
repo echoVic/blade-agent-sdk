@@ -1,5 +1,5 @@
 {
-  "type": "breaking",
+  "type": "fix",
   "en": "Remove ModelMessage.metadata and introduce typed ConversationMessage provenance, correlation, telemetry, providerOptions, and extensions fields.",
   "zh-CN": "移除 ModelMessage.metadata，引入类型明确的 ConversationMessage provenance、correlation、telemetry、providerOptions 与 extensions 字段。"
 }

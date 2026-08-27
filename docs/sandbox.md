@@ -87,6 +87,15 @@ console.log(capabilities.features);
 
 这些规则只包装内置 `Bash`。自定义工具和远程 MCP Server 必须自行建立隔离边界。
 
+## 环境变量边界
+
+内置 `Bash` 不会继承完整的 `process.env`。子进程只继承 `PATH`、`HOME`、
+`USER`、`SHELL`、locale、终端和临时目录等基础变量，避免服务进程中的数据库
+密码、云凭证和 API token 被命令输出。
+
+业务变量必须通过 `defaultContext.environment`、单轮 `context.environment` 或
+Bash 调用的 `env` 显式传入；后者优先级最高。前台与后台 Bash 使用同一策略。
+
 ## 网络配置
 
 ```ts

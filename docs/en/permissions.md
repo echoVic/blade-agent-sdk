@@ -27,6 +27,11 @@ session.setPermissionMode(PermissionMode.AUTO_EDIT);
 `ask`, a custom handler, or sensitive-path confirmation can still ask the
 user. It does not bypass tool validation or path safety.
 
+For built-in file tools, sensitive-file detection classifies canonical paths
+and filenames; it does not scan file contents. Treat it as one
+permission-policy layer, not a secret scanner, and keep filesystem roots and
+the OS sandbox narrowly scoped in production.
+
 ## canUseTool
 
 ```ts
@@ -115,6 +120,8 @@ The root package exports composable permission helpers:
 - `createCompositePermissionHandler()`
 
 Use `permissionHandler` when an application needs direct control over the full `PermissionHandlerRequest`. Most integrations should use `permissionMode` plus `canUseTool`.
+When both callbacks are configured, `permissionHandler` takes precedence and
+`canUseTool` is not invoked.
 
 ## Permission order
 

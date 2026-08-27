@@ -598,6 +598,10 @@ await session.send('Inspect the package', {
 ```
 
 The SDK does not infer a workspace from `process.cwd()`. Without filesystem capability, local file tools and project-level discovery are unavailable.
+Before execution, built-in `Read`, `Write`, `Edit`, `NotebookEdit`, `Glob`, and
+`Grep` resolve their real target and reject paths outside `filesystem.roots`.
+Missing write targets are resolved through their nearest existing parent, so a
+directory symlink cannot escape the authorized roots.
 
 ## Context compaction
 
@@ -609,6 +613,9 @@ The Agent loop manages context pressure in stages:
 4. retain only essential system and recent messages under emergency pressure.
 
 Context overflow recovery retries internally. There is no public `recovery` stream event; observe the final `result` or `error`.
+Compaction includes only non-sensitive files within the active
+`filesystem.roots`. Per-file and aggregate byte limits bound file enrichment,
+and summary requests are chunked against the model context budget.
 
 ## Tools and permissions
 
