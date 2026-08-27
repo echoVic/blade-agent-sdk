@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { DurableExecutionFence } from '../../../session/events/DurableExecutionLeaseStore.js';
 import type { FencingToken, SessionId } from '../../../types/identifiers.js';
+import { buildShellEnvironment } from './environment.js';
 import {
   isProcessTreeAlive,
   shellProcessSpawnOptions,
@@ -17,6 +18,7 @@ interface StartOptions {
   sessionId: SessionId;
   cwd: string;
   env?: Record<string, string | undefined>;
+  runtimeEnvironment?: Readonly<Record<string, string>>;
   executionFence?: DurableExecutionFence;
 }
 
@@ -85,17 +87,7 @@ export class BackgroundShellManager {
     }
 
     const shellId = `bash_${randomUUID()}`;
-    const mergedEnv: Record<string, string> = {};
-
-    for (const [key, value] of Object.entries({
-      ...process.env,
-      ...options.env,
-      BLADE_CLI: '1',
-    })) {
-      if (value !== undefined) {
-        mergedEnv[key] = value;
-      }
-    }
+    const mergedEnv = buildShellEnvironment(options.runtimeEnvironment, options.env);
 
     const child = spawn('bash', ['-c', options.command], {
       cwd: options.cwd,

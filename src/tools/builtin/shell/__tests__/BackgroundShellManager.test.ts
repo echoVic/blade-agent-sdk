@@ -24,6 +24,7 @@ function isProcessAlive(pid: number): boolean {
 
 describe('BackgroundShellManager handoff admission', () => {
   const manager = BackgroundShellManager.getInstance();
+  const originalHostSecret = process.env.BLADE_TEST_HOST_SECRET;
 
   beforeEach(() => {
     manager.killAll();
@@ -31,6 +32,32 @@ describe('BackgroundShellManager handoff admission', () => {
 
   afterEach(() => {
     manager.killAll();
+    if (originalHostSecret === undefined) {
+      delete process.env.BLADE_TEST_HOST_SECRET;
+    } else {
+      process.env.BLADE_TEST_HOST_SECRET = originalHostSecret;
+    }
+  });
+
+  it('exposes only explicit runtime and invocation environment variables', async () => {
+    process.env.BLADE_TEST_HOST_SECRET = 'host-secret';
+    const processInfo = manager.startBackgroundProcess({
+      command: 'printf "%s|%s|%s" "$BLADE_TEST_HOST_SECRET" "$RUNTIME_ONLY" "$COMMAND_ONLY"',
+      sessionId: SessionId('background-environment-session'),
+      cwd: tmpdir(),
+      runtimeEnvironment: {
+        RUNTIME_ONLY: 'runtime',
+      },
+      env: {
+        COMMAND_ONLY: 'command',
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+    });
+
+    expect(manager.consumeOutput(processInfo.id)?.stdout).toBe('|runtime|command');
   });
 
   it('tracks live processes by Session and keeps killed processes active until exit', async () => {

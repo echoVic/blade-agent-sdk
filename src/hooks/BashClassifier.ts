@@ -69,6 +69,32 @@ const WRITE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /(?<![>])>(?![>])/, reason: 'output redirect' },
 ];
 
+/**
+ * Bash is an execution language, so read-only classification must be proven.
+ * Compound commands and expansion are intentionally excluded from this list.
+ */
+const READONLY_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /^\s*(pwd|whoami|date)\s*$/i, reason: 'read-only shell builtin' },
+  { pattern: /^\s*(id|uname)(?:\s+[-\w]+)*\s*$/i, reason: 'read-only system inspection' },
+  {
+    pattern: /^\s*(ls|cat|head|tail|wc|grep|rg)(?:\s+[^;&|<>`$()\n]+)*\s*$/i,
+    reason: 'read-only file inspection',
+  },
+  {
+    pattern:
+      /^\s*git\s+(status|diff|log|show|rev-parse)(?:\s+[^;&|<>`$()\n]+)*\s*$/i,
+    reason: 'read-only git inspection',
+  },
+  {
+    pattern: /^\s*(node|npm|pnpm|yarn|python|python3)\s+(--version|-v)\s*$/i,
+    reason: 'runtime version inspection',
+  },
+  {
+    pattern: /^\s*(env|printenv)(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*$/i,
+    reason: 'environment inspection',
+  },
+];
+
 export const BashClassifier = {
   /**
    * Classify a bash command by its danger level.
@@ -89,7 +115,16 @@ export const BashClassifier = {
       }
     }
 
-    return { category: 'readonly', reason: 'no write/destructive patterns detected' };
+    for (const { pattern, reason } of READONLY_PATTERNS) {
+      if (pattern.test(command)) {
+        return { category: 'readonly', reason, matchedPattern: pattern.source };
+      }
+    }
+
+    return {
+      category: 'write',
+      reason: 'command is not proven read-only',
+    };
   },
 
   isDestructive(command: string): boolean {

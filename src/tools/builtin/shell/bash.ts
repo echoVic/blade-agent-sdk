@@ -15,8 +15,9 @@ import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
+import { buildShellEnvironment } from './environment.js';
 import { OutputTruncator } from './OutputTruncator.js';
-import { isProcessTreeAlive, shellProcessSpawnOptions, signalProcessTree } from './processTree.js';
+import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -277,11 +278,19 @@ Before executing commands:
             context.sessionId ??
             SessionId(randomUUID()),
           env,
+          context.contextSnapshot?.environment,
           context.executionFence,
         );
       }
 
-      return await executeWithTimeout(effectiveCommand, workDir, env, timeout, signal);
+      return await executeWithTimeout(
+        effectiveCommand,
+        workDir,
+        env,
+        context.contextSnapshot?.environment,
+        timeout,
+        signal,
+      );
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
@@ -359,6 +368,7 @@ function executeInBackground(
   cwd: string,
   sessionId: SessionId,
   env?: Record<string, string>,
+  runtimeEnvironment?: Readonly<Record<string, string>>,
   executionFence?: ExecutionContext['executionFence'],
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
@@ -367,6 +377,7 @@ function executeInBackground(
     sessionId,
     cwd,
     env,
+    runtimeEnvironment,
     executionFence,
   });
 
@@ -403,9 +414,11 @@ async function executeWithTimeout(
   command: string,
   cwd: string,
   env: Record<string, string> | undefined,
+  runtimeEnvironment: Readonly<Record<string, string>> | undefined,
   timeout: number,
   signal: AbortSignal,
 ): Promise<ToolResult> {
+  signal.throwIfAborted();
   return new Promise((resolve) => {
     const startTime = Date.now();
     let stdout = '';
@@ -415,7 +428,7 @@ async function executeWithTimeout(
     // 创建进程
     const bashProcess = spawn('bash', ['-c', command], {
       cwd,
-      env: { ...process.env, ...env, BLADE_CLI: '1' },
+      env: buildShellEnvironment(runtimeEnvironment, env),
       stdio: ['pipe', 'pipe', 'pipe'],
       ...shellProcessSpawnOptions(),
     });
@@ -430,40 +443,44 @@ async function executeWithTimeout(
       stderr += data.toString();
     });
 
-    const safeSignalTree = (signalName: NodeJS.Signals): void => {
-      try {
-        signalProcessTree(bashProcess.pid, signalName, bashProcess);
-      } catch (error) {
-        stderr += `\nFailed to signal command process tree: ${getErrorMessage(error)}`;
-      }
+    let terminationPromise: Promise<void> | undefined;
+    const terminateTree = (): Promise<void> => {
+      terminationPromise ??= terminateProcessTree(
+        bashProcess.pid,
+        bashProcess,
+        1_000,
+      ).catch((error) => {
+        stderr += `\nFailed to terminate command process tree: ${getErrorMessage(error)}`;
+      });
+      return terminationPromise;
     };
 
     // 设置超时
     const timeoutHandle = setTimeout(() => {
+      if (bashProcess.exitCode !== null || bashProcess.signalCode !== null) {
+        return;
+      }
       timedOut = true;
-      safeSignalTree('SIGTERM');
-
-      // 如果 SIGTERM 无效,强制 SIGKILL
-      setTimeout(() => {
-        if (isProcessTreeAlive(bashProcess.pid, bashProcess)) {
-          safeSignalTree('SIGKILL');
-        }
-      }, 1000);
+      void terminateTree();
     }, timeout);
 
     // 处理中止信号
     const abortHandler = () => {
-      safeSignalTree('SIGTERM');
       clearTimeout(timeoutHandle);
+      void terminateTree();
     };
 
     signal.addEventListener('abort', abortHandler);
+    if (signal.aborted) {
+      abortHandler();
+    }
 
     // 监听进程完成事件 - 业界标准做法
-    bashProcess.on('close', (code, sig) => {
+    bashProcess.on('close', async (code, sig) => {
       clearTimeout(timeoutHandle);
       // 移除中止监听器
       signal.removeEventListener('abort', abortHandler);
+      await terminationPromise;
 
       const executionTime = Date.now() - startTime;
 
@@ -545,10 +562,11 @@ async function executeWithTimeout(
     });
 
     // 监听进程错误
-    bashProcess.on('error', (error) => {
+    bashProcess.on('error', async (error) => {
       clearTimeout(timeoutHandle);
       // 移除中止监听器
       signal.removeEventListener('abort', abortHandler);
+      await terminationPromise;
 
       resolve({
         status: 'error',
