@@ -12,6 +12,7 @@
  */
 
 import type { ContextManager } from '../context/ContextManager.js';
+import { ConfigError } from '../errors/ConfigError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { McpServerConfig } from '../mcp/config.js';
@@ -159,12 +160,8 @@ export class Agent {
   ): Promise<Agent> {
     const models = config.models || [];
     if (models.length === 0) {
-      throw new Error(
-        '❌ 没有可用的模型配置\n\n' +
-          '请先使用以下命令添加模型：\n' +
-          '  /model add\n\n' +
-          '或运行初始化向导：\n' +
-          '  /init',
+      throw new ConfigError(
+        'No model configuration found. Provide at least one entry in config.models.',
       );
     }
 

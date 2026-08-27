@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ConfigError } from '../../errors/ConfigError.js';
 import type { InternalLogger } from '../../logging/Logger.js';
 import { SessionId, TurnId } from '../../types/identifiers.js';
 import { Agent } from '../Agent.js';
@@ -31,6 +32,21 @@ function createLogger(): InternalLogger & { messages: string[] } {
     error() {},
   };
 }
+
+describe('Agent.create', () => {
+  it('throws an SDK-facing ConfigError when no model is configured', async () => {
+    const creation = Agent.create({
+      models: [],
+      language: 'en-US',
+    } as unknown as BladeConfig);
+
+    await expect(creation).rejects.toBeInstanceOf(ConfigError);
+    await expect(creation).rejects.toMatchObject({
+      code: 'CONFIG_ERROR',
+      message: 'No model configuration found. Provide at least one entry in config.models.',
+    });
+  });
+});
 
 describe('Agent.initializeSystemPrompt', () => {
   it('logs prompt sources for runtime base prompt and append content', async () => {
