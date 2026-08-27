@@ -13,6 +13,7 @@
 import { analyzeFiles } from '../context/FileAnalyzer.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelMessage } from '../model/message.js';
 import {
   type ContextSnapshot,
@@ -350,10 +351,10 @@ ${summary}`,
       },
     ];
 
-    const catalogMessage: ModelMessage = {
+    const catalogMessage: ConversationMessage = {
       role: 'system',
       content,
-      metadata: { _systemSource: 'catalog' },
+      provenance: { source: 'catalog' },
     };
 
     if (existingIndex >= 0) {

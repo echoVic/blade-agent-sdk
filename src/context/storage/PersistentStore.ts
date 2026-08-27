@@ -1,6 +1,6 @@
+import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { nanoid } from 'nanoid';
 import type { ModelContent, ModelToolCall } from '../../model/message.js';
 import type {
   PersistedToolUse,
@@ -30,7 +30,7 @@ import {
   ToolUseId,
   type ToolUseId as ToolUseIdType,
 } from '../../types/identifiers.js';
-import type { JsonValue } from '../../types/json.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { ContextData, ConversationContext, SessionContext } from '../types.js';
 import { JSONLStore } from './JSONLStore.js';
 import {
@@ -148,15 +148,17 @@ export class PersistentStore implements SessionPersistence {
     preTokens: number;
     postTokens?: number;
     filesIncluded?: string[];
-  }): JsonValue {
-    const result: Record<string, JsonValue> = {
+  }): JsonObject {
+    const extensions: Record<string, JsonValue> = {
       trigger: metadata.trigger,
       preTokens: metadata.preTokens,
     };
-    if (metadata.postTokens !== undefined) result.postTokens = metadata.postTokens;
-    if (metadata.filesIncluded) result.filesIncluded = metadata.filesIncluded;
-    result._systemSource = 'compaction_summary';
-    return result;
+    if (metadata.postTokens !== undefined) extensions.postTokens = metadata.postTokens;
+    if (metadata.filesIncluded) extensions.filesIncluded = metadata.filesIncluded;
+    return {
+      provenance: { source: 'compaction_summary' },
+      extensions,
+    };
   }
 
   /**
@@ -204,7 +206,10 @@ export class PersistentStore implements SessionPersistence {
         model: metadata?.modelIdentity?.model ?? metadata?.model,
         modelIdentity: metadata?.modelIdentity,
         usage: metadata?.usage,
-        customMetadata: metadata?.customMetadata,
+        providerOptions: metadata?.providerOptions,
+        provenance: metadata?.provenance,
+        correlation: metadata?.correlation,
+        extensions: metadata?.extensions,
       };
       const messageEntry = this.createEvent('message_created', sessionId, messageInfo);
       const partEntries = this.buildPartEntries(sessionId, messageId, content, now, {
@@ -244,7 +249,7 @@ export class PersistentStore implements SessionPersistence {
       role: 'user',
       parentMessageId: parentMessageId ?? undefined,
       createdAt: now,
-      customMetadata: {
+      correlation: {
         inputId,
         requestId,
       },
@@ -443,7 +448,7 @@ export class PersistentStore implements SessionPersistence {
         partId: PartId(nanoid()),
         messageId,
         partType: 'summary',
-        payload: { text: summary, metadata: compactMetadata },
+        payload: { text: summary, ...compactMetadata },
         createdAt: now,
       };
       const entries = [

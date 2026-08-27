@@ -67,11 +67,14 @@ export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/inde
 export * from './middleware/index.js';
 export type {
   BuiltinProviderType,
+  ConversationMessage,
+  ConversationMessageSource,
   ModelConfig,
   ModelContent,
   ModelIdentity,
   ModelImageContent,
   ModelMessage,
+  ModelMessageProviderOptions,
   ModelProviderOptions,
   ModelResponse,
   ModelRetryConfig,
@@ -94,7 +97,9 @@ export type {
 } from './model/index.js';
 // --- Model contracts ---
 export {
+  CONVERSATION_MESSAGE_SOURCES,
   isBuiltinProviderType,
+  isConversationMessageSource,
   normalizeModelUsage,
   PROVIDER_TYPES,
   resolveModelIdentity,

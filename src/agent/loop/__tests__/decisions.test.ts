@@ -68,6 +68,7 @@ describe('agent loop decisions', () => {
     const baseInput = {
       maxTurns: 3,
       turnsCount: 3,
+      totalTurnsCount: 7,
       messages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
       contextMessages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
       toolCallsCount: 2,
@@ -81,6 +82,7 @@ describe('agent loop decisions', () => {
       expect(decision.action).toBe('stop');
       if (decision.action === 'stop') {
         expect(decision.result.error?.type).toBe('max_turns_exceeded');
+        expect(decision.result.metadata?.turnsCount).toBe(7);
       }
     });
 
@@ -125,6 +127,7 @@ describe('agent loop decisions', () => {
       expect(decision.action).toBe('stop');
       if (decision.action === 'stop') {
         expect(decision.result.success).toBe(true);
+        expect(decision.result.metadata?.turnsCount).toBe(7);
         expect(decision.result.metadata?.configuredMaxTurns).toBe(3);
       }
     });

@@ -47,7 +47,7 @@ const modelMessageSchema = z
     tool_call_id: z.string().optional(),
     name: z.string().optional(),
     tool_calls: z.array(modelToolCallSchema).optional(),
-    metadata: jsonValueSchema.optional(),
+    providerOptions: jsonObjectSchema.optional(),
     modelIdentity: z
       .object({
         provider: z.string(),
@@ -56,6 +56,33 @@ const modelMessageSchema = z
       })
       .strict()
       .optional(),
+    provenance: z
+      .object({
+        source: z.enum(['catalog', 'tool_injection', 'compaction_summary']),
+      })
+      .strict()
+      .optional(),
+    correlation: z
+      .object({
+        inputId: inputIdSchema,
+        requestId: requestIdSchema,
+      })
+      .strict()
+      .optional(),
+    telemetry: z
+      .object({
+        model: z.string().optional(),
+        usage: z
+          .object({
+            inputTokens: z.number(),
+            outputTokens: z.number(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    extensions: jsonObjectSchema.optional(),
   })
   .strict();
 

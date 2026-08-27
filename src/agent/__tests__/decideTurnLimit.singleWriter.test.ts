@@ -6,6 +6,7 @@ describe('decideTurnLimit — single-writer invariants', () => {
   const baseInput = {
     maxTurns: 3,
     turnsCount: 3,
+    totalTurnsCount: 3,
     contextMessages: [{ role: 'user', content: 'Hi' }] as ModelMessage[],
     toolCallsCount: 2,
     startTime: Date.now() - 100,

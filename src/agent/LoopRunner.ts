@@ -13,7 +13,7 @@
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { ModelMessage } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import {
   isExecutionLeaseFailure,
@@ -48,12 +48,6 @@ import type {
   UserMessageContent,
 } from './types.js';
 
-// ===== Module-level helpers =====
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function syncContextMessages(context: ChatContext, convState: ConversationState): void {
   context.messages = convState.getContextMessages();
 }
@@ -63,7 +57,7 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
     return message.trim() !== '';
   }
 
-  return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
+  return message.some((part) => part.type !== 'text' || part.text.trim() !== '');
 }
 
 export class LoopRunner {
@@ -149,7 +143,7 @@ export class LoopRunner {
     }
 
     // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
-    const rootPromptMessage: ModelMessage | null = systemPrompt
+    const rootPromptMessage: ConversationMessage | null = systemPrompt
       ? {
           role: 'system',
           content: [
@@ -164,10 +158,10 @@ export class LoopRunner {
         }
       : null;
 
-    // 删除 _systemSource 不在受控枚举内的 system 消息（旧根 prompt、外部任意标记等）
+    // Drop non-root system messages without a controlled provenance source.
     const contextMessages = context.messages.filter((m) => {
       if (m.role !== 'system') return true;
-      const source = isRecord(m.metadata) ? m.metadata._systemSource : undefined;
+      const source = m.provenance?.source;
       return isValidSystemSource(source);
     });
 

@@ -1,4 +1,6 @@
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
+import type { ModelMessage } from '../model/message.js';
 import type { MessageRole } from '../types/constants.js';
 import type {
   EventId,
@@ -56,6 +58,11 @@ export interface TranscriptMessage {
     input_tokens: number;
     output_tokens: number;
   };
+  providerOptions?: ModelMessage['providerOptions'];
+  provenance?: ConversationMessage['provenance'];
+  correlation?: ConversationMessage['correlation'];
+  extensions?: JsonObject;
+  /** Legacy pre-v7 flattened message metadata. */
   customMetadata?: JsonObject;
 }
 

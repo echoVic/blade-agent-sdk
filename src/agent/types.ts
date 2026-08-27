@@ -3,7 +3,8 @@
  */
 
 import type { OutputFormat } from '../model/config.js';
-import type { ModelContent, ModelMessage } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
+import type { ModelContent } from '../model/message.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
@@ -87,7 +88,7 @@ interface SubagentInfoForContext {
  * 不包含：循环过程中的事件回调（这些应该放在 LoopOptions）
  */
 export interface ChatContext {
-  messages: ModelMessage[];
+  messages: ConversationMessage[];
   userId: string;
   sessionId: SessionId;
   snapshot?: ContextSnapshot;

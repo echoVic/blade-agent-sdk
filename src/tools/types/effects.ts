@@ -1,4 +1,4 @@
-import type { ModelMessage } from '../../model/message.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
 import type { PermissionUpdate } from '../../types/permissions.js';
 
@@ -13,7 +13,7 @@ export type ToolEffect =
     }
   | {
       type: 'newMessages';
-      messages: ModelMessage[];
+      messages: ConversationMessage[];
     }
   | {
       type: 'permissionUpdates';

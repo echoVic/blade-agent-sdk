@@ -7,7 +7,7 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 
 | 领域 | 所有者 | 代表类型 |
 |------|--------|----------|
-| Model | `src/model/` | `ModelMessage`、`ModelService`、`ModelUsage`、`ModelServiceConfig` |
+| Model | `src/model/` | `ModelMessage`、`ConversationMessage`、`ModelService`、`ModelUsage` |
 | Agent | `src/agent/` | `AgentEvent`、`AgentConfig`、loop state |
 | Tool | `src/tools/types/` | `Tool`、`ToolDefinition`、`ToolResult`、`ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`、`SessionStreamEvent`、`PromptResult` |
@@ -27,6 +27,7 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 
 ```ts
 import type {
+  ConversationMessage,
   ModelMessage,
   ModelService,
   ModelServiceConfig,
@@ -44,9 +45,16 @@ import type {
 | `ModelConfig` | 可注册、可切换的模型描述 |
 | `ModelServiceConfig` | Provider adapter 创建 `ModelService` 时使用的规范化配置 |
 | `ModelProviderOptions` | Provider 专属但仍为 JSON-safe 的请求扩展 |
+| `ModelMessage` | 仅包含发送给模型的 provider-neutral 消息负载 |
+| `ConversationMessage` | Agent/Session 使用的消息信封，承载来源、输入关联、遥测和扩展 |
 
 `ModelUsage` 表示 Provider 返回的原始用量；`TokenUsage` 表示 Agent/Session
 聚合后的预算视图。转换统一由 `normalizeModelUsage()` 完成。
+
+`ModelMessage` 不提供通用 `metadata` 字典。SDK 控制字段必须放在
+`ConversationMessage.provenance`、`correlation` 或 `telemetry` 中；
+Provider 提示放在 `providerOptions` 中。只有不参与 SDK 控制流的应用数据可以
+放入 `extensions`，核心逻辑不得读取 `extensions`。
 
 ## 事件层次
 

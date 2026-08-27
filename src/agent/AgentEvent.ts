@@ -7,7 +7,8 @@
  *   agent_start → (turn_start → [content/thinking/tool events] → turn_end)* → agent_end
  */
 
-import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
+import type { ModelToolCall } from '../model/message.js';
 import type { TokenUsage } from '../model/usage.js';
 import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
@@ -145,7 +146,7 @@ export interface ToolContextPatchEvent {
 export interface ToolNewMessagesEvent {
   type: 'tool_new_messages';
   toolCall: ModelToolCall;
-  messages: ModelMessage[];
+  messages: ConversationMessage[];
 }
 
 /** 工具权限更新事件 */

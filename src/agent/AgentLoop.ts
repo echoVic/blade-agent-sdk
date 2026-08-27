@@ -8,8 +8,9 @@
 
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
-import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import type { ModelToolCall } from '../model/message.js';
 import type { ModelResponse } from '../model/service.js';
 import type { TokenUsage } from '../model/usage.js';
 import { normalizeModelUsage } from '../model/usage.js';
@@ -51,19 +52,19 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
 export interface AgentLoopHooks {
   input?: {
     beforeApply?: (ctx: { input: AgentSteeringInput; turn: number }) => Promise<void>;
-    apply?: (ctx: { input: AgentSteeringInput; turn: number }) => Promise<ModelMessage>;
+    apply?: (ctx: { input: AgentSteeringInput; turn: number }) => Promise<ConversationMessage>;
   };
   turn?: {
     beforeTurn?: (ctx: {
       turn: number;
-      messages: readonly ModelMessage[];
+      messages: readonly ConversationMessage[];
       lastPromptTokens?: number;
     }) => AsyncGenerator<AgentEvent, boolean>;
     onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-    onTurnLimitCompact?: (ctx: { contextMessages: readonly ModelMessage[] }) => Promise<{
+    onTurnLimitCompact?: (ctx: { contextMessages: readonly ConversationMessage[] }) => Promise<{
       success: boolean;
-      compactedMessages?: ModelMessage[];
-      continueMessage?: ModelMessage;
+      compactedMessages?: ConversationMessage[];
+      continueMessage?: ConversationMessage;
     }>;
   };
   tool?: {
@@ -96,7 +97,7 @@ export interface AgentLoopHooks {
   };
   recovery?: {
     reactiveCompact?: (ctx: {
-      messages: readonly ModelMessage[];
+      messages: readonly ConversationMessage[];
     }) => AsyncGenerator<AgentEvent, boolean>;
     onStateChange?: (ctx: {
       turn: number;
@@ -129,12 +130,6 @@ export interface AgentLoopConfig {
   hooks?: AgentLoopHooks;
 }
 
-// ===== 辅助 =====
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 // ===== 核心循环 =====
 
 export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentEvent, LoopResult> {
@@ -162,7 +157,9 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
   const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
 
   const startTime = Date.now();
+  // turnsCount is the current max-turn window; totalTurnsCount is never reset.
   let turnsCount = 0;
+  let totalTurnsCount = 0;
   /** 轮式环形缓冲：只保留最近 N 条工具结果（AgentLoop 观察用，不影响外部） */
   const TOOL_RESULT_BUFFER = 50;
   const recentToolResults: ToolResult[] = [];
@@ -199,7 +196,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, totalToolCalls, startTime);
+      return buildAbortResult(totalTurnsCount, totalToolCalls, startTime);
     }
 
     yield* applyPendingSteeringInputs({
@@ -212,7 +209,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (
       recovery.phase !== 'retry_pending' &&
-      !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0) &&
+      !(initialInputPreparation === RECONCILED_INITIAL_INPUT && totalTurnsCount === 0) &&
       turnHooks?.beforeTurn
     ) {
       yield* turnHooks.beforeTurn({
@@ -224,6 +221,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (recovery.phase !== 'retry_pending') {
       turnsCount++;
+      totalTurnsCount++;
       yield { type: 'turn_start', turn: turnsCount, maxTurns: effectiveMaxTurns };
     }
     // 消费重试标记：retry_pending -> in_retried_turn
@@ -237,7 +235,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount - 1, totalToolCalls, startTime);
+      return buildAbortResult(totalTurnsCount - 1, totalToolCalls, startTime);
     }
 
     const turnState = config.prepareTurnState(turnsCount);
@@ -415,7 +413,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
               'Stopped due to diminishing returns: consecutive turns produced very few tokens',
           },
           metadata: {
-            turnsCount,
+            turnsCount: totalTurnsCount,
             toolCallsCount: totalToolCalls,
             duration: Date.now() - startTime,
             tokensUsed: totalTokens,
@@ -433,7 +431,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
             message: 'Token budget exhausted',
           },
           metadata: {
-            turnsCount,
+            turnsCount: totalTurnsCount,
             toolCallsCount: totalToolCalls,
             duration: Date.now() - startTime,
             tokensUsed: totalTokens,
@@ -445,7 +443,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount - 1, totalToolCalls, startTime);
+      return buildAbortResult(totalTurnsCount - 1, totalToolCalls, startTime);
     }
 
     const steeringInterruptInputId = getSteeringInterruptInputId(stepSignal);
@@ -556,7 +554,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
         success: true,
         finalMessage: turnResult.content,
         metadata: {
-          turnsCount,
+          turnsCount: totalTurnsCount,
           toolCallsCount: totalToolCalls,
           duration: Date.now() - startTime,
           tokensUsed: totalTokens,
@@ -582,7 +580,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
       if (signal?.aborted) {
         yield { type: 'agent_end' };
-        return buildAbortResult(turnsCount, totalToolCalls, startTime);
+        return buildAbortResult(totalTurnsCount, totalToolCalls, startTime);
       }
 
       executionResults = await executeToolCalls({
@@ -690,9 +688,8 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
             ...message,
             ...(message.role === 'system'
               ? {
-                  metadata: {
-                    ...(isRecord(message.metadata) ? message.metadata : {}),
-                    _systemSource: 'tool_injection' as const,
+                  provenance: {
+                    source: 'tool_injection' as const,
                   },
                 }
               : {}),
@@ -735,7 +732,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
         success: exitResult.result.status === 'success',
         finalMessage,
         metadata: {
-          turnsCount,
+          turnsCount: totalTurnsCount,
           toolCallsCount: totalToolCalls,
           duration: Date.now() - startTime,
           shouldExitLoop: true,
@@ -746,7 +743,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, totalToolCalls, startTime);
+      return buildAbortResult(totalTurnsCount, totalToolCalls, startTime);
     }
 
     // 轮次上限
@@ -754,6 +751,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
       const limitDecision = await decideTurnLimit({
         maxTurns: config.maxTurns,
         turnsCount,
+        totalTurnsCount,
         contextMessages: convState.getContextMessages(),
         toolCallsCount: totalToolCalls,
         startTime,

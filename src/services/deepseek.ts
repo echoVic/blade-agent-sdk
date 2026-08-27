@@ -71,8 +71,6 @@ export interface DeepSeekCostBreakdown {
 
 export interface DeepSeekCacheOptimizationOptions {
   enabled?: boolean;
-  stableMetadataKey?: string;
-  stableMetadataValue?: JsonValue;
 }
 
 export interface DeepSeekLongContextChunk {
@@ -105,12 +103,8 @@ export interface DeepSeekLongContextPlan {
   reserveOutputTokens: number;
 }
 
-export interface DeepSeekChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
+export interface DeepSeekChatMessage extends ModelMessage {
   content: string;
-  name?: string;
-  tool_call_id?: string;
-  metadata?: JsonValue;
 }
 
 export interface DeepSeekChatCompletionOptions {
@@ -585,33 +579,17 @@ export function optimizeDeepSeekCachePrefix<T extends ModelMessage>(
   }
 
   const remainingPrefix = prefix.slice(cursor);
-  const stablePrefix = remainingPrefix.filter((message) =>
-    isDeepSeekStableCacheMessage(message, options),
-  );
+  const stablePrefix = remainingPrefix.filter((message) => isDeepSeekStableCacheMessage(message));
   if (stablePrefix.length === 0) return [...messages];
 
   const volatilePrefix = remainingPrefix.filter(
-    (message) => !isDeepSeekStableCacheMessage(message, options),
+    (message) => !isDeepSeekStableCacheMessage(message),
   );
   return [...leadingSystems, ...stablePrefix, ...volatilePrefix, ...tail];
 }
 
-function isDeepSeekStableCacheMessage(
-  message: ModelMessage,
-  options: DeepSeekCacheOptimizationOptions,
-): boolean {
-  const metadata = message.metadata;
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
-  const key = options.stableMetadataKey ?? 'deepseekCache';
-  const expectedValue = options.stableMetadataValue ?? 'stable';
-  if ((metadata as JsonObject)[key] === expectedValue) return true;
-  const deepseek = (metadata as JsonObject).deepseek;
-  return Boolean(
-    deepseek &&
-      typeof deepseek === 'object' &&
-      !Array.isArray(deepseek) &&
-      (deepseek as JsonObject).cache === 'stable',
-  );
+function isDeepSeekStableCacheMessage(message: ModelMessage): boolean {
+  return message.providerOptions?.deepseek?.cache === 'stable';
 }
 
 export function estimateDeepSeekTokens(text: string, charsPerToken = 4): number {
@@ -698,8 +676,7 @@ function deepSeekChunkToMessage(chunk: DeepSeekLongContextChunk): DeepSeekChatMe
   return {
     role: 'user',
     content: `<deepseek_context_chunk id="${chunk.id}" index="${chunk.index}">\n${chunk.content}\n</deepseek_context_chunk>`,
-    metadata: {
-      deepseekCache: 'stable',
+    providerOptions: {
       deepseek: {
         cache: 'stable',
         chunkId: chunk.id,

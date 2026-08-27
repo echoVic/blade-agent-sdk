@@ -13,6 +13,7 @@ import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelMessage } from '../model/message.js';
 import {
   isExecutionLeaseFailure,
@@ -112,7 +113,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
 
   let progressToolUseCount = 0;
   let pendingToolResultCount = 0;
-  let pendingInjectedMessages: ModelMessage[] = [];
+  let pendingInjectedMessages: ConversationMessage[] = [];
   let currentAssistantMessageId: MessageId | null = null;
   const inputApplicationLifecycle = options?.inputApplicationLifecycle;
   const requestSignal = options?.signal ?? context.signal;
@@ -340,24 +341,29 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             logger,
             async (contextMgr, sessionId) => {
               for (const injectedMessage of messagesToPersist) {
-                const customMeta = (() => {
-                  const isRec = (v: unknown): v is Record<string, unknown> =>
-                    typeof v === 'object' && v !== null && !Array.isArray(v);
-                  const base = isRec(injectedMessage.metadata)
-                    ? { ...injectedMessage.metadata }
-                    : {};
-                  if (injectedMessage.role === 'system') {
-                    base._systemSource = 'tool_injection';
-                  }
-                  return Object.keys(base).length > 0 ? base : undefined;
-                })();
+                const provenance =
+                  injectedMessage.role === 'system'
+                    ? { source: 'tool_injection' as const }
+                    : injectedMessage.provenance;
+                const messageMetadata =
+                  injectedMessage.providerOptions ||
+                  provenance ||
+                  injectedMessage.correlation ||
+                  injectedMessage.extensions
+                    ? {
+                        providerOptions: injectedMessage.providerOptions,
+                        provenance,
+                        correlation: injectedMessage.correlation,
+                        extensions: injectedMessage.extensions,
+                      }
+                    : undefined;
 
                 const injectedUuid = await contextMgr.saveMessage(
                   sessionId,
                   injectedMessage.role,
                   injectedMessage.content,
                   getLastUuid(),
-                  customMeta ? { customMetadata: customMeta } : undefined,
+                  messageMetadata,
                   context.subagentInfo,
                 );
                 setLastUuid(injectedUuid);

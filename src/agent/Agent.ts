@@ -674,6 +674,7 @@ export class Agent {
   private async initializeSystemPrompt(): Promise<void> {
     try {
       const projectPath = getContextCwd(this.defaultContext);
+      // Validate prompt sources early without caching; each run rebuilds against current context.
       const result = await buildSystemPrompt({
         projectPath,
         basePrompt: this.runtimeOptions.systemPrompt,

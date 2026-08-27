@@ -12,7 +12,7 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import type { ModelMessage } from '../../model/message.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId } from '../../types/identifiers.js';
 import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
@@ -42,7 +42,7 @@ export interface AgentSession {
   prompt: string;
 
   /** 会话消息历史 */
-  messages: ModelMessage[];
+  messages: ConversationMessage[];
 
   /** 会话状态 */
   status: AgentSessionStatus;
@@ -246,7 +246,7 @@ export class AgentSessionStore {
    */
   async appendMessages(
     agentId: AgentId,
-    messages: ModelMessage[],
+    messages: ConversationMessage[],
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
     const session = this.loadSession(agentId);
@@ -269,7 +269,7 @@ export class AgentSessionStore {
    */
   async updateRunningSession(
     agentId: AgentId,
-    updates: { messages?: ModelMessage[]; progress?: AgentProgress },
+    updates: { messages?: ConversationMessage[]; progress?: AgentProgress },
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined> {
     return this.runWithSessionLock(agentId, 'write', async () => {

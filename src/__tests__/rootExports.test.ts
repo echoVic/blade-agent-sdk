@@ -6,6 +6,7 @@ import type {
   BuiltinProviderType,
   ConfirmationDetails,
   ConfirmationHandler,
+  ConversationMessage,
   DurableAcceptedRequestRecovery,
   DurableCommandCommitOptions,
   DurableCommandEventDraft,
@@ -38,6 +39,7 @@ import type {
   InputSubmission,
   ISession,
   ModelIdentity,
+  ModelMessage,
   ModelServiceConfig,
   PendingSessionInput,
   ProviderAdapter,
@@ -275,6 +277,11 @@ describe('root exports', () => {
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
     expectTypeOf<ModelIdentity['api']>().toEqualTypeOf<ProviderType>();
+    expectTypeOf<
+      NonNullable<ConversationMessage['correlation']>['inputId']
+    >().toEqualTypeOf<InputId>();
+    expectTypeOf<ConversationMessage>().toMatchTypeOf<ModelMessage>();
+    expectTypeOf<'metadata' extends keyof ModelMessage ? true : false>().toEqualTypeOf<false>();
     expectTypeOf<BuiltinProviderType>().toEqualTypeOf<
       'anthropic' | 'openai' | 'azure-openai' | 'gemini' | 'deepseek' | 'openai-compatible'
     >();

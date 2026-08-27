@@ -221,7 +221,7 @@ const messages = optimizeDeepSeekCachePrefix([
   {
     role: 'user',
     content: '大型、稳定、跨请求复用的仓库摘要...',
-    metadata: { deepseekCache: 'stable' },
+    providerOptions: { deepseek: { cache: 'stable' } },
   },
 ]);
 
@@ -229,23 +229,6 @@ const response = await createDeepSeekChatCompletion({
   apiKey: process.env.DEEPSEEK_API_KEY!,
   model: 'deepseek-v4-pro',
   messages,
-});
-```
-
-如需使用自定义 metadata key：
-
-```ts
-const session = await createSession({
-  provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
-  model: 'deepseek-v4-pro',
-  providerOptions: {
-    deepseek: {
-      cacheOptimization: {
-        stableMetadataKey: 'cacheScope',
-        stableMetadataValue: 'project',
-      },
-    },
-  },
 });
 ```
 

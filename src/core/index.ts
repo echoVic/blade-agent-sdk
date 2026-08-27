@@ -7,11 +7,14 @@ export type { McpServerConfig } from '../mcp/config.js';
 export * from '../middleware/index.js';
 export type {
   BuiltinProviderType,
+  ConversationMessage,
+  ConversationMessageSource,
   ModelConfig,
   ModelContent,
   ModelIdentity,
   ModelImageContent,
   ModelMessage,
+  ModelMessageProviderOptions,
   ModelProviderOptions,
   ModelResponse,
   ModelRetryConfig,
@@ -33,7 +36,9 @@ export type {
   TokenUsage,
 } from '../model/index.js';
 export {
+  CONVERSATION_MESSAGE_SOURCES,
   isBuiltinProviderType,
+  isConversationMessageSource,
   normalizeModelUsage,
   PROVIDER_TYPES,
   resolveModelIdentity,

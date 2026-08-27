@@ -5,8 +5,8 @@ export interface SoftCompactionOptions {
   maxToolResultsToKeep?: number;
 }
 
-export interface SoftCompactionResult {
-  messages: ModelMessage[];
+export interface SoftCompactionResult<TMessage extends ModelMessage = ModelMessage> {
+  messages: TMessage[];
   truncatedCount: number;
   savedChars: number;
 }
@@ -14,10 +14,10 @@ export interface SoftCompactionResult {
 const DEFAULT_MAX_TOOL_RESULT_LENGTH = 2000;
 const DEFAULT_MAX_TOOL_RESULTS_TO_KEEP = 50;
 
-export function softCompact(
-  messages: ModelMessage[],
+export function softCompact<TMessage extends ModelMessage>(
+  messages: TMessage[],
   options: SoftCompactionOptions = {},
-): SoftCompactionResult {
+): SoftCompactionResult<TMessage> {
   const maxToolResultLength = options.maxToolResultLength ?? DEFAULT_MAX_TOOL_RESULT_LENGTH;
   const maxToolResultsToKeep = options.maxToolResultsToKeep ?? DEFAULT_MAX_TOOL_RESULTS_TO_KEEP;
 

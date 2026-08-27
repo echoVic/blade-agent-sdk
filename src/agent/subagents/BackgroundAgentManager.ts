@@ -7,13 +7,13 @@
  * - 支持等待完成、恢复、终止
  */
 
+import { nanoid } from 'nanoid';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nanoid } from 'nanoid';
 import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
-import type { ModelMessage } from '../../model/message.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import {
@@ -88,7 +88,7 @@ export interface StartBackgroundAgentOptions {
   agentId?: AgentId;
 
   /** 恢复时的初始消息（用于 resume） */
-  existingMessages?: ModelMessage[];
+  existingMessages?: ConversationMessage[];
 
   /** 父 turn 的 context snapshot（如果存在则继承） */
   snapshot?: ContextSnapshot;
@@ -334,7 +334,7 @@ export class BackgroundAgentManager {
     permissionMode: PermissionMode | undefined,
     lifecycleSignal: AbortSignal,
     workSignal: AbortSignal,
-    existingMessages?: ModelMessage[],
+    existingMessages?: ConversationMessage[],
     snapshot?: ContextSnapshot,
     executionFence?: DurableExecutionFence,
     assertExecutionLease?: () => Promise<void>,

@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelMessage } from '../../../model/message.js';
-import type { JsonObject } from '../../../types/json.js';
+import type {
+  ConversationMessage,
+  ConversationMessageSource,
+} from '../../../model/conversation.js';
 import { ConversationState } from '../ConversationState.js';
 
-const sys = (content: string, meta?: JsonObject): ModelMessage => ({
+const sys = (content: string, source?: ConversationMessageSource): ConversationMessage => ({
   role: 'system',
   content,
-  ...(meta ? { metadata: meta } : {}),
+  ...(source ? { provenance: { source } } : {}),
 });
-const user = (content: string): ModelMessage => ({ role: 'user', content });
-const asst = (content: string): ModelMessage => ({ role: 'assistant', content });
+const user = (content: string): ConversationMessage => ({ role: 'user', content });
+const asst = (content: string): ConversationMessage => ({ role: 'assistant', content });
 
 describe('ConversationState', () => {
   // ===== 构造 + slot[0] 不变量 =====
@@ -32,7 +34,7 @@ describe('ConversationState', () => {
     });
 
     it('preserves contextMessages between root and user message', () => {
-      const ctx: ModelMessage[] = [asst('prev'), user('old')];
+      const ctx: ConversationMessage[] = [asst('prev'), user('old')];
       const cs = new ConversationState(sys('root'), ctx, user('new'));
       const arr = cs.toArray();
       expect(arr).toEqual([sys('root'), asst('prev'), user('old'), user('new')]);
@@ -44,7 +46,7 @@ describe('ConversationState', () => {
   describe('toArray', () => {
     it('returns a shallow copy — pushing to result does not affect internal state', () => {
       const cs = new ConversationState(sys('root'), [], user('hi'));
-      const copy = cs.toArray() as ModelMessage[];
+      const copy = cs.toArray() as ConversationMessage[];
       copy.push(asst('injected'));
       expect(cs.length).toBe(2); // not 3
     });
@@ -129,9 +131,9 @@ describe('ConversationState', () => {
 
   describe('insertAfterSystemBlock', () => {
     it('inserts after contiguous system messages at head', () => {
-      const catalogMsg = sys('catalog', { _systemSource: 'catalog' });
+      const catalogMsg = sys('catalog', 'catalog');
       const cs = new ConversationState(sys('root'), [catalogMsg], user('hi'));
-      const injected = sys('new-catalog', { _systemSource: 'catalog' });
+      const injected = sys('new-catalog', 'catalog');
       cs.insertAfterSystemBlock(injected);
       const arr = cs.toArray();
       // root, catalog, new-catalog, user

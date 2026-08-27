@@ -1,5 +1,5 @@
 import type { MessageRole } from '../types/constants.js';
-import type { JsonValue } from '../types/json.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import type { ModelProviderOptions } from './config.js';
 import type { ModelIdentity } from './identity.js';
 
@@ -37,8 +37,15 @@ export interface ModelImageContent {
 
 export type ModelContent = ModelTextContent | ModelImageContent;
 
+export interface ModelMessageProviderOptions {
+  [provider: string]: JsonValue | undefined;
+  deepseek?: JsonObject & {
+    cache?: JsonValue;
+  };
+}
+
 /**
- * Provider-neutral model transcript message.
+ * Provider-neutral message payload.
  *
  * snake_case fields intentionally mirror provider message payloads and are
  * confined to the model boundary.
@@ -51,7 +58,7 @@ export interface ModelMessage {
   tool_call_id?: string;
   name?: string;
   tool_calls?: ModelToolCall[];
-  metadata?: JsonValue;
+  providerOptions?: ModelMessageProviderOptions;
   modelIdentity?: ModelIdentity;
 }
 

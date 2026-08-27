@@ -109,11 +109,69 @@ describe('JsonlSessionStore', () => {
     expect(state.messages[3]?.role).toBe('system');
     expect(state.messages[3]?.id).toBe(summaryMessageId);
     expect(state.messages[3]?.content).toBe('Compacted summary');
+    expect(state.messages[3]?.provenance).toEqual({ source: 'compaction_summary' });
+    expect(state.messages[3]?.extensions).toMatchObject({
+      trigger: 'auto',
+      preTokens: 100,
+      postTokens: 40,
+    });
     expect(state.summary).toBe('Compacted summary');
     expect(state.toolCalls).toHaveLength(1);
     expect(state.toolCalls[0]?.status).toBe('success');
     expect(state.subagentRefs).toHaveLength(2);
     expect(state.subagentRefs[1]?.status).toBe('completed');
+  });
+
+  it('migrates legacy flat message metadata into the typed conversation envelope', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const sessionId = SessionId('session-legacy-metadata');
+    const now = new Date().toISOString();
+    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId)).appendBatch([
+      sessionEvent(sessionId, now, 'session', 'session_created', {
+        sessionId,
+        rootId: sessionId,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      }),
+      sessionEvent(sessionId, now, 'message', 'message_created', {
+        messageId: MessageId('message-1'),
+        role: 'system',
+        createdAt: now,
+        customMetadata: {
+          _systemSource: 'catalog',
+          inputId: 'input-1',
+          requestId: 'request-1',
+          deepseekCache: 'stable',
+          deepseek: { chunkId: 'legacy-chunk' },
+          applicationValue: 42,
+        },
+      }),
+      sessionEvent(sessionId, now, 'part', 'part_created', {
+        partId: PartId('part-1'),
+        messageId: MessageId('message-1'),
+        partType: 'text',
+        payload: { text: 'legacy' },
+        createdAt: now,
+      }),
+    ]);
+
+    const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
+
+    expect(state?.messages[0]).toMatchObject({
+      provenance: { source: 'catalog' },
+      correlation: {
+        inputId: 'input-1',
+        requestId: 'request-1',
+      },
+      providerOptions: {
+        deepseek: {
+          cache: 'stable',
+          chunkId: 'legacy-chunk',
+        },
+      },
+      extensions: { applicationValue: 42 },
+    });
   });
 
   it('should preserve sequential tool results with distinct message IDs', async () => {
@@ -236,10 +294,10 @@ describe('JsonlSessionStore', () => {
       expect.objectContaining({
         role: 'user',
         content: 'first',
-        metadata: expect.objectContaining({
+        correlation: {
           inputId: firstInputId,
           requestId: 'request-old',
-        }),
+        },
       }),
     ]);
   });

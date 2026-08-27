@@ -454,6 +454,10 @@ Types:
 - `ModelServiceConfig`
 - `ModelService`
 - `ModelMessage`
+- `ConversationMessage`
+- `ConversationMessageSource`
+- `CONVERSATION_MESSAGE_SOURCES`
+- `isConversationMessageSource`
 - `ModelContent`
 - `ModelTextContent`
 - `ModelImageContent`
@@ -464,6 +468,7 @@ Types:
 - `ModelStreamChunk`
 - `ModelToolDefinition`
 - `ModelProviderOptions`
+- `ModelMessageProviderOptions`
 - `ModelSideQueryOptions`
 - `ModelRetryConfig`
 - `ModelRetryEvent`

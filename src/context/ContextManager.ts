@@ -1,6 +1,7 @@
-import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
+import * as crypto from 'node:crypto';
 import { ConfigError } from '../errors/ConfigError.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelContent, ModelMessage } from '../model/message.js';
 import {
   isSessionEventStore,
@@ -701,13 +702,13 @@ export class ContextManager {
     };
   }
 
-  private toContextMessage(message: ModelMessage, createdAt: number): ContextMessage {
+  private toContextMessage(message: ConversationMessage, createdAt: number): ContextMessage {
     return {
       id: MessageId(message.id ?? nanoid()),
       role: message.role,
       content: this.stringifyMessageContent(message.content),
       timestamp: createdAt,
-      metadata: isJsonObject(message.metadata) ? message.metadata : undefined,
+      metadata: message.extensions,
     };
   }
 

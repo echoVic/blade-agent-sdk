@@ -1,5 +1,5 @@
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
-import type { ModelMessage } from '../../model/message.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
@@ -21,7 +21,7 @@ export interface RunSubagentOptions {
   parentSessionId?: string;
   permissionMode?: PermissionMode;
   snapshot?: ContextSnapshot;
-  messages?: ModelMessage[];
+  messages?: ConversationMessage[];
   signal?: AbortSignal;
   backgroundAgentManager?: BackgroundAgentManager;
   executionFence?: DurableExecutionFence;

@@ -6,8 +6,8 @@ export interface MicrocompactOptions {
   previewLength?: number;
 }
 
-export interface MicrocompactResult {
-  messages: ModelMessage[];
+export interface MicrocompactResult<TMessage extends ModelMessage = ModelMessage> {
+  messages: TMessage[];
   replacedCount: number;
   savedChars: number;
   skippedNonStringToolMessages: number;
@@ -17,10 +17,10 @@ const DEFAULT_PRESERVE_RECENT_TOOL_MESSAGES = 2;
 const DEFAULT_MIN_TOOL_CONTENT_LENGTH = 1500;
 const DEFAULT_PREVIEW_LENGTH = 160;
 
-export function microcompact(
-  messages: ModelMessage[],
+export function microcompact<TMessage extends ModelMessage>(
+  messages: TMessage[],
   options: MicrocompactOptions = {},
-): MicrocompactResult {
+): MicrocompactResult<TMessage> {
   const preserveRecentToolMessages =
     options.preserveRecentToolMessages ?? DEFAULT_PRESERVE_RECENT_TOOL_MESSAGES;
   const minToolContentLength = options.minToolContentLength ?? DEFAULT_MIN_TOOL_CONTENT_LENGTH;

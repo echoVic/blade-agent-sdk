@@ -11,12 +11,21 @@ export {
   isBuiltinProviderType,
   PROVIDER_TYPES,
 } from './config.js';
+export type {
+  ConversationMessage,
+  ConversationMessageSource,
+} from './conversation.js';
+export {
+  CONVERSATION_MESSAGE_SOURCES,
+  isConversationMessageSource,
+} from './conversation.js';
 export type { ModelIdentity } from './identity.js';
 export { resolveModelIdentity } from './identity.js';
 export type {
   ModelContent,
   ModelImageContent,
   ModelMessage,
+  ModelMessageProviderOptions,
   ModelStreamToolCall,
   ModelTextContent,
   ModelToolCall,

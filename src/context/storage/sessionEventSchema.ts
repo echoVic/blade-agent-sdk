@@ -110,6 +110,21 @@ const SessionEventSchema = z.discriminatedUnion('type', [
             })
             .passthrough()
             .optional(),
+          providerOptions: z.record(z.string(), JsonValueSchema).optional(),
+          provenance: z
+            .object({
+              source: z.enum(['catalog', 'tool_injection', 'compaction_summary']),
+            })
+            .strict()
+            .optional(),
+          correlation: z
+            .object({
+              inputId: InputIdSchema,
+              requestId: RequestIdSchema,
+            })
+            .strict()
+            .optional(),
+          extensions: z.record(z.string(), JsonValueSchema).optional(),
           customMetadata: z.record(z.string(), JsonValueSchema).optional(),
         })
         .passthrough(),

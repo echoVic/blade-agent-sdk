@@ -348,12 +348,15 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ModelConfig` | Registry 中可注册、可切换的模型描述 |
 | `ModelServiceConfig` | 传给 Provider adapter 的模型请求配置 |
 | `ModelService` | Provider adapter 返回的聊天服务契约 |
-| `ModelMessage` / `ModelContent` / `ModelToolCall` | Provider 无关的模型消息与工具调用 |
+| `ModelMessage` / `ModelContent` / `ModelToolCall` | Provider 无关的模型请求负载与工具调用 |
+| `ConversationMessage` | Agent/Session 消息信封，包含来源、关联、遥测和扩展字段 |
+| `ConversationMessageSource` | 受控的会话消息来源类型 |
+| `CONVERSATION_MESSAGE_SOURCES` / `isConversationMessageSource` | 消息来源枚举与类型守卫 |
 | `ModelTextContent` / `ModelImageContent` | 文本与图片内容 part |
 | `ModelToolCallDelta` / `ModelStreamToolCall` | 流式工具调用增量与聚合类型 |
 | `ModelResponse` / `ModelStreamChunk` | 非流式响应与流式增量 |
 | `ModelToolDefinition` | 传给模型的函数定义 |
-| `ModelProviderOptions` / `ModelSideQueryOptions` | Provider 扩展和 side query 选项 |
+| `ModelProviderOptions` / `ModelMessageProviderOptions` / `ModelSideQueryOptions` | 配置级、消息级 Provider 扩展和 side query 选项 |
 | `ModelRetryConfig` / `ModelRetryEvent` / `QuerySource` | 模型重试策略、可观察事件与查询来源 |
 | `ModelIdentity` | 生成 assistant 消息的 Provider、API adapter 与模型身份 |
 | `ModelUsage` | Provider 返回的原始 token 用量 |

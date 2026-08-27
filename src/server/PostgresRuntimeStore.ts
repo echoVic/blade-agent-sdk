@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
 import type { ContextData } from '../context/types.js';
-import type { ModelContent, ModelMessage } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
+import type { ModelContent } from '../model/message.js';
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentCommandResult,
@@ -327,7 +328,7 @@ function initialSessionState(
 function appendMessage(
   state: SessionState,
   messageId: MessageId,
-  message: ModelMessage,
+  message: ConversationMessage,
   createdAt: number,
   parentMessageId?: MessageId,
 ): void {
@@ -342,16 +343,34 @@ function appendMessage(
   state.lastActivity = createdAt;
 }
 
-function messageMetadata(metadata?: SessionRepositoryMessageMetadata): JsonValue | undefined {
+function messageEnvelope(
+  metadata?: SessionRepositoryMessageMetadata,
+): Pick<
+  ConversationMessage,
+  'providerOptions' | 'provenance' | 'correlation' | 'telemetry' | 'extensions'
+> {
   if (!metadata) {
-    return undefined;
+    return {};
   }
-  const result: JsonObject = {
-    ...(metadata.model ? { model: metadata.model } : {}),
-    ...(metadata.usage ? { usage: metadata.usage } : {}),
-    ...(metadata.customMetadata ?? {}),
+  const model = metadata.modelIdentity?.model ?? metadata.model;
+  return {
+    providerOptions: metadata.providerOptions,
+    provenance: metadata.provenance,
+    correlation: metadata.correlation,
+    telemetry:
+      model || metadata.usage
+        ? {
+            model,
+            usage: metadata.usage
+              ? {
+                  inputTokens: metadata.usage.input_tokens,
+                  outputTokens: metadata.usage.output_tokens,
+                }
+              : undefined,
+          }
+        : undefined,
+    extensions: metadata.extensions,
   };
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 export class PostgresRuntimeStore implements RuntimeStore {
@@ -2186,10 +2205,10 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             content: structuredClone(content),
             reasoningContent: metadata?.reasoningContent,
             tool_calls: metadata?.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
-            metadata: messageMetadata(metadata),
             modelIdentity: metadata?.modelIdentity
               ? structuredClone(metadata.modelIdentity)
               : undefined,
+            ...messageEnvelope(metadata),
           },
           now,
           parentMessageId ?? undefined,
@@ -2242,7 +2261,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             id: messageId,
             role: 'user',
             content: structuredClone(content),
-            metadata: { inputId, requestId },
+            correlation: { inputId, requestId },
           },
           now,
           parentMessageId ?? undefined,
@@ -2397,9 +2416,12 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
             id: messageId,
             role: 'system',
             content: summary,
-            metadata: {
-              ...metadata,
-              _systemSource: 'compaction_summary',
+            provenance: { source: 'compaction_summary' },
+            extensions: {
+              trigger: metadata.trigger,
+              preTokens: metadata.preTokens,
+              ...(metadata.postTokens !== undefined ? { postTokens: metadata.postTokens } : {}),
+              ...(metadata.filesIncluded ? { filesIncluded: metadata.filesIncluded } : {}),
             },
           },
           now,
@@ -2449,7 +2471,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     return this.runtime.loadSessionState(this.tenantId, sessionId);
   }
 
-  async loadMessages(sessionId: SessionId): Promise<ModelMessage[]> {
+  async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages.map((message) => cloneMessage(message)) ?? [];
   }

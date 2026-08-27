@@ -14,7 +14,8 @@ import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import type { ModelConfig, ProviderConnectionConfig } from '../model/config.js';
-import type { ModelContent, ModelMessage } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
+import type { ModelContent } from '../model/message.js';
 import type { TokenUsage } from '../model/usage.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
@@ -62,8 +63,8 @@ import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecove
 import { resolveDurableStoreTimeoutMs } from './events/DurableStoreOperation.js';
 import {
   type DurableRequestFinish,
-  DurableSessionRecoveryRequiredError,
   durableRequestFinishFromLoopResult,
+  DurableSessionRecoveryRequiredError,
   SessionDurableRecorder,
   SessionDurableRecorderError,
 } from './events/SessionDurableRecorder.js';
@@ -163,7 +164,7 @@ class Session implements ISession {
   readonly sessionId: SessionId;
   private agent: Agent | null = null;
   private runtime: SessionRuntime | null = null;
-  private _messages: ModelMessage[] = [];
+  private _messages: ConversationMessage[] = [];
   private readonly options: SessionOptions;
   private readonly store: SessionRepository;
   private readonly eventStore: SessionEventStore;
@@ -261,7 +262,7 @@ class Session implements ISession {
     this.logger = this.rootLogger.child(LogCategory.AGENT);
   }
 
-  get messages(): ModelMessage[] {
+  get messages(): ConversationMessage[] {
     return [...this._messages];
   }
 
@@ -431,14 +432,7 @@ class Session implements ISession {
     const durableProjection = this.durableJournal?.getProjection();
     const reconciledHistoryInputIds = new Set<string>(durableProjection?.reconciledInputIds ?? []);
     this._messages = (state?.messages ?? []).filter((message) => {
-      const metadata = message.metadata;
-      const messageInputId =
-        typeof metadata === 'object' &&
-        metadata !== null &&
-        !Array.isArray(metadata) &&
-        typeof metadata.inputId === 'string'
-          ? metadata.inputId
-          : null;
+      const messageInputId = message.correlation?.inputId ?? null;
       return messageInputId === null || !reconciledHistoryInputIds.has(messageInputId);
     });
     // Durable acceptance is authoritative. The legacy queue remains a
@@ -2434,7 +2428,7 @@ class Session implements ISession {
     return forkedSession;
   }
 
-  private cloneSnapshotMessages(snapshot: SessionSnapshot | null): ModelMessage[] {
+  private cloneSnapshotMessages(snapshot: SessionSnapshot | null): ConversationMessage[] {
     if (!snapshot) {
       return [];
     }

@@ -56,24 +56,8 @@ export function cloneToolCall(toolCall: ModelToolCall): ModelToolCall {
 }
 
 /**
- * Deep-clone `ModelMessage['content']` (string passthrough, array cloned).
- */
-function cloneContent(content: ModelMessage['content']): ModelMessage['content'] {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  return content.map(cloneContentPart);
-}
-
-/**
  * Deep-clone a full ModelMessage.
  */
-export function cloneMessage(message: ModelMessage): ModelMessage {
-  return {
-    ...message,
-    content: cloneContent(message.content),
-    tool_calls: message.tool_calls?.map(cloneToolCall),
-    metadata: cloneJsonValue(message.metadata),
-  };
+export function cloneMessage<T extends ModelMessage>(message: T): T {
+  return structuredClone(message);
 }

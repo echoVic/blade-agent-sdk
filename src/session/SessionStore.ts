@@ -1,20 +1,30 @@
-import * as fs from 'node:fs/promises';
 import { JSONLStore, JSONLStoreError } from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
-import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import * as fs from 'node:fs/promises';
+import {
+  type ConversationMessage,
+  isConversationMessageSource,
+} from '../model/conversation.js';
+import type {
+  ModelContent,
+  ModelMessage,
+  ModelToolCall,
+} from '../model/message.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { MessageRole } from '../types/constants.js';
 import {
   type EventId,
+  InputId,
   MessageId,
   type PartId,
+  RequestId,
   SessionId,
   ToolUseId,
 } from '../types/identifiers.js';
-import type { JsonValue } from '../types/json.js';
+import type { JsonObject, JsonValue } from '../types/json.js';
 import type {
   PersistedPendingInput,
   TranscriptEvent,
@@ -26,7 +36,7 @@ interface SessionTimelineEntry {
   id: MessageId;
   parentMessageId?: MessageId;
   createdAt: number;
-  message: ModelMessage;
+  message: ConversationMessage;
 }
 
 interface SessionToolCallState {
@@ -60,7 +70,7 @@ export interface SessionSummary {
 
 export interface SessionSnapshot {
   sessionId: SessionId;
-  messages: ModelMessage[];
+  messages: ConversationMessage[];
   messageIds: MessageId[];
   lastActivity: number;
   summary?: string;
@@ -78,7 +88,7 @@ export interface SessionState extends SessionSnapshot {
 
 export interface SessionStore {
   loadState(sessionId: SessionId): Promise<SessionState | null>;
-  loadMessages(sessionId: SessionId): Promise<ModelMessage[]>;
+  loadMessages(sessionId: SessionId): Promise<ConversationMessage[]>;
   forkState(
     sessionId: SessionId,
     options?: { messageId?: MessageId },
@@ -92,7 +102,7 @@ export class NoopSessionStore implements SessionStore {
     return null;
   }
 
-  async loadMessages(_sessionId: SessionId): Promise<ModelMessage[]> {
+  async loadMessages(_sessionId: SessionId): Promise<ConversationMessage[]> {
     return [];
   }
 
@@ -116,7 +126,7 @@ interface MessageRecord {
   id: MessageId;
   parentMessageId?: MessageId;
   createdAt: number;
-  message: ModelMessage;
+  message: ConversationMessage;
 }
 
 function toTimestamp(value: string | undefined, fallback: string): number {
@@ -179,8 +189,36 @@ function stringifyContent(value: unknown): string {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function legacyMessageEnvelope(
+  metadata?: JsonObject,
+): Pick<ConversationMessage, 'providerOptions' | 'provenance' | 'correlation' | 'extensions'> {
+  if (!metadata) {
+    return {};
+  }
+
+  const { _systemSource, inputId, requestId, deepseekCache, deepseek, ...extensions } = metadata;
+  const deepseekOptions = isJsonObject(deepseek) ? deepseek : undefined;
+  return {
+    providerOptions:
+      deepseekOptions || deepseekCache !== undefined
+        ? {
+            deepseek: {
+              ...deepseekOptions,
+              ...(deepseekCache !== undefined ? { cache: deepseekCache } : {}),
+            },
+          }
+        : undefined,
+    provenance: isConversationMessageSource(_systemSource) ? { source: _systemSource } : undefined,
+    correlation:
+      typeof inputId === 'string' && typeof requestId === 'string'
+        ? { inputId: InputId(inputId), requestId: RequestId(requestId) }
+        : undefined,
+    extensions: Object.keys(extensions).length > 0 ? extensions : undefined,
+  };
 }
 
 function inferRole(partType: string): MessageRole {
@@ -194,7 +232,7 @@ function inferRole(partType: string): MessageRole {
   }
 }
 
-function isEmptyAssistantMessage(message: ModelMessage): boolean {
+function isEmptyAssistantMessage(message: ConversationMessage): boolean {
   return (
     message.role === 'assistant' &&
     message.content === '' &&
@@ -216,7 +254,7 @@ interface ToolOccurrencePlan {
 }
 
 function getPartToolCallId(part: TranscriptPart): ToolUseId {
-  const payload = isRecord(part.payload) ? part.payload : {};
+  const payload = isJsonObject(part.payload) ? part.payload : {};
   return ToolUseId(typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId);
 }
 
@@ -376,15 +414,23 @@ export class JsonlSessionStore implements SessionStore {
         record.message.id = data.messageId;
         record.message.modelIdentity = data.modelIdentity ? { ...data.modelIdentity } : undefined;
 
-        if (data.model || data.usage || data.customMetadata) {
-          record.message.metadata = {
-            ...(data.model ? { model: data.model } : {}),
-            ...(data.usage ? { usage: data.usage } : {}),
-            ...(data.customMetadata && typeof data.customMetadata === 'object'
-              ? (data.customMetadata as Record<string, unknown>)
-              : {}),
-          };
-        }
+        const legacyEnvelope = legacyMessageEnvelope(data.customMetadata);
+        record.message.providerOptions = data.providerOptions ?? legacyEnvelope.providerOptions;
+        record.message.provenance = data.provenance ?? legacyEnvelope.provenance;
+        record.message.correlation = data.correlation ?? legacyEnvelope.correlation;
+        record.message.telemetry =
+          data.model || data.usage
+            ? {
+                model: data.model,
+                usage: data.usage
+                  ? {
+                      inputTokens: data.usage.input_tokens,
+                      outputTokens: data.usage.output_tokens,
+                    }
+                  : undefined,
+              }
+            : undefined;
+        record.message.extensions = data.extensions ?? legacyEnvelope.extensions;
 
         continue;
       }
@@ -522,7 +568,7 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  async loadMessages(sessionId: SessionId): Promise<ModelMessage[]> {
+  async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages ?? [];
   }
@@ -626,7 +672,7 @@ export class JsonlSessionStore implements SessionStore {
 
     switch (part.partType) {
       case 'reasoning': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         const text = typeof payload.text === 'string' ? payload.text : '';
         record.message.role = 'assistant';
         record.message.reasoningContent = record.message.reasoningContent
@@ -635,8 +681,8 @@ export class JsonlSessionStore implements SessionStore {
         break;
       }
       case 'text': {
-        const payload = isRecord(part.payload) ? part.payload : {};
-        const providerOptions = isRecord(payload.providerOptions)
+        const payload = isJsonObject(part.payload) ? part.payload : {};
+        const providerOptions = isJsonObject(payload.providerOptions)
           ? (payload.providerOptions as Extract<ModelContent, { type: 'text' }>['providerOptions'])
           : undefined;
         const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
@@ -648,7 +694,7 @@ export class JsonlSessionStore implements SessionStore {
         break;
       }
       case 'image': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         // `dataUrl` is the canonical field written by PersistentStore; `url` is
         // accepted as a legacy / external-source fallback.
         const url =
@@ -667,7 +713,7 @@ export class JsonlSessionStore implements SessionStore {
         break;
       }
       case 'tool_call': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         const toolName = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
         const toolCallId = ToolUseId(
           typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
@@ -700,7 +746,7 @@ export class JsonlSessionStore implements SessionStore {
         break;
       }
       case 'tool_result': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         const toolCallId = ToolUseId(
           typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
         );
@@ -729,19 +775,27 @@ export class JsonlSessionStore implements SessionStore {
         break;
       }
       case 'summary': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         const text = typeof payload.text === 'string' ? payload.text : '';
         record.message.role = 'system';
         record.message.content = text;
-        if (payload.metadata !== undefined) {
-          record.message.metadata = payload.metadata as JsonValue;
-        }
+        const legacyEnvelope = legacyMessageEnvelope(
+          isJsonObject(payload.metadata) ? payload.metadata : undefined,
+        );
+        record.message.provenance =
+          (isJsonObject(payload.provenance) &&
+          isConversationMessageSource(payload.provenance.source)
+            ? { source: payload.provenance.source }
+            : undefined) ?? legacyEnvelope.provenance;
+        record.message.extensions =
+          (isJsonObject(payload.extensions) ? payload.extensions : undefined) ??
+          legacyEnvelope.extensions;
         summaryMessageIds.add(record.id);
         onSummary(text);
         break;
       }
       case 'subtask_ref': {
-        const payload = isRecord(part.payload) ? part.payload : {};
+        const payload = isJsonObject(part.payload) ? part.payload : {};
         const childSessionId =
           typeof payload.childSessionId === 'string' ? payload.childSessionId : undefined;
         const agentType = typeof payload.agentType === 'string' ? payload.agentType : undefined;
@@ -777,7 +831,7 @@ export class JsonlSessionStore implements SessionStore {
   private getLastSummaryForIds(
     messageIds: string[],
     summaryMessageIds: Set<string>,
-    timeline: Array<{ id: string; message: ModelMessage }>,
+    timeline: Array<{ id: string; message: ConversationMessage }>,
   ): string | undefined {
     for (let index = messageIds.length - 1; index >= 0; index -= 1) {
       const messageId = messageIds[index];

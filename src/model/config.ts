@@ -31,8 +31,6 @@ export interface ModelProviderOptions {
     strictTools?: boolean;
     cacheOptimization?: JsonObject & {
       enabled?: boolean;
-      stableMetadataKey?: string;
-      stableMetadataValue?: JsonValue;
     };
   };
 }

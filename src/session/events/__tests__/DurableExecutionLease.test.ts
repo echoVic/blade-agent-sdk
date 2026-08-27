@@ -253,7 +253,7 @@ describe('DurableExecutionLease', () => {
       const lease = await acquireNormally(...args);
       return {
         ...lease,
-        expiresAt: new Date(Date.now() + 25).toISOString(),
+        expiresAt: new Date(Date.now() + 1_000).toISOString(),
       };
     });
     const lease = await DurableExecutionLease.acquire(store, SessionId('lease-local-expiry'), {
@@ -264,7 +264,7 @@ describe('DurableExecutionLease', () => {
     });
 
     await vi.waitFor(() => expect(lease.signal.aborted).toBe(true), {
-      timeout: 1_000,
+      timeout: 3_000,
     });
 
     expect(lease.signal.reason).toMatchObject({

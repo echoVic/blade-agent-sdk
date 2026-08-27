@@ -8,7 +8,7 @@ import type {
   OutputFormat,
   ProviderConnectionConfig,
 } from '../model/config.js';
-import type { ModelMessage } from '../model/message.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { TokenUsage } from '../model/usage.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type {
@@ -158,7 +158,7 @@ export type SessionStreamEvent =
       type: 'tool_new_messages';
       id: ToolUseId;
       name: string;
-      messages: ModelMessage[];
+      messages: ConversationMessage[];
       sessionId: SessionId;
     }
   | {
@@ -360,7 +360,7 @@ export interface SessionHandoffResult {
 
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
-  readonly messages: ModelMessage[];
+  readonly messages: ConversationMessage[];
   readonly isClosed: boolean;
 
   send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission>;

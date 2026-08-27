@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { ContextData } from '../context/types.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
 import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
 import type { MessageRole } from '../types/constants.js';
@@ -29,7 +30,10 @@ export interface SessionRepositoryMessageMetadata {
   model?: string;
   modelIdentity?: ModelIdentity;
   usage?: { input_tokens: number; output_tokens: number };
-  customMetadata?: JsonObject;
+  providerOptions?: ModelMessage['providerOptions'];
+  provenance?: ConversationMessage['provenance'];
+  correlation?: ConversationMessage['correlation'];
+  extensions?: JsonObject;
   reasoningContent?: string;
   toolCalls?: ModelToolCall[];
 }

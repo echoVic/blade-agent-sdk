@@ -10,6 +10,7 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import type { ProviderType } from '../model/config.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelMessage } from '../model/message.js';
 import { createModelService } from '../services/createModelService.js';
 import { wrapModelServiceWithTimeouts } from '../services/ModelServiceTimeout.js';
@@ -78,11 +79,11 @@ export interface CompactionResult {
   /** 包含的文件列表 */
   filesIncluded: string[];
   /** 压缩后的消息列表（用于发送给 LLM） */
-  compactedMessages: ModelMessage[];
+  compactedMessages: ConversationMessage[];
   /** compact_boundary 消息（用于保存到 JSONL） */
-  boundaryMessage: ModelMessage;
+  boundaryMessage: ConversationMessage;
   /** summary 消息（用于保存到 JSONL） */
-  summaryMessage: ModelMessage;
+  summaryMessage: ConversationMessage;
   /** 错误信息（如果失败） */
   error?: string;
 }
@@ -103,10 +104,10 @@ const FALLBACK_RETAIN_PERCENT = 0.3;
  * @param retainPercent - 保留比例（0-1）
  * @returns 过滤后的保留消息
  */
-export function retainRecentMessages(
-  messages: ModelMessage[],
+export function retainRecentMessages<TMessage extends ModelMessage>(
+  messages: TMessage[],
   retainPercent: number,
-): ModelMessage[] {
+): TMessage[] {
   const retainCount = Math.ceil(messages.length * retainPercent);
   const candidateMessages = messages.slice(-retainCount);
 
@@ -135,7 +136,7 @@ export function retainRecentMessages(
  * @returns 压缩结果
  */
 export async function compact(
-  messages: ModelMessage[],
+  messages: ConversationMessage[],
   options: CompactionOptions,
 ): Promise<CompactionResult> {
   options.signal?.throwIfAborted();
@@ -341,9 +342,9 @@ export async function compact(
 }
 
 export function microcompactMessages(
-  messages: ModelMessage[],
+  messages: ConversationMessage[],
   options: MicrocompactOptions = {},
-): MicrocompactResult {
+): MicrocompactResult<ConversationMessage> {
   return microcompact(messages, options);
 }
 
@@ -503,12 +504,13 @@ function createBoundaryMessage(
   parentId: string,
   trigger: 'auto' | 'manual',
   preTokens: number,
-): ModelMessage {
+): ConversationMessage {
   return {
     id: nanoid(),
     role: 'system',
     content: 'Conversation compacted',
-    metadata: {
+    provenance: { source: 'compaction_summary' },
+    extensions: {
       type: 'system',
       subtype: 'compact_boundary',
       parentId,
@@ -527,12 +529,12 @@ function createBoundaryMessage(
  * @param summary - 总结内容
  * @returns summary 消息
  */
-function createSummaryMessage(parentId: string, summary: string): ModelMessage {
+function createSummaryMessage(parentId: string, summary: string): ConversationMessage {
   return {
     id: nanoid(),
     role: 'user',
     content: summary,
-    metadata: {
+    extensions: {
       parentId,
       isCompactSummary: true,
     },
@@ -549,7 +551,7 @@ function createSummaryMessage(parentId: string, summary: string): ModelMessage {
  * @returns 压缩结果
  */
 function fallbackCompact(
-  messages: ModelMessage[],
+  messages: ConversationMessage[],
   options: CompactionOptions,
   preTokens: number,
   error: unknown,

@@ -1324,6 +1324,7 @@ describe('agentLoop', () => {
 
       expect(result.success).toBe(true);
       expect(result.finalMessage).toBe('Final answer');
+      expect(result.metadata?.turnsCount).toBe(3);
     });
   });
 
@@ -1587,12 +1588,12 @@ describe('agentLoop', () => {
           content: 'Injected assistant context',
         }),
       );
-      // system newMessages now get _systemSource metadata injected
+      // system newMessages receive typed provenance.
       expect(allMessages[toolIndex + 2]).toEqual(
         expect.objectContaining({
           role: 'system',
           content: 'Injected system context',
-          metadata: expect.objectContaining({ _systemSource: 'tool_injection' }),
+          provenance: { source: 'tool_injection' },
         }),
       );
     });

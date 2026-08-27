@@ -792,7 +792,11 @@ describe('DeepSeek 离线逻辑测试', () => {
       const messages: ModelMessage[] = [
         { role: 'system', content: 'system prompt' },
         { role: 'user', content: 'volatile user message' },
-        { role: 'user', content: 'stable message', metadata: { deepseekCache: 'stable' } },
+        {
+          role: 'user',
+          content: 'stable message',
+          providerOptions: { deepseek: { cache: 'stable' } },
+        },
       ];
 
       const optimized = optimizeDeepSeekCachePrefix(messages);

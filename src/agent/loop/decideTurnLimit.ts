@@ -1,25 +1,26 @@
-import type { ModelMessage } from '../../model/message.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { LoopResult, TurnLimitResponse } from '../types.js';
 
 type TurnLimitReachedHandler = (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-type TurnLimitCompactHandler = (ctx: { contextMessages: ModelMessage[] }) => Promise<{
+type TurnLimitCompactHandler = (ctx: { contextMessages: ConversationMessage[] }) => Promise<{
   success: boolean;
-  compactedMessages?: ModelMessage[];
-  continueMessage?: ModelMessage;
+  compactedMessages?: ConversationMessage[];
+  continueMessage?: ConversationMessage;
 }>;
 
 export type TurnLimitDecision =
   | { action: 'stop'; result: LoopResult }
   | {
       action: 'compact_and_continue';
-      compactedMessages?: ModelMessage[];
-      continueMessage?: ModelMessage;
+      compactedMessages?: ConversationMessage[];
+      continueMessage?: ConversationMessage;
     };
 
 interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
-  contextMessages: ModelMessage[];
+  totalTurnsCount: number;
+  contextMessages: ConversationMessage[];
   toolCallsCount: number;
   startTime: number;
   totalTokens: number;
@@ -31,6 +32,7 @@ export async function decideTurnLimit(input: DecideTurnLimitInput): Promise<Turn
   const {
     maxTurns,
     turnsCount,
+    totalTurnsCount,
     contextMessages,
     toolCallsCount,
     startTime,
@@ -66,7 +68,7 @@ export async function decideTurnLimit(input: DecideTurnLimitInput): Promise<Turn
       result: {
         success: true,
         metadata: {
-          turnsCount,
+          turnsCount: totalTurnsCount,
           toolCallsCount,
           duration: Date.now() - startTime,
           tokensUsed: totalTokens,
@@ -86,7 +88,7 @@ export async function decideTurnLimit(input: DecideTurnLimitInput): Promise<Turn
         message: `达到最大轮次限制 (${maxTurns})`,
       },
       metadata: {
-        turnsCount,
+        turnsCount: totalTurnsCount,
         toolCallsCount,
         duration: Date.now() - startTime,
         tokensUsed: totalTokens,

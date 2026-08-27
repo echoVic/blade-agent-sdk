@@ -8,6 +8,7 @@ import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
+import type { ConversationMessage } from '../../model/conversation.js';
 import type { ModelMessage } from '../../model/message.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
@@ -29,7 +30,7 @@ import type { BladeConfig } from '../config.js';
 import { LoopRunner } from '../LoopRunner.js';
 import type { ModelManager } from '../ModelManager.js';
 import { ConversationState } from '../state/ConversationState.js';
-import type { AgentOptions, ChatContext } from '../types.js';
+import type { AgentOptions, ChatContext, UserMessageContent } from '../types.js';
 
 // ===== Mock Factories =====
 
@@ -49,7 +50,7 @@ interface MockToolResult {
   effects?: ToolEffect[];
   runtimePatch?: unknown;
   contextPatch?: unknown;
-  newMessages?: ModelMessage[];
+  newMessages?: ConversationMessage[];
 }
 
 function mockToolExecution<TArgs extends unknown[]>(
@@ -246,6 +247,26 @@ describe('LoopRunner', () => {
       await runner.runLoop('Test message', context);
 
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
+    });
+
+    it('persists provider-specific non-text user content', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const message = [
+        { type: 'file', data: 'provider-specific-payload' },
+      ] as unknown as UserMessageContent;
+
+      await runner.runLoop(message, createContext());
+
+      expect(mm._contextMgr.saveMessage).toHaveBeenCalledWith(
+        SessionId('test-session'),
+        'user',
+        message,
+        null,
+        undefined,
+        undefined,
+      );
     });
 
     it('does not persist input after the explicit request signal is cancelled', async () => {
@@ -508,16 +529,11 @@ describe('LoopRunner', () => {
       expect(context.messages.length).toBeGreaterThan(0);
       // After the loop, context.messages should not contain the root system prompt
       // (it's managed by ConversationState), but may contain non-root system messages
-      // with valid _systemSource (e.g., catalog, tool_injection).
+      // with valid provenance (e.g., catalog, tool_injection).
       const hasRootPrompt = context.messages.some(
         (m) =>
           m.role === 'system' &&
-          !(
-            m.metadata &&
-            typeof m.metadata === 'object' &&
-            !Array.isArray(m.metadata) &&
-            '_systemSource' in m.metadata
-          ),
+          !m.provenance,
       );
       expect(hasRootPrompt).toBe(false);
     });
@@ -2603,7 +2619,7 @@ describe('LoopRunner', () => {
         'system',
         'Injected system context',
         'msg-uuid',
-        { customMetadata: { _systemSource: 'tool_injection' } },
+        { provenance: { source: 'tool_injection' } },
         undefined,
       );
     });

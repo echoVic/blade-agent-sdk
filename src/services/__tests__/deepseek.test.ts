@@ -138,7 +138,11 @@ describe('DeepSeek provider helpers', () => {
     const optimized = optimizeDeepSeekCachePrefix([
       { role: 'system', content: 'policy' },
       { role: 'user', content: 'volatile question' },
-      { role: 'user', content: 'stable repo map', metadata: { deepseekCache: 'stable' } },
+      {
+        role: 'user',
+        content: 'stable repo map',
+        providerOptions: { deepseek: { cache: 'stable' } },
+      },
       { role: 'assistant', content: 'prior answer' },
     ]);
 
@@ -171,8 +175,7 @@ describe('DeepSeek provider helpers', () => {
       chunkPrefix: 'doc',
     })[0]).toMatchObject({
       role: 'user',
-      metadata: {
-        deepseekCache: 'stable',
+      providerOptions: {
         deepseek: {
           cache: 'stable',
           chunkId: 'doc_1',
@@ -201,7 +204,7 @@ describe('DeepSeek provider helpers', () => {
       reserveOutputTokens: 4,
     });
     expect(plan.messages).toHaveLength(2);
-    expect(plan.messages[0]?.metadata).toMatchObject({
+    expect(plan.messages[0]?.providerOptions).toMatchObject({
       deepseek: {
         cache: 'stable',
         chunkId: 'doc_1',
@@ -550,7 +553,11 @@ describe('DeepSeek provider helpers', () => {
       model: 'deepseek-v4-pro',
       messages: [
         { role: 'user', content: 'question' },
-        { role: 'user', content: 'stable repo map', metadata: { deepseekCache: 'stable' } },
+        {
+          role: 'user',
+          content: 'stable repo map',
+          providerOptions: { deepseek: { cache: 'stable' } },
+        },
       ],
     });
 

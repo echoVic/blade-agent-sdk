@@ -8,7 +8,7 @@ owner directly, while package entry points only assemble public contracts.
 
 | Domain | Owner | Representative types |
 |--------|-------|----------------------|
-| Model | `src/model/` | `ModelMessage`, `ModelService`, `ModelUsage`, `ModelServiceConfig` |
+| Model | `src/model/` | `ModelMessage`, `ConversationMessage`, `ModelService`, `ModelUsage` |
 | Agent | `src/agent/` | `AgentEvent`, `AgentConfig`, loop state |
 | Tool | `src/tools/types/` | `Tool`, `ToolDefinition`, `ToolResult`, `ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`, `SessionStreamEvent`, `PromptResult` |
@@ -29,6 +29,7 @@ on Session, local Node.js capabilities, or a concrete provider SDK.
 
 ```ts
 import type {
+  ConversationMessage,
   ModelMessage,
   ModelService,
   ModelServiceConfig,
@@ -46,9 +47,16 @@ Configuration types have distinct responsibilities:
 | `ModelConfig` | A registered, switchable model description |
 | `ModelServiceConfig` | Normalized configuration used by a provider adapter to create `ModelService` |
 | `ModelProviderOptions` | Provider-specific request extensions that remain JSON-safe |
+| `ModelMessage` | Provider-neutral payload sent to a model |
+| `ConversationMessage` | Agent/Session envelope carrying provenance, correlation, telemetry, and extensions |
 
 `ModelUsage` is the raw provider response. `TokenUsage` is the Agent and Session
 budget view. `normalizeModelUsage()` is the single conversion point.
+
+`ModelMessage` has no generic `metadata` dictionary. SDK control fields belong
+in `ConversationMessage.provenance`, `correlation`, or `telemetry`; provider
+hints belong in `providerOptions`. Only application data that does not
+participate in SDK control flow may use `extensions`.
 
 ## Event layers
 
