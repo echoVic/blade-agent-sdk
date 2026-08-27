@@ -11,15 +11,15 @@ import { type PermissionRequestId, SessionId, ToolUseId } from '../../types/iden
 import type { JsonObject } from '../../types/json.js';
 import type { PermissionsConfig } from '../../types/permissions.js';
 import {
-  type CanUseTool,
-  type PermissionResult as CanUseToolResult,
-  createModePermissionHandler,
-  createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
-  type PermissionHandler,
-  type PermissionHandlerRequest,
-  type PermissionUpdate,
+    type CanUseTool,
+    type PermissionResult as CanUseToolResult,
+    createModePermissionHandler,
+    createPathSafetyPermissionHandler,
+    createPermissionHandlerFromCanUseTool,
+    createRuleBasedPermissionHandler,
+    type PermissionHandler,
+    type PermissionHandlerRequest,
+    type PermissionUpdate,
 } from '../../types/permissions.js';
 import { awaitWithAbortSignal, getAbortSignalReason } from '../../utils/abortPromise.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
@@ -27,24 +27,24 @@ import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import { normalizePermissionEffects } from '../types/effects.js';
 import type {
-  ConfirmationDetails,
-  ExecutionContext,
-  ExecutionHistoryEntry,
+    ConfirmationDetails,
+    ExecutionContext,
+    ExecutionHistoryEntry,
 } from '../types/execution.js';
 import {
-  isReadOnlyKind,
-  resolveToolBehaviorSafely,
-  type ToolBehavior,
-  ToolKind,
-  ToolSideEffect,
+    isReadOnlyKind,
+    resolveToolBehaviorSafely,
+    type ToolBehavior,
+    ToolKind,
+    ToolSideEffect,
 } from '../types/kind.js';
 import type { ToolExecution, ToolResult, ToolYield } from '../types/result.js';
 import { ToolErrorType, validationErrorToToolResult } from '../types/result.js';
 import type { Tool, ToolInvocation } from '../types/tool.js';
 import {
-  type ConcurrencyLease,
-  type ConcurrencyLimits,
-  ConcurrencyScheduler,
+    type ConcurrencyLease,
+    type ConcurrencyLimits,
+    ConcurrencyScheduler,
 } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { type FileLockLease, FileLockManager } from './FileLockManager.js';
@@ -114,7 +114,14 @@ export interface ConfirmationReasonEntry {
 }
 
 /**
- * 执行管道
+ * Executes tools through middleware, validation, permission, locking, and Hook boundaries.
+ *
+ * A failed execution-lease assertion or Hook process-containment cleanup permanently
+ * quarantines this instance. Once quarantined, every later execution fails with the
+ * original terminal error. The pipeline cannot be reset safely because ownership or
+ * process containment is no longer provable; callers must stop using the owning Agent
+ * or Session runtime and create a new one. Closing the quarantined runtime may report
+ * the same terminal failure.
  */
 export class ExecutionPipeline {
   private executionHistory: ExecutionHistoryEntry[] = [];
@@ -456,35 +463,12 @@ export class ExecutionPipeline {
 
     await state.context.assertExecutionLease?.();
 
-    // 检查工具是否需要文件锁
     const resolvedBehavior = resolveToolBehaviorSafely(tool, request.input);
-    const filePath =
-      typeof request.input.file_path === 'string' && request.input.file_path.trim() !== ''
-        ? String(request.input.file_path)
-        : null;
-    const lockMode =
-      resolvedBehavior?.isReadOnly === true && resolvedBehavior.isConcurrencySafe
-        ? 'read'
-        : 'write';
-
     const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
     let concurrencyLease: ConcurrencyLease | undefined;
-    let fileLease: FileLockLease | undefined;
 
     try {
       concurrencyLease = await this.scheduler.acquire(toolKind, state.context.signal);
-      this.throwIfTerminalCleanupFailed();
-      state.context.signal?.throwIfAborted();
-      if (this.hasPendingCleanup()) {
-        return this.createPendingCleanupResult();
-      }
-      fileLease = filePath
-        ? await FileLockManager.getInstance(this.logger).acquire(
-            filePath,
-            lockMode,
-            state.context.signal,
-          )
-        : undefined;
       this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
@@ -515,7 +499,6 @@ export class ExecutionPipeline {
       }
       throw error;
     } finally {
-      fileLease?.release();
       concurrencyLease?.release();
     }
   }
@@ -527,6 +510,7 @@ export class ExecutionPipeline {
     state: PipelineExecutionState,
     executionId: string,
   ): ToolExecution {
+    let fileLease: FileLockLease | undefined;
     try {
       await this.applyPreToolUseHooks(state, executionId);
       this.throwIfTerminalCleanupFailed();
@@ -548,6 +532,44 @@ export class ExecutionPipeline {
       if (!state.result) {
         await this.resolveConfirmation(state);
         this.throwIfTerminalCleanupFailed();
+      }
+      if (!state.result) {
+        const filePath = getFileLockPath(state.params);
+        const lockMode =
+          state.resolvedBehavior?.isReadOnly === true &&
+          state.resolvedBehavior.isConcurrencySafe
+            ? 'read'
+            : 'write';
+        try {
+          fileLease = filePath
+            ? await FileLockManager.getInstance(this.logger).acquire(
+                filePath,
+                lockMode,
+                state.context.signal,
+              )
+            : undefined;
+        } catch (error) {
+          if (state.context.signal?.aborted) {
+            const isInterrupt = isSteeringInterruptSignal(state.context.signal);
+            state.result = this.createAbortedResult(
+              isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+              {
+                errorType: isInterrupt
+                  ? ToolErrorType.INTERRUPTED
+                  : ToolErrorType.EXECUTION_ERROR,
+              },
+            );
+          } else {
+            throw error;
+          }
+        }
+        this.throwIfTerminalCleanupFailed();
+        if (!state.result) {
+          state.context.signal?.throwIfAborted();
+        }
+        if (this.hasPendingCleanup()) {
+          state.result = this.createPendingCleanupResult();
+        }
       }
       if (!state.result) {
         yield* this.executeInvocation(state);
@@ -640,6 +662,8 @@ export class ExecutionPipeline {
       }
 
       return errorResult;
+    } finally {
+      fileLease?.release();
     }
   }
 
@@ -743,6 +767,7 @@ export class ExecutionPipeline {
         state.result = validationErrorToToolResult(validationError);
         return;
       }
+      this.syncInvocationState(state, invocation);
 
       const toolPermissionResult = state.tool.checkPermissions
         ? await this.awaitPermissionCallback(
@@ -756,6 +781,11 @@ export class ExecutionPipeline {
       if (toolPermissionUpdatedInput) {
         Object.assign(state.params, toolPermissionUpdatedInput);
         this.rebuildInvocationState(state);
+        const updatedValidationError = await this.validateCurrentInvocation(state);
+        if (updatedValidationError) {
+          state.result = validationErrorToToolResult(updatedValidationError);
+          return;
+        }
       }
 
       if (toolPermissionResult?.behavior === 'deny') {
@@ -848,17 +878,36 @@ export class ExecutionPipeline {
       return;
     }
 
-    const affectedPaths = state.invocation.getAffectedPaths() || [];
-
     if (this.permissionHandlers.length > 0) {
       for (const permissionHandler of this.permissionHandlers) {
-        const request = this.buildPermissionRequest(state, affectedPaths);
+        const previousAffectedPaths = [...state.affectedPaths];
+        const request = this.buildPermissionRequest(state, state.affectedPaths);
         const result = await this.awaitPermissionCallback(
           () => permissionHandler(request),
           state.context.signal,
         );
-        await this.handlePermissionHandlerResult(result, state, request);
+        await this.handlePermissionHandlerResult(result, state);
         if (state.result) {
+          return;
+        }
+        try {
+          this.rebuildInvocationState(state);
+          const validationError = await this.validateCurrentInvocation(state);
+          if (validationError) {
+            state.result = validationErrorToToolResult(validationError);
+            return;
+          }
+          if (!samePaths(previousAffectedPaths, state.affectedPaths)) {
+            state.result = this.createAbortedResult(
+              'Permission handlers cannot change filesystem paths after path authorization',
+            );
+            return;
+          }
+          this.syncPermissionRequest(request, state);
+        } catch (error) {
+          state.result = this.createAbortedResult(
+            `Permission handler updated parameters are invalid: ${getErrorMessage(error)}`,
+          );
           return;
         }
       }
@@ -869,7 +918,7 @@ export class ExecutionPipeline {
       return;
     }
 
-    await this.handleLegacyConfirmation(state, affectedPaths);
+    await this.handleLegacyConfirmation(state, state.affectedPaths);
   }
 
   private async *executeInvocation(
@@ -1199,6 +1248,14 @@ export class ExecutionPipeline {
   private rebuildInvocationState(state: PipelineExecutionState): void {
     const invocation = state.tool.build(state.params);
     state.invocation = invocation;
+    this.syncInvocationState(state, invocation);
+  }
+
+  private syncInvocationState(
+    state: PipelineExecutionState,
+    invocation: ToolInvocation,
+  ): void {
+    state.params = toParamsRecord(invocation.params, state.params);
     state.resolvedBehavior = resolveToolBehaviorSafely(state.tool, invocation.params);
     state.affectedPaths = invocation.getAffectedPaths() || [];
     state.permissionSignature = buildPermissionSignature(
@@ -1206,6 +1263,23 @@ export class ExecutionPipeline {
       toParamsRecord(invocation.params, state.params),
       state.tool,
     );
+  }
+
+  private async validateCurrentInvocation(
+    state: PipelineExecutionState,
+  ): Promise<Awaited<ReturnType<NonNullable<ToolInvocation['validate']>>>> {
+    const invocation = state.invocation;
+    if (!invocation?.validate) {
+      return undefined;
+    }
+    const validationError = await this.awaitPermissionCallback(
+      () => invocation.validate?.(state.context),
+      state.context.signal,
+    );
+    if (!validationError) {
+      this.syncInvocationState(state, invocation);
+    }
+    return validationError;
   }
 
   private buildPermissionRequest(
@@ -1237,38 +1311,33 @@ export class ExecutionPipeline {
     };
   }
 
+  private syncPermissionRequest(
+    request: PermissionHandlerRequest,
+    state: PipelineExecutionState,
+  ): void {
+    const resolvedBehavior = state.resolvedBehavior;
+    const toolKind = resolvedBehavior?.kind ?? state.tool.kind ?? ToolKind.Execute;
+    request.input = state.params;
+    request.affectedPaths = state.affectedPaths;
+    request.toolKind = toolKind;
+    request.toolMeta = {
+      sideEffect: resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
+      isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
+      isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? isReadOnlyKind(toolKind),
+      isDestructive: resolvedBehavior?.isDestructive ?? false,
+      signature: state.permissionSignature,
+      description: state.invocation?.getDescription(),
+    };
+  }
+
   private async handlePermissionHandlerResult(
     result: CanUseToolResult,
     state: PipelineExecutionState,
-    request?: PermissionHandlerRequest,
   ): Promise<void> {
     switch (result.behavior) {
       case 'allow':
         if (result.updatedInput) {
           Object.assign(state.params, result.updatedInput);
-          try {
-            this.rebuildInvocationState(state);
-          } catch (error) {
-            state.result = this.createAbortedResult(
-              `Permission handler updated parameters are invalid: ${getErrorMessage(error)}`,
-            );
-            return;
-          }
-          if (request) {
-            request.input = state.params;
-            request.toolMeta = {
-              sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
-              isReadOnly:
-                state.resolvedBehavior?.isReadOnly ??
-                isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
-              isConcurrencySafe:
-                state.resolvedBehavior?.isConcurrencySafe ??
-                isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
-              isDestructive: state.resolvedBehavior?.isDestructive ?? false,
-              signature: state.permissionSignature,
-              description: state.invocation?.getDescription(),
-            };
-          }
         }
         for (const effect of normalizePermissionEffects(result)) {
           if (effect.type === 'permissionUpdates') {
@@ -1687,7 +1756,12 @@ export interface ExecutionPipelineConfig {
   enableMetrics?: boolean;
   permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
+  /**
+   * Full permission callback. When provided, it takes precedence over the
+   * legacy canUseTool callback.
+   */
   permissionHandler?: PermissionHandler;
+  /** Legacy permission callback, used only when permissionHandler is absent. */
   canUseTool?: CanUseTool;
   hookRuntime?: HookRuntime;
   logger?: InternalLogger;
@@ -1774,4 +1848,21 @@ function toParamsRecord(params: unknown, fallback: JsonObject): JsonObject {
   return params && typeof params === 'object' && !Array.isArray(params)
     ? (params as JsonObject)
     : fallback;
+}
+
+function getFileLockPath(params: JsonObject): string | null {
+  for (const key of ['file_path', 'notebook_path'] as const) {
+    const value = params[key];
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+  return null;
+}
+
+function samePaths(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((path, index) => path === right[index])
+  );
 }

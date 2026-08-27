@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { SessionId } from '../../../types/identifiers.js';
 import { collectToolExecution } from '../../types/result.js';
@@ -9,6 +12,22 @@ import { bashTool } from '../shell/bash.js';
 const emptySnapshot = createContextSnapshot(SessionId('session-1'), 'turn-1', {});
 
 describe('tool runtime context guards', () => {
+  let tempRoot: string;
+  let workspaceRoot: string;
+  let outsideRoot: string;
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), 'blade-tool-context-'));
+    workspaceRoot = join(tempRoot, 'workspace');
+    outsideRoot = join(tempRoot, 'outside');
+    await mkdir(workspaceRoot);
+    await mkdir(outsideRoot);
+  });
+
+  afterEach(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
   it('should reject Glob without filesystem capability', async () => {
     const invocation = globTool.build({
       pattern: '**/*.ts',
@@ -55,5 +74,28 @@ describe('tool runtime context guards', () => {
 
     expect(result.status).toBe('error');
     expect(result.error?.message).toBe('No working directory available');
+  });
+
+  it.each([
+    ['Glob', globTool, { pattern: '**/*.ts' }],
+    ['Grep', grepTool, { pattern: 'needle' }],
+  ])('should reject %s paths outside configured filesystem roots', async (_name, tool, params) => {
+    const invocation = tool.build({ ...params, path: outsideRoot });
+    const result = await collectToolExecution(
+      invocation.execute(new AbortController().signal, {
+        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+          capabilities: {
+            filesystem: {
+              roots: [workspaceRoot],
+              cwd: workspaceRoot,
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(result.status).toBe('error');
+    expect(result.error?.type).toBe('permission_denied');
+    expect(result.error?.message).toContain('outside authorized roots');
   });
 });

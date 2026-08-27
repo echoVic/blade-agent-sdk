@@ -1,6 +1,5 @@
 import { basename, extname } from 'node:path';
 import { z } from 'zod';
-import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -8,6 +7,7 @@ import type { ExecutionContext } from '../../types/execution.js';
 import { ToolKind } from '../../types/kind.js';
 import type { ReadMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
+import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
@@ -40,11 +40,17 @@ export const readTool = createTool({
     }),
   ),
 
-  validateInput: (_params, context) => {
-    if (!hasFilesystemCapability(context.contextSnapshot)) {
+  validateInput: async (params, context) => {
+    try {
+      params.file_path = await resolveAuthorizedFilesystemPath(
+        params.file_path,
+        context.contextSnapshot,
+      );
+    } catch (error) {
+      const message = getErrorMessage(error);
       return {
-        message: 'No filesystem access in current context',
-        model: 'No filesystem access in the current runtime context.',
+        message,
+        model: message,
         errorType: ToolErrorType.PERMISSION_DENIED,
       };
     }

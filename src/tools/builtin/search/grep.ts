@@ -19,6 +19,7 @@ import type { ExecutionContext } from '../../types/execution.js';
 import { ToolKind } from '../../types/kind.js';
 import type { GrepMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
+import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
@@ -701,6 +702,39 @@ export const grepTool = createTool({
         ),
     }),
   ),
+
+  validateInput: async (params, context) => {
+    if (!hasFilesystemCapability(context.contextSnapshot)) {
+      return {
+        message: 'No filesystem access in current context',
+        model: 'No filesystem access in the current runtime context.',
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    const searchRoot = params.path ?? context.contextSnapshot?.cwd;
+    if (!searchRoot) {
+      return {
+        message: 'No search path available',
+        model: 'No search path provided and no filesystem working directory is available.',
+        errorType: ToolErrorType.VALIDATION_ERROR,
+      };
+    }
+    try {
+      params.path = await resolveAuthorizedFilesystemPath(
+        searchRoot,
+        context.contextSnapshot,
+        { cwd: context.contextSnapshot?.cwd },
+      );
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        message,
+        model: message,
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    return undefined;
+  },
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

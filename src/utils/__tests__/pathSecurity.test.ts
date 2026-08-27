@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { PathSecurity } from '../pathSecurity.js';
 
 function expectPathSecurityError(fn: () => void): void {
@@ -43,6 +45,12 @@ describe('PathSecurity', () => {
         PathSecurity.normalize('../../../etc/passwd', workspaceRoot);
       });
     });
+
+    it('should reject sibling paths that only share the workspace prefix', () => {
+      expectPathSecurityError(() => {
+        PathSecurity.normalize('/workspace/project-other/file.ts', workspaceRoot);
+      });
+    });
   });
 
   describe('checkRestricted', () => {
@@ -67,6 +75,12 @@ describe('PathSecurity', () => {
     it('should throw for .env.local files', () => {
       expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/.env.local');
+      });
+    });
+
+    it('should compare restricted path segments case-insensitively', () => {
+      expectPathSecurityError(() => {
+        PathSecurity.checkRestricted('/workspace/project/.ENV');
       });
     });
 
@@ -119,8 +133,52 @@ describe('PathSecurity', () => {
       expect(PathSecurity.isWithinWorkspace('/etc/passwd', workspaceRoot)).toBe(false);
     });
 
+    it('should return false for sibling paths sharing the root prefix', () => {
+      expect(
+        PathSecurity.isWithinWorkspace('/workspace/project-other/file.ts', workspaceRoot),
+      ).toBe(false);
+    });
+
     it('should return true for workspace root itself', () => {
       expect(PathSecurity.isWithinWorkspace(workspaceRoot, workspaceRoot)).toBe(true);
+    });
+  });
+
+  describe('resolveSymlink', () => {
+    it('should reject symlinks that escape the workspace', async () => {
+      const tempRoot = await mkdtemp(path.join(tmpdir(), 'blade-path-security-'));
+      const workspace = path.join(tempRoot, 'workspace');
+      const outside = path.join(tempRoot, 'outside');
+      await mkdir(workspace);
+      await mkdir(outside);
+      const outsideFile = path.join(outside, 'secret.txt');
+      const alias = path.join(workspace, 'safe.txt');
+      await writeFile(outsideFile, 'secret');
+      await symlink(outsideFile, alias);
+
+      try {
+        await expect(PathSecurity.resolveSymlink(alias, workspace)).rejects.toMatchObject({
+          code: 'SYMLINK_OUTSIDE_WORKSPACE',
+        });
+      } finally {
+        await rm(tempRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('should reject aliases to restricted files within the workspace', async () => {
+      const tempRoot = await mkdtemp(path.join(tmpdir(), 'blade-path-security-'));
+      const restricted = path.join(tempRoot, '.env');
+      const alias = path.join(tempRoot, 'safe.txt');
+      await writeFile(restricted, 'SECRET=value');
+      await symlink(restricted, alias);
+
+      try {
+        await expect(PathSecurity.resolveSymlink(alias, tempRoot)).rejects.toMatchObject({
+          code: 'RESTRICTED_PATH',
+        });
+      } finally {
+        await rm(tempRoot, { recursive: true, force: true });
+      }
     });
   });
 

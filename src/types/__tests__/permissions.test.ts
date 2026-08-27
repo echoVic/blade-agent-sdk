@@ -154,6 +154,22 @@ describe('createPathSafetyPermissionHandler', () => {
     });
   });
 
+  it('normalizes Windows path separators and case before checking system paths', async () => {
+    const handler = createPathSafetyPermissionHandler();
+
+    const result = await handler(
+      createRequest({
+        affectedPaths: ['c:\\windows\\system32\\drivers\\etc\\hosts'],
+      }),
+    );
+
+    expect(result).toEqual({
+      behavior: 'deny',
+      message:
+        'Access to dangerous system paths denied: c:\\windows\\system32\\drivers\\etc\\hosts',
+    });
+  });
+
   it('denies highly sensitive files without an explicit allow rule', async () => {
     const handler = createPathSafetyPermissionHandler();
 

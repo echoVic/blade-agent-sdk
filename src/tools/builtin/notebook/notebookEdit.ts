@@ -1,9 +1,12 @@
 import * as fs from 'node:fs/promises';
 import { z } from 'zod';
+import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
+import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
  * NotebookEdit tool
@@ -17,11 +20,10 @@ export const notebookEditTool = createTool({
 
   schema: lazySchema(() =>
     z.object({
-      notebook_path: z
-        .string()
-        .describe(
+      notebook_path: ToolSchemas.filePath({
+        description:
           'The absolute path to the Jupyter notebook file to edit (must be absolute, not relative)',
-        ),
+      }),
       cell_id: z
         .string()
         .optional()
@@ -50,6 +52,23 @@ export const notebookEditTool = createTool({
     isConcurrencySafe: false,
     isDestructive: edit_mode === 'delete',
   }),
+
+  validateInput: async (params, context) => {
+    try {
+      params.notebook_path = await resolveAuthorizedFilesystemPath(
+        params.notebook_path,
+        context.contextSnapshot,
+      );
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        message,
+        model: message,
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    return undefined;
+  },
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

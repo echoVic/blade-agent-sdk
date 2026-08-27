@@ -11,6 +11,7 @@ import { PermissionMode } from '../../../types/constants.js';
 import { InputId, PermissionRequestId, SessionId, TurnId } from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { PermissionHandler } from '../../../types/permissions.js';
+import { readTool } from '../../builtin/file/read.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
@@ -18,6 +19,7 @@ import { ToolKind } from '../../types/kind.js';
 import type { ToolResult, ToolYield } from '../../types/result.js';
 import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
 import type { Tool } from '../../types/tool.js';
+import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 import { ExecutionPipeline } from '../ExecutionPipeline.js';
 import { FileLockManager } from '../FileLockManager.js';
@@ -79,6 +81,7 @@ describe('ExecutionPipeline', () => {
         }),
         async *execute({ id }) {
           started.push(id);
+          yield { kind: 'progress', data: { id } };
           yield {
             kind: 'progress',
             data: { id },
@@ -274,6 +277,97 @@ describe('ExecutionPipeline', () => {
     });
     expect(scheduler.getStats()[ToolKind.Write].inFlight).toBe(0);
     expect(FileLockManager.getInstance().isLocked(filePath)).toBe(false);
+  });
+
+  it('locks canonical file targets after input validation', async () => {
+    const registry = new ToolRegistry();
+    const scheduler = new ConcurrencyScheduler({ write: 2 });
+    const firstStarted = deferred();
+    const releaseFirst = deferred();
+    const started: number[] = [];
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pipeline-alias-lock-'));
+    const target = path.join(workspaceRoot, 'target.txt');
+    const alias = path.join(workspaceRoot, 'alias.txt');
+    await fs.writeFile(target, 'original');
+    await fs.symlink(target, alias);
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'CanonicalFileLockTool',
+        displayName: 'Canonical File Lock Tool',
+        kind: ToolKind.Write,
+        sideEffect: 'idempotent',
+        description: { short: 'Canonical file lock tool' },
+        schema: z.object({
+          id: z.number(),
+          file_path: z.string(),
+        }),
+        validateInput: async (params, context) => {
+          params.file_path = await resolveAuthorizedFilesystemPath(
+            params.file_path,
+            context.contextSnapshot,
+          );
+          return undefined;
+        },
+        async *execute({ id }) {
+          started.push(id);
+          yield { kind: 'progress', data: { id } };
+          if (id === 1) {
+            firstStarted.resolve();
+            await releaseFirst.promise;
+          }
+          return { status: 'success', model: String(id) };
+        },
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      scheduler,
+    });
+    const context: ExecutionContext = {
+      permissionMode: PermissionMode.YOLO,
+      contextSnapshot: {
+        sessionId: SessionId('canonical-lock-session'),
+        turnId: TurnId('turn-1'),
+        cwd: workspaceRoot,
+        environment: {},
+        filesystemRoots: [workspaceRoot],
+        context: {
+          capabilities: {
+            filesystem: {
+              roots: [workspaceRoot],
+              cwd: workspaceRoot,
+            },
+          },
+        },
+      },
+    };
+
+    try {
+      const first = executePipeline(
+        pipeline,
+        'CanonicalFileLockTool',
+        { id: 1, file_path: target },
+        context,
+      );
+      await firstStarted.promise;
+      const second = executePipeline(
+        pipeline,
+        'CanonicalFileLockTool',
+        { id: 2, file_path: alias },
+        context,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(started).toEqual([1]);
+
+      releaseFirst.resolve();
+      await expect(first).resolves.toMatchObject({ status: 'success', model: '1' });
+      await expect(second).resolves.toMatchObject({ status: 'success', model: '2' });
+    } finally {
+      releaseFirst.resolve();
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it('does not start pre-tool hooks when cancellation wins during the final lease check', async () => {
@@ -1280,6 +1374,103 @@ describe('ExecutionPipeline', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  it('uses permissionHandler instead of legacy canUseTool when both are configured', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
+    registerTool(
+      registry,
+      createTool({
+        name: 'PermissionPrecedenceTool',
+        displayName: 'Permission Precedence Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Permission precedence tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const permissionHandler = vi.fn(async () => ({
+      behavior: 'deny' as const,
+      message: 'denied by permissionHandler',
+    }));
+    const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler,
+      canUseTool,
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'PermissionPrecedenceTool',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: {
+        message: 'denied by permissionHandler',
+      },
+    });
+    expect(permissionHandler).toHaveBeenCalledOnce();
+    expect(canUseTool).not.toHaveBeenCalled();
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects permission-handler updates that change authorized filesystem paths', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(({ file_path }: { file_path: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: file_path,
+      }),
+    );
+    registerTool(
+      registry,
+      createTool({
+        name: 'PathMutationTool',
+        displayName: 'Path Mutation Tool',
+        kind: ToolKind.Write,
+        sideEffect: 'idempotent',
+        description: { short: 'Path mutation tool' },
+        schema: z.object({
+          file_path: z.string(),
+        }),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async () => ({
+        behavior: 'allow',
+        updatedInput: {
+          file_path: '/tmp/changed.txt',
+        },
+      }),
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'PathMutationTool',
+      { file_path: '/tmp/original.txt' },
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: {
+        message: 'Permission handlers cannot change filesystem paths after path authorization',
+      },
+    });
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
   it('passes resolved tool metadata into permissionHandler and applies updated input', async () => {
     const registry = new ToolRegistry();
     const executeSpy = vi.fn(({ value }: { value: string }) =>
@@ -1820,6 +2011,53 @@ describe('ExecutionPipeline', () => {
     expect(result.status).toBe('error');
     expect(result.error?.message).toContain('Access to dangerous system paths denied');
     expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('applies path safety to the canonical target before locking and execution', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pipeline-canonical-path-'));
+    const sshDirectory = path.join(workspaceRoot, '.ssh');
+    const sensitiveFile = path.join(sshDirectory, 'id_rsa');
+    const alias = path.join(workspaceRoot, 'safe.txt');
+    await fs.mkdir(sshDirectory);
+    await fs.writeFile(sensitiveFile, 'private-key');
+    await fs.symlink(sensitiveFile, alias);
+    const registry = new ToolRegistry();
+    registerTool(registry, readTool);
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+
+    try {
+      const result = await executePipeline(
+        pipeline,
+        'Read',
+        { file_path: alias, encoding: 'utf8' },
+        {
+          permissionMode: PermissionMode.YOLO,
+          contextSnapshot: {
+            sessionId: SessionId('canonical-path-session'),
+            turnId: TurnId('turn-1'),
+            cwd: workspaceRoot,
+            environment: {},
+            filesystemRoots: [workspaceRoot],
+            context: {
+              capabilities: {
+                filesystem: {
+                  roots: [workspaceRoot],
+                  cwd: workspaceRoot,
+                },
+              },
+            },
+          },
+        },
+      );
+
+      expect(result.status).toBe('error');
+      expect(result.error?.message).toContain('highly sensitive files denied');
+      expect(result.model).not.toContain('private-key');
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it('keeps explicit sensitive-path confirmation even after downstream permission allows', async () => {

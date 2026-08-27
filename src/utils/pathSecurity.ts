@@ -27,7 +27,7 @@ export function normalizePath(inputPath: string, workspaceRoot: string): string 
   const normalized = path.normalize(absolutePath);
   const normalizedRoot = path.normalize(workspaceRoot);
 
-  if (!normalized.startsWith(normalizedRoot)) {
+  if (!isWithinWorkspace(normalized, normalizedRoot)) {
     throw new PathSecurityError(
       `Path outside workspace: ${inputPath} (resolved to ${normalized}, workspace: ${normalizedRoot})`,
       'PATH_OUTSIDE_WORKSPACE',
@@ -38,10 +38,10 @@ export function normalizePath(inputPath: string, workspaceRoot: string): string 
 }
 
 export function checkRestricted(absolutePath: string): void {
-  const segments = absolutePath.split(path.sep);
+  const segments = absolutePath.split(path.sep).map((segment) => segment.toLowerCase());
 
   for (const restricted of RESTRICTED_PATHS) {
-    if (segments.includes(restricted)) {
+    if (segments.includes(restricted.toLowerCase())) {
       throw new PathSecurityError(
         `Access denied: "${restricted}" is a protected directory`,
         'RESTRICTED_PATH',
@@ -73,19 +73,21 @@ export async function validatePath(inputPath: string, workspaceRoot: string): Pr
 async function resolveSymlink(absolutePath: string, workspaceRoot: string): Promise<string> {
   try {
     const realPath = await fs.realpath(absolutePath);
-    const normalizedRoot = path.normalize(workspaceRoot);
-    if (!realPath.startsWith(normalizedRoot)) {
+    const normalizedRoot = await fs.realpath(workspaceRoot);
+    if (!isWithinWorkspace(realPath, normalizedRoot)) {
       throw new PathSecurityError(
         `Symlink points outside workspace: ${absolutePath} -> ${realPath}`,
         'SYMLINK_OUTSIDE_WORKSPACE',
       );
     }
+    checkRestricted(realPath);
     return realPath;
   } catch (error) {
-    if (error instanceof PathSecurityError) {
-      throw error;
-    }
-    return absolutePath;
+    if (error instanceof PathSecurityError) throw error;
+    throw new PathSecurityError(
+      `Unable to resolve path: ${absolutePath}`,
+      'PATH_RESOLUTION_FAILED',
+    );
   }
 }
 
@@ -96,12 +98,18 @@ export function getRelativePath(absolutePath: string, workspaceRoot: string): st
 export function isWithinWorkspace(absolutePath: string, workspaceRoot: string): boolean {
   const normalized = path.normalize(absolutePath);
   const normalizedRoot = path.normalize(workspaceRoot);
-  return normalized.startsWith(normalizedRoot);
+  const relativePath = path.relative(normalizedRoot, normalized);
+  return (
+    relativePath === '' ||
+    (!path.isAbsolute(relativePath) &&
+      relativePath !== '..' &&
+      !relativePath.startsWith(`..${path.sep}`))
+  );
 }
 
 function isRestricted(absolutePath: string): boolean {
-  const segments = absolutePath.split(path.sep);
-  return RESTRICTED_PATHS.some((restricted) => segments.includes(restricted));
+  const segments = absolutePath.split(path.sep).map((segment) => segment.toLowerCase());
+  return RESTRICTED_PATHS.some((restricted) => segments.includes(restricted.toLowerCase()));
 }
 
 export const PathSecurity = {

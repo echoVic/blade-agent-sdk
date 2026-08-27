@@ -193,17 +193,18 @@ export function createPathSafetyPermissionHandler(
       '/dev/',
       '/boot/',
       '/root/',
-      'C:\\Windows\\System32',
-      'C:\\Program Files',
-      'C:\\ProgramData',
+      'c:/windows/system32',
+      'c:/program files',
+      'c:/programdata',
     ];
 
     const dangerousPaths = request.affectedPaths.filter((filePath) => {
-      if (filePath.includes('..')) {
+      const normalizedPath = filePath.replaceAll('\\', '/').toLowerCase();
+      if (normalizedPath.split('/').includes('..')) {
         return true;
       }
 
-      return dangerousSystemPaths.some((dangerousPath) => filePath.includes(dangerousPath));
+      return dangerousSystemPaths.some((dangerousPath) => normalizedPath.includes(dangerousPath));
     });
 
     if (dangerousPaths.length > 0) {

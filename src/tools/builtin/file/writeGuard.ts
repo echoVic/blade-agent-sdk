@@ -57,6 +57,22 @@ const EXTERNAL_MOD_DETAIL: Record<WriteOperation, string> = {
 export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuardResult> {
   const { filePath, sessionId, messageId, operation, fileExists } = params;
 
+  if (fileExists && !sessionId) {
+    return {
+      blocked: {
+        status: 'error',
+        model:
+          'Cannot verify read-before-write without a Session ID. Execute this file operation through an Agent or Session runtime.',
+        error: {
+          type: ToolErrorType.PERMISSION_DENIED,
+          message: 'Session ID required for existing file writes',
+        },
+        metadata: { requiresRead: true, requiresSession: true },
+      },
+      snapshotCreated: false,
+    };
+  }
+
   if (fileExists && sessionId) {
     const tracker = FileAccessTracker.getInstance();
 
