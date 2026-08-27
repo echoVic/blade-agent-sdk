@@ -292,6 +292,101 @@ describe('AgentWorker', () => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 
+  it('serializes lease renewal with route transitions', async () => {
+    const sessionClaim = claim();
+    const store = createStore(sessionClaim);
+    const renewalStarted = Promise.withResolvers<void>();
+    const releaseRenewal = Promise.withResolvers<void>();
+    let persistedRoute = sessionClaim.route;
+    let renewalCalls = 0;
+
+    vi.mocked(store.transitionSession).mockImplementation(
+      async (_tenantId, _lease, transition) => {
+        if (transition.expectedState !== persistedRoute.state) {
+          throw new WorkerRuntimeError(
+            'SESSION_STATE_CONFLICT',
+            `Expected ${transition.expectedState}, found ${persistedRoute.state}`,
+          );
+        }
+        persistedRoute = {
+          ...persistedRoute,
+          state: transition.state,
+          metadata: transition.metadata ?? persistedRoute.metadata,
+          failure: transition.failure,
+        };
+        return persistedRoute;
+      },
+    );
+    vi.mocked(store.renewSessionLease).mockImplementation(async () => {
+      renewalCalls += 1;
+      const routeSnapshot = persistedRoute;
+      if (renewalCalls === 1) {
+        renewalStarted.resolve();
+        await releaseRenewal.promise;
+      }
+      return {
+        route: routeSnapshot,
+        lease: sessionClaim.lease,
+      };
+    });
+    vi.mocked(store.settleSession).mockImplementation(async (_tenantId, _lease, settlement) => {
+      persistedRoute = {
+        ...persistedRoute,
+        state: settlement.state,
+        metadata: settlement.metadata ?? persistedRoute.metadata,
+        failure: settlement.failure,
+      };
+      return persistedRoute;
+    });
+
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run(context) {
+          await context.transition('running');
+          await renewalStarted.promise;
+          const waiting = context.transition('waiting_approval');
+          queueMicrotask(() => releaseRenewal.resolve());
+          await waiting;
+          await context.transition('running');
+          return { status: 'completed' };
+        },
+      },
+      heartbeatIntervalMs: 10,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
+
+    await worker.start();
+    await vi.waitFor(() => {
+      expect(worker.getSnapshot().metrics.sessionsCompleted).toBe(1);
+    });
+    await worker.shutdown();
+
+    expect(store.transitionSession).toHaveBeenNthCalledWith(
+      2,
+      'tenant-1',
+      sessionClaim.lease,
+      expect.objectContaining({
+        expectedState: 'running',
+        state: 'waiting_approval',
+      }),
+    );
+    expect(store.transitionSession).toHaveBeenNthCalledWith(
+      3,
+      'tenant-1',
+      sessionClaim.lease,
+      expect.objectContaining({
+        expectedState: 'waiting_approval',
+        state: 'running',
+      }),
+    );
+  });
+
   it('hands off an active Session when the worker shuts down', async () => {
     const sessionClaim = claim();
     const store = createStore(sessionClaim);

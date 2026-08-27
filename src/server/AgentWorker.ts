@@ -471,6 +471,10 @@ export class AgentWorker {
           leaseFailure = error;
           controller.abort(error);
         });
+    const stopRenewal = async (): Promise<void> => {
+      renewalController.abort();
+      await renewal;
+    };
     try {
       const active = this.requireActiveSession(key);
       const context: SessionRunnerContext = {
@@ -482,16 +486,24 @@ export class AgentWorker {
         transition: (state, metadata) => this.transitionActiveSession(key, state, metadata),
       };
       const result = await this.options.sessionRunner.run(context);
-      renewalController.abort();
-      await renewal;
+      await stopRenewal();
       if (leaseFailure !== undefined) {
         throw leaseFailure;
       }
       await this.finishSession(active, result);
     } catch (error) {
+      await stopRenewal();
       const active = this.activeSessions.get(key);
       if (!active) {
         throw error;
+      }
+      if (leaseFailure !== undefined) {
+        throw error === leaseFailure
+          ? error
+          : new AggregateError(
+              [error, leaseFailure],
+              `Session ${active.route.sessionId} execution and lease renewal both failed`,
+            );
       }
       if (
         active.route.state === 'idle'
@@ -626,12 +638,15 @@ export class AgentWorker {
         return;
       }
       const active = this.requireActiveSession(key);
-      active.claim = await this.options.store.renewSessionLease(
-        active.route.tenantId,
-        active.claim.lease,
-        this.sessionLeaseTtlMs,
-      );
-      active.route = active.claim.route;
+      await active.transitionMutex.runExclusive(async () => {
+        const current = this.requireActiveSession(key);
+        current.claim = await this.options.store.renewSessionLease(
+          current.route.tenantId,
+          current.claim.lease,
+          this.sessionLeaseTtlMs,
+        );
+        current.route = current.claim.route;
+      });
     }
   }
 
