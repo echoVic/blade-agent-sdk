@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Harden WebFetch, Hook output, OAuth, remote approvals, tenant identities, shell classification, and MCP tool namespaces against untrusted input.",
-  "zh-CN": "强化 WebFetch、Hook 输出、OAuth、远程审批、租户身份、Shell 分类与 MCP 工具命名空间的不可信输入边界。"
-}

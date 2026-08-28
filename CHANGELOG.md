@@ -2,6 +2,18 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.1] - 2026-08-28
+
+### Fixes
+
+- Add non-truncatable event quotas and serialize lease, model handoff, worker transition, and approval state changes.
+- Strengthen file revision tracking, snapshots, atomic local persistence, CRLF offsets, Unicode truncation, and edit unescaping.
+- Harden WebFetch, Hook output, OAuth, remote approvals, tenant identities, shell classification, and MCP tool namespaces against untrusted input.
+
+### Performance
+
+- Bound background output, file tracking, lock waits, scheduler queues, and task persistence work.
+
 ## [7.0.0] - 2026-08-28
 
 ### Fixes

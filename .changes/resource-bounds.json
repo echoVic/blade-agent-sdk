@@ -1,5 +1,0 @@
-{
-  "type": "performance",
-  "en": "Bound background output, file tracking, lock waits, scheduler queues, and task persistence work.",
-  "zh-CN": "限制后台输出、文件跟踪、锁等待、调度队列与任务持久化开销。"
-}
