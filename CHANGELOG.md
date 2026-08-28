@@ -2,6 +2,15 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.0] - 2026-08-28
+
+### Fixes
+
+- Report clear Agent lifecycle errors, release owned resources on destroy, and preserve MCP server source IDs.
+- Preserve total Agent turn counts across turn-limit compaction and persist provider-specific non-text user content.
+- Remove ModelMessage.metadata and introduce typed ConversationMessage provenance, correlation, telemetry, providerOptions, and extensions fields.
+- Enforce canonical filesystem roots, bound compaction inputs, isolate shell environments, conservatively classify Bash commands, and serialize worker lease renewal with route transitions.
+
 ## [6.0.5] - 2026-08-26
 
 ### Fixes

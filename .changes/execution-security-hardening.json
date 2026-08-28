@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Enforce canonical filesystem roots, bound compaction inputs, isolate shell environments, conservatively classify Bash commands, and serialize worker lease renewal with route transitions.",
-  "zh-CN": "强制执行规范化文件系统根目录边界，限制压缩输入，隔离 Shell 环境，保守分类 Bash 命令，并串行化 Worker 租约续期与路由状态转换。"
-}

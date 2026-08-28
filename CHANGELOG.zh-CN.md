@@ -2,6 +2,15 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.0.0] - 2026-08-28
+
+### 修复
+
+- 为 Agent 生命周期误用提供明确错误，在销毁时释放自有资源，并正确保留 MCP 服务来源标识。
+- 在轮次上限压缩后保留 Agent 累计轮次，并持久化 Provider 特有的非文本用户内容。
+- 移除 ModelMessage.metadata，引入类型明确的 ConversationMessage provenance、correlation、telemetry、providerOptions 与 extensions 字段。
+- 强制执行规范化文件系统根目录边界，限制压缩输入，隔离 Shell 环境，保守分类 Bash 命令，并串行化 Worker 租约续期与路由状态转换。
+
 ## [6.0.5] - 2026-08-26
 
 ### 修复
