@@ -1,5 +1,5 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import { FileLockManager } from '../FileLockManager.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileLockManager, FileLockTimeoutError } from '../FileLockManager.js';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,6 +9,10 @@ describe('FileLockManager', () => {
   beforeEach(() => {
     // 每个测试前重置单例，确保测试隔离
     FileLockManager.resetInstance();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('getInstance', () => {
@@ -221,6 +225,20 @@ describe('FileLockManager', () => {
   });
 
   describe('cancellable acquisition', () => {
+    it('times out a waiter instead of leaving it blocked indefinitely', async () => {
+      vi.useFakeTimers();
+      const manager = FileLockManager.getInstance(undefined, 25);
+      const holder = await manager.acquire('/tmp/timed-lock.ts');
+      const waiting = manager.acquire('/tmp/timed-lock.ts');
+      const rejection = expect(waiting).rejects.toBeInstanceOf(FileLockTimeoutError);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejection;
+      holder.release();
+      expect(manager.isLocked('/tmp/timed-lock.ts')).toBe(false);
+    });
+
     it('rejects an already-aborted request without creating lock state', async () => {
       const manager = FileLockManager.getInstance();
       const controller = new AbortController();
@@ -583,6 +601,25 @@ describe('FileLockManager', () => {
   });
 
   describe('concurrency edge cases', () => {
+    it('does not let newly arriving readers bypass a queued writer', async () => {
+      const manager = FileLockManager.getInstance();
+      const firstReader = await manager.acquire('/tmp/fair.ts', 'read');
+      const order: string[] = [];
+      const writer = manager.acquire('/tmp/fair.ts', 'write').then((lease) => {
+        order.push('write');
+        lease.release();
+      });
+      const secondReader = manager.acquire('/tmp/fair.ts', 'read').then((lease) => {
+        order.push('read');
+        lease.release();
+      });
+
+      firstReader.release();
+      await Promise.all([writer, secondReader]);
+
+      expect(order).toEqual(['write', 'read']);
+    });
+
     it('should handle rapid sequential lock acquisitions on the same file', async () => {
       const manager = FileLockManager.getInstance();
       const results: number[] = [];

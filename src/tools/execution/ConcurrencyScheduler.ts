@@ -39,21 +39,39 @@ export interface ConcurrencyLimits {
   readonly?: number;
   write?: number;
   execute?: number;
+  maxQueuedPerBucket?: number;
 }
 
 const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
   readonly: 10,
   write: 10,
   execute: 3,
+  maxQueuedPerBucket: 1_000,
 };
+
+export class ConcurrencyQueueFullError extends Error {
+  readonly code = 'TOOL_CONCURRENCY_QUEUE_FULL';
+
+  constructor(readonly kind: ToolKind, readonly maxQueued: number) {
+    super(`Tool concurrency queue for ${kind} is full (${maxQueued} pending requests)`);
+    this.name = 'ConcurrencyQueueFullError';
+  }
+}
 
 export class ConcurrencyScheduler {
   private static instance: ConcurrencyScheduler | null = null;
 
   private readonly buckets: Record<ToolKind, BucketState>;
+  private readonly maxQueuedPerBucket: number;
 
   constructor(limits: ConcurrencyLimits = {}) {
     const merged = { ...DEFAULT_LIMITS, ...limits };
+    for (const [name, value] of Object.entries(merged)) {
+      if (!Number.isSafeInteger(value) || value < 1) {
+        throw new RangeError(`${name} must be a positive safe integer`);
+      }
+    }
+    this.maxQueuedPerBucket = merged.maxQueuedPerBucket;
     this.buckets = {
       [ToolKind.ReadOnly]: {
         inFlight: 0,
@@ -94,6 +112,9 @@ export class ConcurrencyScheduler {
     if (bucket.inFlight < bucket.maxConcurrent) {
       bucket.inFlight++;
       return this.createLease(bucket);
+    }
+    if (bucket.queue.length >= this.maxQueuedPerBucket) {
+      throw new ConcurrencyQueueFullError(kind, this.maxQueuedPerBucket);
     }
 
     return new Promise<ConcurrencyLease>((resolve, reject) => {

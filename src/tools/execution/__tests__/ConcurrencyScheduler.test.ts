@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ToolKind } from '../../types/kind.js';
-import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
+import {
+  ConcurrencyQueueFullError,
+  ConcurrencyScheduler,
+} from '../ConcurrencyScheduler.js';
 
 function deferred<T = void>() {
   let resolve!: (v: T | PromiseLike<T>) => void;
@@ -260,6 +263,21 @@ describe('ConcurrencyScheduler', () => {
       gates[0].resolve();
       gates[1].resolve();
       await Promise.all(promises);
+    });
+
+    it('rejects new work when a bucket queue reaches its configured bound', async () => {
+      const scheduler = new ConcurrencyScheduler({
+        execute: 1,
+        maxQueuedPerBucket: 1,
+      });
+      const holder = await scheduler.acquire(ToolKind.Execute);
+      const queued = scheduler.acquire(ToolKind.Execute);
+
+      await expect(scheduler.acquire(ToolKind.Execute)).rejects.toBeInstanceOf(
+        ConcurrencyQueueFullError,
+      );
+      holder.release();
+      (await queued).release();
     });
   });
 

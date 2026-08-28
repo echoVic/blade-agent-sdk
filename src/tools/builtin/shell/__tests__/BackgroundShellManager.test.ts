@@ -60,6 +60,22 @@ describe('BackgroundShellManager handoff admission', () => {
     expect(manager.consumeOutput(processInfo.id)?.stdout).toBe('|runtime|command');
   });
 
+  it('bounds unread process output and reports discarded bytes', async () => {
+    const processInfo = manager.startBackgroundProcess({
+      command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"`,
+      sessionId: SessionId('background-output-limit'),
+      cwd: tmpdir(),
+    });
+
+    await vi.waitFor(() => {
+      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+    });
+    const output = manager.consumeOutput(processInfo.id);
+
+    expect(Buffer.byteLength(output?.stdout ?? '')).toBeLessThanOrEqual(1024 * 1024);
+    expect(output?.stdoutBytesDropped).toBeGreaterThan(0);
+  });
+
   it('tracks live processes by Session and keeps killed processes active until exit', async () => {
     const firstSession = SessionId('handoff-shell-session');
     const secondSession = SessionId('other-shell-session');

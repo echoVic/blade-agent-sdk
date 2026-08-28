@@ -12,6 +12,7 @@ import {
 
 type BackgroundShellStatus = 'running' | 'exited' | 'killed' | 'error';
 const DEFAULT_TERMINATION_GRACE_MS = 2_000;
+const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 
 interface StartOptions {
   command: string;
@@ -37,8 +38,10 @@ interface BackgroundShellProcess {
   startTime: number;
   endTime?: number;
   errorMessage?: string;
-  pendingStdout: string;
-  pendingStderr: string;
+  pendingStdout: Buffer;
+  pendingStderr: Buffer;
+  stdoutBytesDropped: number;
+  stderrBytesDropped: number;
 }
 
 export interface ShellOutputSnapshot {
@@ -53,6 +56,8 @@ export interface ShellOutputSnapshot {
   startedAt: number;
   endedAt?: number;
   errorMessage?: string;
+  stdoutBytesDropped?: number;
+  stderrBytesDropped?: number;
 }
 
 export interface KillResult {
@@ -62,6 +67,26 @@ export interface KillResult {
   pid?: number;
   exitCode?: number | null;
   signal?: string | null;
+}
+
+function appendBoundedOutput(
+  current: Buffer,
+  chunk: Buffer | string,
+): { content: Buffer; droppedBytes: number } {
+  const incoming = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+  const combined = current.length === 0 ? incoming : Buffer.concat([current, incoming]);
+  if (combined.length <= MAX_BUFFERED_OUTPUT_BYTES) {
+    return { content: combined, droppedBytes: 0 };
+  }
+
+  let start = combined.length - MAX_BUFFERED_OUTPUT_BYTES;
+  while (start < combined.length && (combined[start] & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return {
+    content: combined.subarray(start),
+    droppedBytes: start,
+  };
 }
 
 export class BackgroundShellManager {
@@ -107,19 +132,25 @@ export class BackgroundShellManager {
       pid: child.pid,
       status: 'running',
       startTime: Date.now(),
-      pendingStdout: '',
-      pendingStderr: '',
+      pendingStdout: Buffer.alloc(0),
+      pendingStderr: Buffer.alloc(0),
+      stdoutBytesDropped: 0,
+      stderrBytesDropped: 0,
     };
 
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
 
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      processInfo.pendingStdout += chunk.toString();
+      const appended = appendBoundedOutput(processInfo.pendingStdout, chunk);
+      processInfo.pendingStdout = appended.content;
+      processInfo.stdoutBytesDropped += appended.droppedBytes;
     });
 
     child.stderr?.on('data', (chunk: Buffer | string) => {
-      processInfo.pendingStderr += chunk.toString();
+      const appended = appendBoundedOutput(processInfo.pendingStderr, chunk);
+      processInfo.pendingStderr = appended.content;
+      processInfo.stderrBytesDropped += appended.droppedBytes;
     });
 
     child.on('close', (code, signal) => {
@@ -134,7 +165,12 @@ export class BackgroundShellManager {
       processInfo.errorMessage = error.message;
       processInfo.endTime = Date.now();
       processInfo.process = undefined;
-      processInfo.pendingStderr += `\n[error] ${error.message}`;
+      const appended = appendBoundedOutput(
+        processInfo.pendingStderr,
+        `\n[error] ${error.message}`,
+      );
+      processInfo.pendingStderr = appended.content;
+      processInfo.stderrBytesDropped += appended.droppedBytes;
     });
 
     this.processes.set(shellId, processInfo);
@@ -152,18 +188,26 @@ export class BackgroundShellManager {
       id: processInfo.id,
       command: processInfo.command,
       status: processInfo.status,
-      stdout: processInfo.pendingStdout,
-      stderr: processInfo.pendingStderr,
+      stdout: processInfo.pendingStdout.toString('utf8'),
+      stderr: processInfo.pendingStderr.toString('utf8'),
       exitCode: processInfo.exitCode,
       signal: processInfo.signal,
       pid: processInfo.pid,
       startedAt: processInfo.startTime,
       endedAt: processInfo.endTime,
       errorMessage: processInfo.errorMessage,
+      ...(processInfo.stdoutBytesDropped > 0
+        ? { stdoutBytesDropped: processInfo.stdoutBytesDropped }
+        : {}),
+      ...(processInfo.stderrBytesDropped > 0
+        ? { stderrBytesDropped: processInfo.stderrBytesDropped }
+        : {}),
     };
 
-    processInfo.pendingStdout = '';
-    processInfo.pendingStderr = '';
+    processInfo.pendingStdout = Buffer.alloc(0);
+    processInfo.pendingStderr = Buffer.alloc(0);
+    processInfo.stdoutBytesDropped = 0;
+    processInfo.stderrBytesDropped = 0;
 
     return snapshot;
   }

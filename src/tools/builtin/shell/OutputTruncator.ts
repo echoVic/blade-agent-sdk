@@ -156,19 +156,36 @@ export function truncateWithConfig(
     };
   }
 
-  const headLines = lines.slice(0, config.keepHead);
-  const tailLines = lines.slice(-config.keepTail);
-  const truncatedCount = originalLines - config.keepHead - config.keepTail;
+  let truncatedContent = output;
+  if (originalLines > config.maxLines) {
+    const maxRetainedLines = Math.min(originalLines - 1, config.maxLines);
+    const desiredRetainedLines = Math.max(1, config.keepHead + config.keepTail);
+    const headCount = Math.min(
+      config.keepHead,
+      Math.ceil((maxRetainedLines * config.keepHead) / desiredRetainedLines),
+    );
+    const tailCount = Math.min(config.keepTail, maxRetainedLines - headCount);
+    const headLines = lines.slice(0, headCount);
+    const tailLines = tailCount > 0 ? lines.slice(-tailCount) : [];
+    const truncatedCount = Math.max(0, originalLines - headCount - tailCount);
 
-  let truncatedContent = headLines.join('\n');
-  truncatedContent += `\n\n... (${truncatedCount} lines truncated, showing first ${config.keepHead} and last ${config.keepTail} of ${originalLines} total) ...\n\n`;
-  truncatedContent += tailLines.join('\n');
+    truncatedContent = headLines.join('\n');
+    truncatedContent += `\n\n... (${truncatedCount} lines truncated, showing first ${headCount} and last ${tailCount} of ${originalLines} total) ...\n\n`;
+    truncatedContent += tailLines.join('\n');
+  }
 
   if (truncatedContent.length > config.maxChars) {
-    const halfMax = Math.floor(config.maxChars / 2) - 50;
-    const head = truncatedContent.slice(0, halfMax);
-    const tail = truncatedContent.slice(-halfMax);
-    truncatedContent = `${head}\n\n... (content truncated to ${config.maxChars} chars) ...\n\n${tail}`;
+    const marker = `... (${originalChars} chars truncated) ...`;
+    if (marker.length >= config.maxChars) {
+      truncatedContent = marker.slice(0, config.maxChars);
+    } else {
+      const availableChars = config.maxChars - marker.length;
+      const headChars = Math.ceil(availableChars / 2);
+      const tailChars = Math.floor(availableChars / 2);
+      truncatedContent = `${truncatedContent.slice(0, headChars)}${marker}${
+        tailChars > 0 ? truncatedContent.slice(-tailChars) : ''
+      }`;
+    }
   }
 
   const summary = config.summarize && summaryTemplate

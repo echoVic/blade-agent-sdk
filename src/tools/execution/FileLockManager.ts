@@ -22,12 +22,26 @@ interface QueuedLockRequest {
   reject: (reason?: unknown) => void;
   signal?: AbortSignal;
   onAbort?: () => void;
+  timeout?: ReturnType<typeof setTimeout>;
 }
 
 interface FileLockState {
   activeReaders: number;
   activeWriter: boolean;
-  queue: QueuedLockRequest[];
+  queue: Array<QueuedLockRequest | undefined>;
+  queueHead: number;
+  queuedCount: number;
+}
+
+const DEFAULT_LOCK_WAIT_TIMEOUT_MS = 30_000;
+
+export class FileLockTimeoutError extends Error {
+  readonly code = 'FILE_LOCK_TIMEOUT';
+
+  constructor(readonly filePath: string, readonly timeoutMs: number) {
+    super(`Timed out waiting ${timeoutMs}ms for file lock: ${filePath}`);
+    this.name = 'FileLockTimeoutError';
+  }
 }
 
 export class FileLockManager {
@@ -39,14 +53,18 @@ export class FileLockManager {
   private locks: Map<string, FileLockState> = new Map();
 
   // 私有构造函数（单例模式）
-  private constructor() {}
+  private constructor(private readonly waitTimeoutMs = DEFAULT_LOCK_WAIT_TIMEOUT_MS) {
+    if (!Number.isSafeInteger(waitTimeoutMs) || waitTimeoutMs < 1) {
+      throw new RangeError('File lock wait timeout must be a positive safe integer');
+    }
+  }
 
   /**
    * 获取全局单例实例
    */
-  static getInstance(logger?: InternalLogger): FileLockManager {
+  static getInstance(logger?: InternalLogger, waitTimeoutMs?: number): FileLockManager {
     if (!FileLockManager.instance) {
-      FileLockManager.instance = new FileLockManager();
+      FileLockManager.instance = new FileLockManager(waitTimeoutMs);
     }
     if (logger) {
       FileLockManager.instance.setLogger(logger);
@@ -123,18 +141,33 @@ export class FileLockManager {
 
       this.logger.debug(`排队等待${mode === 'read' ? '读' : '写'}锁: ${filePath}`);
       state.queue.push(request);
+      state.queuedCount += 1;
       if (signal) {
         request.onAbort = () => {
           const index = state.queue.indexOf(request);
-          if (index < 0) {
+          if (index < state.queueHead) {
             return;
           }
-          state.queue.splice(index, 1);
+          state.queue[index] = undefined;
+          state.queuedCount -= 1;
+          this.clearRequestWaiters(request);
           reject(getAbortSignalReason(signal));
           this.drainQueue(filePath, state);
         };
         signal.addEventListener('abort', request.onAbort, { once: true });
       }
+      request.timeout = setTimeout(() => {
+        const index = state.queue.indexOf(request, state.queueHead);
+        if (index < state.queueHead) {
+          return;
+        }
+        state.queue[index] = undefined;
+        state.queuedCount -= 1;
+        this.clearRequestWaiters(request);
+        reject(new FileLockTimeoutError(filePath, this.waitTimeoutMs));
+        this.drainQueue(filePath, state);
+      }, this.waitTimeoutMs);
+      request.timeout.unref?.();
     });
   }
 
@@ -150,6 +183,10 @@ export class FileLockManager {
    * 清除指定文件的锁
    */
   clearLock(filePath: string): void {
+    const state = this.locks.get(filePath);
+    if (state) {
+      this.rejectQueuedRequests(state, new Error(`File lock cleared: ${filePath}`));
+    }
     this.locks.delete(filePath);
   }
 
@@ -157,6 +194,9 @@ export class FileLockManager {
    * 清除所有文件锁
    */
   clearAll(): void {
+    for (const [filePath, state] of this.locks) {
+      this.rejectQueuedRequests(state, new Error(`File lock cleared: ${filePath}`));
+    }
     this.locks.clear();
   }
 
@@ -193,6 +233,8 @@ export class FileLockManager {
       activeReaders: 0,
       activeWriter: false,
       queue: [],
+      queueHead: 0,
+      queuedCount: 0,
     };
     this.locks.set(filePath, state);
     return state;
@@ -200,14 +242,14 @@ export class FileLockManager {
 
   private canGrantImmediately(state: FileLockState, mode: FileLockMode): boolean {
     if (mode === 'read') {
-      return !state.activeWriter && state.queue.length === 0;
+      return !state.activeWriter && state.queuedCount === 0;
     }
 
-    return !state.activeWriter && state.activeReaders === 0 && state.queue.length === 0;
+    return !state.activeWriter && state.activeReaders === 0 && state.queuedCount === 0;
   }
 
   private hasActiveOrQueuedLocks(state: FileLockState): boolean {
-    return state.activeWriter || state.activeReaders > 0 || state.queue.length > 0;
+    return state.activeWriter || state.activeReaders > 0 || state.queuedCount > 0;
   }
 
   private grant(
@@ -215,9 +257,7 @@ export class FileLockManager {
     state: FileLockState,
     request: QueuedLockRequest,
   ): boolean {
-    if (request.onAbort && request.signal) {
-      request.signal.removeEventListener('abort', request.onAbort);
-    }
+    this.clearRequestWaiters(request);
     if (request.signal?.aborted) {
       request.reject(getAbortSignalReason(request.signal));
       return false;
@@ -247,15 +287,15 @@ export class FileLockManager {
       return;
     }
 
-    while (state.queue.length > 0) {
-      const next = state.queue[0];
+    while (state.queuedCount > 0) {
+      const next = this.peekQueue(state);
       if (state.activeReaders > 0 && next?.mode === 'write') {
         return;
       }
       if (next?.mode === 'read') {
         let grantedReader = false;
-        while (state.queue[0]?.mode === 'read') {
-          const request = state.queue.shift();
+        while (this.peekQueue(state)?.mode === 'read') {
+          const request = this.dequeue(state);
           if (!request) break;
           grantedReader = this.grant(filePath, state, request) || grantedReader;
         }
@@ -265,7 +305,7 @@ export class FileLockManager {
         continue;
       }
 
-      const request = state.queue.shift();
+      const request = this.dequeue(state);
       if (request && this.grant(filePath, state, request)) {
         return;
       }
@@ -277,6 +317,54 @@ export class FileLockManager {
   private cleanupState(filePath: string, state: FileLockState): void {
     if (!this.hasActiveOrQueuedLocks(state) && this.locks.get(filePath) === state) {
       this.locks.delete(filePath);
+    }
+  }
+
+  private peekQueue(state: FileLockState): QueuedLockRequest | undefined {
+    while (state.queueHead < state.queue.length && state.queue[state.queueHead] === undefined) {
+      state.queueHead += 1;
+    }
+    this.compactQueue(state);
+    return state.queue[state.queueHead];
+  }
+
+  private dequeue(state: FileLockState): QueuedLockRequest | undefined {
+    const request = this.peekQueue(state);
+    if (!request) {
+      return undefined;
+    }
+    state.queue[state.queueHead] = undefined;
+    state.queueHead += 1;
+    state.queuedCount -= 1;
+    this.compactQueue(state);
+    return request;
+  }
+
+  private compactQueue(state: FileLockState): void {
+    if (state.queueHead >= 64 && state.queueHead * 2 >= state.queue.length) {
+      state.queue = state.queue.slice(state.queueHead);
+      state.queueHead = 0;
+    }
+  }
+
+  private clearRequestWaiters(request: QueuedLockRequest): void {
+    if (request.onAbort && request.signal) {
+      request.signal.removeEventListener('abort', request.onAbort);
+    }
+    if (request.timeout) {
+      clearTimeout(request.timeout);
+      request.timeout = undefined;
+    }
+  }
+
+  private rejectQueuedRequests(state: FileLockState, error: Error): void {
+    while (state.queuedCount > 0) {
+      const request = this.dequeue(state);
+      if (!request) {
+        break;
+      }
+      this.clearRequestWaiters(request);
+      request.reject(error);
     }
   }
 
