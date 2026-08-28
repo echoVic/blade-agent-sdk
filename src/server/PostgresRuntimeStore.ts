@@ -93,6 +93,9 @@ import type {
 } from './WorkerRuntime.js';
 
 const DEFAULT_MAX_EVENTS_PER_SESSION = 10_000;
+const DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION = 100_000;
+const DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION = 100_000;
+const DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION = 100_000;
 const DEFAULT_MAX_SESSIONS_PER_TENANT = 10_000;
 const SESSION_PROJECTION = 'session';
 
@@ -103,6 +106,9 @@ export interface PostgresRuntimeStoreOptions {
   readonly schema?: string;
   readonly tablePrefix?: string;
   readonly maxAgentEventsPerSession?: number;
+  readonly maxDurableEventsPerSession?: number;
+  readonly maxDomainEventsPerSession?: number;
+  readonly maxTranscriptEventsPerSession?: number;
   readonly maxSessionsPerTenant?: number;
 }
 
@@ -220,6 +226,8 @@ function parseRuntimeDomainEvent(value: unknown): RuntimeDomainEvent {
 }
 
 function advisoryLockKey(key: string): readonly [number, number] {
+  // A hash collision can only add serialization. Every mutation remains scoped
+  // by full tenant/session/stream columns and row-level predicates.
   const digest = createHash('sha256').update(key).digest();
   return [digest.readInt32BE(0), digest.readInt32BE(4)];
 }
@@ -379,6 +387,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
   private readonly schema: string;
   private readonly prefix: string;
   private readonly maxAgentEventsPerSession: number;
+  private readonly maxDurableEventsPerSession: number;
+  private readonly maxDomainEventsPerSession: number;
+  private readonly maxTranscriptEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
   private readonly transactionContext = new AsyncLocalStorage<PoolClient>();
   private readonly workerRuntime: PostgresWorkerRuntime;
@@ -402,6 +413,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
     this.maxAgentEventsPerSession =
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
+    this.maxDurableEventsPerSession =
+      options.maxDurableEventsPerSession ?? DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION;
+    this.maxDomainEventsPerSession =
+      options.maxDomainEventsPerSession ?? DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION;
+    this.maxTranscriptEventsPerSession =
+      options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant =
       options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
     this.workerRuntime = new PostgresWorkerRuntime(
@@ -413,6 +430,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
+      ['maxDurableEventsPerSession', this.maxDurableEventsPerSession],
+      ['maxDomainEventsPerSession', this.maxDomainEventsPerSession],
+      ['maxTranscriptEventsPerSession', this.maxTranscriptEventsPerSession],
       ['maxSessionsPerTenant', this.maxSessionsPerTenant],
     ] as const) {
       if (!Number.isSafeInteger(value) || value < 1) {
@@ -1216,6 +1236,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
           recordedAt,
           occurredAt: draft.occurredAt ?? recordedAt,
         })),
+        undefined,
+        this.maxDurableEventsPerSession,
       );
       const durableEvents = events.map((value) => parseDurableEventEnvelope(value));
       const last = durableEvents.at(-1);
@@ -1340,6 +1362,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
           occurredAt: recordedAt,
           recordedAt,
         })),
+        undefined,
+        this.maxTranscriptEventsPerSession,
       );
       const offset = stored.at(-1)?.sequence;
       if (offset === undefined) {
@@ -1791,6 +1815,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       recordedAt: string;
     }) => TPayload)[],
     retention?: number,
+    quota?: number,
   ): Promise<TPayload[]> {
     const current =
       knownHead === undefined
@@ -1807,6 +1832,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
     if (payloads.length === 0) {
       return [];
+    }
+    if (quota !== undefined && firstSequence - 1 + payloads.length > quota) {
+      throw new RuntimeStoreError(
+        'RUNTIME_STORE_QUOTA_EXCEEDED',
+        `Event quota exceeded for ${streamName} stream ${tenantId}/${sessionId}`,
+      );
     }
     const rows = payloads.map((payload, index) => ({
       tenant_id: tenantId,
@@ -1953,6 +1984,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
         occurredAt: draft.occurredAt ?? recordedAt,
         recordedAt,
       })),
+      undefined,
+      this.maxDomainEventsPerSession,
     );
     return payloads;
   }

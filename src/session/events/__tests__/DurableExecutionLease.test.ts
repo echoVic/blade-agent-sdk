@@ -274,6 +274,43 @@ describe('DurableExecutionLease', () => {
     await lease.release();
   });
 
+  it('does not report expiry while an in-flight heartbeat renewal succeeds', async () => {
+    vi.useFakeTimers();
+    const store = await createStore();
+    const acquireNormally = store.acquireExecutionLease.bind(store);
+    vi.spyOn(store, 'acquireExecutionLease').mockImplementation(async (...args) => {
+      const lease = await acquireNormally(...args);
+      return {
+        ...lease,
+        renewedAt: new Date(Date.now()).toISOString(),
+        expiresAt: new Date(Date.now() + 100).toISOString(),
+      };
+    });
+    vi.spyOn(store, 'renewExecutionLease').mockImplementation(async (current) => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      return {
+        ...current,
+        renewedAt: new Date(Date.now()).toISOString(),
+        expiresAt: new Date(Date.now() + 100).toISOString(),
+      };
+    });
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('lease-renewal-expiry-race'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 100,
+        heartbeatIntervalMs: 50,
+        storeTimeoutMs: 90,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(110);
+
+    expect(lease.signal.aborted).toBe(false);
+    await lease.release();
+  });
+
   it('bounds active Store calls by the current lease expiry', async () => {
     vi.useFakeTimers();
     const store = await createStore();

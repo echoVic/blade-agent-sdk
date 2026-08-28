@@ -15,8 +15,7 @@ interface Waiter {
 
 interface TenantState {
   active: number;
-  windowStartedAt: number;
-  commandsInWindow: number;
+  readonly commandTimestamps: number[];
   readonly queue: Waiter[];
   cleanupTimer?: ReturnType<typeof setTimeout>;
 }
@@ -80,21 +79,21 @@ export class TenantAdmissionController {
 
   private consumeRateLimit(state: TenantState): void {
     const now = this.now();
-    const elapsed = now - state.windowStartedAt;
-    if (elapsed >= 60_000) {
-      state.windowStartedAt = now;
-      state.commandsInWindow = 0;
+    const cutoff = now - 60_000;
+    while ((state.commandTimestamps[0] ?? Number.POSITIVE_INFINITY) <= cutoff) {
+      state.commandTimestamps.shift();
     }
-    if (state.commandsInWindow >= this.limits.commandsPerMinute) {
+    if (state.commandTimestamps.length >= this.limits.commandsPerMinute) {
+      const oldest = state.commandTimestamps[0] ?? now;
       throw new AgentProtocolError(
         'RATE_LIMITED',
         'Tenant command rate limit exceeded',
         429,
         true,
-        Math.max(1, 60_000 - elapsed),
+        Math.max(1, oldest + 60_000 - now),
       );
     }
-    state.commandsInWindow += 1;
+    state.commandTimestamps.push(now);
   }
 
   private createRelease(tenantId: string, state: TenantState): () => void {
@@ -114,7 +113,7 @@ export class TenantAdmissionController {
       if (state.active === 0 && state.queue.length === 0) {
         const remaining = Math.max(
           1,
-          60_000 - (this.now() - state.windowStartedAt),
+          (state.commandTimestamps[0] ?? this.now()) + 60_000 - this.now(),
         );
         state.cleanupTimer = setTimeout(() => {
           if (state.active === 0 && state.queue.length === 0) {
@@ -137,8 +136,7 @@ export class TenantAdmissionController {
     }
     const created: TenantState = {
       active: 0,
-      windowStartedAt: this.now(),
-      commandsInWindow: 0,
+      commandTimestamps: [],
       queue: [],
     };
     this.states.set(tenantId, created);

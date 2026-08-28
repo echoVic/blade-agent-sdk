@@ -599,6 +599,20 @@ export class DurableExecutionLease {
         if (this.released || this.loss) {
           return;
         }
+        const inFlightRenewal = this.renewalPromise;
+        if (inFlightRenewal) {
+          void inFlightRenewal.finally(() => {
+            if (this.released || this.loss) {
+              return;
+            }
+            if (this.localExpiresAt > performance.now()) {
+              this.scheduleExpiry();
+              return;
+            }
+            this.markLost(this.createExpiredError());
+          });
+          return;
+        }
         if (this.localExpiresAt > performance.now()) {
           this.scheduleExpiry();
           return;

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolErrorType } from '../../../tools/types/result.js';
 import {
   CommandId,
@@ -812,6 +812,43 @@ describe('SessionDurableRecorder', () => {
         streaming: true,
       }),
     ).rejects.toThrow(/suspended for worker handoff/);
+  });
+
+  it('serializes model completion with handoff finalization', async () => {
+    await recorder.recordAccepted(inputId, 'handoff race');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const lifecycle = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: true,
+    });
+    const commitStarted = Promise.withResolvers<void>();
+    const releaseCommit = Promise.withResolvers<void>();
+    const originalCommit = journal.commit.bind(journal);
+    const commitSpy = vi.spyOn(journal, 'commit').mockImplementation(async (command, options) => {
+      if (command.events[0]?.type === DurableEventType.MODEL_REQUEST_COMPLETED) {
+        commitStarted.resolve();
+        await releaseCommit.promise;
+      }
+      return originalCommit(command, options);
+    });
+
+    recorder.beginHandoff();
+    const completion = lifecycle.onCompleted({ content: 'done' });
+    await commitStarted.promise;
+    const handoff = recorder.finalizeHandoff();
+    releaseCommit.resolve();
+    await Promise.all([completion, handoff]);
+
+    const eventTypes = (await store.read(sessionId)).events.map((event) => event.type);
+    expect(eventTypes).toContain(DurableEventType.MODEL_REQUEST_COMPLETED);
+    expect(eventTypes).not.toContain(DurableEventType.MODEL_REQUEST_ABORTED);
+    commitSpy.mockRestore();
   });
 
   it('marks an unsettled started tool outcome unknown during handoff', async () => {

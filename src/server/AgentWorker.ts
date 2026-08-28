@@ -121,7 +121,7 @@ function failureData(error: unknown): JsonObject {
 }
 
 function activeSessionKey(route: RuntimeSessionRoute): string {
-  return `${route.tenantId}\0${route.sessionId}`;
+  return JSON.stringify([route.tenantId, route.sessionId]);
 }
 
 function isFatalWorkerStateError(error: unknown): boolean {
@@ -549,22 +549,24 @@ export class AgentWorker {
         return;
       }
       const target = result.status;
-      active.route = await this.options.store.settleSession(
-        active.route.tenantId,
-        active.claim.lease,
-        {
-          state: target,
-          ...(result.metadata ? { metadata: result.metadata } : {}),
-          ...(result.status === 'failed' ? { failure: result.failure } : {}),
-        },
-      );
-      if (target === 'idle') {
-        this.sessionsIdle += 1;
-      } else if (target === 'completed') {
-        this.sessionsCompleted += 1;
-      } else {
-        this.sessionsFailed += 1;
-      }
+      await active.transitionMutex.runExclusive(async () => {
+        active.route = await this.options.store.settleSession(
+          active.route.tenantId,
+          active.claim.lease,
+          {
+            state: target,
+            ...(result.metadata ? { metadata: result.metadata } : {}),
+            ...(result.status === 'failed' ? { failure: result.failure } : {}),
+          },
+        );
+        if (target === 'idle') {
+          this.sessionsIdle += 1;
+        } else if (target === 'completed') {
+          this.sessionsCompleted += 1;
+        } else {
+          this.sessionsFailed += 1;
+        }
+      });
     } catch (error) {
       transitionError = error;
       throw error;
@@ -584,25 +586,40 @@ export class AgentWorker {
   }
 
   private async handoffActiveSession(active: ActiveSession, metadata?: JsonObject): Promise<void> {
-    active.route = await this.options.store.handoffSession(
-      active.route.tenantId,
-      active.claim.lease,
-      metadata,
-    );
-    this.sessionsSuspended += 1;
+    await active.transitionMutex.runExclusive(async () => {
+      if (active.route.state === 'suspended') {
+        return;
+      }
+      active.route = await this.options.store.handoffSession(
+        active.route.tenantId,
+        active.claim.lease,
+        metadata,
+      );
+      this.sessionsSuspended += 1;
+    });
   }
 
   private async failActiveSession(active: ActiveSession, failure: JsonObject): Promise<void> {
-    active.route = await this.options.store.transitionSession(
-      active.route.tenantId,
-      active.claim.lease,
-      {
-        expectedState: active.route.state,
-        state: 'failed',
-        failure,
-      },
-    );
-    this.sessionsFailed += 1;
+    await active.transitionMutex.runExclusive(async () => {
+      if (
+        active.route.state === 'idle' ||
+        active.route.state === 'completed' ||
+        active.route.state === 'failed' ||
+        active.route.state === 'suspended'
+      ) {
+        return;
+      }
+      active.route = await this.options.store.transitionSession(
+        active.route.tenantId,
+        active.claim.lease,
+        {
+          expectedState: active.route.state,
+          state: 'failed',
+          failure,
+        },
+      );
+      this.sessionsFailed += 1;
+    });
   }
 
   private transitionActiveSession(

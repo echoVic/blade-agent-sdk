@@ -199,7 +199,10 @@ agent/durable event、原子 commit、事务回滚、projection checkpoint、wor
 
 - schema 初始化需要 DDL 权限；生产环境可在部署阶段提前调用 `initialize()`。
 - `PostgresRuntimeStore` 自建 Pool 时 `close()` 会关闭 Pool；注入的 Pool 由调用方管理。
-- `maxAgentEventsPerSession` 只限制可重放的远程 SSE 事件，不裁剪 durable/domain event。
+- `maxAgentEventsPerSession` 对可重放的远程 SSE 事件执行滚动保留。
+- `maxDurableEventsPerSession`、`maxDomainEventsPerSession` 和
+  `maxTranscriptEventsPerSession`（默认各 `100000`）是非裁剪流的硬写入配额。
+  达到配额时 Store 拒绝追加，避免静默删除恢复或审计所需的历史。
 - `maxSessionsPerTenant` 只用于 transcript projection 清理。
 - outbox claim、worker heartbeat、Session 路由与恢复见
   [Worker Runtime](./worker-runtime)。

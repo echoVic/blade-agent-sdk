@@ -1,3 +1,4 @@
+import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import type {
@@ -137,6 +138,7 @@ export class SessionDurableRecorder
   private requestFinished = false;
   private handoffRequested = false;
   private completedTurnObserved = false;
+  private readonly handoffMutex = new Mutex();
 
   constructor(
     private readonly journal: DurableSessionJournal,
@@ -169,6 +171,10 @@ export class SessionDurableRecorder
   }
 
   async finalizeHandoff(): Promise<void> {
+    await this.handoffMutex.runExclusive(() => this.finalizeHandoffExclusive());
+  }
+
+  private async finalizeHandoffExclusive(): Promise<void> {
     this.assertBoundaryHealthy();
     if (!this.handoffRequested || this.requestFinished) {
       return;
@@ -747,6 +753,18 @@ export class SessionDurableRecorder
     attempt: ActiveModelAttempt,
     response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
   ): Promise<void> {
+    await this.handoffMutex.runExclusive(() =>
+      this.completeModelRequestExclusive(attempt, response),
+    );
+  }
+
+  private async completeModelRequestExclusive(
+    attempt: ActiveModelAttempt,
+    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
+  ): Promise<void> {
+    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
+      return;
+    }
     this.requireModelAttempt(attempt);
     await this.commitRebasableRequestBoundary([
       {
@@ -763,6 +781,16 @@ export class SessionDurableRecorder
   }
 
   private async failModelRequest(attempt: ActiveModelAttempt, error: unknown): Promise<void> {
+    await this.handoffMutex.runExclusive(() => this.failModelRequestExclusive(attempt, error));
+  }
+
+  private async failModelRequestExclusive(
+    attempt: ActiveModelAttempt,
+    error: unknown,
+  ): Promise<void> {
+    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
+      return;
+    }
     this.requireModelAttempt(attempt);
     await this.commitRebasableRequestBoundary([
       {
@@ -782,6 +810,16 @@ export class SessionDurableRecorder
     attempt: ActiveModelAttempt,
     reason: ModelRequestAbortReason,
   ): Promise<void> {
+    await this.handoffMutex.runExclusive(() => this.abortModelRequestExclusive(attempt, reason));
+  }
+
+  private async abortModelRequestExclusive(
+    attempt: ActiveModelAttempt,
+    reason: ModelRequestAbortReason,
+  ): Promise<void> {
+    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
+      return;
+    }
     this.requireModelAttempt(attempt);
     await this.commitRebasableRequestBoundary([
       {

@@ -33,24 +33,28 @@ describe('TenantAdmissionController', () => {
     releaseB();
   });
 
-  it('enforces a fixed-window command rate limit', async () => {
+  it('enforces a sliding-window command rate limit across the old reset boundary', async () => {
     let now = 0;
     const controller = new TenantAdmissionController(
       {
         maxConcurrentCommands: 1,
         maxQueuedCommands: 1,
-        commandsPerMinute: 1,
+        commandsPerMinute: 2,
       },
       () => now,
     );
-    const release = await controller.acquire('tenant-a');
-    release();
+    (await controller.acquire('tenant-a'))();
+    now = 59_999;
+    (await controller.acquire('tenant-a'))();
     await expect(controller.acquire('tenant-a')).rejects.toMatchObject({
       protocolCode: 'RATE_LIMITED',
     });
     now = 60_000;
-    const nextRelease = await controller.acquire('tenant-a');
-    nextRelease();
+    (await controller.acquire('tenant-a'))();
+    await expect(controller.acquire('tenant-a')).rejects.toMatchObject({
+      protocolCode: 'RATE_LIMITED',
+      retryAfterMs: 59_999,
+    });
   });
 
   it('removes aborted commands from the bounded queue', async () => {

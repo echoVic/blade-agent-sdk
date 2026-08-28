@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Add non-truncatable event quotas and serialize lease, model handoff, worker transition, and approval state changes.",
+  "zh-CN": "为不可裁剪事件流增加配额，并串行化 lease、模型 handoff、Worker 转移与审批状态变更。"
+}
