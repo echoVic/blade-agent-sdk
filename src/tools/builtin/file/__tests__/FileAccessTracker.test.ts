@@ -44,6 +44,31 @@ describe('FileAccessTracker', () => {
       await tracker.recordFileRead(testFile, SessionId('session-1'));
       expect(tracker.getTrackedFileCount()).toBe(1);
     });
+
+    it('keeps independent records for different sessions', async () => {
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
+      await tracker.recordFileRead(testFile, SessionId('session-2'));
+
+      expect(tracker.hasFileBeenRead(testFile, 'session-1')).toBe(true);
+      expect(tracker.hasFileBeenRead(testFile, 'session-2')).toBe(true);
+      expect(tracker.getTrackedFileCount()).toBe(2);
+    });
+
+    it('evicts the least recently recorded file at the configured bound', async () => {
+      FileAccessTracker.resetInstance();
+      tracker = FileAccessTracker.getInstance(undefined, 2);
+      const second = join(tempDir, 'second.txt');
+      const third = join(tempDir, 'third.txt');
+      await writeFile(second, 'second');
+      await writeFile(third, 'third');
+
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
+      await tracker.recordFileRead(second, SessionId('session-1'));
+      await tracker.recordFileRead(third, SessionId('session-1'));
+
+      expect(tracker.hasFileBeenRead(testFile, 'session-1')).toBe(false);
+      expect(tracker.getTrackedFileCount()).toBe(2);
+    });
   });
 
   describe('hasFileBeenRead', () => {
@@ -149,6 +174,18 @@ describe('FileAccessTracker', () => {
       const result = await tracker.checkFileModification('/nonexistent');
       expect(result.modified).toBe(false);
       expect(result.message).toContain('未被跟踪');
+    });
+
+    it('detects a rapid replacement without a multi-second tolerance', async () => {
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
+      await writeFile(testFile, 'changed content');
+
+      const result = await tracker.checkExternalModification(
+        testFile,
+        SessionId('session-1'),
+      );
+
+      expect(result.isExternal).toBe(true);
     });
   });
 });

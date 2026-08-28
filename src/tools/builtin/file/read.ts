@@ -12,6 +12,13 @@ import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 
+export function truncateTextLine(line: string, maxCodePoints = 2000): string {
+  const codePoints = Array.from(line);
+  return codePoints.length > maxCodePoints
+    ? `${codePoints.slice(0, maxCodePoints).join('')}...`
+    : line;
+}
+
 /**
  * ReadTool - File read tool
  * Uses the newer Zod validation design
@@ -134,12 +141,6 @@ export const readTool = createTool({
         signal.throwIfAborted();
       }
 
-      // 记录文件访问（用于 Read-Before-Write 验证）
-      if (sessionId) {
-        const tracker = FileAccessTracker.getInstance();
-        await tracker.recordFileRead(file_path, sessionId);
-      }
-
       // 获取文件统计信息（统一使用 FileSystemService）
       const stats = await fsService.stat(file_path);
 
@@ -160,6 +161,7 @@ export const readTool = createTool({
       const isBinaryFile = checkIsBinaryFile(ext);
 
       let content: string;
+      let trackedContent: string | Buffer;
       const metadata: ReadMetadata = {
         file_path,
         file_size: stats?.size,
@@ -175,15 +177,18 @@ export const readTool = createTool({
           content: { summary: '检测到二进制文件，使用 base64 编码...' },
         };
         const buffer = await fsService.readBinaryFile(file_path);
+        trackedContent = buffer;
         content = buffer.toString('base64');
         metadata.encoding = 'base64';
         metadata.is_binary = true;
       } else if (isTextFile) {
         // 文本文件：使用 FileSystemService 读取
         content = await fsService.readTextFile(file_path);
+        trackedContent = content;
       } else {
         // 其他文件：使用二进制读取
         const buffer = await fsService.readBinaryFile(file_path);
+        trackedContent = buffer;
 
         if (encoding === 'base64') {
           content = buffer.toString('base64');
@@ -192,6 +197,12 @@ export const readTool = createTool({
         } else {
           content = buffer.toString('utf8');
         }
+      }
+
+      // Record the post-read identity used by the optimistic write guard.
+      if (sessionId) {
+        const tracker = FileAccessTracker.getInstance();
+        await tracker.recordFileRead(file_path, sessionId, trackedContent);
       }
 
       if (typeof signal.throwIfAborted === 'function') {
@@ -209,7 +220,7 @@ export const readTool = createTool({
           .map((line, index) => {
             const lineNumber = startLine + index + 1;
             // 截断过长的行
-            const truncatedLine = line.length > 2000 ? `${line.substring(0, 2000)}...` : line;
+            const truncatedLine = truncateTextLine(line);
             return `${lineNumber.toString().padStart(6)}→${truncatedLine}`;
           })
           .join('\n');

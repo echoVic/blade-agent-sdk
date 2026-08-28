@@ -139,6 +139,7 @@ export const writeTool = createTool({
         messageId,
         operation: 'write',
         fileExists,
+        storageRoot: context.bladeConfig?.storageRoot,
       });
       if (guard.blocked) {
         return guard.blocked;
@@ -199,6 +200,7 @@ export const writeTool = createTool({
         encoding,
         created_directories: create_directories,
         snapshot_created: snapshotCreated, // 是否创建了快照
+        snapshot_warning: guard.snapshotWarning,
         session_id: sessionId,
         message_id: messageId,
         last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,

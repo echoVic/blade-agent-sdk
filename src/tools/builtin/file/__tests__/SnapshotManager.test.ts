@@ -73,4 +73,47 @@ describe('SnapshotManager', () => {
     expect(manager.getSnapshotCount()).toBe(1);
     expect(manager.getTrackedFileCount()).toBe(1);
   });
+
+  it('restores the version associated with the requested message', async () => {
+    const workspace = await createTempDir('blade-snapshot-versions-');
+    const storageRoot = await createTempDir('blade-snapshot-root-');
+    const filePath = join(workspace, 'example.ts');
+    const manager = new SnapshotManager({
+      sessionId: SessionId('session-versions'),
+      storageRoot,
+      maxSnapshots: 2,
+    });
+    await manager.initialize();
+    await writeFile(filePath, 'version one', 'utf8');
+    await manager.createSnapshot(filePath, MessageId('message-1'));
+    await writeFile(filePath, 'version two', 'utf8');
+    await manager.createSnapshot(filePath, MessageId('message-2'));
+    await writeFile(filePath, 'current', 'utf8');
+
+    await manager.restoreSnapshot(filePath, MessageId('message-1'));
+
+    expect(await readFile(filePath, 'utf8')).toBe('version one');
+  });
+
+  it('removes in-memory references to snapshots deleted by retention', async () => {
+    const workspace = await createTempDir('blade-snapshot-retention-');
+    const storageRoot = await createTempDir('blade-snapshot-root-');
+    const filePath = join(workspace, 'example.ts');
+    const manager = new SnapshotManager({
+      sessionId: SessionId('session-retention'),
+      storageRoot,
+      maxSnapshots: 1,
+    });
+    await manager.initialize();
+    await writeFile(filePath, 'version one', 'utf8');
+    await manager.createSnapshot(filePath, MessageId('message-1'));
+    await writeFile(filePath, 'version two', 'utf8');
+    await manager.createSnapshot(filePath, MessageId('message-2'));
+
+    await expect(manager.restoreSnapshot(filePath, MessageId('message-1'))).rejects.toThrow(
+      /未找到快照/,
+    );
+    expect(await manager.listSnapshots(filePath)).toHaveLength(1);
+    expect(manager.getTrackedFileCount()).toBe(1);
+  });
 });

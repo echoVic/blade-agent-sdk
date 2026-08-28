@@ -1,6 +1,10 @@
 export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      throw new TypeError('canonicalJson only accepts JSON-serializable values');
+    }
+    return serialized;
   }
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(',')}]`;

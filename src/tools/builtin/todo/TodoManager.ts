@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
 import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorCode } from '../../../utils/errorUtils.js';
 import type { TodoItem, TodoStatus, ValidationResult } from './types.js';
@@ -26,13 +27,17 @@ export class TodoManager {
    * 获取 TodoManager 实例（单例模式，按会话隔离）
    */
   static getInstance(sessionId: SessionId, configDir?: string): TodoManager {
-    const key = `${sessionId}-${configDir ?? ''}`;
+    const key = JSON.stringify([sessionId, configDir ?? '']);
     let instance = TodoManager.instances.get(key);
     if (!instance) {
       instance = new TodoManager(sessionId, configDir);
       TodoManager.instances.set(key, instance);
     }
     return instance;
+  }
+
+  static clear(sessionId: SessionId, configDir?: string): void {
+    TodoManager.instances.delete(JSON.stringify([sessionId, configDir ?? '']));
   }
 
   /**
@@ -63,7 +68,9 @@ export class TodoManager {
     const now = new Date().toISOString();
 
     const processed: TodoItem[] = newTodos.map((todo) => {
-      const existing = this.todos.find((t) => t.id === todo.id || t.content === todo.content);
+      const existing = todo.id
+        ? this.todos.find((item) => item.id === todo.id)
+        : this.findUniqueContentMatch(todo.content);
 
       return {
         ...todo,
@@ -151,10 +158,21 @@ export class TodoManager {
     if (!this.filePath) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o755 });
-      await fs.writeFile(this.filePath, JSON.stringify(this.todos, null, 2), 'utf-8');
+      await writeFileAtomic(this.filePath, JSON.stringify(this.todos, null, 2), {
+        encoding: 'utf-8',
+        fsync: true,
+      });
     } catch (error) {
       console.error('保存 TODO 列表失败:', error);
       throw error;
     }
+  }
+
+  private findUniqueContentMatch(content: string): TodoItem | undefined {
+    const matches = this.todos.filter((item) => item.content === content);
+    if (matches.length > 1) {
+      throw new Error(`TODO content is ambiguous; provide an id for "${content}"`);
+    }
+    return matches[0];
   }
 }

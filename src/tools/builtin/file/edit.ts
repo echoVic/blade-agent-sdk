@@ -131,6 +131,7 @@ export const editTool = createTool({
         messageId,
         operation: 'edit',
         fileExists: true,
+        storageRoot: context.bladeConfig?.storageRoot,
       });
       if (guard.blocked) {
         return guard.blocked;
@@ -167,7 +168,7 @@ export const editTool = createTool({
       // 🔴 对齐 Claude Code 官方：多重匹配时直接失败
       if (matches.length > 1 && !replace_all) {
         // 计算每个匹配项的行号和上下文预览
-        const lines = content.split('\n');
+        const lines = content.split(/\r\n|\n|\r/);
         let currentPos = 0;
         const matchLocations: { line: number; column: number; context: string }[] = [];
 
@@ -196,7 +197,12 @@ export const editTool = createTool({
             }
           }
 
-          currentPos = lineEnd + 1; // +1 for newline character
+          const newlineLength = content.startsWith('\r\n', lineEnd)
+            ? 2
+            : content[lineEnd] === '\n' || content[lineEnd] === '\r'
+              ? 1
+              : 0;
+          currentPos = lineEnd + newlineLength;
         }
 
         // LLM 友好的错误消息（引导性、鼓励重试）
@@ -299,7 +305,8 @@ export const editTool = createTool({
         new_size: newContent.length,
         size_diff: newContent.length - content.length,
         last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
-        snapshot_created: !!(sessionId && messageId),
+        snapshot_created: guard.snapshotCreated,
+        snapshot_warning: guard.snapshotWarning,
         session_id: sessionId,
         message_id: messageId,
         diff_snippet: diffSnippet,

@@ -20,7 +20,11 @@ import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
+import { SnapshotManager } from '../tools/builtin/file/SnapshotManager.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
+import { TaskStore } from '../tools/builtin/task/TaskStore.js';
+import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
@@ -341,6 +345,10 @@ export class SessionRuntime {
     } catch (error) {
       errors.push(error);
     }
+    FileAccessTracker.clearSessionRecords(this.sessionId);
+    SnapshotManager.clearInstance(this.sessionId, this.storageRoot);
+    TaskStore.clear(this.sessionId, this.storageRoot);
+    TodoManager.clear(this.sessionId, this.storageRoot);
     try {
       this.assertNoPendingCleanup({ includeTerminalFailures: false });
     } catch (error) {

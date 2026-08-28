@@ -69,4 +69,30 @@ describe('TodoManager', () => {
       { content: 'Write tests', status: 'completed' },
     ]);
   });
+
+  it('requires an id when existing todo content is ambiguous', async () => {
+    const manager = TodoManager.getInstance(SessionId(`duplicates-${Date.now()}`));
+    await manager.updateTodos([
+      {
+        content: 'Same task',
+        activeForm: 'First',
+        status: 'pending',
+      },
+      {
+        content: 'Same task',
+        activeForm: 'Second',
+        status: 'pending',
+      },
+    ]);
+
+    await expect(
+      manager.updateTodos([
+        {
+          content: 'Same task',
+          activeForm: 'Updating',
+          status: 'in_progress',
+        },
+      ]),
+    ).rejects.toThrow(/ambiguous/);
+  });
 });

@@ -19,6 +19,7 @@ interface DiffMetadataFields extends FileMetadataFields {
   oldContent: string;
   newContent?: string;
   snapshot_created?: boolean;
+  snapshot_warning?: string;
   session_id?: string;
   message_id?: string;
 }

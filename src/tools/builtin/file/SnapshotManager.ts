@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
 import type { MessageId, SessionId } from '../../../types/identifiers.js';
 
 /**
@@ -20,6 +21,7 @@ export interface Snapshot {
   backupFileName: string; // 快照文件哈希
   timestamp: Date; // 创建时间
   filePath: string; // 原始文件路径
+  version: number;
 }
 
 /**
@@ -39,6 +41,7 @@ export interface SnapshotManagerOptions {
  * snapshotDir 有值时启用文件快照，undefined 时所有操作为 no-op。
  */
 export class SnapshotManager {
+  private static readonly instances = new Map<string, SnapshotManager>();
   private readonly sessionId: SessionId;
   private readonly maxSnapshots: number;
   private readonly snapshotDir: string | undefined;
@@ -58,6 +61,20 @@ export class SnapshotManager {
       options.storageRoot && (options.enableCheckpoints ?? true)
         ? path.join(options.storageRoot, 'file-history', this.sessionId)
         : undefined;
+  }
+
+  static getInstance(options: SnapshotManagerOptions): SnapshotManager {
+    const key = JSON.stringify([options.storageRoot ?? '', options.sessionId]);
+    let manager = SnapshotManager.instances.get(key);
+    if (!manager) {
+      manager = new SnapshotManager(options);
+      SnapshotManager.instances.set(key, manager);
+    }
+    return manager;
+  }
+
+  static clearInstance(sessionId: SessionId, storageRoot?: string): void {
+    SnapshotManager.instances.delete(JSON.stringify([storageRoot ?? '', sessionId]));
   }
 
   /**
@@ -96,21 +113,24 @@ export class SnapshotManager {
     const snapshotPath = path.join(this.snapshotDir, `${fileHash}@v${version}`);
 
     try {
-      const content = await fs.readFile(filePath, { encoding: 'utf-8' });
-      await fs.writeFile(snapshotPath, content, { encoding: 'utf-8' });
+      const content = await fs.readFile(filePath);
+      await this.assertDiskCapacity(content.byteLength);
+      await writeFileAtomic(snapshotPath, content, { fsync: true });
 
+      const backupTime = new Date();
       const metadata: SnapshotMetadata = {
         backupFileName: fileHash,
         version,
-        backupTime: new Date(),
+        backupTime,
       };
 
       this.trackedFileBackups.set(filePath, metadata);
       this.snapshots.push({
         messageId,
         backupFileName: fileHash,
-        timestamp: new Date(),
+        timestamp: backupTime,
         filePath,
+        version,
       });
 
       console.log(`[SnapshotManager] 创建快照: ${filePath} -> ${fileHash}@v${version}`);
@@ -145,14 +165,14 @@ export class SnapshotManager {
 
     const snapshotPath = path.join(
       this.snapshotDir,
-      `${snapshot.backupFileName}@v${metadata.version}`,
+      `${snapshot.backupFileName}@v${snapshot.version}`,
     );
 
     try {
-      const content = await fs.readFile(snapshotPath, { encoding: 'utf-8' });
-      await fs.writeFile(filePath, content, { encoding: 'utf-8' });
+      const content = await fs.readFile(snapshotPath);
+      await writeFileAtomic(filePath, content, { fsync: true });
       console.log(
-        `[SnapshotManager] 恢复快照: ${filePath} <- ${snapshot.backupFileName}@v${metadata.version}`,
+        `[SnapshotManager] 恢复快照: ${filePath} <- ${snapshot.backupFileName}@v${snapshot.version}`,
       );
     } catch (error) {
       console.error(`[SnapshotManager] 恢复快照失败: ${filePath}`, error);
@@ -182,12 +202,9 @@ export class SnapshotManager {
     const toDelete = sortedSnapshots.slice(0, fileSnapshots.length - this.maxSnapshots);
 
     for (const snapshot of toDelete) {
-      const metadata = this.trackedFileBackups.get(snapshot.filePath);
-      if (!metadata) continue;
-
       const snapshotPath = path.join(
         this.snapshotDir,
-        `${snapshot.backupFileName}@v${metadata.version}`,
+        `${snapshot.backupFileName}@v${snapshot.version}`,
       );
 
       try {
@@ -202,6 +219,7 @@ export class SnapshotManager {
         this.snapshots.splice(index, 1);
       }
     }
+    this.refreshTrackedFileBackup(filePath);
   }
 
   /**
@@ -226,10 +244,22 @@ export class SnapshotManager {
       filesWithStats.sort((a, b) => b.mtime - a.mtime);
 
       const toDelete = filesWithStats.slice(keepCount);
+      const deletedNames = new Set<string>();
       for (const { file } of toDelete) {
         const filePath = path.join(snapshotDir, file);
-        await fs.unlink(filePath);
-        console.log(`[SnapshotManager] 清理快照: ${filePath}`);
+        try {
+          await fs.unlink(filePath);
+          deletedNames.add(file);
+          console.log(`[SnapshotManager] 清理快照: ${filePath}`);
+        } catch (error) {
+          console.warn(`[SnapshotManager] 清理快照失败: ${filePath}`, error);
+        }
+      }
+      this.snapshots = this.snapshots.filter(
+        (snapshot) => !deletedNames.has(`${snapshot.backupFileName}@v${snapshot.version}`),
+      );
+      for (const trackedPath of this.trackedFileBackups.keys()) {
+        this.refreshTrackedFileBackup(trackedPath);
       }
     } catch (error) {
       console.warn('[SnapshotManager] 清理快照失败:', error);
@@ -240,6 +270,34 @@ export class SnapshotManager {
     const hash = crypto.createHash('md5');
     hash.update(`${filePath}:${version}`);
     return hash.digest('hex').substring(0, 16);
+  }
+
+  private async assertDiskCapacity(requiredBytes: number): Promise<void> {
+    if (!this.snapshotDir || typeof fs.statfs !== 'function') {
+      return;
+    }
+    const stats = await fs.statfs(this.snapshotDir);
+    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+    if (Number.isFinite(availableBytes) && availableBytes < requiredBytes) {
+      throw new Error(
+        `Insufficient disk space for snapshot: ${requiredBytes} bytes required, ${availableBytes} available`,
+      );
+    }
+  }
+
+  private refreshTrackedFileBackup(filePath: string): void {
+    const latest = this.snapshots
+      .filter((snapshot) => snapshot.filePath === filePath)
+      .sort((left, right) => right.version - left.version)[0];
+    if (!latest) {
+      this.trackedFileBackups.delete(filePath);
+      return;
+    }
+    this.trackedFileBackups.set(filePath, {
+      backupFileName: latest.backupFileName,
+      version: latest.version,
+      backupTime: latest.timestamp,
+    });
   }
 
   getSnapshotDir(): string | undefined {

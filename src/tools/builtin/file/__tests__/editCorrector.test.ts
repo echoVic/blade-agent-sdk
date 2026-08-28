@@ -37,6 +37,11 @@ describe('editCorrector', () => {
       expect(unescapeString('a\\\\b')).toBe('a\\b');
     });
 
+    it('preserves an escaped backslash before a control-letter sequence', () => {
+      expect(unescapeString('\\\\to')).toBe('\\to');
+      expect(unescapeString('\\\\name')).toBe('\\name');
+    });
+
     it('should leave normal strings unchanged', () => {
       expect(unescapeString('hello world')).toBe('hello world');
     });

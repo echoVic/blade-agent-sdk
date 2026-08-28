@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Strengthen file revision tracking, snapshots, atomic local persistence, CRLF offsets, Unicode truncation, and edit unescaping.",
+  "zh-CN": "强化文件版本跟踪、快照、原子本地持久化、CRLF 偏移、Unicode 截断与编辑反转义。"
+}

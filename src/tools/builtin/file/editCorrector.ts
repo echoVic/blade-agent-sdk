@@ -39,37 +39,46 @@ export interface MatchResult {
  * unescapeString('\\`template\\`') // → '`template`'
  */
 export function unescapeString(input: string): string {
-  // 正则说明：
-  // \\+ : 匹配一个或多个反斜杠
-  // (n|t|r|'|"|`|\\|\n) : 捕获组，匹配需要转义的字符
-  //   - n, t, r: 字面字符（需要转换为 \n, \t, \r）
-  //   - ', ", `: 引号字符
-  //   - \\: 反斜杠本身
-  //   - \n: 真实的换行符
-  // g: 全局标志，替换所有匹配
+  const escapes: Record<string, string> = {
+    n: '\n',
+    t: '\t',
+    r: '\r',
+    "'": "'",
+    '"': '"',
+    '`': '`',
+    '\n': '\n',
+  };
+  let result = '';
 
-  return input.replace(/\\+(n|t|r|'|"|`|\\|\n)/g, (match, capturedChar) => {
-    switch (capturedChar) {
-      case 'n':
-        return '\n'; // 换行符
-      case 't':
-        return '\t'; // 制表符
-      case 'r':
-        return '\r'; // 回车符
-      case "'":
-        return "'"; // 单引号
-      case '"':
-        return '"'; // 双引号
-      case '`':
-        return '`'; // 反引号
-      case '\\':
-        return '\\'; // 反斜杠
-      case '\n':
-        return '\n'; // 真实换行符
-      default:
-        return match; // 保持原样
+  for (let index = 0; index < input.length; index += 1) {
+    if (input[index] !== '\\') {
+      result += input[index];
+      continue;
     }
-  });
+    let end = index;
+    while (input[end] === '\\') {
+      end += 1;
+    }
+    const slashCount = end - index;
+    const escaped = input[end];
+    result += '\\'.repeat(Math.floor(slashCount / 2));
+    if (escaped !== undefined && escapes[escaped] !== undefined && slashCount % 2 === 1) {
+      result += escapes[escaped];
+      index = end;
+      continue;
+    }
+    if (slashCount % 2 === 1) {
+      result += '\\';
+    }
+    if (escaped !== undefined) {
+      result += escaped;
+      index = end;
+    } else {
+      index = end - 1;
+    }
+  }
+
+  return result;
 }
 
 /**

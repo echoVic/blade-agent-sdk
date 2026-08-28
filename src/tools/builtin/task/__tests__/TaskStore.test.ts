@@ -89,15 +89,15 @@ describe('TaskStore', () => {
       description: 'Should be written to disk',
     });
 
-    const persistedPath = path.join(configDir, 'tasks', `${sessionId}.json`);
+    const persistedPath = path.join(configDir, 'tasks', String(sessionId), `${task.id}.json`);
     const persistedData = JSON.parse(await readFile(persistedPath, 'utf-8'));
 
-    expect(persistedData).toEqual([
+    expect(persistedData).toEqual(
       expect.objectContaining({
         id: task.id,
         subject: 'Persist task',
         status: 'pending',
       }),
-    ]);
+    );
   });
 });

@@ -9,6 +9,7 @@
  */
 
 import type { MessageId, SessionId } from '../../../types/identifiers.js';
+import { getErrorMessage } from '../../../utils/errorUtils.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
@@ -21,6 +22,7 @@ export interface WriteGuardParams {
   sessionId?: SessionId;
   messageId?: MessageId;
   operation: WriteOperation;
+  storageRoot?: string;
   /**
    * 目标文件是否已存在。write 工具新建文件时为 false，此时跳过 read-before-write
    * 与外部修改检查（仅对已存在文件强制）。edit 工具始终为 true。
@@ -33,6 +35,8 @@ export interface WriteGuardResult {
   blocked: ToolResult | null;
   /** 是否成功创建了快照 */
   snapshotCreated: boolean;
+  /** Non-fatal reason why a requested snapshot could not be created. */
+  snapshotWarning?: string;
 }
 
 const NOT_READ_MESSAGES: Record<WriteOperation, string> = {
@@ -55,7 +59,7 @@ const EXTERNAL_MOD_DETAIL: Record<WriteOperation, string> = {
  * 执行写入前校验。返回 blocked 结果（应直接返回给调用方）或 snapshotCreated 状态。
  */
 export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuardResult> {
-  const { filePath, sessionId, messageId, operation, fileExists } = params;
+  const { filePath, sessionId, messageId, operation, fileExists, storageRoot } = params;
 
   if (fileExists && !sessionId) {
     return {
@@ -91,7 +95,7 @@ export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuar
       };
     }
 
-    const externalModCheck = await tracker.checkExternalModification(filePath);
+    const externalModCheck = await tracker.checkExternalModification(filePath, sessionId);
     if (externalModCheck.isExternal) {
       return {
         blocked: {
@@ -110,12 +114,17 @@ export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuar
 
   if (fileExists && sessionId && messageId) {
     try {
-      const snapshotManager = new SnapshotManager({ sessionId });
+      const snapshotManager = SnapshotManager.getInstance({ sessionId, storageRoot });
       await snapshotManager.initialize();
       await snapshotManager.createSnapshot(filePath, messageId);
       return { blocked: null, snapshotCreated: true };
     } catch (error) {
       console.warn(`[${operation === 'edit' ? 'EditTool' : 'WriteTool'}] 创建快照失败:`, error);
+      return {
+        blocked: null,
+        snapshotCreated: false,
+        snapshotWarning: getErrorMessage(error),
+      };
     }
   }
 

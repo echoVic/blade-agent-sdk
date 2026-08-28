@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../../logging/Logger.js';
 import type { SessionId } from '../../../types/identifiers.js';
@@ -12,7 +13,20 @@ export interface FileAccessRecord {
   mtime: number; // 访问时文件的修改时间戳
   sessionId: SessionId; // 会话 ID
   lastOperation: 'read' | 'edit' | 'write'; // 最后操作类型
+  fingerprint: FileFingerprint;
 }
+
+interface FileFingerprint {
+  readonly device: string;
+  readonly inode: string;
+  readonly size: string;
+  readonly mtimeNs: string;
+  readonly ctimeNs: string;
+  readonly contentHash: string;
+}
+
+const DEFAULT_MAX_TRACKED_FILES = 1_000;
+const DEFAULT_RECORD_TTL_MS = 60 * 60_000;
 /**
  * 文件访问跟踪器
  *
@@ -26,18 +40,31 @@ export class FileAccessTracker {
   private static instance: FileAccessTracker | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.TOOL);
 
-  // 已读文件映射: filePath -> FileAccessRecord
+  // 已读文件映射: sessionId + filePath -> FileAccessRecord
   private accessedFiles: Map<string, FileAccessRecord> = new Map();
 
-  // 私有构造函数（单例模式）
-  private constructor() {}
+  private constructor(
+    private readonly maxTrackedFiles = DEFAULT_MAX_TRACKED_FILES,
+    private readonly recordTtlMs = DEFAULT_RECORD_TTL_MS,
+  ) {
+    if (!Number.isSafeInteger(maxTrackedFiles) || maxTrackedFiles < 1) {
+      throw new RangeError('maxTrackedFiles must be a positive safe integer');
+    }
+    if (!Number.isSafeInteger(recordTtlMs) || recordTtlMs < 1) {
+      throw new RangeError('recordTtlMs must be a positive safe integer');
+    }
+  }
 
   /**
    * 获取全局单例实例
    */
-  static getInstance(logger?: InternalLogger): FileAccessTracker {
+  static getInstance(
+    logger?: InternalLogger,
+    maxTrackedFiles?: number,
+    recordTtlMs?: number,
+  ): FileAccessTracker {
     if (!FileAccessTracker.instance) {
-      FileAccessTracker.instance = new FileAccessTracker();
+      FileAccessTracker.instance = new FileAccessTracker(maxTrackedFiles, recordTtlMs);
     }
     if (logger) {
       FileAccessTracker.instance.setLogger(logger);
@@ -55,20 +82,26 @@ export class FileAccessTracker {
    * @param filePath 文件绝对路径
    * @param sessionId 会话 ID
    */
-  async recordFileRead(filePath: string, sessionId: SessionId): Promise<void> {
+  async recordFileRead(
+    filePath: string,
+    sessionId: SessionId,
+    content?: string | Uint8Array,
+  ): Promise<void> {
     try {
       // 获取文件的当前修改时间
-      const stats = await fs.stat(filePath);
+      const stats = await fs.stat(filePath, { bigint: true });
+      const capturedContent = content ?? (await fs.readFile(filePath));
 
       const record: FileAccessRecord = {
         filePath,
         accessTime: Date.now(),
-        mtime: stats.mtimeMs,
+        mtime: Number(stats.mtimeNs) / 1_000_000,
         sessionId,
         lastOperation: 'read',
+        fingerprint: this.toFingerprint(stats, capturedContent),
       };
 
-      this.accessedFiles.set(filePath, record);
+      this.setRecord(record);
 
       this.logger.debug(`记录文件读取: ${filePath}`);
     } catch (error) {
@@ -91,17 +124,19 @@ export class FileAccessTracker {
   ): Promise<void> {
     try {
       // 获取文件的当前修改时间
-      const stats = await fs.stat(filePath);
+      const stats = await fs.stat(filePath, { bigint: true });
+      const content = await fs.readFile(filePath);
 
       const record: FileAccessRecord = {
         filePath,
         accessTime: Date.now(),
-        mtime: stats.mtimeMs,
+        mtime: Number(stats.mtimeNs) / 1_000_000,
         sessionId,
         lastOperation: operation,
+        fingerprint: this.toFingerprint(stats, content),
       };
 
-      this.accessedFiles.set(filePath, record);
+      this.setRecord(record);
 
       this.logger.debug(`记录文件${operation === 'edit' ? '编辑' : '写入'}: ${filePath}`);
     } catch (error) {
@@ -117,14 +152,9 @@ export class FileAccessTracker {
    * @returns 是否已读取
    */
   hasFileBeenRead(filePath: string, sessionId?: string): boolean {
-    const record = this.accessedFiles.get(filePath);
+    const record = this.findRecord(filePath, sessionId);
 
     if (!record) {
-      return false;
-    }
-
-    // 如果提供了 sessionId，验证是否是同一会话
-    if (sessionId && record.sessionId !== sessionId) {
       return false;
     }
 
@@ -137,8 +167,11 @@ export class FileAccessTracker {
    * @param filePath 文件绝对路径
    * @returns { modified: boolean, message?: string }
    */
-  async checkFileModification(filePath: string): Promise<{ modified: boolean; message?: string }> {
-    const record = this.accessedFiles.get(filePath);
+  async checkFileModification(
+    filePath: string,
+    sessionId?: SessionId,
+  ): Promise<{ modified: boolean; message?: string }> {
+    const record = this.findRecord(filePath, sessionId);
 
     if (!record) {
       return {
@@ -149,14 +182,13 @@ export class FileAccessTracker {
 
     try {
       // 获取文件当前的修改时间
-      const stats = await fs.stat(filePath);
+      const stats = await fs.stat(filePath, { bigint: true });
+      const content = await fs.readFile(filePath);
 
-      // 比较修改时间（容差 1ms，避免浮点精度问题）
-      const timeDiff = Math.abs(stats.mtimeMs - record.mtime);
-      if (timeDiff > 1) {
+      if (!this.sameFingerprint(record.fingerprint, this.toFingerprint(stats, content))) {
         return {
           modified: true,
-          message: `文件在访问后被修改（访问时间: ${new Date(record.accessTime).toISOString()}, 当前修改时间: ${stats.mtime.toISOString()}）`,
+          message: `文件在访问后被修改（访问时间: ${new Date(record.accessTime).toISOString()}, 当前修改时间: ${new Date(Number(stats.mtimeNs) / 1_000_000).toISOString()}）`,
         };
       }
 
@@ -170,8 +202,8 @@ export class FileAccessTracker {
       }
 
       return {
-        modified: false,
-        message: `无法检查文件状态: ${getErrorMessage(error)}`,
+        modified: true,
+        message: `无法验证文件状态: ${getErrorMessage(error)}`,
       };
     }
   }
@@ -185,8 +217,9 @@ export class FileAccessTracker {
    */
   async checkExternalModification(
     filePath: string,
+    sessionId?: SessionId,
   ): Promise<{ isExternal: boolean; message?: string }> {
-    const record = this.accessedFiles.get(filePath);
+    const record = this.findRecord(filePath, sessionId);
 
     if (!record) {
       return {
@@ -197,17 +230,12 @@ export class FileAccessTracker {
 
     try {
       // 获取文件当前的修改时间
-      const stats = await fs.stat(filePath);
-
-      // 计算时间差（文件 mtime - 我们的操作时间）
-      const timeDiff = stats.mtimeMs - record.mtime;
-
-      // 使用 2 秒缓冲
-      // 如果文件在我们操作后 2 秒之后被修改，判定为外部修改
-      if (timeDiff > 2000) {
+      const stats = await fs.stat(filePath, { bigint: true });
+      const content = await fs.readFile(filePath);
+      if (!this.sameFingerprint(record.fingerprint, this.toFingerprint(stats, content))) {
         return {
           isExternal: true,
-          message: `文件在 ${new Date(record.accessTime).toISOString()} (${record.lastOperation}) 之后被外部程序修改（当前修改时间: ${stats.mtime.toISOString()}）`,
+          message: `文件在 ${new Date(record.accessTime).toISOString()} (${record.lastOperation}) 之后被外部程序修改（当前修改时间: ${new Date(Number(stats.mtimeNs) / 1_000_000).toISOString()}）`,
         };
       }
 
@@ -222,8 +250,8 @@ export class FileAccessTracker {
 
       this.logger.warn(`检查文件外部修改失败: ${filePath}`, error);
       return {
-        isExternal: false,
-        message: `无法检查文件状态: ${getErrorMessage(error)}`,
+        isExternal: true,
+        message: `无法验证文件状态: ${getErrorMessage(error)}`,
       };
     }
   }
@@ -234,8 +262,8 @@ export class FileAccessTracker {
    * @param filePath 文件绝对路径
    * @returns 访问记录或 undefined
    */
-  getFileRecord(filePath: string): FileAccessRecord | undefined {
-    return this.accessedFiles.get(filePath);
+  getFileRecord(filePath: string, sessionId?: SessionId): FileAccessRecord | undefined {
+    return this.findRecord(filePath, sessionId);
   }
 
   /**
@@ -243,8 +271,16 @@ export class FileAccessTracker {
    *
    * @param filePath 文件绝对路径
    */
-  clearFileRecord(filePath: string): void {
-    this.accessedFiles.delete(filePath);
+  clearFileRecord(filePath: string, sessionId?: SessionId): void {
+    if (sessionId) {
+      this.accessedFiles.delete(this.recordKey(filePath, sessionId));
+      return;
+    }
+    for (const [key, record] of this.accessedFiles) {
+      if (record.filePath === filePath) {
+        this.accessedFiles.delete(key);
+      }
+    }
   }
 
   /**
@@ -271,13 +307,15 @@ export class FileAccessTracker {
    * 获取所有已跟踪的文件路径
    */
   getTrackedFiles(): string[] {
-    return Array.from(this.accessedFiles.keys());
+    this.pruneExpired();
+    return [...new Set(Array.from(this.accessedFiles.values(), (record) => record.filePath))];
   }
 
   /**
    * 获取跟踪的文件数量
    */
   getTrackedFileCount(): number {
+    this.pruneExpired();
     return this.accessedFiles.size;
   }
 
@@ -286,5 +324,77 @@ export class FileAccessTracker {
    */
   static resetInstance(): void {
     FileAccessTracker.instance = null;
+  }
+
+  static clearSessionRecords(sessionId: SessionId): void {
+    FileAccessTracker.instance?.clearSession(sessionId);
+  }
+
+  private recordKey(filePath: string, sessionId: string): string {
+    return JSON.stringify([sessionId, filePath]);
+  }
+
+  private setRecord(record: FileAccessRecord): void {
+    this.pruneExpired();
+    const key = this.recordKey(record.filePath, record.sessionId);
+    this.accessedFiles.delete(key);
+    this.accessedFiles.set(key, record);
+    while (this.accessedFiles.size > this.maxTrackedFiles) {
+      const oldest = this.accessedFiles.keys().next().value as string | undefined;
+      if (oldest === undefined) {
+        break;
+      }
+      this.accessedFiles.delete(oldest);
+    }
+  }
+
+  private findRecord(filePath: string, sessionId?: string): FileAccessRecord | undefined {
+    this.pruneExpired();
+    if (sessionId) {
+      return this.accessedFiles.get(this.recordKey(filePath, sessionId));
+    }
+    return Array.from(this.accessedFiles.values())
+      .filter((record) => record.filePath === filePath)
+      .sort((left, right) => right.accessTime - left.accessTime)[0];
+  }
+
+  private pruneExpired(): void {
+    const cutoff = Date.now() - this.recordTtlMs;
+    for (const [key, record] of this.accessedFiles) {
+      if (record.accessTime <= cutoff) {
+        this.accessedFiles.delete(key);
+      }
+    }
+  }
+
+  private toFingerprint(
+    stats: {
+      dev: bigint;
+      ino: bigint;
+      size: bigint;
+      mtimeNs: bigint;
+      ctimeNs: bigint;
+    },
+    content: string | Uint8Array,
+  ): FileFingerprint {
+    return {
+      device: String(stats.dev),
+      inode: String(stats.ino),
+      size: String(stats.size),
+      mtimeNs: String(stats.mtimeNs),
+      ctimeNs: String(stats.ctimeNs),
+      contentHash: createHash('sha256').update(content).digest('hex'),
+    };
+  }
+
+  private sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean {
+    return (
+      left.device === right.device &&
+      left.inode === right.inode &&
+      left.size === right.size &&
+      left.mtimeNs === right.mtimeNs &&
+      left.ctimeNs === right.ctimeNs &&
+      left.contentHash === right.contentHash
+    );
   }
 }
