@@ -1,4 +1,8 @@
 // Web 工具模块
 
-export { webFetchTool } from './webFetch.js';
+export {
+  assertWebFetchUrl,
+  type WebFetchSecurityPolicy,
+  webFetchTool,
+} from './webFetch.js';
 export { webSearchTool } from './webSearch.js';

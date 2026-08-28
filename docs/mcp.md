@@ -2,6 +2,10 @@
 
 MCP（Model Context Protocol）是连接 LLM 与外部工具、数据源的标准协议。Blade Agent SDK 支持连接外部 MCP Server，也支持在进程内创建 MCP Server。
 
+所有远程工具都以保留命名空间 `mcp__<server>__<tool>` 暴露。MCP Server
+不能用 `Read`、`Write`、`Bash` 等名称覆盖内置或应用工具；规范化后的名称冲突会
+在注册阶段直接失败。
+
 ## 连接外部 MCP Server
 
 在 `createSession` 的 `mcpServers` 中配置：
@@ -89,6 +93,10 @@ interface McpServerConfig {
   };
 }
 ```
+
+OAuth 授权码流程只接受 `http://localhost:7777/oauth/callback`、
+`http://127.0.0.1:7777/oauth/callback` 或等价的 IPv6 loopback URI。
+`state` 具有 5 分钟 TTL 且只能消费一次；不支持把授权码重定向到远程主机。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|

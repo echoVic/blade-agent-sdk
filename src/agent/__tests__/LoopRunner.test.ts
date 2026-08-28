@@ -694,7 +694,7 @@ describe('LoopRunner', () => {
 
       catalog.registerMcpTool(
         createTool({
-          name: 'RemoteRead',
+          name: 'mcp__remote-server__RemoteRead',
           displayName: 'Remote Read',
           kind: ToolKind.ReadOnly,
           sideEffect: 'pure',

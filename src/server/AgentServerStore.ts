@@ -97,7 +97,7 @@ interface EventLog {
 }
 
 function scopedKey(tenantId: string, id: string): string {
-  return `${tenantId}\0${id}`;
+  return JSON.stringify([tenantId, id]);
 }
 
 export interface InMemoryAgentServerStoreOptions {

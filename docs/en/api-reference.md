@@ -394,6 +394,7 @@ Types:
 - `ToolSourceInfo`
 - `ToolSourceKind`
 - `ToolTrustLevel`
+- `WebFetchSecurityPolicy`
 
 Source kinds are `builtin`, `custom`, `mcp`, and `session`. Trust levels are `trusted`, `workspace`, and `remote`.
 

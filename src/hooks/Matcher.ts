@@ -12,7 +12,10 @@
  */
 
 import picomatch from 'picomatch';
+import safeRegex from 'safe-regex2';
 import type { MatchContext, MatcherConfig } from './types.js';
+
+const MAX_REGEX_PATTERN_LENGTH = 256;
 
 /**
  * 参数模式正则
@@ -219,6 +222,9 @@ export class Matcher {
 
     // 正则表达式
     try {
+      if (pattern.length > MAX_REGEX_PATTERN_LENGTH || !safeRegex(pattern)) {
+        return value === pattern;
+      }
       const regex = new RegExp(pattern);
       return regex.test(value);
     } catch {

@@ -234,6 +234,7 @@ export type {
 } from './tools/catalog/index.js';
 export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+export type { WebFetchSecurityPolicy } from './tools/builtin/web/webFetch.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,

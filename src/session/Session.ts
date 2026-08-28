@@ -480,6 +480,7 @@ class Session implements ISession {
       currentModelId: modelConfig.id,
       temperature: this.options.temperature ?? 0.7,
       toolTimeoutMs: this.options.toolTimeoutMs,
+      webFetch: this.options.webFetch,
       permissions: {
         allow: [],
         deny: [],

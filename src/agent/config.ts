@@ -1,4 +1,5 @@
 import type { McpServerConfig } from '../mcp/config.js';
+import type { WebFetchSecurityPolicy } from '../tools/builtin/web/webFetch.js';
 import type { ModelConfig } from '../model/config.js';
 import type { PermissionsConfig } from '../types/permissions.js';
 
@@ -15,6 +16,8 @@ export interface BladeConfig {
   maxTurns?: number;
   /** Maximum wall-clock duration of one tool invocation. */
   toolTimeoutMs?: number;
+  /** Network-boundary policy for the built-in WebFetch tool. */
+  webFetch?: WebFetchSecurityPolicy;
   /** Directory used by ExitPlanMode to persist plan files. */
   plansDirectory?: string;
   /**

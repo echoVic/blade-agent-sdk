@@ -18,8 +18,18 @@ describe('createMcpTool', () => {
   it('classifies remote MCP tools conservatively', () => {
     const tool = buildTool({ type: 'object' });
 
+    expect(tool.name).toBe('mcp__test-server__schema_tool');
     expect(tool.sideEffect).toBe('non_idempotent');
     expect(tool.tags).toContain('mcp-server:test-server');
+  });
+
+  it('keeps the remote protocol name separate from the exposed namespace', async () => {
+    const tool = buildTool({ type: 'object' });
+
+    const iterator = tool.execute({}, {});
+    await iterator.next();
+
+    expect(mockClient.callTool).toHaveBeenCalledWith('schema_tool', {});
   });
 
   it('should support enum values for strings and numbers', () => {

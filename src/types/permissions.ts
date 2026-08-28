@@ -102,23 +102,30 @@ export function createModePermissionHandler(
   return async (request) => {
     const permissionMode = request.permissionMode ?? defaultMode;
 
+    if (permissionMode === PermissionMode.PLAN && !request.toolMeta.isReadOnly) {
+      return {
+        behavior: 'deny',
+        message:
+          'Plan mode: modification tools are blocked; only read-only tools are allowed (Read/Glob/Grep/WebFetch/WebSearch/Task)',
+      };
+    }
+
     if (request.sessionApproved) {
       return {
         behavior: 'allow',
       };
     }
 
-    if (permissionMode === PermissionMode.YOLO) {
+    if (request.toolMeta.isDestructive) {
       return {
-        behavior: 'allow',
+        behavior: 'ask',
+        message: 'Destructive operation requires explicit confirmation',
       };
     }
 
-    if (permissionMode === PermissionMode.PLAN && !request.toolMeta.isReadOnly) {
+    if (permissionMode === PermissionMode.YOLO) {
       return {
-        behavior: 'deny',
-        message:
-          'Plan mode: modification tools are blocked; only read-only tools are allowed (Read/Glob/Grep/WebFetch/WebSearch/Task)',
+        behavior: 'allow',
       };
     }
 

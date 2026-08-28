@@ -848,17 +848,17 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
-    expect(runtime.getToolRegistry().get('test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
+    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
 
     await runtime.mcpDisconnect('test');
     expect(await runtime.mcpListTools()).toEqual([]);
-    expect(runtime.getToolRegistry().get('test_tool')).toBeUndefined();
+    expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeUndefined();
 
     await runtime.mcpReconnect('test');
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
-    expect(runtime.getToolRegistry().get('test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
+    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
 
     await runtime.close();
   });

@@ -56,6 +56,9 @@ importers:
       picomatch:
         specifier: ^4.0.4
         version: 4.0.4
+      safe-regex2:
+        specifier: ^5.1.1
+        version: 5.1.1
       semver:
         specifier: ^7.7.4
         version: 7.7.4
@@ -3043,6 +3046,10 @@ packages:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
     engines: {node: '>=8'}
 
+  ret@0.5.0:
+    resolution: {integrity: sha512-I1XxrZSQ+oErkRR4jYbAyEEu2I0avBvvMM5JN+6EBprOGRCs63ENqZ3vjavq8fBw2+62G5LF5XelKwuJpcvcxw==}
+    engines: {node: '>=10'}
+
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
@@ -3068,6 +3075,10 @@ packages:
 
   safe-buffer@5.1.2:
     resolution: {integrity: sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g==}
+
+  safe-regex2@5.1.1:
+    resolution: {integrity: sha512-mOSBvHGDZMuIEZMdOz/aCEYDCv0E7nfcNsIhUF+/P+xC7Hyf3FkvymqgPbg9D1EdSGu+uKbJgy09K/RKKc7kJA==}
+    hasBin: true
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
@@ -6383,6 +6394,8 @@ snapshots:
 
   resolve-from@5.0.0: {}
 
+  ret@0.5.0: {}
+
   reusify@1.1.0: {}
 
   rfdc@1.4.1: {}
@@ -6435,6 +6448,10 @@ snapshots:
       queue-microtask: 1.2.3
 
   safe-buffer@5.1.2: {}
+
+  safe-regex2@5.1.1:
+    dependencies:
+      ret: 0.5.0
 
   safer-buffer@2.1.2: {}
 

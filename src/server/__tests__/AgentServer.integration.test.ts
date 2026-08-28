@@ -363,6 +363,43 @@ describe('AgentServer', () => {
     await server.close();
   });
 
+  it('rejects malformed Session IDs in the SSE route', async () => {
+    const { server } = createTestServer();
+
+    const response = await server.handle(
+      new Request('https://agent.test/v1/agent/sessions/%00bad/events', {
+        headers: { authorization: 'Bearer test' },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'INVALID_COMMAND' },
+    });
+    await server.close();
+  });
+
+  it('rejects ambiguous or control-bearing principal identities', async () => {
+    const { server } = createTestServer();
+    const initialize = command(AgentCommandType.INITIALIZE, 'invalid-principal', {
+      client: { name: 'test', version: '1' },
+    });
+
+    await expect(
+      server.execute(initialize, {
+        ...principal,
+        tenantId: 'tenant-a\u0000tenant-b',
+      }),
+    ).rejects.toMatchObject({ protocolCode: 'UNAUTHENTICATED' });
+    await expect(
+      server.execute(initialize, {
+        ...principal,
+        subject: ' user-a',
+      }),
+    ).rejects.toMatchObject({ protocolCode: 'UNAUTHENTICATED' });
+    await server.close();
+  });
+
   it('keeps Session ownership tenant scoped', async () => {
     const { server } = createTestServer();
     const sessionId = await createSession(server);

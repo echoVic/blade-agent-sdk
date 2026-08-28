@@ -68,14 +68,14 @@ describe('ToolRegistry ordering', () => {
     const registry = new ToolRegistry();
     registry.register(createTool('Write') as never);
     registry.register(createTool('Read', { isReadOnly: true }) as never);
-    registry.registerMcpTool(createTool('z-search', { tags: ['mcp'] }) as never);
-    registry.registerMcpTool(createTool('a-browser', { tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('mcp__z__search', { tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('mcp__a__browser', { tags: ['mcp'] }) as never);
 
     expect(registry.getFunctionDeclarationsByMode()).toEqual([
       expect.objectContaining({ name: 'Read' }),
       expect.objectContaining({ name: 'Write' }),
-      expect.objectContaining({ name: 'a-browser' }),
-      expect.objectContaining({ name: 'z-search' }),
+      expect.objectContaining({ name: 'mcp__a__browser' }),
+      expect.objectContaining({ name: 'mcp__z__search' }),
     ]);
   });
 
@@ -83,13 +83,17 @@ describe('ToolRegistry ordering', () => {
     const registry = new ToolRegistry();
     registry.register(createTool('Write') as never);
     registry.register(createTool('Glob', { isReadOnly: true }) as never);
-    registry.registerMcpTool(createTool('z-docs', { isReadOnly: true, tags: ['mcp'] }) as never);
-    registry.registerMcpTool(createTool('a-api', { isReadOnly: true, tags: ['mcp'] }) as never);
+    registry.registerMcpTool(
+      createTool('mcp__z__docs', { isReadOnly: true, tags: ['mcp'] }) as never,
+    );
+    registry.registerMcpTool(
+      createTool('mcp__a__api', { isReadOnly: true, tags: ['mcp'] }) as never,
+    );
 
     expect(registry.getFunctionDeclarationsByMode(PermissionMode.PLAN)).toEqual([
       expect.objectContaining({ name: 'Glob' }),
-      expect.objectContaining({ name: 'a-api' }),
-      expect.objectContaining({ name: 'z-docs' }),
+      expect.objectContaining({ name: 'mcp__a__api' }),
+      expect.objectContaining({ name: 'mcp__z__docs' }),
     ]);
   });
 
@@ -129,7 +133,7 @@ describe('ToolRegistry ordering', () => {
     const registry = new ToolRegistry();
     registry.register(createTool('Write') as never);
     registry.register(createTool('Read', { isReadOnly: true }) as never);
-    registry.registerMcpTool(createTool('z-search', { tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('mcp__z__search', { tags: ['mcp'] }) as never);
 
     const sortSpy = vi.spyOn(
       registry as unknown as { getSortedTools: (tools: unknown[]) => unknown[] },
@@ -145,7 +149,7 @@ describe('ToolRegistry ordering', () => {
 
     expect(sortSpy).toHaveBeenCalledTimes(3);
 
-    registry.registerMcpTool(createTool('a-browser', { tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('mcp__a__browser', { tags: ['mcp'] }) as never);
     registry.getAll();
     registry.getBuiltinTools();
     registry.getMcpTools();
@@ -178,6 +182,18 @@ describe('ToolRegistry ordering', () => {
     expect(() =>
       registry.register(createTool('ThirdTool', { aliases: ['FileRead'] }) as never),
     ).toThrow(/别名|冲突/);
+  });
+
+  it('enforces the MCP namespace in both registration directions', () => {
+    const registry = new ToolRegistry();
+    registry.register(createTool('Read') as never);
+
+    expect(() => registry.register(createTool('mcp__remote__Read') as never)).toThrow(
+      /保留的 MCP 命名空间/,
+    );
+    expect(() =>
+      registry.registerMcpTool(createTool('Read', { tags: ['mcp'] }) as never),
+    ).toThrow(/必须使用保留命名空间/);
   });
 
   it('searches alias names alongside canonical tool metadata', () => {

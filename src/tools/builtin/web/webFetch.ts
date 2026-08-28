@@ -1,3 +1,6 @@
+import { lookup } from 'node:dns';
+import { BlockList, isIP, type LookupFunction } from 'node:net';
+import { Agent as UndiciAgent } from 'undici';
 import { z } from 'zod';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
@@ -22,7 +25,147 @@ interface WebResponse {
   redirect_count?: number;
   redirect_chain?: string[];
   content_type?: string;
+  body_dropped?: boolean;
   response_time: number;
+}
+
+export interface WebFetchSecurityPolicy {
+  /**
+   * Restricts requests to these hosts. Entries are exact hostnames unless they
+   * start with `*.`, in which case subdomains are included.
+   */
+  readonly allowedHosts?: readonly string[];
+  /** Hosts denied in addition to the built-in local-network restrictions. */
+  readonly blockedHosts?: readonly string[];
+  /** Explicit escape hatch for trusted, local-only deployments. */
+  readonly allowPrivateNetwork?: boolean;
+}
+
+const PRIVATE_NETWORKS = new BlockList();
+for (const [network, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
+  ['192.88.99.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+] as const) {
+  PRIVATE_NETWORKS.addSubnet(network, prefix, 'ipv4');
+}
+for (const [network, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['::ffff:0:0', 96],
+  ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48],
+  ['100::', 64],
+  ['2001::', 23],
+  ['2002::', 16],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['ff00::', 8],
+] as const) {
+  PRIVATE_NETWORKS.addSubnet(network, prefix, 'ipv6');
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
+    .toLowerCase();
+}
+
+function matchesHost(hostname: string, pattern: string): boolean {
+  const normalizedPattern = normalizeHostname(pattern);
+  if (normalizedPattern.startsWith('*.')) {
+    const suffix = normalizedPattern.slice(2);
+    return hostname.endsWith(`.${suffix}`) && hostname.length > suffix.length + 1;
+  }
+  return hostname === normalizedPattern;
+}
+
+function assertPublicAddress(address: string): void {
+  const family = isIP(address);
+  if (family === 0 || PRIVATE_NETWORKS.check(address, family === 4 ? 'ipv4' : 'ipv6')) {
+    throw new Error(`WebFetch blocked non-public network address: ${address}`);
+  }
+}
+
+export function assertWebFetchUrl(rawUrl: string, policy: WebFetchSecurityPolicy = {}): URL {
+  const url = new URL(rawUrl);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`WebFetch only supports HTTP(S) URLs, received ${url.protocol}`);
+  }
+  if (url.username || url.password) {
+    throw new Error('WebFetch URLs must not contain embedded credentials');
+  }
+
+  const hostname = normalizeHostname(url.hostname);
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+    if (!policy.allowPrivateNetwork) {
+      throw new Error(`WebFetch blocked local hostname: ${hostname}`);
+    }
+  }
+  if (policy.blockedHosts?.some((pattern) => matchesHost(hostname, pattern))) {
+    throw new Error(`WebFetch blocked host by policy: ${hostname}`);
+  }
+  if (
+    policy.allowedHosts &&
+    !policy.allowedHosts.some((pattern) => matchesHost(hostname, pattern))
+  ) {
+    throw new Error(`WebFetch host is not in the allowlist: ${hostname}`);
+  }
+  if (!policy.allowPrivateNetwork && isIP(hostname) !== 0) {
+    assertPublicAddress(hostname);
+  }
+  return url;
+}
+
+function createSafeDispatcher(policy: WebFetchSecurityPolicy): UndiciAgent {
+  const secureLookup: LookupFunction = (hostname, options, callback) => {
+    lookup(hostname, { ...options, all: true }, (error, addresses) => {
+      if (error) {
+        callback(error, [], 0);
+        return;
+      }
+      try {
+        if (!policy.allowPrivateNetwork) {
+          for (const address of addresses) {
+            assertPublicAddress(address.address);
+          }
+        }
+        if (addresses.length === 0) {
+          throw new Error(`WebFetch could not resolve host: ${hostname}`);
+        }
+        if (options.all) {
+          callback(null, addresses);
+        } else {
+          const selected = addresses[0];
+          callback(null, selected.address, selected.family);
+        }
+      } catch (lookupError) {
+        callback(
+          lookupError instanceof Error ? lookupError : new Error(String(lookupError)),
+          [],
+          0,
+        );
+      }
+    });
+  };
+  return new UndiciAgent({
+    connect: {
+      lookup: secureLookup,
+    },
+  });
 }
 
 /**
@@ -142,6 +285,7 @@ Usage notes:
       return_headers = false,
     } = params;
     const signal = context.signal ?? new AbortController().signal;
+      const securityPolicy = context.bladeConfig?.webFetch ?? {};
 
     try {
       // 如果启用内容提取，使用 Jina Reader
@@ -158,6 +302,7 @@ Usage notes:
             jinaOptions: jina_options,
             timeout,
             signal,
+              securityPolicy,
           });
           yield {
             kind: 'message',
@@ -222,6 +367,7 @@ Usage notes:
         follow_redirects,
         max_redirects,
         signal,
+          securityPolicy,
       });
 
       const responseTime = Date.now() - startTime;
@@ -243,6 +389,7 @@ Usage notes:
         final_url: response.url,
         content_type: response.content_type,
         redirect_chain: response.redirect_chain,
+          body_dropped: response.body_dropped,
       };
 
       // HTTP错误状态码处理
@@ -344,8 +491,19 @@ async function performRequest(options: {
   follow_redirects: boolean;
   max_redirects: number;
   signal?: AbortSignal;
+  securityPolicy?: WebFetchSecurityPolicy;
 }): Promise<WebResponse> {
-  const { url, method, headers, body, timeout, follow_redirects, max_redirects, signal } = options;
+  const {
+    url,
+    method,
+    headers,
+    body,
+    timeout,
+    follow_redirects,
+    max_redirects,
+    signal,
+    securityPolicy = {},
+  } = options;
 
   const normalizedHeaders: Record<string, string> = {
     'User-Agent': 'Blade-AI/1.0',
@@ -353,13 +511,18 @@ async function performRequest(options: {
   };
 
   let currentUrl = url;
+  let currentHeaders = normalizedHeaders;
   let currentMethod = method;
   let currentBody = body;
   let redirects = 0;
+  let bodyDropped = false;
   const redirectChain: string[] = [];
+  const dispatcher = createSafeDispatcher(securityPolicy);
 
+  try {
   while (true) {
-    const requestHeaders = { ...normalizedHeaders };
+      assertWebFetchUrl(currentUrl, securityPolicy);
+      const requestHeaders = { ...currentHeaders };
     if (
       currentBody &&
       currentMethod !== 'GET' &&
@@ -382,6 +545,7 @@ async function performRequest(options: {
       },
       timeout,
       signal,
+        dispatcher,
     );
 
     const location = response.headers.get('location');
@@ -400,7 +564,19 @@ async function performRequest(options: {
     if (shouldFollow && location) {
       redirects++;
       const nextUrl = resolveRedirectUrl(location, currentUrl);
+        assertWebFetchUrl(nextUrl, securityPolicy);
       redirectChain.push(`${response.status} → ${nextUrl}`);
+        await response.body?.cancel();
+        if (new URL(nextUrl).origin !== new URL(currentUrl).origin) {
+          currentHeaders = Object.fromEntries(
+            Object.entries(currentHeaders).filter(
+              ([name]) =>
+                !['authorization', 'proxy-authorization', 'cookie', 'host'].includes(
+                  name.toLowerCase(),
+                ),
+            ),
+          );
+        }
 
       if (
         response.status === 303 ||
@@ -408,6 +584,7 @@ async function performRequest(options: {
           currentMethod !== 'GET' &&
           currentMethod !== 'HEAD')
       ) {
+          bodyDropped ||= currentBody !== undefined;
         currentMethod = 'GET';
         currentBody = undefined;
       }
@@ -429,8 +606,12 @@ async function performRequest(options: {
       redirect_count: redirects,
       redirect_chain: redirectChain,
       content_type: responseHeaders['content-type'],
+        body_dropped: bodyDropped || undefined,
       response_time: 0, // 将在外部设置
     };
+  }
+  } finally {
+    await dispatcher.close();
   }
 }
 
@@ -439,6 +620,7 @@ async function fetchWithTimeout(
   options: RequestInit,
   timeout: number,
   externalSignal?: AbortSignal,
+  dispatcher?: UndiciAgent,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -446,7 +628,11 @@ async function fetchWithTimeout(
   externalSignal?.addEventListener('abort', abortListener);
 
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      ...(dispatcher ? { dispatcher } : {}),
+    } as RequestInit & { dispatcher?: UndiciAgent });
   } catch (error: unknown) {
     if (getErrorName(error) === 'AbortError') {
       const wrapped = new Error('请求被中止或超时', { cause: error });
@@ -506,8 +692,10 @@ async function fetchWithJinaReader(options: {
   };
   timeout: number;
   signal?: AbortSignal;
+  securityPolicy?: WebFetchSecurityPolicy;
 }): Promise<WebResponse> {
-  const { url, jinaOptions, timeout, signal } = options;
+  const { url, jinaOptions, timeout, signal, securityPolicy = {} } = options;
+  assertWebFetchUrl(url, securityPolicy);
 
   // 构建 Jina Reader URL
   const jinaUrl = `https://r.jina.ai/${encodeURIComponent(url)}`;
@@ -528,7 +716,11 @@ async function fetchWithJinaReader(options: {
     headers['X-Wait-For-Selector'] = jinaOptions.wait_for_selector;
   }
 
-  const response = await fetchWithTimeout(
+  const dispatcher = createSafeDispatcher(securityPolicy);
+  let response: Response;
+  let markdownContent: string;
+  try {
+    response = await fetchWithTimeout(
     jinaUrl,
     {
       method: 'GET',
@@ -536,13 +728,17 @@ async function fetchWithJinaReader(options: {
     },
     timeout,
     signal,
+      dispatcher,
   );
 
   if (!response.ok) {
     throw new Error(`Jina Reader error: ${response.status} ${response.statusText}`);
   }
 
-  const markdownContent = await response.text();
+    markdownContent = await response.text();
+  } finally {
+    await dispatcher.close();
+  }
 
   // 解析 Jina Reader 响应
   const parsed = parseJinaResponse(markdownContent);

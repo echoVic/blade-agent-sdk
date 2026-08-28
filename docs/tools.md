@@ -174,6 +174,11 @@ SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 SDK 发送给 LLM 的工具列表按以下规则排序：**内置工具在前，MCP 工具在后**，每组内按名称字母序排列。这意味着内置工具在 LLM 的上下文中优先级更高。
 :::
 
+`WebFetch` 默认只允许 `http:` 和 `https:`，并在连接时拒绝 loopback、link-local、
+私网、保留地址以及解析到这些地址的 DNS 结果；每次重定向都会重新校验。可通过
+`SessionOptions.webFetch` 或 `BladeConfig.webFetch` 配置 `allowedHosts`、
+`blockedHosts`。只有受信任的本地部署才应设置 `allowPrivateNetwork: true`。
+
 ## 工具筛选
 
 ```ts

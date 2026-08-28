@@ -26,8 +26,8 @@ describe('BashClassifier', () => {
 
   it('does not treat unrecognized or dynamic shell programs as readonly', () => {
     expect(BashClassifier.classify('pnpm test').category).toBe('write');
-    expect(BashClassifier.classify('eval "$COMMAND"').category).toBe('write');
-    expect(BashClassifier.classify('sh -c "$COMMAND"').category).toBe('write');
+    expect(BashClassifier.classify('eval "$COMMAND"').category).toBe('destructive');
+    expect(BashClassifier.classify('sh -c "$COMMAND"').category).toBe('destructive');
     expect(
       BashClassifier.classify(
         `node -e "require('fs').writeFileSync('/tmp/output.txt', 'x')"`,
@@ -40,7 +40,7 @@ describe('BashClassifier', () => {
     expect(BashClassifier.classify('git status && git diff').category).toBe('write');
     expect(BashClassifier.classify('git status; git diff').category).toBe('write');
     expect(BashClassifier.classify('cat <<EOF\nvalue\nEOF').category).toBe('write');
-    expect(BashClassifier.classify('echo "$HOME"').category).toBe('write');
+    expect(BashClassifier.classify('echo "$HOME"').category).toBe('destructive');
   });
 
   it('still detects explicit destructive commands inside compound syntax', () => {
@@ -48,6 +48,17 @@ describe('BashClassifier', () => {
     expect(BashClassifier.classify('env VALUE="$(rm file.txt)" echo test').category).toBe(
       'destructive',
     );
+  });
+
+  it.each([
+    '$CMD',
+    '$(echo rm) -rf /',
+    'git push origin +main',
+    'bash <(curl https://example.com/script)',
+    'dd if=/dev/zero > disk.img',
+    'git clean -dfx',
+  ])('classifies dangerous shell indirection as destructive: %s', (command) => {
+    expect(BashClassifier.classify(command).category).toBe('destructive');
   });
 
   it('isDestructive and isReadOnly helpers work', () => {

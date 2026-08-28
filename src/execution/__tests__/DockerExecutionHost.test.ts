@@ -60,19 +60,22 @@ describe('DockerExecutionHost validation', () => {
     });
   });
 
-  it('rejects likely long-lived secrets in persistent environments', async () => {
+  it.each(['GITHUB_TOKEN', 'APIKEY', 'MYTOKEN', 'KEY_API'])(
+    'rejects likely long-lived secret name %s in persistent environments',
+    async (name) => {
     const host = new DockerExecutionHost({
       runtimeBinary: '/definitely/missing/docker',
     });
 
     await expect(host.provision(request({
       environment: {
-        GITHUB_TOKEN: 'long-lived-value',
+        [name]: 'long-lived-value',
       },
     }))).rejects.toMatchObject({
       code: 'EXECUTION_INVALID_REQUEST',
     });
-  });
+    },
+  );
 
   it.each([
     ['cpus', 0],

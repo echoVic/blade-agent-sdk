@@ -8,7 +8,7 @@ The permission pipeline controls whether a tool call is allowed, denied, or requ
 |----------|-------|----------|
 | `PermissionMode.DEFAULT` | `default` | Ask for write and execute tools. |
 | `PermissionMode.AUTO_EDIT` | `autoEdit` | Allow file edits while still asking for command execution. |
-| `PermissionMode.YOLO` | `yolo` | Skip interactive confirmation. Tool validation and path safety still run. |
+| `PermissionMode.YOLO` | `yolo` | Auto-allow non-destructive operations; destructive operations still require explicit confirmation. |
 | `PermissionMode.PLAN` | `plan` | Allow read-only tools. |
 
 ```ts
@@ -23,9 +23,10 @@ const session = await createSession({
 session.setPermissionMode(PermissionMode.AUTO_EDIT);
 ```
 
-`YOLO` only makes the built-in mode handler allow by default. A tool-level
-`ask`, a custom handler, or sensitive-path confirmation can still ask the
-user. It does not bypass tool validation or path safety.
+`YOLO` only makes the built-in mode handler allow non-destructive operations
+by default. A destructive tool, tool-level `ask`, custom handler, or
+sensitive-path confirmation can still ask the user. It does not bypass tool
+validation or path safety.
 
 For built-in file tools, sensitive-file detection classifies canonical paths
 and filenames; it does not scan file contents. Treat it as one

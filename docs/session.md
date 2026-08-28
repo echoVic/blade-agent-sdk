@@ -1176,7 +1176,7 @@ type PermissionMode = 'default' | 'autoEdit' | 'yolo' | 'plan';
 | -------------- | ------------- | ------------------------- |
 | **DEFAULT**    | `'default'`   | 标准模式，写入/执行类工具需要审批         |
 | **AUTO\_EDIT** | `'autoEdit'`  | 自动批准文件编辑（write），但命令执行仍需审批 |
-| **YOLO**       | `'yolo'`      | 内置 mode handler 默认批准；工具自检、路径安全和其他 handler 仍可拒绝或询问 |
+| **YOLO**       | `'yolo'`      | 默认批准非破坏性操作；破坏性操作、工具自检、路径安全和其他 handler 仍可拒绝或询问 |
 | **PLAN**       | `'plan'`      | 计划模式——只规划不执行，生成实施方案       |
 
 ### 在创建会话时设置
@@ -1257,8 +1257,10 @@ type PermissionResult =
 或 `suspendForHandoff()` 保持可重试失败，直至该回调结束。
 
 等待工具并发槽位或同文件锁也不计入 `toolTimeoutMs`，但会响应 Request 取消。
-Request 中止后，对应 waiter 会立即从队列移除；若资源授予与取消同时发生，SDK
-会在任何 Hook、权限检查或工具副作用开始前释放已取得的槽位与锁。
+并发调度器每个 bucket 默认最多排队 `1000` 项；同文件锁默认最多等待 `30000ms`。
+达到队列上限或锁等待超时时会显式拒绝，而不是无界积压。Request 中止后，对应
+waiter 会立即从 FIFO 队列移除；若资源授予与取消同时发生，SDK 会在任何 Hook、
+权限检查或工具副作用开始前释放已取得的槽位与锁。
 
 ## 子 Agent
 
@@ -1773,6 +1775,7 @@ async function analyzeCodeManual() {
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
 | `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
 | `toolTimeoutMs`   | `number`                                                 | —  | `600000`    | 单次工具调用的总时限（毫秒）                                   |
+| `webFetch`        | `WebFetchSecurityPolicy`                                 | —  | 安全默认值      | WebFetch 主机白名单、黑名单与私网访问策略                        |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
 | `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器（比 `canUseTool` 更低级）                       |

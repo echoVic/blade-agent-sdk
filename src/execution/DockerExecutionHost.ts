@@ -62,8 +62,23 @@ const NETWORK_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 const REVISION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/@{}^~:+-]{0,255}$/;
 const IMAGE_DIGEST_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9._/:@-]*@sha256:[a-f0-9]{64}$/;
-const SENSITIVE_ENVIRONMENT_PATTERN =
-  /(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIALS?|CLIENT_SECRET)(_|$)/i;
+
+function isSensitiveEnvironmentName(name: string): boolean {
+  const compact = name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return [
+    'TOKEN',
+    'SECRET',
+    'PASSWORD',
+    'PASSWD',
+    'APIKEY',
+    'KEYAPI',
+    'ACCESSKEY',
+    'PRIVATEKEY',
+    'CREDENTIAL',
+    'CLIENTSECRET',
+  ].some((keyword) => compact.includes(keyword));
+}
+
 const RESERVED_NETWORK_NAMES = new Set([
   'bridge',
   'default',
@@ -1174,7 +1189,7 @@ export class DockerExecutionHost implements ExecutionHost {
     const sensitiveImageEnvironment = inspection.Config?.Env?.find((entry) => {
       const separator = entry.indexOf('=');
       const name = separator < 0 ? entry : entry.slice(0, separator);
-      return SENSITIVE_ENVIRONMENT_PATTERN.test(name);
+      return isSensitiveEnvironmentName(name);
     });
     if (sensitiveImageEnvironment) {
       throw new ExecutionHostError(
@@ -1245,7 +1260,7 @@ export class DockerExecutionHost implements ExecutionHost {
         || typeof value !== 'string'
         || value.includes('\0')
         || Buffer.byteLength(value) > 32 * 1024
-        || (!allowSecrets && SENSITIVE_ENVIRONMENT_PATTERN.test(name))
+        || (!allowSecrets && isSensitiveEnvironmentName(name))
       ) {
         throw new ExecutionHostError(
           'EXECUTION_INVALID_REQUEST',

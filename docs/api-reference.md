@@ -320,6 +320,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolSourceInfo` | 工具来源信息 |
 | `ToolSourceKind` | 工具来源类型（`builtin` / `custom` / `mcp` / `session`） |
 | `ToolTrustLevel` | 工具信任级别（`trusted` / `workspace` / `remote`） |
+| `WebFetchSecurityPolicy` | WebFetch 主机白名单、黑名单与私网访问策略 |
 
 ### Memory
 

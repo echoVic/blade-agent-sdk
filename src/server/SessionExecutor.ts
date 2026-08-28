@@ -118,7 +118,7 @@ interface ManagedSession {
 }
 
 function sessionKey(tenantId: string, sessionId: SessionId): string {
-  return `${tenantId}\0${sessionId}`;
+  return JSON.stringify([tenantId, sessionId]);
 }
 
 export class InProcessSessionExecutor implements SessionExecutor {
@@ -358,11 +358,17 @@ export class InProcessSessionExecutor implements SessionExecutor {
     data: ResolvePermissionCommand['data'],
   ): Promise<void> {
     return this.runForSession(context.principal, data.sessionId, async () => {
-      this.approvals.resolve(context.principal.tenantId, data.sessionId, data.permissionRequestId, {
-        approved: data.approved,
-        reason: data.reason,
-        scope: data.scope,
-      });
+      this.approvals.resolve(
+        context.principal.tenantId,
+        data.sessionId,
+        context.principal.subject,
+        data.permissionRequestId,
+        {
+          approved: data.approved,
+          reason: data.reason,
+          scope: data.scope,
+        },
+      );
     });
   }
 
@@ -444,7 +450,11 @@ export class InProcessSessionExecutor implements SessionExecutor {
       confirmationHandlerFactory: (sessionId) =>
         configuredFactory?.(sessionId) ??
         configuredHandler ??
-        this.approvals.createHandler(context.principal.tenantId, sessionId),
+        this.approvals.createHandler(
+          context.principal.tenantId,
+          sessionId,
+          context.principal.subject,
+        ),
     };
   }
 

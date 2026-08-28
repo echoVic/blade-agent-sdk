@@ -8,11 +8,39 @@ import * as crypto from 'node:crypto';
 import * as http from 'node:http';
 import { URL } from 'node:url';
 import type { OAuthTokenStorage } from './OAuthTokenStorage.js';
-import type { AuthorizationOAuthConfig, OAuthConfig, OAuthToken, OAuthTokenResponse, RefreshableOAuthConfig } from './types.js';
+import type {
+  AuthorizationOAuthConfig,
+  OAuthConfig,
+  OAuthToken,
+  OAuthTokenResponse,
+  RefreshableOAuthConfig,
+} from './types.js';
 
 const REDIRECT_PORT = 7777;
 const REDIRECT_PATH = '/oauth/callback';
+const DEFAULT_REDIRECT_URI = `http://127.0.0.1:${REDIRECT_PORT}${REDIRECT_PATH}`;
+const OAUTH_STATE_TTL_MS = 5 * 60 * 1000;
 const HTTP_OK = 200;
+
+export function resolveOAuthRedirectUri(redirectUri?: string): string {
+  const url = new URL(redirectUri ?? DEFAULT_REDIRECT_URI);
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (
+    url.protocol !== 'http:' ||
+    (hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '::1') ||
+    url.port !== String(REDIRECT_PORT) ||
+    url.pathname !== REDIRECT_PATH ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      `OAuth redirectUri must be a loopback URL on port ${REDIRECT_PORT} with path ${REDIRECT_PATH}`,
+    );
+  }
+  return url.toString();
+}
 
 /**
  * PKCE 参数
@@ -28,6 +56,7 @@ interface PKCEParams {
  */
 export class OAuthProvider {
   private readonly tokenStorage: OAuthTokenStorage;
+  private readonly pendingStates = new Map<string, number>();
 
   constructor(tokenStorage: OAuthTokenStorage) {
     this.tokenStorage = tokenStorage;
@@ -41,10 +70,7 @@ export class OAuthProvider {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
 
     // 生成 code challenge (SHA256)
-    const codeChallenge = crypto
-      .createHash('sha256')
-      .update(codeVerifier)
-      .digest('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
 
     // 生成 state (CSRF 保护)
     const state = crypto.randomBytes(16).toString('base64url');
@@ -56,8 +82,7 @@ export class OAuthProvider {
    * 构建授权 URL
    */
   private buildAuthorizationUrl(config: AuthorizationOAuthConfig, pkceParams: PKCEParams): string {
-    const redirectUri =
-      config.redirectUri || `http://localhost:${REDIRECT_PORT}${REDIRECT_PATH}`;
+    const redirectUri = resolveOAuthRedirectUri(config.redirectUri);
 
     const params = new URLSearchParams({
       client_id: config.clientId,
@@ -83,8 +108,25 @@ export class OAuthProvider {
   /**
    * 启动本地回调服务器
    */
-  private async startCallbackServer(expectedState: string): Promise<string> {
+  private async startCallbackServer(expectedState: string, redirectUri: string): Promise<string> {
+    const callbackUrl = new URL(redirectUri);
     return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout>;
+      const finish = (outcome: { code: string } | { error: unknown }): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        server.close();
+        if ('code' in outcome) {
+          resolve(outcome.code);
+        } else {
+          this.pendingStates.delete(expectedState);
+          reject(outcome.error);
+        }
+      };
       const server = http.createServer((req, res) => {
         try {
           if (!req.url) {
@@ -92,7 +134,7 @@ export class OAuthProvider {
             res.end('Bad request');
             return;
           }
-          const url = new URL(req.url, `http://localhost:${REDIRECT_PORT}`);
+          const url = new URL(req.url, callbackUrl);
 
           if (url.pathname !== REDIRECT_PATH) {
             res.writeHead(404);
@@ -105,18 +147,9 @@ export class OAuthProvider {
           const error = url.searchParams.get('error');
 
           if (error) {
-            res.writeHead(HTTP_OK, { 'Content-Type': 'text/html' });
-            res.end(`
-              <html>
-                <body>
-                  <h1>Authentication Failed</h1>
-                  <p>Error: ${error}</p>
-                  <p>You can close this window.</p>
-                </body>
-              </html>
-            `);
-            server.close();
-            reject(new Error(`OAuth error: ${error}`));
+            res.writeHead(HTTP_OK, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Authentication failed. You can close this window.');
+            finish({ error: new Error(`OAuth error: ${error}`) });
             return;
           }
 
@@ -126,11 +159,9 @@ export class OAuthProvider {
             return;
           }
 
-          if (state !== expectedState) {
+          if (!this.consumeState(state, expectedState)) {
             res.writeHead(400);
             res.end('Invalid state parameter');
-            server.close();
-            reject(new Error('State mismatch - possible CSRF attack'));
             return;
           }
 
@@ -146,27 +177,22 @@ export class OAuthProvider {
             </html>
           `);
 
-          server.close();
-          resolve(code);
+          finish({ code });
         } catch (error) {
-          server.close();
-          reject(error);
+          finish({ error });
         }
       });
 
-      server.on('error', reject);
-      server.listen(REDIRECT_PORT, () => {
-        console.log(`[OAuth] Callback server listening on port ${REDIRECT_PORT}`);
+      server.on('error', (error) => finish({ error }));
+      const callbackHostname = callbackUrl.hostname.replace(/^\[|\]$/g, '');
+      server.listen(Number(callbackUrl.port), callbackHostname, () => {
+        console.log(`[OAuth] Callback server listening on ${callbackHostname}:${callbackUrl.port}`);
       });
 
-      // 5 分钟超时
-      setTimeout(
-        () => {
-          server.close();
-          reject(new Error('OAuth callback timeout'));
-        },
-        5 * 60 * 1000
-      );
+      timeout = setTimeout(() => {
+        finish({ error: new Error('OAuth callback timeout') });
+      }, OAUTH_STATE_TTL_MS);
+      timeout.unref?.();
     });
   }
 
@@ -176,10 +202,9 @@ export class OAuthProvider {
   private async exchangeCodeForToken(
     config: AuthorizationOAuthConfig,
     code: string,
-    codeVerifier: string
+    codeVerifier: string,
   ): Promise<OAuthTokenResponse> {
-    const redirectUri =
-      config.redirectUri || `http://localhost:${REDIRECT_PORT}${REDIRECT_PATH}`;
+    const redirectUri = resolveOAuthRedirectUri(config.redirectUri);
 
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -215,7 +240,7 @@ export class OAuthProvider {
    */
   async refreshAccessToken(
     config: RefreshableOAuthConfig,
-    refreshToken: string
+    refreshToken: string,
   ): Promise<OAuthTokenResponse> {
     const params = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -260,19 +285,19 @@ export class OAuthProvider {
 
     // 生成 PKCE 参数
     const pkceParams = this.generatePKCEParams();
+    const redirectUri = resolveOAuthRedirectUri(authConfig.redirectUri);
 
     // 构建授权 URL
     const authUrl = this.buildAuthorizationUrl(authConfig, pkceParams);
+    this.pendingStates.set(pkceParams.state, Date.now() + OAUTH_STATE_TTL_MS);
 
     console.log('\n[OAuth] Opening browser for authentication...');
-    console.log(
-      '\nIf the browser does not open automatically, copy and paste this URL:'
-    );
+    console.log('\nIf the browser does not open automatically, copy and paste this URL:');
     console.log(authUrl);
     console.log('');
 
     // 启动回调服务器
-    const callbackPromise = this.startCallbackServer(pkceParams.state);
+    const callbackPromise = this.startCallbackServer(pkceParams.state, redirectUri);
 
     // 尝试打开浏览器
     try {
@@ -290,7 +315,7 @@ export class OAuthProvider {
     const tokenResponse = await this.exchangeCodeForToken(
       authConfig,
       code,
-      pkceParams.codeVerifier
+      pkceParams.codeVerifier,
     );
 
     // 转换为内部令牌格式
@@ -306,12 +331,7 @@ export class OAuthProvider {
     }
 
     // 保存令牌
-    await this.tokenStorage.saveToken(
-      serverName,
-      token,
-      config.clientId,
-      config.tokenUrl
-    );
+    await this.tokenStorage.saveToken(serverName, token, config.clientId, config.tokenUrl);
 
     console.log('[OAuth] Authentication successful! Token saved.');
 
@@ -349,6 +369,18 @@ export class OAuthProvider {
     return { command: 'xdg-open', args: [url] };
   }
 
+  private consumeState(receivedState: string, expectedState: string): boolean {
+    const expiresAt = this.pendingStates.get(receivedState);
+    if (receivedState !== expectedState || expiresAt === undefined || expiresAt <= Date.now()) {
+      if (expiresAt !== undefined && expiresAt <= Date.now()) {
+        this.pendingStates.delete(receivedState);
+      }
+      return false;
+    }
+    this.pendingStates.delete(receivedState);
+    return true;
+  }
+
   /**
    * 获取有效令牌（自动刷新）
    */
@@ -377,10 +409,7 @@ export class OAuthProvider {
           tokenUrl: credentials.tokenUrl,
         };
 
-        const newTokenResponse = await this.refreshAccessToken(
-          refreshConfig,
-          token.refreshToken
-        );
+        const newTokenResponse = await this.refreshAccessToken(refreshConfig, token.refreshToken);
 
         // 更新存储的令牌
         const newToken: OAuthToken = {
@@ -398,7 +427,7 @@ export class OAuthProvider {
           serverName,
           newToken,
           config.clientId,
-          credentials.tokenUrl
+          credentials.tokenUrl,
         );
 
         return newToken.accessToken;

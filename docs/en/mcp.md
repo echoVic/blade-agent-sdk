@@ -2,6 +2,11 @@
 
 Blade Agent SDK can connect to external Model Context Protocol servers and host in-process MCP tools.
 
+Every remote tool is exposed through the reserved
+`mcp__<server>__<tool>` namespace. An MCP server cannot shadow built-in or
+application tools such as `Read`, `Write`, or `Bash`; normalized-name
+collisions fail during registration.
+
 ## External servers
 
 Configure servers in `SessionOptions.mcpServers`:
@@ -89,6 +94,12 @@ interface McpServerConfig {
   };
 }
 ```
+
+The OAuth authorization-code flow accepts only
+`http://localhost:7777/oauth/callback`,
+`http://127.0.0.1:7777/oauth/callback`, or the equivalent IPv6 loopback URI.
+OAuth state expires after five minutes and is consumed once. Remote redirect
+hosts are not supported.
 
 `alwaysAllow` is currently retained as MCP configuration metadata. The Session permission pipeline does not automatically authorize tools from this field. Implement trusted-tool policy with `canUseTool` or `permissionHandler`.
 

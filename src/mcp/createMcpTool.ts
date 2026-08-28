@@ -5,7 +5,7 @@ import { ToolKind } from '../tools/types/kind.js';
 import { ToolErrorType } from '../tools/types/result.js';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
-import { createMcpServerTag } from './toolSource.js';
+import { createMcpServerTag, createMcpToolName } from './toolSource.js';
 import type { McpToolDefinition } from './types.js';
 
 /**
@@ -27,7 +27,7 @@ export function createMcpTool(
   }
 
   // 2. 决定工具名称
-  const toolName = customName || toolDef.name;
+  const toolName = customName || createMcpToolName(serverName, toolDef.name);
 
   // 3. 使用 createTool 创建标准工具
   return createTool({

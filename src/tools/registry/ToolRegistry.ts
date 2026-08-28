@@ -4,6 +4,8 @@ import { searchTools } from '../search/toolSearch.js';
 import { isToolSideEffect, resolveToolBehaviorHint } from '../types/kind.js';
 import type { FunctionDeclaration, Tool } from '../types/tool.js';
 
+const MCP_TOOL_NAME_PREFIX = 'mcp__';
+
 /**
  * 工具注册表
  * 管理内置工具和MCP工具的注册、发现和查询
@@ -23,6 +25,9 @@ export class ToolRegistry {
    */
   register(tool: Tool): void {
     this.assertSideEffectContract(tool);
+    if (tool.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
+      throw new Error(`工具名 '${tool.name}' 使用了保留的 MCP 命名空间`);
+    }
     if (this.tools.has(tool.name)) {
       throw new Error(`工具 '${tool.name}' 已注册`);
     }
@@ -247,6 +252,12 @@ export class ToolRegistry {
    */
   registerMcpTool(tool: Tool): void {
     this.assertSideEffectContract(tool);
+    if (!tool.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
+      throw new Error(`MCP 工具 '${tool.name}' 必须使用保留命名空间 ${MCP_TOOL_NAME_PREFIX}`);
+    }
+    if (this.tools.has(tool.name)) {
+      throw new Error(`MCP 工具 '${tool.name}' 与受信任工具冲突`);
+    }
     if (this.mcpTools.has(tool.name)) {
       // MCP工具可以覆盖（支持热更新）
       const previous = this.mcpTools.get(tool.name);

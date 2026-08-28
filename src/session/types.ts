@@ -20,6 +20,7 @@ import type {
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
   ToolDisplayContent,
@@ -275,6 +276,8 @@ export interface SessionOptions {
   maxTurns?: number;
   /** Maximum wall-clock duration of one tool invocation. */
   toolTimeoutMs?: number;
+  /** Network-boundary policy for the built-in WebFetch tool. */
+  webFetch?: WebFetchSecurityPolicy;
   agents?: Record<string, AgentDefinition>;
   subagent?: SubagentInfo;
 

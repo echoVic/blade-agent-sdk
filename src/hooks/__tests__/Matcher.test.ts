@@ -46,6 +46,21 @@ describe('Matcher', () => {
       expect(matcher.matches(config, { toolName: 'Bash' })).toBe(false);
     });
 
+    it('rejects unsafe or oversized regular expressions', () => {
+      expect(
+        matcher.matches(
+          { tools: '(a+)+$' },
+          { toolName: `${'a'.repeat(10_000)}!` },
+        ),
+      ).toBe(false);
+      expect(
+        matcher.matches(
+          { tools: `^${'a'.repeat(300)}$` },
+          { toolName: 'a'.repeat(300) },
+        ),
+      ).toBe(false);
+    });
+
     it('should match tool array', () => {
       const config: MatcherConfig = { tools: ['Bash', 'Read', 'Write'] };
       expect(matcher.matches(config, { toolName: 'Bash' })).toBe(true);

@@ -47,6 +47,48 @@ const DEFAULT_COMMAND_LEASE_TTL_MS = 30_000;
 const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
+const PRINCIPAL_TENANT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._:-]{0,255}$/;
+const AGENT_SERVER_SCOPES = new Set<AgentServerScope>([
+  'session:create',
+  'session:read',
+  'session:write',
+  'session:admin',
+  'permission:resolve',
+]);
+
+function isValidPrincipalSubject(subject: string): boolean {
+  return (
+    subject.length >= 1 &&
+    subject.length <= 256 &&
+    subject === subject.trim() &&
+    Array.from(subject).every((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 0x20 && codePoint !== 0x7f;
+    })
+  );
+}
+
+function parseRouteSessionId(encoded: string): SessionId {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(encoded);
+  } catch (error) {
+    throw new AgentProtocolError(
+      'INVALID_COMMAND',
+      'Session identifier is not valid URL encoding',
+      400,
+      false,
+      undefined,
+      undefined,
+      { cause: error },
+    );
+  }
+  if (!SESSION_ID_PATTERN.test(decoded)) {
+    throw new AgentProtocolError('INVALID_COMMAND', 'Session identifier is invalid', 400);
+  }
+  return SessionId(decoded);
+}
 
 function toSessionDescriptor(record: AgentServerSessionRecord): AgentSessionDescriptor {
   return {
@@ -412,22 +454,13 @@ export class AgentServer {
       try {
         return await this.eventStreamResponse(
           principal,
-          SessionId(decodeURIComponent(match[1])),
+          parseRouteSessionId(match[1]),
           url,
           request.headers.get('last-event-id'),
           request.signal,
         );
       } catch (error) {
-        return this.errorResponse(
-          'events',
-          error instanceof URIError
-            ? new AgentProtocolError(
-                'INVALID_COMMAND',
-                'Session identifier is not valid URL encoding',
-                400,
-              )
-            : error,
-        );
+        return this.errorResponse('events', error);
       }
     }
 
@@ -580,10 +613,17 @@ export class AgentServer {
   }
 
   private assertPrincipal(principal: AgentPrincipal): void {
-    if (!principal.tenantId.trim() || !principal.subject.trim()) {
+    if (
+      typeof principal?.tenantId !== 'string' ||
+      typeof principal.subject !== 'string' ||
+      !PRINCIPAL_TENANT_ID_PATTERN.test(principal.tenantId) ||
+      !isValidPrincipalSubject(principal.subject) ||
+      !Array.isArray(principal.scopes) ||
+      principal.scopes.some((scope) => !AGENT_SERVER_SCOPES.has(scope))
+    ) {
       throw new AgentProtocolError(
         'UNAUTHENTICATED',
-        'Principal tenantId and subject are required',
+        'Principal tenantId, subject, or scopes are invalid',
         401,
       );
     }

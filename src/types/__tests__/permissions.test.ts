@@ -85,6 +85,27 @@ describe('createModePermissionHandler', () => {
       behavior: 'allow',
     });
   });
+
+  it('requires explicit confirmation for destructive operations in yolo mode', async () => {
+    const handler = createModePermissionHandler(PermissionMode.YOLO);
+
+    const result = await handler(
+      createRequest({
+        permissionMode: PermissionMode.YOLO,
+        toolMeta: {
+          sideEffect: 'non_idempotent',
+          isReadOnly: false,
+          isConcurrencySafe: false,
+          isDestructive: true,
+        },
+      }),
+    );
+
+    expect(result).toEqual({
+      behavior: 'ask',
+      message: 'Destructive operation requires explicit confirmation',
+    });
+  });
 });
 
 describe('createRuleBasedPermissionHandler', () => {

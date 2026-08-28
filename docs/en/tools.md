@@ -415,6 +415,11 @@ Built-in contracts:
 
 Permission decisions use the resolved behavior, so consumers should not infer
 kind or side effects from a tool name.
+`WebFetch` accepts only `http:` and `https:` by default and rejects loopback,
+link-local, private, reserved, and DNS-resolved non-public addresses at connect
+time and after every redirect. Configure `allowedHosts` and `blockedHosts`
+through `SessionOptions.webFetch` or `BladeConfig.webFetch`.
+`allowPrivateNetwork: true` is intended only for trusted local deployments.
 `Bash` narrows only simple, explicitly allowlisted commands to read-only.
 Pipelines, redirections, heredocs, variable or command substitution, `eval`,
 nested shells, and unknown commands remain side-effecting. Classification

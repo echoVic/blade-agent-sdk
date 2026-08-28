@@ -644,9 +644,12 @@ makes `close()` or `suspendForHandoff()` retryable only after that callback
 settles.
 
 Waiting for a tool concurrency slot or same-file lock is also outside
-`toolTimeoutMs`, but is cancellation-aware. Aborting the Request removes its
-waiter immediately; a slot or lock granted concurrently with cancellation is
-released before tool hooks, permission checks, or side effects can start.
+`toolTimeoutMs`, but is cancellation-aware. Each scheduler bucket accepts at
+most 1000 queued requests by default, and a same-file lock wait times out after
+30000ms by default. Hitting either boundary rejects explicitly instead of
+growing or waiting without a bound. Aborting the Request removes its waiter
+immediately; a slot or lock granted concurrently with cancellation is released
+before tool hooks, permission checks, or side effects can start.
 
 See [Tools](./tools), [Permissions](./permissions), and [Hooks](./hooks).
 
@@ -730,6 +733,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
 | `tools` | `SessionTool[]` | Custom `ToolDefinition` or complete `Tool` instances |
 | `toolTimeoutMs` | `number` | Per-invocation wall-clock timeout; defaults to `600000` |
+| `webFetch` | `WebFetchSecurityPolicy` | WebFetch host allowlist, blocklist, and private-network policy |
 | `allowedTools` / `disallowedTools` | `string[]` | Tool filters |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |

@@ -205,7 +205,7 @@ describe('ToolExposurePlanner', () => {
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
     const remoteMcpTool = createTool({
-      name: 'RemoteTool',
+      name: 'mcp__remote-docs__RemoteTool',
       displayName: 'Remote Tool',
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
@@ -237,7 +237,7 @@ describe('ToolExposurePlanner', () => {
     expect(plan.exposures).toEqual(
       expect.arrayContaining([
         { toolName: 'BuiltinTool', mode: 'eager' },
-        { toolName: 'RemoteTool', mode: 'hidden', reason: 'source-policy' },
+        { toolName: 'mcp__remote-docs__RemoteTool', mode: 'hidden', reason: 'source-policy' },
       ]),
     );
   });

@@ -11,6 +11,7 @@ import { PermissionRequestId, type SessionId } from '../types/identifiers.js';
 interface PendingApproval {
   readonly tenantId: string;
   readonly sessionId: SessionId;
+  readonly subject: string;
   readonly resolve: (response: ConfirmationResponse) => void;
   readonly reject: (error: unknown) => void;
   readonly cleanup: () => void;
@@ -27,6 +28,7 @@ export interface RemoteApprovalBrokerOptions {
 
 export class RemoteApprovalBroker {
   private readonly pending = new Map<string, PendingApproval>();
+  private readonly consumed = new Map<string, number>();
   private readonly timeoutMs: number;
 
   constructor(private readonly options: RemoteApprovalBrokerOptions) {
@@ -36,19 +38,22 @@ export class RemoteApprovalBroker {
     }
   }
 
-  createHandler(tenantId: string, sessionId: SessionId): ConfirmationHandler {
+  createHandler(tenantId: string, sessionId: SessionId, subject: string): ConfirmationHandler {
     return {
-      requestConfirmation: (details) => this.requestConfirmation(tenantId, sessionId, details),
+      requestConfirmation: (details) =>
+        this.requestConfirmation(tenantId, sessionId, subject, details),
     };
   }
 
   resolve(
     tenantId: string,
     sessionId: SessionId,
+    subject: string,
     permissionRequestId: PermissionRequestId,
     response: ConfirmationResponse,
   ): void {
-    const key = this.key(tenantId, sessionId, permissionRequestId);
+    this.pruneConsumed();
+    const key = this.key(tenantId, sessionId, subject, permissionRequestId);
     const pending = this.pending.get(key);
     if (!pending) {
       throw new AgentProtocolError(
@@ -59,17 +64,18 @@ export class RemoteApprovalBroker {
     }
     pending.cleanup();
     this.pending.delete(key);
+    this.markConsumed(key);
     pending.resolve(response);
   }
 
   cancelSession(tenantId: string, sessionId: SessionId, reason: unknown): void {
-    const prefix = `${tenantId}\0${sessionId}\0`;
     for (const [key, pending] of this.pending) {
-      if (!key.startsWith(prefix)) {
+      if (pending.tenantId !== tenantId || pending.sessionId !== sessionId) {
         continue;
       }
       pending.cleanup();
       this.pending.delete(key);
+      this.markConsumed(key);
       pending.reject(reason);
     }
   }
@@ -77,12 +83,14 @@ export class RemoteApprovalBroker {
   private async requestConfirmation(
     tenantId: string,
     sessionId: SessionId,
+    subject: string,
     details: ConfirmationDetails,
   ): Promise<ConfirmationResponse> {
     details.abortSignal?.throwIfAborted();
     const permissionRequestId = details.permissionRequestId ?? PermissionRequestId(nanoid());
-    const key = this.key(tenantId, sessionId, permissionRequestId);
-    if (this.pending.has(key)) {
+    this.pruneConsumed();
+    const key = this.key(tenantId, sessionId, subject, permissionRequestId);
+    if (this.pending.has(key) || this.consumed.has(key)) {
       throw new AgentProtocolError(
         'SESSION_CONFLICT',
         `Permission request ${permissionRequestId} is already pending`,
@@ -104,6 +112,7 @@ export class RemoteApprovalBroker {
       const pending: PendingApproval = {
         tenantId,
         sessionId,
+        subject,
         resolve,
         reject,
         cleanup,
@@ -112,6 +121,7 @@ export class RemoteApprovalBroker {
       timeout = setTimeout(() => {
         cleanup();
         this.pending.delete(key);
+        this.markConsumed(key);
         reject(
           new AgentProtocolError(
             'PERMISSION_NOT_FOUND',
@@ -123,6 +133,7 @@ export class RemoteApprovalBroker {
       abortListener = () => {
         cleanup();
         this.pending.delete(key);
+        this.markConsumed(key);
         reject(details.abortSignal?.reason ?? new DOMException('Request aborted', 'AbortError'));
       };
       details.abortSignal?.addEventListener('abort', abortListener, { once: true });
@@ -143,6 +154,7 @@ export class RemoteApprovalBroker {
       const pending = this.pending.get(key);
       pending?.cleanup();
       this.pending.delete(key);
+      this.markConsumed(key);
       pending?.reject(error);
     }
 
@@ -152,8 +164,22 @@ export class RemoteApprovalBroker {
   private key(
     tenantId: string,
     sessionId: SessionId,
+    subject: string,
     permissionRequestId: PermissionRequestId,
   ): string {
-    return `${tenantId}\0${sessionId}\0${permissionRequestId}`;
+    return JSON.stringify([tenantId, sessionId, subject, permissionRequestId]);
+  }
+
+  private pruneConsumed(): void {
+    const now = Date.now();
+    for (const [key, expiresAt] of this.consumed) {
+      if (expiresAt <= now) {
+        this.consumed.delete(key);
+      }
+    }
+  }
+
+  private markConsumed(key: string): void {
+    this.consumed.set(key, Date.now() + this.timeoutMs);
   }
 }

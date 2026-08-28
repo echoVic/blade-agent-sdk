@@ -5,6 +5,7 @@ import type { McpServerConfig } from './config.js';
 import { createMcpTool } from './createMcpTool.js';
 import { McpClient } from './McpClient.js';
 import type { SdkMcpServerHandle } from './SdkMcpServer.js';
+import { createMcpToolName } from './toolSource.js';
 import { McpConnectionStatus, type McpToolDefinition } from './types.js';
 
 /**
@@ -199,11 +200,8 @@ export class McpRegistry extends EventEmitter {
   }
 
   /**
-   * 获取所有可用工具（包含冲突处理）
-   *
-   * 工具命名策略：
-   * - 无冲突: toolName
-   * - 有冲突: serverName__toolName
+   * 获取所有可用工具。Remote tools always use the reserved MCP namespace
+   * so an untrusted server cannot shadow built-in or application tools.
    */
   async getAvailableTools(): Promise<Tool[]> {
     return this.getAvailableToolsByServerNames(Array.from(this.servers.keys()));
@@ -214,32 +212,20 @@ export class McpRegistry extends EventEmitter {
    */
   async getAvailableToolsByServerNames(serverNames: string[]): Promise<Tool[]> {
     const tools: Tool[] = [];
-    const nameConflicts = new Map<string, number>();
+    const exposedNames = new Set<string>();
     const targetNames = new Set(serverNames);
 
-    // 第一遍：检测冲突
     for (const [serverName, serverInfo] of this.servers) {
       if (!targetNames.has(serverName)) {
         continue;
       }
       if (serverInfo.status === McpConnectionStatus.CONNECTED) {
         for (const mcpTool of serverInfo.tools) {
-          const count = nameConflicts.get(mcpTool.name) || 0;
-          nameConflicts.set(mcpTool.name, count + 1);
-        }
-      }
-    }
-
-    // 第二遍：创建工具（冲突时添加前缀）
-    for (const [serverName, serverInfo] of this.servers) {
-      if (!targetNames.has(serverName)) {
-        continue;
-      }
-      if (serverInfo.status === McpConnectionStatus.CONNECTED) {
-        for (const mcpTool of serverInfo.tools) {
-          const hasConflict = (nameConflicts.get(mcpTool.name) || 0) > 1;
-          const toolName = hasConflict ? `${serverName}__${mcpTool.name}` : mcpTool.name;
-
+          const toolName = createMcpToolName(serverName, mcpTool.name);
+          if (exposedNames.has(toolName)) {
+            throw new Error(`MCP tool namespace collision: ${toolName}`);
+          }
+          exposedNames.add(toolName);
           const tool = createMcpTool(serverInfo.client, serverName, mcpTool, toolName);
           tools.push(tool);
         }
