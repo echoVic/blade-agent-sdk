@@ -44,9 +44,10 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 
 三个 preset 使用同一套 Session 与协议语义。`local` 的首次结果预算为一分钟，
 `web` 为两分钟，`production` 为五分钟；预算均覆盖生成、依赖安装和实际 smoke。
-`production` 包含浏览器客户端、`AgentServer`、PostgreSQL、`AgentWorker`、
-`DockerExecutionHost` 和运维入口。省略 `--preset` 时仍生成 production
-拓扑；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
+`production` 包含浏览器客户端、`AgentServer`、PostgreSQL、运行真实 SDK Session 的
+`AgentWorker`、需要浏览器审批写入的 Docker 仓库工具，以及运维入口。它的 smoke 会在
+写入检查点保存后杀掉 Worker，并验证新 Worker 能接续完成任务。省略 `--preset` 时仍
+生成 production 拓扑；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
 
 ## 快速开始
 
@@ -91,7 +92,7 @@ console.log(result.usage);
 - Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 可转向请求：持久化的 `now`、`next`、`later` 输入，支持取消和待处理输入查询
 - Durable 恢复：带 fencing 的执行租约、受控 worker handoff、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
-- 执行平面：`AgentWorker`、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
+- 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
 - 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用
@@ -189,8 +190,8 @@ import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 pnpm example:production
 ```
 
-该命令会启动 PostgreSQL、`AgentServer`、`AgentWorker` 和隔离的 Docker
-执行环境。详见[可运行 Golden Paths](./examples/README.md)。
+该命令会启动 PostgreSQL、`AgentServer`、运行真实 SDK Session 的 `AgentWorker`，
+以及带浏览器审批步骤的隔离 Docker 仓库环境。详见[可运行 Golden Paths](./examples/README.md)。
 
 PostgreSQL、OpenTelemetry、非内置 Provider adapter 和本机原生增强是按需 peer：
 
@@ -279,7 +280,7 @@ pnpm run docs:build
 `fix`、`performance`、`refactor` 和 `docs`。
 
 1. 校验、构建并测试 package 和文档；
-2. 根据 conventional commits 计算下一版本；
+2. 取 fragment 中最高的 `type` 决定下一版本（`breaking` → major、`feature` → minor、其余 → patch）；
 3. 更新 `package.json`、`CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`；
 4. 提交生成的发布元数据；
 5. 发布 npm package 和 GitHub Release。

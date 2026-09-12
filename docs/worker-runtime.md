@@ -162,6 +162,25 @@ const session = await resumeSession({
 一旦 Session 建立过 execution lease，该要求保持 sticky。未携带 fence、已过期
 或已被新 worker 取代的 durable append 都会 fail-closed。
 
+### Runner 返回结果与 finalize
+
+`SessionRunner.run()` 返回 `SessionRunResult`；`/server` 入口同时导出
+`SessionRunner`、`SessionRunnerContext` 与 `SessionRunResult`：
+
+```ts
+type SessionRunResult =
+  | { status: 'idle' | 'completed' | 'suspended'; metadata?: JsonObject; finalize?: () => Promise<void> }
+  | { status: 'failed'; failure: JsonObject; metadata?: JsonObject; finalize?: () => Promise<void> };
+```
+
+Worker 会按结果把路由结算为 `idle`、`completed` 或 `failed`；结果为 `suspended`
+时则执行移交。`finalize` **只在**上述带执行权校验的结算或移交成功后执行，因此适合
+用来发布已确认的最终结果；结算失败时它不会执行，Worker 会把该租约视为未恢复，交给
+恢复流程处理。
+
+由于 `finalize` 是条件执行的，runner 必须在 `run()` 返回前自行完成资源清理，不能
+依赖 `finalize` 释放必须释放的句柄。
+
 ## Effect outbox
 
 effect 有两种执行模式：

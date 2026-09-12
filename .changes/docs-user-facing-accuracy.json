@@ -1,0 +1,5 @@
+{
+  "type": "docs",
+  "en": "Describe the production preset as the SDK Session and Docker repository workflow it now runs, document the SessionRunResult finalization contract, and state how changelog fragment types decide the release version.",
+  "zh-CN": "更新用户文档：production 预设按当前真实的 SDK Session 与 Docker 仓库工作流描述，补充 SessionRunResult 的终结契约，并说明变更片段类型如何决定发布版本。"
+}

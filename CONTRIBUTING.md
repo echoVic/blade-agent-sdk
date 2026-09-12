@@ -105,7 +105,9 @@ A release fragment is a uniquely named JSON file under `.changes/`:
 ```
 
 Allowed types are `breaking`, `feature`, `fix`, `performance`, `refactor`,
-and `docs`. Use a kebab-case filename and validate it with:
+and `docs`. The highest type across all fragments decides the release:
+`breaking` is a major, `feature` is a minor, and every other type is a patch.
+Use a kebab-case filename and validate it with:
 
 ```bash
 pnpm run changelog:check

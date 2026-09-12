@@ -170,6 +170,27 @@ Once a Session has created an execution lease, the requirement is sticky.
 Durable appends without a fence, with an expired fence, or with a fence replaced
 by another worker fail closed.
 
+### Runner results and finalization
+
+`SessionRunner.run()` returns a `SessionRunResult`, which is exported from the
+`/server` entry together with `SessionRunner` and `SessionRunnerContext`:
+
+```ts
+type SessionRunResult =
+  | { status: 'idle' | 'completed' | 'suspended'; metadata?: JsonObject; finalize?: () => Promise<void> }
+  | { status: 'failed'; failure: JsonObject; metadata?: JsonObject; finalize?: () => Promise<void> };
+```
+
+The Worker settles the route to `idle`, `completed`, or `failed`, or hands the
+Session off when the result is `suspended`. `finalize` runs only after that
+fenced settlement or handoff succeeds, so it is the place to publish a confirmed
+outcome. It is skipped when the transition fails, and the Worker instead treats
+the lease as unrecovered so recovery can run.
+
+Because `finalize` is conditional, runners must finish their own resource
+cleanup before `run()` resolves. Do not rely on `finalize` to release handles
+that must be released.
+
 ## Effect outbox
 
 Effects support two execution modes:

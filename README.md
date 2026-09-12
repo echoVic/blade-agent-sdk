@@ -45,10 +45,12 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 All three presets use the same Session and protocol semantics. Their
 generation, installation, and real-smoke budgets are one minute for `local`,
 two minutes for `web`, and five minutes for `production`. The production
-preset includes the browser client, `AgentServer`, PostgreSQL, `AgentWorker`,
-`DockerExecutionHost`, and operations endpoints. Omitting `--preset` preserves
-the production default. Omit `--verify` to avoid running the smoke, or use
-`--skip-install` to write files only.
+preset includes the browser client, `AgentServer`, PostgreSQL, `AgentWorker`
+running a real SDK Session, Docker repository tools with a write-approval
+prompt, and operations endpoints. Its smoke kills the Worker after a saved
+edit and verifies that a successor finishes the task. Omitting `--preset`
+preserves the production default. Omit `--verify` to avoid running the smoke,
+or use `--skip-install` to write files only.
 
 ## Quick Start
 
@@ -93,7 +95,7 @@ console.log(result.usage);
 - Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
 - Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
 - Durable recovery: lease-fenced execution ownership, controlled worker handoff, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
-- Execution plane: `AgentWorker`, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
+- Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
@@ -191,8 +193,9 @@ Run the complete browser-to-worker production topology locally with one command:
 pnpm example:production
 ```
 
-This starts PostgreSQL, `AgentServer`, `AgentWorker`, and an isolated Docker
-execution host. See [Runnable golden paths](./examples/README.md).
+This starts PostgreSQL, `AgentServer`, `AgentWorker` running a real SDK
+Session, and an isolated Docker repository workspace with a browser approval
+step. See [Runnable golden paths](./examples/README.md).
 
 PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node enhancements
 are opt-in peers:
@@ -285,7 +288,8 @@ Use a unique kebab-case filename. Allowed types are `breaking`, `feature`,
 `fix`, `performance`, `refactor`, and `docs`.
 
 1. validates, builds, and tests the package and documentation;
-2. determines the next version from conventional commits;
+2. takes the highest fragment type as the next version (`breaking` → major,
+   `feature` → minor, everything else → patch);
 3. updates `package.json`, `CHANGELOG.md`, and `CHANGELOG.zh-CN.md`;
 4. commits the generated release metadata;
 5. publishes the npm package and GitHub Release.
