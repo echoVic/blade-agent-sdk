@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.2] - 2026-09-12
+
+### Fixes
+
+- Separate unknown Session state from an empty conversation in Session reads, and reconcile the production example's accepted-but-unenqueued submissions and unpublished terminal results on launcher startup.
+
 ## [7.1.1] - 2026-09-12
 
 ### Refactoring
