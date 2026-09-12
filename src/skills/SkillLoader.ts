@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { signalProcessTree } from '../tools/builtin/shell/processTree.js';
 import { HookEvent } from '../types/constants.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode } from '../utils/errorUtils.js';
@@ -311,9 +312,11 @@ export async function processInlineCommands(
     allowlist?: string[] | 'all';
     logger?: { info(msg: string): void; warn(msg: string): void };
     skillName?: string;
+    /** Aborting this signal stops the inline commands it started. */
+    signal?: AbortSignal;
   },
 ): Promise<string> {
-  const { allowlist = 'all', logger, skillName } = options ?? {};
+  const { allowlist = 'all', logger, skillName, signal } = options ?? {};
 
   if (!content.includes('!`')) return content;
 
@@ -361,7 +364,7 @@ export async function processInlineCommands(
         }
       }
 
-      return executeShellCommand(cmd, cwd, logger);
+      return executeShellCommand(cmd, cwd, logger, signal);
     }),
   );
 
@@ -379,16 +382,34 @@ async function executeShellCommand(
   cmd: string,
   cwd: string,
   logger?: { info(msg: string): void; warn(msg: string): void },
+  signal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve) => {
     let stdout = '';
     let stdoutBytes = 0;
     let truncated = false;
 
+    if (signal?.aborted) {
+      resolve(`[Command cancelled before execution: \`${cmd}\`]`);
+      return;
+    }
+
     const child = spawn('sh', ['-c', cmd], {
       cwd,
       env: { ...process.env },
       timeout: INLINE_CMD_TIMEOUT_MS,
+      // detached so the whole process group can be signalled: killing only the
+      // shell would leave its children running after the Session moved on.
+      detached: process.platform !== 'win32',
+    });
+
+    // An inline command must not outlive the Session that started it.
+    const onAbort = () => {
+      signalProcessTree(child.pid, 'SIGKILL', child);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    child.once('close', () => {
+      signal?.removeEventListener('abort', onAbort);
     });
 
     child.stdout.on('data', (chunk: Buffer) => {
@@ -513,6 +534,7 @@ export async function loadSkillContent(
     cwd?: string;
     args?: string;
     inlineCommandOptions?: Parameters<typeof processInlineCommands>[2];
+    signal?: AbortSignal;
   },
 ): Promise<SkillContent | null> {
   try {
@@ -530,6 +552,7 @@ export async function loadSkillContent(
         options.cwd,
         {
           ...options.inlineCommandOptions,
+          ...(options.signal ? { signal: options.signal } : {}),
           allowlist: mergeInlineAllowlist(result.content.metadata, options.inlineCommandOptions),
         },
       );

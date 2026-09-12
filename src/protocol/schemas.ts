@@ -217,6 +217,7 @@ const agentCommandResultSchemaImpl = z.discriminatedUnion('ok', [
             'COMMAND_CONFLICT',
             'COMMAND_IN_PROGRESS',
             'COMMAND_ABANDONED',
+            'STREAM_FRAME_TOO_LARGE',
             'RATE_LIMITED',
             'OVERLOADED',
             'STALE_CURSOR',

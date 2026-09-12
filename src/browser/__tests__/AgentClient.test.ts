@@ -95,6 +95,41 @@ describe('AgentClient events', () => {
     expect(eventRequests[1]?.headers.get('last-event-id')).toBe('1');
   });
 
+  it('fails instead of buffering a frame that never ends', async () => {
+    // A peer that keeps sending bytes without a frame delimiter must not grow the
+    // parser's buffer for as long as it holds the connection open.
+    const unterminated = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${'x'.repeat(5 * 1024 * 1024)}`));
+        // Deliberately no delimiter and no close.
+      },
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === 'POST') {
+        const body = (await request.json()) as { commandId: string };
+        return initializeResponse(body.commandId);
+      }
+      return new Response(unterminated, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    const client = new AgentClient({
+      baseUrl: 'https://agent.test/v1/agent',
+      client: { name: 'test-client', version: '1.0.0' },
+      fetch: fetchImpl,
+      maxEventReconnectAttempts: 0,
+      retryBaseDelayMs: 0,
+    });
+
+    await expect((async () => {
+      for await (const _event of client.events(sessionId)) {
+        // drain
+      }
+    })()).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
+  });
+
   it('stops after the configured number of clean disconnects', async () => {
     let eventRequests = 0;
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {

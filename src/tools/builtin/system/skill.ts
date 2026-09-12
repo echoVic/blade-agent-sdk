@@ -105,7 +105,13 @@ Important:
     }
 
     // 加载完整的 Skill 内容，传入 cwd 以支持内联命令替换（!`command` 语法）
-    const content = await registry.loadContent(skill, { cwd, args });
+    const content = await registry.loadContent(skill, {
+      cwd,
+      args,
+      // The Session's signal reaches inline commands, so cancelling a turn stops
+      // the commands that turn started.
+      ...(context.signal ? { signal: context.signal } : {}),
+    });
     if (!content) {
       return {
         status: 'error',

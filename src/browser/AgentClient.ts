@@ -572,6 +572,13 @@ export class AgentClient {
   }
 }
 
+/**
+ * Upper bound on one unserialised SSE frame. A peer that streams bytes without a
+ * frame delimiter would otherwise grow this buffer for as long as it keeps the
+ * connection open, so the parser fails instead of accumulating without limit.
+ */
+const MAX_SSE_FRAME_BYTES = 4 * 1024 * 1024;
+
 async function* parseEventStream(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<AgentServerEvent> {
@@ -582,6 +589,13 @@ async function* parseEventStream(
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
+      if (buffer.length > MAX_SSE_FRAME_BYTES && !/\r?\n\r?\n/.test(buffer)) {
+        throw new AgentProtocolError(
+          'STREAM_FRAME_TOO_LARGE',
+          `A single event stream frame exceeded ${MAX_SSE_FRAME_BYTES} bytes without a delimiter`,
+          502,
+        );
+      }
       let boundary = /\r?\n\r?\n/.exec(buffer);
       while (boundary) {
         const frame = buffer.slice(0, boundary.index);
