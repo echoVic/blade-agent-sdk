@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.0] - 2026-09-12
+
+### Features
+
+- Return a recovery snapshot from session.read covering route state, pending inputs and the last event sequence, so a reconnecting client no longer depends on its own browser storage to resume.
+
 ## [7.3.0] - 2026-09-12
 
 ### Features
