@@ -2,6 +2,17 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.2] - 2026-09-12
+
+### Fixes
+
+- Fix repeated answers in Web starters and preserve the current conversation across page refreshes and reconnects, with explicit cancellation feedback.
+- Keep SDK Worker stream events correlated to their request, preserve graceful handoffs, and finalize results only after a successful fenced route transition.
+
+### Refactoring
+
+- Run an approved repository editing and testing workflow through durable SDK Sessions, Docker Workers, and browser recovery in the production preset.
+
 ## [7.0.1] - 2026-08-28
 
 ### Fixes

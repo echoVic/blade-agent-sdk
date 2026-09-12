@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Keep SDK Worker stream events correlated to their request, preserve graceful handoffs, and finalize results only after a successful fenced route transition.",
-  "zh-CN": "修复 SDK Worker 输出的请求关联和优雅移交，仅在带执行权校验的路由结算成功后触发结果终结回调。"
-}
