@@ -13,6 +13,7 @@ const goldenPaths = [
   'examples/production-stack/compose.yaml',
   'examples/production-stack/RepositorySessionRunner.mjs',
   'examples/production-stack/RepositoryRecovery.mjs',
+  'examples/production-stack/RepositoryReconcile.mjs',
   'examples/production-stack/RepositoryState.mjs',
   'examples/production-stack/RepositoryTools.mjs',
   'examples/production-stack/RepositoryDemoProvider.mjs',

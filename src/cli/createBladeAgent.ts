@@ -157,6 +157,7 @@ async function copyProductionTemplate(sourceRoot: string, directory: string): Pr
       'RepositoryDemoProvider.mjs',
       'RepositorySessionRunner.mjs',
       'RepositoryRecovery.mjs',
+      'RepositoryReconcile.mjs',
       'worker.mjs',
       'smoke.mjs',
       'fixture/src/greeting.sh',

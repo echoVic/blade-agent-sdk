@@ -37,6 +37,7 @@ const presetContracts = {
       'src/QueuedSessionExecutor.mjs',
       'src/RepositorySessionRunner.mjs',
       'src/RepositoryRecovery.mjs',
+      'src/RepositoryReconcile.mjs',
       'src/RepositoryState.mjs',
       'src/RepositoryTools.mjs',
       'src/RepositoryDemoProvider.mjs',
