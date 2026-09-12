@@ -23,6 +23,23 @@
 迁移时最容易犯的错，是为了「让它对我的仓库也能用」而直接放宽这几条。建议先把它们映射
 到你仓库的真实约束上，再放开范围。
 
+## 哪些代码由 SDK 负责，哪些由你负责
+
+production starter 会把示例模块复制进你的项目，因此先分清归属：恢复语义来自 SDK，
+示例代码只负责你自己的仓库策略。迁移时不要把 SDK 已经保证的部分重写一遍。
+
+| 关注点 | 归属 | 说明 |
+|--------|------|------|
+| 路由队列、Session 租约、fencing token | SDK | `AgentServer` + `AgentWorker` + Runtime Store |
+| 崩溃后的恢复计划（模型结果、工具结果、待审批） | SDK | `DurableSessionRecoveryCoordinator`，示例只在 `RepositoryRecovery.mjs` 里给出决策策略 |
+| 工作区检查点与恢复 | SDK | `DockerExecutionHost` 的 `checkpoint` / `restore` / `reclaim` |
+| 崩溃边界与恢复状态 | PostgreSQL | 启动器不缓存这类状态：路由状态、fencing token、已提交检查点都从存储读取 |
+| 提交与终态事件的补齐 | 你的项目 | `RepositoryState.mjs` + `RepositoryReconcile.mjs` 是你自己的队列表与补齐策略 |
+| 工具白名单与审批策略 | 你的项目 | `RepositoryTools.mjs` 与 `RepositoryState.mjs` 里的审批记录 |
+| smoke 的断言 | 你的项目 | `smoke.mjs` 断言的是示例 fixture，换成你的仓库时要重写 |
+
+`RepositoryDemoProvider.mjs` 只服务于 smoke 的确定性模型输出，接入真实模型后可以删除。
+
 ## 第 1 步：换成你的仓库
 
 示例在启动时把一个 fixture 复制成临时 Git 仓库。换成真实仓库时改 `run.mjs` 里创建

@@ -26,6 +26,26 @@ input to argv or stdin, while the programs themselves are fixed strings.
 The usual migration mistake is relaxing these rules to make the example "work
 with my repository". Map them onto your real constraints first, then widen.
 
+## What the SDK owns, and what you own
+
+The production starter copies the example modules into your project, so it helps
+to know where the boundary sits: the recovery semantics come from the SDK, and
+the copied code only encodes your repository policy. Do not re-implement the
+guarantees the SDK already provides.
+
+| Concern | Owner | Notes |
+|---------|-------|-------|
+| Route queue, Session lease, fencing token | SDK | `AgentServer` + `AgentWorker` + Runtime Store |
+| Post-crash recovery plan (model outcome, tool outcomes, pending approvals) | SDK | `DurableSessionRecoveryCoordinator`; the example only supplies the policy in `RepositoryRecovery.mjs` |
+| Workspace checkpoints and restore | SDK | `DockerExecutionHost` `checkpoint` / `restore` / `reclaim` |
+| Crash boundary and recovery state | PostgreSQL | The launcher caches none of it: route state, fencing token, and the committed checkpoint are read from the store |
+| Submission and terminal-event reconciliation | Your project | `RepositoryState.mjs` + `RepositoryReconcile.mjs` are your own queue tables and catch-up policy |
+| Tool allowlists and approval policy | Your project | `RepositoryTools.mjs` and the approval records in `RepositoryState.mjs` |
+| Smoke assertions | Your project | `smoke.mjs` asserts against the example fixture; rewrite it for your repository |
+
+`RepositoryDemoProvider.mjs` only serves the smoke run's deterministic model
+output and can be deleted once you use a real model.
+
 ## Step 1: Point it at your repository
 
 The example copies a fixture into a temporary Git repository at startup. Replace

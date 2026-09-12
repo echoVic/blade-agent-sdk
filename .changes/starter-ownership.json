@@ -1,0 +1,5 @@
+{
+  "type": "docs",
+  "en": "Document which parts of the production starter the SDK owns — route queue, leases, recovery planning, checkpoints — and which parts are your own repository policy, so the copied modules are adapted rather than re-implemented.",
+  "zh-CN": "补充文档说明 production starter 中哪些部分由 SDK 负责（路由队列、租约、恢复计划、检查点），哪些属于你自己的仓库策略，避免把复制进来的模块重新实现一遍。"
+}
