@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.7] - 2026-09-12
+
+### Fixes
+
+- Make the memory files the authority and rebuild the index from them, so concurrent saves cannot lose entries or make a stored memory invisible, and stop reporting storage failures as a missing memory.
+
 ## [7.1.6] - 2026-09-12
 
 ### Fixes

@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Make the memory files the authority and rebuild the index from them, so concurrent saves cannot lose entries or make a stored memory invisible, and stop reporting storage failures as a missing memory.",
-  "zh-CN": "以记忆文件为权威来源并由文件重建索引，使并发保存不再丢失条目或让已存记忆不可见；存储失败不再被当作「记忆不存在」。"
-}
