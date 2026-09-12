@@ -120,6 +120,7 @@ describe('MiddlewareBoundary', () => {
         context: Object.freeze({ permissionMode: PermissionMode.YOLO }),
         executeCore: () =>
           (async function* () {
+            yield { kind: 'progress', message: 'starting' };
             throw contractFailure;
           })(),
       }),
@@ -147,9 +148,8 @@ describe('MiddlewareBoundary', () => {
   it('announces a short-circuited execution without running the tool', async () => {
     const onExecutionStarted = vi.fn();
     const execute = vi.fn(() => completeToolExecution({ status: 'success', model: 'ran' }));
-    const shortCircuit: ToolMiddleware = async function* () {
-      return { status: 'success', model: 'served from cache' };
-    };
+    const shortCircuit: ToolMiddleware = () =>
+      completeToolExecution({ status: 'success', model: 'served from cache' });
 
     const outcome = await runBoundary(
       [shortCircuit],
