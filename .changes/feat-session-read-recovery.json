@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Return a recovery snapshot from session.read covering route state, pending inputs and the last event sequence, so a reconnecting client no longer depends on its own browser storage to resume.",
+  "zh-CN": "session.read 返回恢复快照，包含路由状态、待处理输入与最后事件序号，重连的客户端不再依赖浏览器本地存储来恢复。"
+}

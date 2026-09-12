@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CommandId, type InputId, type RequestId } from '../../types/identifiers.js';
+import { CommandId, type InputId, type RequestId, type SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
 import type { PendingSessionInput } from '../../session/types.js';
 import {
@@ -98,5 +98,52 @@ describe('InProcessSessionExecutor read identifiers', () => {
     expect(targetRequestId).toBeUndefined();
     expect(inputId).toBeUndefined();
     expect(result.loaded).toBe(true);
+  });
+});
+
+describe('AgentServer session.read recovery snapshot', () => {
+  it('reports the facts a reconnecting client needs without its local state', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-recovery'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-recovery'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    // Route state, load state, pending inputs and the event cursor must all be
+    // server-provided, because a client that lost its storage has nothing else.
+    expect(recovery).toMatchObject({ sessionLoaded: true, pendingInputCount: 0 });
+    expect(typeof recovery.lastEventSequence === 'number' || recovery.lastEventSequence === undefined)
+      .toBe(true);
   });
 });

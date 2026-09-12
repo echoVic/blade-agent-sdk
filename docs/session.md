@@ -1282,6 +1282,24 @@ interface AgentDefinition {
 - 加载顺序是 builtin → 用户/项目文件配置 → `SessionOptions.agents`
 - 如果名称冲突，当前 session 里的显式 `agents` 定义优先级最高
 
+### 子 Agent 状态的存储边界
+
+子 Agent 的会话状态保存在 `AgentSessionRepository` 能力之后，默认实现是以本机
+storage root 为根的文件存储。这意味着**父会话使用 PostgreSQL 并不等于子 Agent 也能跨机恢复**：
+默认存储只有同一台机器读得到。
+
+需要子 Agent 跟随父会话跨机恢复时，注入一个由同一仓库支撑的实现：
+
+```ts
+const session = await createSession({
+  provider,
+  model,
+  agentSessionRepository: myRepository, // 实现 AgentSessionRepository
+});
+```
+
+该能力整体是异步的，因为任何共享存储都无法满足同步接口。
+
 ### 自定义子代理
 
 ```ts

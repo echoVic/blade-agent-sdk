@@ -16,7 +16,8 @@ import {
   parseAgentCommand,
 } from '../protocol/index.js';
 import { canonicalJson } from '../session/events/canonicalJson.js';
-import type { SessionOptions } from '../session/types.js';
+import type { PendingSessionInput, SessionOptions } from '../session/types.js';
+import type { JsonObject } from '../types/json.js';
 import {
   CommandId,
   type CommandId as CommandIdType,
@@ -527,6 +528,10 @@ export class AgentServer {
         return this.success(command.commandId, {
           ...result,
           session: toSessionDescriptor(result.session),
+          // Everything a client needs to reattach without relying on its own
+          // storage: what the Worker is doing, what is waiting on a human, and
+          // where the event log has reached.
+          recovery: await this.describeRecovery(principal.tenantId, command.data.sessionId, result),
         });
       }
       case AgentCommandType.SESSION_LIST:
@@ -601,6 +606,39 @@ export class AgentServer {
     } catch {
       // Telemetry is observational and must not change delivery semantics.
     }
+  }
+
+  /**
+   * The authoritative recovery facts for one Session.
+   *
+   * A client that reconnects after losing its local state needs these from the
+   * server: the route says whether work is queued, running or settled; the pending
+   * inputs say what was accepted but not applied; the last event sequence is the
+   * cursor to resume the stream from.
+   */
+  private async describeRecovery(
+    tenantId: string,
+    sessionId: SessionId,
+    read: { readonly loaded: boolean; readonly pendingInputs: readonly PendingSessionInput[] },
+  ): Promise<JsonObject> {
+    const route = this.options.runtimeStore
+      ? await this.options.runtimeStore.getSessionRoute(tenantId, sessionId)
+      : null;
+    const events = await this.store.readEvents(tenantId, sessionId, { limit: 1 });
+    const lastSequence = events.events.at(-1)?.sequence;
+    return {
+      sessionLoaded: read.loaded,
+      ...(route
+        ? {
+            routeState: route.state,
+            attempt: route.attempt,
+            fencingToken: Number(route.fencingToken),
+            ...(route.workerId ? { workerId: route.workerId } : {}),
+          }
+        : {}),
+      pendingInputCount: read.pendingInputs.length,
+      ...(lastSequence !== undefined ? { lastEventSequence: Number(lastSequence) } : {}),
+    };
   }
 
   private async requireSessionRecord(

@@ -742,6 +742,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `systemPrompt` | `string` | Session system prompt |
 | `maxTurns` | `number` | Agent turn limit |
 | `agents` | `Record<string, AgentDefinition>` | Session-local subagents |
+| `agentSessionRepository` | `AgentSessionRepository` | Storage capability for subagent Sessions; defaults to a host-local file store |
 | `hooks` | `Partial<Record<SessionHookEvent, HookCallback[]>>` | Eight inline hook events |
 | `hookTimeoutMs` | `number` | Total inline hook event deadline; defaults to `600000` |
 | `sessionEndHookTimeoutMs` | `number` | Inline `SessionEnd` deadline; defaults to `3000` |

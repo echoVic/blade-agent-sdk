@@ -193,6 +193,13 @@ for await (const event of session.events()) {
 }
 ```
 
+`session.read` returns a `recovery` object alongside the session and its messages:
+the route state, attempt, fencing token and worker when the Session is queued or
+running, whether this server has the Session loaded, how many inputs are accepted
+but not applied, and the last event sequence. A client that lost its own storage
+can reattach from these facts instead of guessing, and it must treat `messages`
+as unknown rather than empty when `loaded` is false.
+
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command
 method also accepts an explicit `commandId`. The SSE client reconnects from the
