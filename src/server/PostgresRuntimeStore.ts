@@ -124,9 +124,10 @@ interface PayloadRow extends QueryResultRow {
 interface CommandRow extends QueryResultRow {
   command_fingerprint: string;
   lease_id: string;
-  status: 'claimed' | 'sealed' | 'completed';
+  status: 'claimed' | 'sealed' | 'completed' | 'abandoned';
   expires_at: Date | string;
   result: unknown | null;
+  abandon_reason?: string | null;
 }
 
 interface ProjectionRow extends QueryResultRow {
@@ -505,7 +506,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.transaction(async (client) => {
       await this.lock(client, `command:${tenantId}:${commandId}`);
       const existing = await client.query<CommandRow>(
-        `SELECT command_fingerprint, lease_id, status, expires_at, result
+        `SELECT command_fingerprint, lease_id, status, expires_at, result, abandon_reason
            FROM ${this.table('commands')}
           WHERE tenant_id = $1 AND command_id = $2
           FOR UPDATE`,
@@ -519,6 +520,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
         return {
           status: 'completed',
           result: parseAgentCommandResult(row.result),
+        };
+      }
+      if (row?.status === 'abandoned') {
+        return {
+          status: 'abandoned',
+          reason: typeof row.abandon_reason === 'string'
+            ? row.abandon_reason
+            : 'This command was abandoned after sealing',
         };
       }
       const now = Date.now();
@@ -599,6 +608,26 @@ export class PostgresRuntimeStore implements RuntimeStore {
           AND status = 'claimed'`,
       [tenantId, commandId, leaseId],
     );
+  }
+
+  /**
+   * Resolve a sealed command terminally. Only a sealed command can be abandoned:
+   * a claimed one can still be released for retry, and a completed one already has
+   * its result.
+   */
+  async abandonCommand(tenantId: string, commandId: CommandId, reason: string): Promise<boolean> {
+    if (!reason.trim()) {
+      throw new RangeError('An abandoned command requires a reason');
+    }
+    await this.initialize();
+    const result = await this.queryClient().query(
+      `UPDATE ${this.table('commands')}
+          SET status = 'abandoned', abandon_reason = $3, updated_at = NOW()
+        WHERE tenant_id = $1 AND command_id = $2
+          AND status = 'sealed' AND result IS NULL`,
+      [tenantId, commandId, reason],
+    );
+    return result.rowCount === 1;
   }
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
@@ -1593,9 +1622,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         command_id TEXT NOT NULL,
         command_fingerprint TEXT NOT NULL,
         lease_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('claimed', 'sealed', 'completed')),
+        status TEXT NOT NULL CHECK (status IN ('claimed', 'sealed', 'completed', 'abandoned')),
         expires_at TIMESTAMPTZ NOT NULL,
         result JSONB,
+        abandon_reason TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (tenant_id, command_id)
@@ -1703,6 +1733,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       if (
         previousSchemaVersion !== 1 &&
         previousSchemaVersion !== 2 &&
+        previousSchemaVersion !== 3 &&
         previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
       ) {
         throw new RuntimeStoreError(
@@ -1715,7 +1746,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         `INSERT INTO ${this.table('metadata')} AS metadata (key, value)
          VALUES ('schema_version', $1)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-         WHERE metadata.value IN ('1', '2')`,
+         WHERE metadata.value IN ('1', '2', '3')`,
         [String(RUNTIME_STORE_SCHEMA_VERSION)],
       );
     } finally {

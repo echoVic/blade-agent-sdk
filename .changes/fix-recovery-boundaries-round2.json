@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Abandon sealed commands that never reported a result instead of answering in_progress forever, confirm cancellation only after the execution environment is stopped, and publish SessionRunner terminal results after the route settles.",
+  "zh-CN": "对始终未上报结果的 sealed 命令给出可审计的终止状态而非永久 in_progress；仅在执行环境确认停止后才确认取消；SessionRunner 的终态结果改为路由结算后发布。"
+}

@@ -24,10 +24,24 @@ export interface SessionRunnerContext {
 }
 
 /**
- * The requested route outcome. finalize runs only after its fenced settlement
- * or handoff succeeds, and is skipped if that transition fails. Runners must
- * finish resource cleanup before returning from run; finalize is for publishing
- * the confirmed outcome and must not be used for required cleanup.
+ * The requested route outcome.
+ *
+ * Contract every runner shares:
+ *
+ * - `finalize` runs only after the fenced settlement or handoff succeeds, and is
+ *   skipped when that transition fails. Do not put required cleanup in it; finish
+ *   cleanup before `run()` resolves.
+ * - Publish the terminal result from `finalize`, not while streaming. A client
+ *   that observes a finished request while the route still reads `running` gets
+ *   refused when it immediately sends the next input, so the route must settle
+ *   first.
+ * - `idle` means the route is ready for another input. Return it only when the
+ *   Session is safe to continue without reconciliation.
+ * - `failed` means the route is terminal and the Session needs reconciliation
+ *   before further input. A runner that cannot prove its recovery boundaries were
+ *   respected — because it has no recovery coordinator, for example — must report
+ *   `failed` rather than assume `idle` is safe. That difference is a capability
+ *   statement, not a stylistic one.
  */
 export type SessionRunResult =
   | {

@@ -161,6 +161,7 @@ function statusForCode(code: AgentProtocolErrorCode): number {
     case 'SESSION_CONFLICT':
     case 'COMMAND_CONFLICT':
     case 'COMMAND_IN_PROGRESS':
+    case 'COMMAND_ABANDONED':
     case 'STALE_CURSOR':
       return 409;
     case 'RATE_LIMITED':
@@ -298,6 +299,19 @@ export class AgentServer {
           'COMMAND_CONFLICT',
           'This commandId was already used for a different command',
           409,
+        ),
+      );
+    }
+    if (claim.status === 'abandoned') {
+      // Terminal by design: the side effect may have happened, so the command must
+      // never re-execute. The reason names the reconciliation the caller owes.
+      return this.failure(
+        command.commandId,
+        new AgentProtocolError(
+          'COMMAND_ABANDONED',
+          `This command was abandoned without a result: ${claim.reason}`,
+          409,
+          true,
         ),
       );
     }

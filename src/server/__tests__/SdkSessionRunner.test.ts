@@ -34,7 +34,10 @@ function setup(events: () => AsyncGenerator<SessionStreamEvent>, signal: AbortSi
     signal,
     transition: vi.fn(async () => undefined),
   } as unknown as SessionRunnerContext;
-  const publish = vi.fn(async () => undefined);
+  const publish = vi.fn(
+    async (_tenantId: string, _sessionId: unknown, _type: string,
+      _data: unknown, _requestId?: unknown) => undefined,
+  );
   const runner = new SdkSessionRunner({
     resolveSessionOptions: () => ({
       provider: { type: 'openai', apiKey: 'test' },
@@ -54,13 +57,35 @@ describe('SdkSessionRunner', () => {
       yield { type: 'result', subtype: 'success', content: 'Hello', sessionId };
     }, new AbortController().signal);
 
-    await expect(runner.run(context)).resolves.toMatchObject({ status: 'idle' });
+    const result = await runner.run(context);
+    expect(result).toMatchObject({ status: 'idle' });
+    // The terminal result is withheld until the Worker has settled the route, so a
+    // client cannot see a finished request while the route still reads `running`.
+    expect(publish.mock.calls).toHaveLength(1);
+    expect(publish.mock.calls[0]?.[3]).toMatchObject({ type: 'content' });
+
+    await result.finalize?.();
+
     expect(publish.mock.calls).toHaveLength(2);
+    expect(publish.mock.calls[1]?.[3]).toMatchObject({ type: 'result', subtype: 'success' });
     for (const call of publish.mock.calls) {
       expect(call).toEqual([
         'tenant', sessionId, 'session.stream', expect.any(Object), requestId,
       ]);
     }
+  });
+
+  it('publishes the terminal result after a failure too, so the route and the client agree', async () => {
+    const { runner, context, publish } = setup(async function* () {
+      yield { type: 'result', subtype: 'error', error: 'model failed', sessionId };
+    }, new AbortController().signal);
+
+    const result = await runner.run(context);
+    expect(result).toMatchObject({ status: 'failed' });
+    expect(publish).not.toHaveBeenCalled();
+
+    await result.finalize?.();
+    expect(publish.mock.calls[0]?.[3]).toMatchObject({ type: 'result', subtype: 'error' });
   });
 
   it('returns suspended when handoff ends the stream without throwing', async () => {

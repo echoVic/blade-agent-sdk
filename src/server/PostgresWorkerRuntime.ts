@@ -28,6 +28,7 @@ import type {
 import { RUNTIME_EFFECT_STATUSES } from './RuntimeStore.js';
 import {
   assertRuntimeSessionTransition,
+  SEALED_COMMAND_ABANDON_AFTER_MS,
   type RuntimeQueueMetrics,
   type RuntimeEffectClaim,
   type RuntimeEffectClaimOptions,
@@ -421,6 +422,40 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               'queued', 'provisioning', 'running', 'waiting_approval',
               'suspended', 'idle', 'completed', 'failed'
             )
+          );
+      `);
+    }
+    if (previousSchemaVersion < 4) {
+      // Commands sealed before a side-effect boundary need a terminal state for the
+      // case where the process never reported a result, otherwise the same
+      // commandId answers `in_progress` forever.
+      await client.query(`
+        ALTER TABLE ${this.table('commands')}
+          ADD COLUMN IF NOT EXISTS abandon_reason TEXT;
+      `);
+      const constraints = await client.query<ConstraintRow>(
+        `SELECT DISTINCT constraint_row.conname
+           FROM pg_constraint constraint_row
+           JOIN LATERAL unnest(constraint_row.conkey)
+             AS column_number(attnum) ON TRUE
+           JOIN pg_attribute attribute
+             ON attribute.attrelid = constraint_row.conrelid
+            AND attribute.attnum = column_number.attnum
+          WHERE constraint_row.conrelid = $1::regclass
+            AND constraint_row.contype = 'c'
+            AND attribute.attname = 'status'`,
+        [this.table('commands')],
+      );
+      for (const constraint of constraints.rows) {
+        await client.query(
+          `ALTER TABLE ${this.table('commands')}
+             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+        );
+      }
+      await client.query(`
+        ALTER TABLE ${this.table('commands')}
+          ADD CONSTRAINT ${this.prefix}_commands_status_check CHECK (
+            status IN ('claimed', 'sealed', 'completed', 'abandoned')
           );
       `);
     }
@@ -1241,6 +1276,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   }
 
   async recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
+    // See the abandonment statement below for why this window exists.
     await this.ensureInitialized();
     return this.transaction(async (client) => {
       const offlineWorkers = await client.query(
@@ -1326,11 +1362,27 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               )
             )`,
       );
+      // A command sealed before its side effect and never completed would answer
+      // `in_progress` forever. Its lease cannot expire (sealing sets no deadline),
+      // so the only safe resolution is to abandon it after a generous window and
+      // let the caller reconcile. The side effect may have happened, which is why
+      // it is never re-executed.
+      const abandonedCommands = await client.query(
+        `UPDATE ${this.table('commands')}
+            SET status = 'abandoned',
+                abandon_reason = 'sealed command did not complete within the abandonment window',
+                updated_at = NOW()
+          WHERE status = 'sealed'
+            AND result IS NULL
+            AND updated_at <= NOW() - ($1::bigint * INTERVAL '1 millisecond')`,
+        [SEALED_COMMAND_ABANDON_AFTER_MS],
+      );
       return {
         offlineWorkers: offlineWorkers.rowCount ?? 0,
         suspendedSessions: suspendedSessions.rowCount ?? 0,
         requeuedEffects: requeuedEffects.rowCount ?? 0,
         uncertainEffects: uncertainEffects.rowCount ?? 0,
+        abandonedCommands: abandonedCommands.rowCount ?? 0,
       };
     });
   }

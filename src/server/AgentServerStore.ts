@@ -33,6 +33,16 @@ export type AgentCommandClaim =
       readonly status: 'in_progress';
       readonly retryAfterMs: number;
     }
+  /**
+   * A command sealed before crossing a side-effect boundary was abandoned instead
+   * of completed, so the same `commandId` must never re-execute it. This is the
+   * terminal escape hatch from `in_progress`: without it a command whose process
+   * died after sealing stays unanswered forever.
+   */
+  | {
+      readonly status: 'abandoned';
+      readonly reason: string;
+    }
   | {
       readonly status: 'conflict';
     };
@@ -57,6 +67,12 @@ export interface AgentServerStore {
     result: AgentCommandResult,
   ): Promise<void>;
   releaseCommand(tenantId: string, commandId: CommandId, leaseId: ExecutionLeaseId): Promise<void>;
+  /**
+   * Resolve a sealed command that will never complete. Callers must be certain the
+   * side effect is not going to be reported later, because the resolution is
+   * terminal: the command can no longer be claimed or completed.
+   */
+  abandonCommand(tenantId: string, commandId: CommandId, reason: string): Promise<boolean>;
   putSession(record: AgentServerSessionRecord): Promise<void>;
   getSession(tenantId: string, sessionId: SessionId): Promise<AgentServerSessionRecord | null>;
   listSessions(
@@ -87,6 +103,7 @@ interface CommandLease {
   expiresAt: number;
   sealed: boolean;
   result?: AgentCommandResult;
+  abandonReason?: string;
 }
 
 interface EventLog {
@@ -142,6 +159,9 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     }
     if (existing?.result) {
       return { status: 'completed', result: structuredClone(existing.result) };
+    }
+    if (existing?.abandonReason) {
+      return { status: 'abandoned', reason: existing.abandonReason };
     }
     if (existing && existing.expiresAt > now) {
       return {
@@ -205,6 +225,21 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     if (current?.leaseId === leaseId && !current.sealed && !current.result) {
       this.commandLeases.delete(key);
     }
+  }
+
+  async abandonCommand(tenantId: string, commandId: CommandId, reason: string): Promise<boolean> {
+    if (!reason.trim()) {
+      throw new RangeError('An abandoned command requires a reason');
+    }
+    const key = scopedKey(tenantId, commandId);
+    const current = this.commandLeases.get(key);
+    // Already abandoned: report "nothing changed" so repeated sweeps are no-ops and
+    // the first reason stays the recorded one.
+    if (!current?.sealed || current.result || current.abandonReason) {
+      return false;
+    }
+    this.commandLeases.set(key, { ...current, abandonReason: reason });
+    return true;
   }
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {

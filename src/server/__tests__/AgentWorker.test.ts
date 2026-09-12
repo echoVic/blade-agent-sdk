@@ -77,6 +77,7 @@ function createStore(sessionClaim: RuntimeSessionClaim) {
       suspendedSessions: 0,
       requeuedEffects: 0,
       uncertainEffects: 0,
+      abandonedCommands: 0,
     })),
     claimEffects: vi.fn(async () => []),
     claimSession: vi.fn(async () => {
@@ -545,6 +546,7 @@ describe('AgentWorker', () => {
         suspendedSessions: 0,
         requeuedEffects: 0,
         uncertainEffects: 0,
+        abandonedCommands: 0,
       });
     vi.mocked(store.claimEffects)
       .mockRejectedValueOnce(effectError)

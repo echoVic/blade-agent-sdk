@@ -165,6 +165,7 @@ export type AgentProtocolErrorCode =
   | 'SESSION_CONFLICT'
   | 'COMMAND_CONFLICT'
   | 'COMMAND_IN_PROGRESS'
+  | 'COMMAND_ABANDONED'
   | 'RATE_LIMITED'
   | 'OVERLOADED'
   | 'STALE_CURSOR'

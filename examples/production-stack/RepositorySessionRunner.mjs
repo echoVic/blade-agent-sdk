@@ -103,10 +103,25 @@ export class RepositorySessionRunner {
       }
     };
 
+    // Cleanup failure must not be silent: the cancellation acknowledgement reads
+    // this fact, so swallowing it would confirm a stop that never happened.
+    let cleanupFailure;
     const cleanup = async () => {
       localController.abort();
       context.signal.removeEventListener('abort', onShutdown);
-      if (handle) await host.terminate(handle.executionId);
+      if (!handle) return;
+      try {
+        await host.terminate(handle.executionId);
+      } catch (error) {
+        cleanupFailure = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    };
+    const recordCleanup = async () => {
+      await this.state.recordCancellationCleanup(sessionId, logicalRequestId, {
+        succeeded: cleanupFailure === undefined,
+        detail: cleanupFailure,
+      }).catch(() => undefined);
     };
 
     try {
@@ -225,6 +240,7 @@ export class RepositorySessionRunner {
         headSequence: detached.headSequence, recoveryAction: detached.recoveryPlan.action,
       } };
       await cleanup();
+      await recordCleanup();
       await cancellation?.catch((error) => { if (!localSignal.aborted) throw error; });
       if (context.signal.aborted && !cancelled) {
         return { status: 'suspended', metadata };
@@ -261,6 +277,7 @@ export class RepositorySessionRunner {
       if (session) await beginHandoff().catch(() => undefined);
       if (recoveryLease) await recoveryLease.release().catch(() => undefined);
       await cleanup().catch(() => undefined);
+      await recordCleanup();
       if (context.signal.aborted && !cancelled) {
         return { status: 'suspended', metadata };
       }

@@ -99,13 +99,19 @@ function harness() {
       store.route = { state: 'queued', metadata: options.metadata };
     }),
   };
-  const cancellations = new Map<string, { status: string }>();
+  const cancellations = new Map<string, { status: string; cleanup: string; cleanupDetail?: string }>();
   const state = {
     permission: { requestId: 'request-1', status: 'pending' },
     update: vi.fn(async (_sessionId: string, patch: RecordData) => { trace.push('submission-record'); return patch; }),
     requestCancel: vi.fn(async (_sessionId: string, requestId: string) => {
-      if (!cancellations.has(requestId)) cancellations.set(requestId, { status: 'requested' });
+      if (!cancellations.has(requestId)) {
+        cancellations.set(requestId, { status: 'requested', cleanup: 'pending' });
+      }
       return cancellations.get(requestId);
+    }),
+    recordCancellationCleanup: vi.fn(async (_sessionId: string, requestId: string, outcome: RecordData) => {
+      const cancellation = cancellations.get(requestId);
+      if (cancellation) cancellation.cleanup = outcome.succeeded ? 'stopped' : 'failed';
     }),
     getCancellation: vi.fn(async (_sessionId: string, requestId: string) => cancellations.get(requestId)),
     markCancelled: vi.fn(async (_sessionId: string, requestId: string) => {
@@ -298,10 +304,37 @@ describe('production QueuedSessionExecutor', () => {
     expect(acknowledged).toBe(false);
     test.store.route.state = terminal;
     await vi.advanceTimersByTimeAsync(50);
+    // A finished route alone is not enough: the execution environment must be
+    // confirmed stopped, which the runner records separately.
+    expect(acknowledged).toBe(false);
+    test.cancellations.get('request-1')!.cleanup = 'stopped';
+    await vi.advanceTimersByTimeAsync(50);
     expect(acknowledged).toBe(true);
     await cancelled;
     expect(test.state.markCancelled).toHaveBeenCalledWith('session-1', 'request-1');
     expect(test.cancellations.get('request-1')?.status).toBe('completed');
+  });
+
+  it('refuses to confirm cancellation when the execution environment was not stopped', async () => {
+    vi.useFakeTimers();
+    const test = harness();
+    test.store.route = { state: 'running', metadata: queued() };
+    // Attach the handler before the rejection happens, otherwise the rejected
+    // promise counts as unhandled while the fake timers are advanced.
+    const settled = test.executor.abort(context, input).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    test.store.route.state = 'failed';
+    test.cancellations.get('request-1')!.cleanup = 'failed';
+    test.cancellations.get('request-1')!.cleanupDetail = 'docker rm failed';
+    await vi.advanceTimersByTimeAsync(50);
+    await expect(settled).resolves.toMatchObject({
+      protocolCode: 'SESSION_CONFLICT',
+      message: expect.stringContaining('docker rm failed'),
+    });
+    expect(test.state.markCancelled).not.toHaveBeenCalled();
   });
 });
 

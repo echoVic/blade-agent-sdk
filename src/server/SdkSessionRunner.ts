@@ -100,6 +100,14 @@ export class SdkSessionRunner implements SessionRunner {
       let terminal: Extract<SessionStreamEvent, { type: 'result' }> | undefined;
       for await (const event of session.stream()) {
         activeRequestId = requestIdOf(event) ?? activeRequestId;
+        if (event.type === 'result') {
+          // Defer the terminal result: publishing it while the route still reads
+          // `running` would let a client observe a finished request and be refused
+          // when it immediately sends the next input. The Worker settles the route
+          // first, then runs `finalize`, which publishes this event.
+          terminal = event;
+          continue;
+        }
         await this.options.publish?.(
           route.tenantId,
           route.sessionId,
@@ -107,26 +115,34 @@ export class SdkSessionRunner implements SessionRunner {
           event,
           activeRequestId,
         );
-        if (event.type === 'result') {
-          terminal = event;
-        }
       }
       const detached = await beginHandoff();
       const metadata = handoffMetadata(route.metadata, detached);
       if (context.signal.aborted) {
         return { status: 'suspended', metadata };
       }
+      const publishTerminal = terminal
+        ? () => this.options.publish?.(
+            route.tenantId,
+            route.sessionId,
+            'session.stream',
+            terminal,
+            activeRequestId,
+          )
+        : undefined;
       if (!terminal || terminal.subtype === 'error') {
         return {
           status: 'failed',
           failure: {
             message: terminal?.error ?? 'Session stream ended without a terminal result',
           },
+          ...(publishTerminal ? { finalize: async () => { await publishTerminal(); } } : {}),
           metadata,
         };
       }
       return {
         status: 'idle',
+        ...(publishTerminal ? { finalize: async () => { await publishTerminal(); } } : {}),
         metadata,
       };
     } catch (error) {

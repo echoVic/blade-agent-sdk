@@ -164,7 +164,18 @@ export class QueuedSessionExecutor {
         this.store.getSessionRoute(tenantId, data.sessionId),
       ]);
       if (cancellation?.status === 'completed') return;
-      if (['idle', 'completed', 'failed'].includes(current?.state)) {
+      // A finished route does not prove the execution environment stopped. The
+      // runner records that separately, and a failed cleanup surfaces as an error
+      // instead of a confirmation that would be false.
+      if (cancellation?.cleanup === 'failed') {
+        throw new AgentProtocolError(
+          'SESSION_CONFLICT',
+          `Cancellation is recorded but the execution environment was not confirmed stopped: ${cancellation.cleanupDetail ?? 'cleanup failed'}`,
+          409,
+        );
+      }
+      const routeFinished = ['idle', 'completed', 'failed'].includes(current?.state);
+      if (routeFinished && cancellation?.cleanup === 'stopped') {
         await this.state.markCancelled(data.sessionId, request.requestId);
         return;
       }

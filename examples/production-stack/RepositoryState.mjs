@@ -6,7 +6,24 @@ function toPendingSubmission(row) {
   return { sessionId: row.sessionId, requestId: row.requestId, input: row.input, value: { ...row.value, input: row.input } };
 }
 
-/** Example-owned control records. SDK transcripts, events and fencing stay in RuntimeStore. */
+/**
+ * Example-owned control records. SDK transcripts, events and fencing stay in RuntimeStore.
+ *
+ * Authority map — which fact lives where, and what may be rebuilt:
+ *
+ * | Fact | Authority | Here |
+ * |------|-----------|------|
+ * | Conversation transcript, stream events | Runtime Store | not stored; read through the Session |
+ * | Route state, worker lease, fencing | `session_routes` / `execution_leases` | never copied |
+ * | Accepted input | Session journal | `repository_submissions` records only that the input was handed to a Worker |
+ * | Workspace checkpoint | route metadata (`REPOSITORY_KEY`) | `repository_state.checkpointId` is a readable projection |
+ * | Approval lifecycle | durable events | `repository_permissions` mirrors it for the approval API |
+ * | Cancellation intent | nothing else records it | `repository_cancellations` is authoritative |
+ * | Terminal result | durable events | `repository_outcomes` holds the copy that must still be published |
+ *
+ * Rows marked as projections may be rebuilt from the authority; the submission and
+ * outcome rows may not, which is why they are the ones startup reconciliation drains.
+ */
 export class RepositoryState {
   constructor({ connectionString, schema }) {
     if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new TypeError('Invalid schema');
@@ -24,10 +41,23 @@ export class RepositoryState {
       request jsonb NOT NULL, status text NOT NULL DEFAULT 'pending', decision jsonb,
       PRIMARY KEY (session_id, permission_id)
     )`);
+    // `cleanup` is separate from `status` on purpose: a finished route does not
+    // prove the execution environment stopped, so cancellation is acknowledged only
+    // when both facts hold.
     await this.pool.query(`CREATE TABLE IF NOT EXISTS ${this.prefix}.repository_cancellations (
       session_id text NOT NULL, request_id text NOT NULL, status text NOT NULL DEFAULT 'requested',
+      cleanup text NOT NULL DEFAULT 'pending', cleanup_detail text,
       PRIMARY KEY (session_id, request_id)
     )`);
+    // Older databases predate the cleanup columns.
+    await this.pool.query(
+      `ALTER TABLE ${this.prefix}.repository_cancellations
+         ADD COLUMN IF NOT EXISTS cleanup text NOT NULL DEFAULT 'pending'`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${this.prefix}.repository_cancellations
+         ADD COLUMN IF NOT EXISTS cleanup_detail text`,
+    );
     // A submission is recorded here before the route is enqueued and cleared only
     // after enqueueing commits. Anything still pending on startup was accepted but
     // never handed to a Worker, which no lease-based recovery scan would find.
@@ -195,10 +225,24 @@ export class RepositoryState {
 
   async getCancellation(sessionId, requestId) {
     const { rows } = await this.pool.query(
-      `SELECT status FROM ${this.prefix}.repository_cancellations WHERE session_id = $1 AND request_id = $2`,
+      `SELECT status, cleanup, cleanup_detail AS "cleanupDetail"
+       FROM ${this.prefix}.repository_cancellations WHERE session_id = $1 AND request_id = $2`,
       [sessionId, requestId],
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Record whether the execution environment actually stopped. Kept apart from the
+   * cancellation's own status so a finished route cannot stand in for it.
+   */
+  async recordCancellationCleanup(sessionId, requestId, { succeeded, detail }) {
+    await this.pool.query(
+      `UPDATE ${this.prefix}.repository_cancellations
+         SET cleanup = $3, cleanup_detail = $4
+       WHERE session_id = $1 AND request_id = $2`,
+      [sessionId, requestId, succeeded ? 'stopped' : 'failed', detail ?? null],
+    );
   }
 
   async isCancelled(sessionId, requestId) {

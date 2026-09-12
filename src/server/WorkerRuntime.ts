@@ -122,7 +122,20 @@ export interface RuntimeRecoveryResult {
   readonly suspendedSessions: number;
   readonly requeuedEffects: number;
   readonly uncertainEffects: number;
+  /**
+   * Commands abandoned because they were sealed without a result for longer than
+   * the abandonment window. Their callers receive `COMMAND_ABANDONED` and must
+   * reconcile the effect themselves; the command is never re-executed.
+   */
+  readonly abandonedCommands: number;
 }
+
+/**
+ * How long a sealed command may stay without a result before recovery abandons it.
+ * Generous on purpose: a false abandonment turns a slow side effect into one the
+ * caller has to reconcile by hand.
+ */
+export const SEALED_COMMAND_ABANDON_AFTER_MS = 30 * 60 * 1_000;
 
 export interface RuntimeEffectLease {
   readonly tenantId: string;
