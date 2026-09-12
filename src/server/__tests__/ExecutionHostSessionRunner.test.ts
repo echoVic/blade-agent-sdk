@@ -55,6 +55,7 @@ function createHost() {
       metadata: {},
     })),
     terminate: vi.fn(async () => undefined),
+  reclaim: vi.fn(async () => undefined),
   } satisfies ExecutionHost;
 }
 

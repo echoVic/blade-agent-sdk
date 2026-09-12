@@ -2,7 +2,9 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
+import { ExecutionId } from '../../types/identifiers.js';
 import {
   DockerExecutionHost,
   type DockerExecutionHostOptions,
@@ -33,6 +35,41 @@ function request(
     ...overrides,
   };
 }
+
+describe('DockerExecutionHost reclaim', () => {
+  it('cleans up an execution it never provisioned, by identity alone', async () => {
+    // A successor process has no record of its predecessor's container, which is
+    // exactly the case the host must still be able to clean up.
+    const host = new DockerExecutionHost({ runtimeBinary: '/definitely/missing/docker' });
+    const calls: string[][] = [];
+    const runProcess = vi.fn(async (_binary: string, args: readonly string[]) => {
+      calls.push([...args]);
+      // `rm` fails, and the follow-up inspect reports the container is gone, which
+      // is the idempotent case: nothing left to remove, no error.
+      return args[0] === 'rm'
+        ? { exitCode: 1, stdout: '', stderr: 'No such container' }
+        : { exitCode: 1, stdout: '', stderr: 'Error: No such object' };
+    });
+    (host as unknown as { runProcess: typeof runProcess }).runProcess = runProcess;
+
+    await expect(host.reclaim(ExecutionId('docker-reclaim-absent'))).resolves.toBeUndefined();
+    expect(calls[0]).toEqual(['rm', '-f', '-v', 'blade-execution-docker-reclaim-absent']);
+  });
+
+  it('surfaces a cleanup failure instead of reporting success', async () => {
+    const host = new DockerExecutionHost({ runtimeBinary: '/definitely/missing/docker' });
+    const runProcess = vi.fn(async () => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'permission denied while trying to connect to the Docker daemon',
+    }));
+    (host as unknown as { runProcess: typeof runProcess }).runProcess = runProcess;
+
+    await expect(host.reclaim(ExecutionId('docker-reclaim-denied'))).rejects.toThrow(
+      /could not be removed/,
+    );
+  });
+});
 
 describe('DockerExecutionHost validation', () => {
   it('requires a numeric, non-root uid and gid', () => {

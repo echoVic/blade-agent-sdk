@@ -808,6 +808,22 @@ export class DockerExecutionHost implements ExecutionHost {
     await record.mutex.runExclusive(() => this.terminateRecord(record));
   }
 
+  /**
+   * Cleans up by identity, for executions this process never provisioned.
+   *
+   * The container name is derived from the execution id, so a successor can remove
+   * it without holding the predecessor's record. `-v` drops the anonymous
+   * workspace volume with it, which is why the volume does not need its own name.
+   */
+  async reclaim(executionId: ExecutionId): Promise<void> {
+    const record = this.executions.get(executionId);
+    if (record) {
+      await record.mutex.runExclusive(() => this.terminateRecord(record));
+      return;
+    }
+    await this.removeContainer(`blade-execution-${executionId}`);
+  }
+
   private async terminateRecord(record: ExecutionRecord): Promise<void> {
     record.terminated = true;
     clearTimeout(record.lifetimeTimer);

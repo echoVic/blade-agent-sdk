@@ -1,13 +1,14 @@
-import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { promisify } from 'node:util';
-import { DurableExecutionLease, ExecutionCheckpointId } from '@blade-ai/agent-sdk/core';
+import {
+  DurableExecutionLease,
+  ExecutionCheckpointId,
+  ExecutionId,
+} from '@blade-ai/agent-sdk/core';
 import { resumeSession } from '@blade-ai/agent-sdk/server';
 import { createRepositorySessionOptions } from './RepositoryDemoProvider.mjs';
 import { createRepositoryTools } from './RepositoryTools.mjs';
 import { recoverRepositorySession } from './RepositoryRecovery.mjs';
 
-const execFileAsync = promisify(execFile);
 const REPOSITORY_KEY = 'bladeRepository';
 
 /** A real SDK Session, with model calls on the worker and tools in Docker. */
@@ -129,12 +130,10 @@ export class RepositorySessionRunner {
       await transition('running');
       const saved = metadata[REPOSITORY_KEY];
       if (saved?.executionId) {
-        // A successor host does not have the old process's in-memory handles.
-        // Fenced ownership is established before removing its orphan container.
-        await execFileAsync('docker', ['rm', '--force', '--volumes', `blade-execution-${saved.executionId}`])
-          .catch((error) => {
-            if (!String(error.stderr ?? '').includes('No such container')) throw error;
-          });
+        // Fenced ownership is established before reclaiming the predecessor's
+        // resources. Reclaiming by identity is a host capability, so this runner
+        // never names a container or assumes a backend.
+        await host.reclaim(ExecutionId(saved.executionId));
       }
       handle = saved?.checkpointId
         ? await host.restore({ checkpointId: ExecutionCheckpointId(saved.checkpointId), signal: localSignal })

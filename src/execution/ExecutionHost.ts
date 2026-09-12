@@ -116,6 +116,18 @@ export interface ExecutionHost {
   ): Promise<ExecutionCheckpoint>;
   restore(request: ExecutionRestoreRequest): Promise<ExecutionHandle>;
   terminate(executionId: ExecutionId): Promise<void>;
+  /**
+   * Remove whatever is left of an execution this process never provisioned.
+   *
+   * A successor process has no in-memory record of its predecessor's work, so
+   * `terminate` cannot help it. Callers that take over an execution — a Worker
+   * recovering a fenced Session, for example — need the host to clean up by
+   * identity alone, without knowing how the backend names its resources.
+   *
+   * Must be idempotent: an execution whose resources are already gone is not an
+   * error.
+   */
+  reclaim(executionId: ExecutionId): Promise<void>;
 }
 
 export type ExecutionHostErrorCode =
