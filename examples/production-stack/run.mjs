@@ -13,6 +13,7 @@ import {
 } from '@blade-ai/agent-sdk/server';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { RepositoryState } from './RepositoryState.mjs';
+import { reconcilePendingWork } from './RepositoryReconcile.mjs';
 import { runProductionSmoke } from './smoke.mjs';
 import { QueuedSessionExecutor } from './QueuedSessionExecutor.mjs';
 
@@ -269,6 +270,16 @@ try {
     repositoryPath, revision: revisionOutput.trim(), smoke };
   // AgentWorker + DockerExecutionHost run in a separate process for real crash recovery.
   await startWorker();
+  // Two windows leave durable work with a settled route, so no lease scan finds
+  // them: an accepted submission that was never enqueued, and a terminal result
+  // that was never published. Both are reconciled before the server accepts input.
+  const reconciled = await reconcilePendingWork({
+    store, state: repositoryState, tenantId, publish,
+    report: (entry) => process.stdout.write(`${JSON.stringify(entry)}\n`),
+  });
+  if (reconciled.enqueuedSubmissions || reconciled.republishedOutcomes || reconciled.alreadyPublished) {
+    process.stdout.write(`Reconciled on startup: ${JSON.stringify(reconciled)}\n`);
+  }
   operations = new AgentRuntimeOperations({
     store,
     workers: () => [worker],

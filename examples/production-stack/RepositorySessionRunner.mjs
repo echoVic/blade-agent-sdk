@@ -11,6 +11,14 @@ const execFileAsync = promisify(execFile);
 const REPOSITORY_KEY = 'bladeRepository';
 
 /** A real SDK Session, with model calls on the worker and tools in Docker. */
+function buildTerminalOutcome({ sessionId, cancelled, succeeded, terminal, errorMessage }) {
+  return terminal && !cancelled ? terminal : {
+    type: 'result', subtype: succeeded ? 'success' : 'error',
+    sessionId, content: cancelled ? 'Request cancelled.' : '',
+    ...(succeeded ? {} : { error: errorMessage ?? 'Session ended without a terminal result' }),
+  };
+}
+
 export class RepositorySessionRunner {
   managesLease = true;
 
@@ -223,6 +231,17 @@ export class RepositorySessionRunner {
       }
       const errorMessage = terminalError ?? terminal?.error;
       const succeeded = cancelled || terminal?.subtype === 'success';
+      const outcomeData = buildTerminalOutcome({
+        sessionId, cancelled, succeeded, terminal, errorMessage,
+      });
+      // Recorded before returning, so the route cannot settle without a durable
+      // copy of the result. A crash between settling and publishing leaves this
+      // record for the launcher's startup reconciliation.
+      await this.state.recordOutcomePending({
+        sessionId,
+        requestId: logicalRequestId,
+        event: { data: outcomeData },
+      });
       return {
         // A failed request still leaves this conversation ready for another
         // input. Unsafe recovery failures below leave the route failed instead.
@@ -232,11 +251,10 @@ export class RepositorySessionRunner {
           await this.state.update(sessionId, { lastRequestId: logicalRequestId,
             lastStatus: cancelled ? 'cancelled' : succeeded ? 'completed' : 'failed' });
           if (cancelled) await this.state.markCancelled(sessionId, logicalRequestId);
-          await emit('session.stream', terminal && !cancelled ? terminal : {
-            type: 'result', subtype: succeeded ? 'success' : 'error',
-            sessionId, content: cancelled ? 'Request cancelled.' : '',
-            ...(succeeded ? {} : { error: errorMessage ?? 'Session ended without a terminal result' }),
-          });
+          const pending = await this.state.getUnpublishedOutcome(sessionId, logicalRequestId);
+          if (!pending) return;
+          await emit('session.stream', outcomeData);
+          await this.state.markOutcomePublished(sessionId, logicalRequestId);
         },
       };
     } catch (error) {
@@ -247,12 +265,21 @@ export class RepositorySessionRunner {
         return { status: 'suspended', metadata };
       }
       const message = error instanceof Error ? error.message : String(error);
+      const failureOutcome = { type: 'result', subtype: 'error', error: message, sessionId };
+      await this.state.recordOutcomePending({
+        sessionId,
+        requestId: logicalRequestId,
+        event: { data: failureOutcome },
+      });
       return {
         status: 'failed', metadata, failure: { message },
         finalize: async () => {
           await this.state.retirePermissions(sessionId, logicalRequestId);
           await this.state.update(sessionId, { lastStatus: 'failed', error: message });
-          await emit('session.stream', { type: 'result', subtype: 'error', error: message, sessionId });
+          const pending = await this.state.getUnpublishedOutcome(sessionId, logicalRequestId);
+          if (!pending) return;
+          await emit('session.stream', failureOutcome);
+          await this.state.markOutcomePublished(sessionId, logicalRequestId);
         },
       };
     }

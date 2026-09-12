@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Separate unknown Session state from an empty conversation in Session reads, and reconcile the production example's accepted-but-unenqueued submissions and unpublished terminal results on launcher startup.",
+  "zh-CN": "Session 读取不再把「本进程未加载」当作空会话；production 示例在启动时对账「已接受但未入队」的提交与「已记录但未发布」的终态结果。"
+}

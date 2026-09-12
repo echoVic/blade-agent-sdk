@@ -96,33 +96,57 @@ export class QueuedSessionExecutor {
       if (route && route.state !== 'idle') {
         throw new AgentProtocolError('SESSION_CONFLICT', `Session is ${route.state}`, 409);
       }
+      // A previous attempt may have accepted this input and then failed to enqueue
+      // it. The input is already durable in the Session journal, so enqueue that
+      // record instead of sending it again.
+      const accepted = await this.state.getPendingSubmission(data.sessionId);
+      if (accepted) {
+        await this.enqueueAccepted(tenantId, data.sessionId, route, accepted, record);
+        return { sessionId: data.sessionId, ...accepted.value };
+      }
       const session = await resumeSession({ ...this.options(tenantId), sessionId: data.sessionId });
       let submission;
+      let acceptedValue;
       try {
         submission = await session.send(data.input, {
           ...(data.maxTurns !== undefined ? { maxTurns: data.maxTurns } : {}),
           ...(data.expectedRequestId ? { expectedRequestId: data.expectedRequestId } : {}),
         });
-        await this.state.update(data.sessionId, {
-          submission: { ...submission, input: data.input, commandId: context.commandId },
+        // Record acceptance before releasing the Session: suspending can block, and a
+        // crash after this point must leave a record the startup sweep can find.
+        acceptedValue = { ...submission, input: data.input, commandId: context.commandId };
+        await this.state.update(data.sessionId, { submission: acceptedValue });
+        await this.state.recordSubmissionAccepted({
+          sessionId: data.sessionId,
+          requestId: submission.requestId,
+          input: data.input,
+          value: acceptedValue,
         });
       } finally {
         await session.suspendForHandoff();
       }
-      await this.store.enqueueSession(tenantId, data.sessionId, {
-        metadata: {
-          ...(route?.metadata ?? {}),
-          [QUEUED_REQUEST_METADATA_KEY]: {
-            version: 1,
-            ...submission,
-            input: data.input,
-            acceptedAt: Date.now(),
-            crashAfterWrite: this.smoke && record.metadata?.smokeCrashAfterWrite === true,
-          },
-        },
-      });
+      await this.enqueueAccepted(tenantId, data.sessionId, route, {
+        requestId: submission.requestId,
+        value: acceptedValue,
+      }, record);
       return { sessionId: data.sessionId, ...submission };
     });
+  }
+
+  /** Enqueue an accepted submission and clear its pending record only afterwards. */
+  async enqueueAccepted(tenantId, sessionId, route, accepted, record) {
+    await this.store.enqueueSession(tenantId, sessionId, {
+      metadata: {
+        ...(route?.metadata ?? {}),
+        [QUEUED_REQUEST_METADATA_KEY]: {
+          version: 1,
+          ...accepted.value,
+          acceptedAt: Date.now(),
+          crashAfterWrite: this.smoke && record.metadata?.smokeCrashAfterWrite === true,
+        },
+      },
+    });
+    await this.state.markSubmissionQueued(sessionId, accepted.requestId);
   }
 
   async abort(context, data) {

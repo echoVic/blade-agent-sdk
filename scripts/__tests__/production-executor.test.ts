@@ -112,6 +112,26 @@ function harness() {
       const cancellation = cancellations.get(requestId);
       if (cancellation) cancellation.status = 'completed';
     }),
+    // Durable acceptance bookkeeping the submit path now uses.
+    pendingSubmissions: new Map<string, RecordData>(),
+    recordSubmissionAccepted: vi.fn(async (record: RecordData) => {
+      trace.push('submission-accepted');
+      const key = String((record as { sessionId?: unknown }).sessionId);
+      if (!state.pendingSubmissions.has(key)) state.pendingSubmissions.set(key, record);
+    }),
+    markSubmissionQueued: vi.fn(async (sessionId: string) => {
+      state.pendingSubmissions.delete(String(sessionId));
+    }),
+    getPendingSubmission: vi.fn(async (sessionId: string) => {
+      const record = state.pendingSubmissions.get(String(sessionId));
+      // The real store flattens the accepted input into `value`; mirror that shape.
+      return record ? { ...record, value: { ...(record.value as RecordData), input: record.input } } : null;
+    }),
+    recordOutcomePending: vi.fn(async () => undefined),
+    markOutcomePublished: vi.fn(async () => undefined),
+    getUnpublishedOutcome: vi.fn(async () => null),
+    listPendingSubmissions: vi.fn(async () => []),
+    listUnpublishedOutcomes: vi.fn(async () => []),
     getPermission: vi.fn(async () => state.permission),
     isCancelled: vi.fn(async (_sessionId: string, requestId: string) => cancellations.has(requestId)),
     resolvePermission: vi.fn(async (_sessionId: string, _requestId: string, _permissionId: string, _decision: RecordData) => {
@@ -166,7 +186,9 @@ describe('production QueuedSessionExecutor', () => {
     expect(test.store.enqueueSession).not.toHaveBeenCalled();
     detach();
     expect(await submitted).toMatchObject({ requestId: 'request-1', inputId: 'input-1', status: 'started' });
-    expect(test.trace).toEqual(['resume', 'send', 'submission-record', 'detaching', 'detached', 'enqueue']);
+    expect(test.trace).toEqual([
+      'resume', 'send', 'submission-record', 'submission-accepted', 'detaching', 'detached', 'enqueue',
+    ]);
     expect(test.handles[0]?.send).toHaveBeenCalledWith(input.input, { maxTurns: 5 });
     expect(test.handles[0]?.stream).not.toHaveBeenCalled();
   });

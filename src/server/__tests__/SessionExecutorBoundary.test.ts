@@ -59,6 +59,7 @@ function createExecutor() {
           createdAt: now,
           updatedAt: now,
         },
+        loaded: true,
         messages: [],
         pendingInputs: [],
       };

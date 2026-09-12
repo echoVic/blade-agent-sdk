@@ -47,6 +47,13 @@ export interface SessionExecutorReadResult {
   readonly session: AgentServerSessionRecord;
   readonly messages: readonly ModelMessage[];
   readonly pendingInputs: readonly PendingSessionInput[];
+  /**
+   * Whether this process has the Session loaded. When false, `messages` and
+   * `pendingInputs` are unknown rather than empty, so a caller can tell "this
+   * conversation has no messages yet" apart from "this process has not resumed
+   * the Session". Reading never loads a Session as a side effect.
+   */
+  readonly loaded: boolean;
 }
 
 export type SessionExecutorEventPublisher = (
@@ -195,6 +202,7 @@ export class InProcessSessionExecutor implements SessionExecutor {
         session: record,
         messages: managed?.session.messages ?? [],
         pendingInputs: managed?.session.getPendingInputs() ?? [],
+        loaded: managed !== undefined,
       };
     });
   }
