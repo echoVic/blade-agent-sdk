@@ -161,6 +161,29 @@ async function restartWorker(checkpoint) {
   await startWorker();
 }
 
+/**
+ * The launcher may reach the database while the Compose service is still starting
+ * up. "the database system is starting up" is transient, so retry with backoff
+ * instead of failing the run; every other error is a real failure.
+ */
+async function initializeWithRetry(target, { attempts = 30, delayMs = 500 } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await target.initialize();
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/starting up|the database system is starting up|cannot connect|ECONNREFUSED/i.test(message)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 async function waitForCheckpoint(sessionId, signal) {
   await waitUntil(async () => {
     signal.throwIfAborted();
@@ -222,7 +245,7 @@ try {
     schema,
     tablePrefix,
   });
-  await store.initialize();
+  await initializeWithRetry(store);
 
   const publish = (
     eventTenantId,
@@ -240,7 +263,7 @@ try {
       data,
     });
   repositoryState = new RepositoryState({ connectionString, schema });
-  await repositoryState.initialize();
+  await initializeWithRetry(repositoryState);
   const executor = new QueuedSessionExecutor(store, publish, { state: repositoryState, smoke });
   agent = new AgentServer({
     runtimeStore: store,
