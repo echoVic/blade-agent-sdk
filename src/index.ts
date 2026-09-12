@@ -5,6 +5,7 @@
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
 export { SubagentRegistry } from './agent/subagents/SubagentRegistry.js';
+export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export type {
   SubagentColor,
   SubagentConfig,

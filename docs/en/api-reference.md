@@ -582,6 +582,9 @@ Runtime:
 
 Types:
 
+- `AgentSessionRepository` — storage capability for subagent Sessions; inject a
+  repository-backed implementation so subagent state can survive a move between
+  hosts instead of only a restart on the same one
 - `SubagentColor`
 - `SubagentConfig`
 - `SubagentContext`

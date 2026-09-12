@@ -26,9 +26,9 @@ export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
     async *execute({ taskId }, context) {
       const agentManager = context.backgroundAgentManager;
       const aid = AgentId(taskId);
-      if (agentManager?.getAgent(aid)) {
+      if (agentManager && await agentManager.getAgent(aid)) {
         const stopped = await agentManager.killAgent(aid);
-        const latestSession = agentManager.getAgent(aid);
+        const latestSession = await agentManager.getAgent(aid);
         if (!stopped && latestSession?.status === 'running') {
           return {
             status: 'error',

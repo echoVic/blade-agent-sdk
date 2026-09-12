@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Make subagent Session storage an injectable capability so a parent Session on a shared repository can give its subagents the same cross-host recovery, and document that the default file store is host-local.",
+  "zh-CN": "子 Agent 会话存储改为可注入的能力：父会话使用共享仓库时，子 Agent 也能获得同等的跨机恢复能力；并说明默认文件存储仅限本机。"
+}

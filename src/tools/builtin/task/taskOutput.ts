@@ -93,7 +93,7 @@ export const taskOutputTool = createTool({
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager?.getAgent(AgentId(task_id))) {
+    if (agentManager && await agentManager.getAgent(AgentId(task_id))) {
       return handleAgentOutput(AgentId(task_id), block, timeout, agentManager);
     }
 
@@ -202,7 +202,7 @@ async function handleAgentOutput(
   manager: BackgroundAgentManager,
 ): Promise<ToolResult> {
   // 获取会话信息
-  let session = manager.getAgent(taskId);
+  let session = await manager.getAgent(taskId);
   if (!session) {
     return {
       status: 'error',

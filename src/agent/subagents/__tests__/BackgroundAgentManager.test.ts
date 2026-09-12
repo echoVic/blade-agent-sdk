@@ -176,7 +176,7 @@ describe('BackgroundAgentManager', () => {
     );
 
     expect(resumedId).toBe(agentId);
-    expect(manager.getAgent(agentId)?.description).toBe('Updated description');
+    expect((await manager.getAgent(agentId))?.description).toBe('Updated description');
 
     await manager.waitForCompletion(agentId, 1000);
   });
@@ -335,7 +335,7 @@ describe('BackgroundAgentManager', () => {
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
 
     await expect(manager.sealCancelAndWait()).resolves.toEqual([agentId]);
-    expect(manager.getAgent(agentId)?.status).toBe('cancelled');
+    expect((await manager.getAgent(agentId))?.status).toBe('cancelled');
     expect(manager.getActiveAgentIds()).toEqual([]);
     await expect(
       manager.startBackgroundAgent({
@@ -432,7 +432,7 @@ describe('BackgroundAgentManager', () => {
       runWithExecutionLease: boundary(1),
     });
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(1));
-    const staleOutputFile = store.loadSession(agentId)?.outputFile;
+    const staleOutputFile = (await store.loadSession(agentId))?.outputFile;
 
     activeToken = 2;
     await successorManager.startBackgroundAgent({
@@ -448,12 +448,12 @@ describe('BackgroundAgentManager', () => {
       runWithExecutionLease: boundary(2),
     });
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(2));
-    const successorOutputFile = store.loadSession(agentId)?.outputFile;
+    const successorOutputFile = (await store.loadSession(agentId))?.outputFile;
     expect(successorOutputFile).not.toBe(staleOutputFile);
 
     finishOld?.();
     await oldManager.waitForCompletion(agentId, 0);
-    expect(store.loadSession(agentId)).toMatchObject({
+    expect(await store.loadSession(agentId)).toMatchObject({
       description: 'Successor execution',
       status: 'running',
       executionFence: successorFence,
@@ -465,7 +465,7 @@ describe('BackgroundAgentManager', () => {
 
     finishSuccessor?.();
     await successorManager.waitForCompletion(agentId, 0);
-    expect(store.loadSession(agentId)).toMatchObject({
+    expect(await store.loadSession(agentId)).toMatchObject({
       status: 'completed',
       result: {
         success: true,

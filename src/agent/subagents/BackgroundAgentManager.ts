@@ -23,7 +23,8 @@ import {
 import type { PermissionMode } from '../../types/constants.js';
 import { AgentId, type SessionId } from '../../types/identifiers.js';
 import type { BladeConfig } from '../config.js';
-import type { AgentSession, AgentSessionStore } from './AgentSessionStore.js';
+import type { AgentSession } from './AgentSessionStore.js';
+import type { AgentSessionRepository } from './AgentSessionRepository.js';
 import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentResult } from './types.js';
@@ -114,11 +115,11 @@ export class BackgroundAgentManager {
   private acceptingNewAgents = true;
 
   // 会话存储（支持注入，不再硬依赖全局 singleton）
-  private sessionStore: AgentSessionStore;
+  private sessionStore: AgentSessionRepository;
   private readonly middleware: AgentMiddlewareConfig;
 
   constructor(
-    sessionStore: AgentSessionStore,
+    sessionStore: AgentSessionRepository,
     logger?: InternalLogger,
     private readonly ownerSessionId?: SessionId,
     middleware: AgentMiddlewareConfig = {},
@@ -131,7 +132,7 @@ export class BackgroundAgentManager {
     };
     if (logger) {
       this.logger = logger.child(LogCategory.AGENT);
-      this.sessionStore.setLogger(logger);
+      this.sessionStore.setLogger?.(logger);
     }
     void this.cleanupOrphanedSessions().catch((error: unknown) => {
       this.logger.warn('Failed to clean up orphaned agent sessions', error);
@@ -146,7 +147,7 @@ export class BackgroundAgentManager {
    */
   static create(
     logger: InternalLogger,
-    sessionStore: AgentSessionStore,
+    sessionStore: AgentSessionRepository,
     ownerSessionId?: SessionId,
     middleware?: AgentMiddlewareConfig,
     providerRegistry?: ProviderRegistry,
@@ -162,7 +163,7 @@ export class BackgroundAgentManager {
 
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.AGENT);
-    this.sessionStore.setLogger(logger);
+    this.sessionStore.setLogger?.(logger);
   }
 
   getMiddleware(): AgentMiddlewareConfig {
@@ -174,7 +175,7 @@ export class BackgroundAgentManager {
   }
 
   private async cleanupOrphanedSessions(): Promise<void> {
-    const sessions = this.sessionStore.listSessions();
+    const sessions = await this.sessionStore.listSessions();
     const now = Date.now();
     const maxOrphanAge = 30 * 60 * 1000;
 
@@ -401,7 +402,7 @@ export class BackgroundAgentManager {
         const wasCancelled =
           lifecycleSignal.aborted ||
           workSignal.aborted ||
-          this.sessionStore.loadSession(agentId)?.status === 'cancelled';
+          (await this.sessionStore.loadSession(agentId))?.status === 'cancelled';
         const updated =
           wasCancelled && !result.success
             ? await this.sessionStore.markCancelled(
@@ -464,7 +465,7 @@ export class BackgroundAgentManager {
           const wasCancelled =
             lifecycleSignal.aborted ||
             workSignal.aborted ||
-            this.sessionStore.loadSession(agentId)?.status === 'cancelled';
+            (await this.sessionStore.loadSession(agentId))?.status === 'cancelled';
           const updated = wasCancelled
             ? await this.sessionStore.markCancelled(
                 agentId,
@@ -505,7 +506,7 @@ export class BackgroundAgentManager {
   /**
    * 获取 Agent 状态
    */
-  getAgent(agentId: AgentId): AgentSession | undefined {
+  async getAgent(agentId: AgentId): Promise<AgentSession | undefined> {
     return this.sessionStore.loadSession(agentId);
   }
 
@@ -574,7 +575,7 @@ export class BackgroundAgentManager {
     assertExecutionLease?: () => Promise<void>,
     runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<string | undefined> {
-    const session = this.sessionStore.loadSession(agentId);
+    const session = await this.sessionStore.loadSession(agentId);
 
     if (!session) {
       this.logger.warn(`Cannot resume agent ${agentId}: session not found`);
@@ -610,7 +611,7 @@ export class BackgroundAgentManager {
 
     if (!runtime) {
       // 不在运行中
-      const session = this.sessionStore.loadSession(agentId);
+      const session = await this.sessionStore.loadSession(agentId);
       if (session && session.status === 'running') {
         if (session.executionFence) {
           return false;
@@ -698,14 +699,14 @@ export class BackgroundAgentManager {
   /**
    * 列出所有后台 Agent
    */
-  listAll(): AgentSession[] {
+  listAll(): Promise<AgentSession[]> {
     return this.sessionStore.listSessions();
   }
 
   /**
    * 列出运行中的 Agent
    */
-  listRunning(): AgentSession[] {
+  listRunning(): Promise<AgentSession[]> {
     return this.sessionStore.listRunningSessions();
   }
 
@@ -714,6 +715,14 @@ export class BackgroundAgentManager {
    */
   getRunningCount(): number {
     return this.runningAgents.size;
+  }
+
+  /**
+   * The storage capability this manager writes subagent state through. Exposed so a
+   * caller can confirm which repository is in effect when it injected one.
+   */
+  getSessionRepository(): AgentSessionRepository {
+    return this.sessionStore;
   }
 
   getOwnerSessionId(): SessionId | undefined {

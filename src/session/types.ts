@@ -1,3 +1,4 @@
+import type { AgentSessionRepository } from '../agent/subagents/AgentSessionRepository.js';
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { McpServerConfig } from '../mcp/config.js';
@@ -301,6 +302,14 @@ export interface SessionOptions {
   /** Append-only transcript event port paired with sessionRepository. */
   sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
+  /**
+   * Storage for subagent Sessions.
+   *
+   * Defaults to a store rooted in local storage, which cannot be reached from
+   * another host. Inject one backed by the same repository as the parent Session
+   * when subagents must survive a move between machines.
+   */
+  agentSessionRepository?: AgentSessionRepository;
   /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;
   executionLease?: DurableExecutionLeaseOptions;

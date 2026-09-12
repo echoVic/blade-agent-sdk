@@ -535,7 +535,7 @@ async function handleResume(
     };
   }
 
-  const session = manager.getAgent(agentId);
+  const session = await manager.getAgent(agentId);
   if (!session) {
     return {
       status: 'error',

@@ -17,6 +17,7 @@ import type { DurableExecutionFence } from '../../session/events/DurableExecutio
 import { AgentId } from '../../types/identifiers.js';
 import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
 import type { AgentProgress } from '../types.js';
+import type { AgentSessionRepository } from './AgentSessionRepository.js';
 
 const AGENT_SESSION_LOCK_TIMEOUT_MS = 10_000;
 
@@ -89,7 +90,7 @@ export interface AgentSession {
  * 存储位置: {storageRoot}/agents/sessions/{agent_id}.json
  * storageRoot 通过 configure() 注入，未配置时降级为内存模式。
  */
-export class AgentSessionStore {
+export class AgentSessionStore implements AgentSessionRepository {
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
   private sessionsDir: string | undefined;
 
@@ -184,7 +185,7 @@ export class AgentSessionStore {
   /**
    * 加载会话
    */
-  loadSession(agentId: AgentId): AgentSession | undefined {
+  async loadSession(agentId: AgentId): Promise<AgentSession | undefined> {
     if (!this.sessionsDir && this.cache.has(agentId)) {
       return this.cache.get(agentId);
     }
@@ -254,10 +255,14 @@ export class AgentSessionStore {
       return undefined;
     }
 
+    const existing = await session;
+    if (!existing) {
+      return undefined;
+    }
     return this.updateSession(
       agentId,
       {
-        messages: [...session.messages, ...messages],
+        messages: [...existing.messages, ...messages],
       },
       expectedExecutionFence,
     );
@@ -295,6 +300,14 @@ export class AgentSessionStore {
   /**
    * 标记会话完成（成功或失败）。
    */
+  async updateProgress(
+    agentId: AgentId,
+    progress: AgentProgress,
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
+    return this.updateRunningSession(agentId, { progress }, expectedExecutionFence);
+  }
+
   async markCompleted(
     agentId: AgentId,
     result: { success: boolean; message: string; error?: string },
@@ -361,7 +374,7 @@ export class AgentSessionStore {
   /**
    * 列出所有会话
    */
-  listSessions(): AgentSession[] {
+  async listSessions(): Promise<AgentSession[]> {
     // 内存模式：返回缓存中的所有会话
     if (!this.sessionsDir) {
       return Array.from(this.cache.values()).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
@@ -375,7 +388,7 @@ export class AgentSessionStore {
         if (!file.endsWith('.json')) continue;
 
         const agentId = AgentId(file.replace('.json', ''));
-        const session = this.loadSession(agentId);
+        const session = await this.loadSession(agentId);
         if (session) {
           sessions.push(session);
         }
@@ -392,8 +405,8 @@ export class AgentSessionStore {
   /**
    * 列出运行中的会话
    */
-  listRunningSessions(): AgentSession[] {
-    return this.listSessions().filter((s) => s.status === 'running');
+  async listRunningSessions(): Promise<AgentSession[]> {
+    return (await this.listSessions()).filter((s) => s.status === 'running');
   }
 
   /**
@@ -402,7 +415,7 @@ export class AgentSessionStore {
    */
   async cleanupExpiredSessions(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): Promise<number> {
     const now = Date.now();
-    const sessions = this.listSessions();
+    const sessions = await this.listSessions();
     let cleaned = 0;
 
     for (const session of sessions) {

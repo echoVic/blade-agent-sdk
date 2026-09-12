@@ -47,8 +47,8 @@ describe('AgentSessionStore', () => {
     const store = AgentSessionStore.create();
     await store.saveSession(createSession('agent-memory'));
 
-    expect(store.loadSession(AgentId('agent-memory'))?.id).toBe('agent-memory');
-    expect(store.listSessions().map((session) => session.id)).toEqual(['agent-memory']);
+    expect((await store.loadSession(AgentId('agent-memory')))?.id).toBe('agent-memory');
+    expect((await store.listSessions()).map((session) => session.id)).toEqual(['agent-memory']);
     expect(await pathExists(join(fakeHome, '.blade', 'agents', 'sessions'))).toBe(false);
   });
 
@@ -103,7 +103,7 @@ describe('AgentSessionStore', () => {
         executionFence: staleFence,
       }),
     ).resolves.toBe(false);
-    expect(store.loadSession(agentId)).toMatchObject({
+    expect(await store.loadSession(agentId)).toMatchObject({
       description: 'Successor execution',
       status: 'running',
       executionFence: successorFence,
@@ -115,7 +115,7 @@ describe('AgentSessionStore', () => {
     ).resolves.toMatchObject({ status: 'completed' });
     await new Promise<void>((resolve) => setTimeout(resolve, 2));
     await expect(store.cleanupExpiredSessions(0)).resolves.toBe(1);
-    expect(store.loadSession(agentId)).toBeUndefined();
+    expect(await store.loadSession(agentId)).toBeUndefined();
   });
 
   it('serializes fencing-token takeovers across Store instances', async () => {
@@ -150,7 +150,7 @@ describe('AgentSessionStore', () => {
       }),
     ]);
 
-    expect(firstStore.loadSession(agentId)).toMatchObject({
+    expect(await firstStore.loadSession(agentId)).toMatchObject({
       description: 'token 3',
       executionFence: {
         leaseId: 'lease-3',

@@ -130,7 +130,10 @@ export class SessionRuntime {
       middleware: options.middleware,
       plugins: options.plugins,
     });
-    const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
+    // Injected when the parent runs on a shared repository, so subagent state can
+    // survive a move between hosts instead of only a restart on this one.
+    const sessionStore = options.agentSessionRepository
+      ?? AgentSessionStore.create(this.storageRoot, this.rootLogger);
     this.backgroundAgentManager = BackgroundAgentManager.create(
       this.rootLogger,
       sessionStore,

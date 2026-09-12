@@ -51,7 +51,11 @@ export interface AgentProgress {
 }
 
 export interface IBackgroundAgentReader {
-  getAgent(agentId: AgentId): AgentSession | undefined;
+  /**
+   * Subagent state lives behind a storage capability that may be remote, so this
+   * reader cannot be synchronous.
+   */
+  getAgent(agentId: AgentId): Promise<AgentSession | undefined>;
   getOwnerSessionId?(): SessionId | undefined;
   isRunning(agentId: AgentId): boolean;
   waitForCompletion(agentId: AgentId, timeout?: number): Promise<AgentSession | undefined>;

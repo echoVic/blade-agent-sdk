@@ -73,6 +73,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `FileSystemMemoryStore` | node | 文件系统 memory 适配器 |
 | `MemoryManager` | node | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
+| `AgentSessionRepository` | subagents | 子 Agent 会话的存储能力接口，可注入数据库实现以获得跨机恢复 |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
 | `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
