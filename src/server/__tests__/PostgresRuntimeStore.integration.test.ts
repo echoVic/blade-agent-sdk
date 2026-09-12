@@ -13,6 +13,7 @@ import {
 import { AgentServer } from '../AgentServer.js';
 import { AgentRuntimeOperations } from '../AgentRuntimeOperations.js';
 import { AgentWorker } from '../AgentWorker.js';
+import { RUNTIME_STORE_SCHEMA_VERSION } from '../RuntimeStore.js';
 import {
   EffectDispatcher,
   UncertainRuntimeEffectError,
@@ -351,7 +352,7 @@ describePostgres('PostgresRuntimeStore', () => {
           WHERE table_schema = $1 AND table_name = 'runtime_outbox'`,
         [migrationSchema],
       );
-      expect(version.rows[0]?.value).toBe('3');
+      expect(version.rows[0]?.value).toBe(String(RUNTIME_STORE_SCHEMA_VERSION));
       expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
         expect.arrayContaining([
           'execution_mode',
@@ -489,7 +490,7 @@ describePostgres('PostgresRuntimeStore', () => {
            FROM "${migrationSchema}"."runtime_metadata"
           WHERE key = 'schema_version'`,
       );
-      expect(version.rows[0]?.value).toBe('3');
+      expect(version.rows[0]?.value).toBe(String(RUNTIME_STORE_SCHEMA_VERSION));
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
     }
