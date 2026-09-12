@@ -86,7 +86,7 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 
 预算从 CLI 启动开始计算，覆盖生成、安装和首个真实结果。PR 与 Release CI
 会从当前 SDK tarball 安装 CLI，执行三个 preset，并分别审计生成项目的
-production dependency tree。省略 `--preset` 时保持原有 production 默认值；
+production dependency tree。省略 `--preset` 时生成默认的 `local` starter；
 省略 `--verify` 时不会执行 smoke；`--skip-install` 只生成文件。
 
 ## 本地 CLI Agent

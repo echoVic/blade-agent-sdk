@@ -99,7 +99,7 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 Each budget starts with the CLI and covers generation, installation, and the
 first real smoke result. PR and Release CI install the CLI from the current SDK
 tarball, run all three presets, and audit every generated production dependency
-tree. Omitting `--preset` preserves the production default. Omit `--verify` to
+tree. Omitting `--preset` generates the default `local` starter. Omit `--verify` to
 avoid running the smoke; `--skip-install` writes files only.
 
 ## Local CLI Agent

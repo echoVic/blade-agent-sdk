@@ -4,13 +4,13 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 
 | 方式 | 函数 | Schema | 适用场景 |
 |------|------|--------|----------|
-| 简单模式 | `defineTool()` | JSON Schema | 快速定义，可直接传给 Session |
+| 简单模式 | `defineTool()` | JSON Schema 或 Zod Schema | 快速定义，可直接传给 Session |
 | 工厂模式 | `createTool()` | Zod Schema | 完整类型推断、运行时验证和中断策略 |
-| 转换模式 | `toolFromDefinition()` | JSON Schema | 将 ToolDefinition 转为内部 Tool 对象 |
+| 转换模式 | `toolFromDefinition()` | JSON Schema 或 Zod Schema | 将 ToolDefinition 转为内部 Tool 对象 |
 
 ## defineTool
 
-最简单的工具定义方式，原样返回传入的定义。适合直接传给 `SessionOptions.tools`。
+最简单的工具定义方式，原样返回传入的定义；默认值（例如省略的 `sideEffect`）在 `toolFromDefinition()` 转成内部 `Tool` 时补齐。适合直接传给 `SessionOptions.tools`。
 
 ```ts
 import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
@@ -46,8 +46,37 @@ const searchTool = defineTool({
 });
 ```
 
+### 可以省略什么
+
+`defineTool` 只有 `name`、`description`、`parameters` 和 `execute` 是必填的：
+
+- **`sideEffect` 可省略**，省略时按 `non_idempotent` 处理，也就是恢复时**绝不重放**这个工具。
+  只读或可安全重试的工具请显式声明 `ToolSideEffect.PURE` 或 `ToolSideEffect.IDEMPOTENT`，
+  这样才能进入可重试的恢复集合。
+- **`parameters` 可以直接传 Zod Schema**，SDK 会复用 `createTool` 的转换规则生成发给模型的
+  JSON Schema，并**真的用它校验参数**；传普通 JSON Schema 时它只是给模型的声明式描述，
+  不做运行时校验（与之前行为一致）。
+
+```ts
+import { z } from 'zod';
+import { defineTool } from '@blade-ai/agent-sdk';
+
+const lookup = defineTool<{ id: string }>({
+  name: 'Lookup',
+  description: '按 ID 查询一条记录',
+  parameters: z.object({ id: z.string() }),
+  kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
+  async *execute({ id }) {
+    return { status: 'success', model: await lookupRecord(id) };
+  },
+});
+```
+
 ::: tip
-`kind` 使用 `ToolKind` 枚举（`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk` 导入。TypeScript 下不接受裸字符串字面量。
+`kind` 和 `sideEffect` 都可以省略，但如果要写 `kind`，请使用 `ToolKind` 枚举
+（`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk`
+导入：TypeScript 下不接受裸字符串字面量。
 :::
 
 ## createTool

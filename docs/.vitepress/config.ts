@@ -9,6 +9,7 @@ const zhSidebar = [
     items: [
       { text: '概览', link: '/blade-agent-sdk' },
       { text: 'Golden Paths', link: '/golden-paths' },
+      { text: '迁移到真实仓库', link: '/migrating-to-your-repository' },
       { text: 'Provider 与日志', link: '/providers' },
     ],
   },
@@ -53,6 +54,7 @@ const enSidebar = [
     items: [
       { text: 'Overview', link: '/en/blade-agent-sdk' },
       { text: 'Golden Paths', link: '/en/golden-paths' },
+      { text: 'Migrating to your repository', link: '/en/migrating-to-your-repository' },
       { text: 'Providers and Logging', link: '/en/providers' },
     ],
   },

@@ -21,12 +21,15 @@ pnpm add @blade-ai/agent-sdk
 
 ## 选择起点
 
-只需本地 Node.js、无需 PostgreSQL 或 Docker：
+生成一个能读取你项目文件的本地 Node.js Agent，不需要 PostgreSQL 或 Docker。
+这也是默认 preset：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
+
+省略 `--preset` 时生成的就是这个 local starter。
 
 创建 Browser + AgentServer 应用、使用进程内 Session：
 
@@ -46,19 +49,27 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 `web` 为两分钟，`production` 为五分钟；预算均覆盖生成、依赖安装和实际 smoke。
 `production` 包含浏览器客户端、`AgentServer`、PostgreSQL、运行真实 SDK Session 的
 `AgentWorker`、需要浏览器审批写入的 Docker 仓库工具，以及运维入口。它的 smoke 会在
-写入检查点保存后杀掉 Worker，并验证新 Worker 能接续完成任务。省略 `--preset` 时仍
-生成 production 拓扑；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
+写入检查点保存后杀掉 Worker，并验证新 Worker 能接续完成任务。省略 `--preset` 时生成
+`local` starter；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
 
 ## 快速开始
 
+下面这个示例会读取当前目录的文件。本地文件访问由 `filesystem` capability 授予，
+而只有 `/node` 入口会默认应用它：
+
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createSession } from '@blade-ai/agent-sdk/node';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o-mini',
   temperature: 0.2,
   maxOutputTokens: 4096,
+  defaultContext: {
+    capabilities: {
+      filesystem: { roots: [process.cwd()], cwd: process.cwd() },
+    },
+  },
 });
 
 await session.send('分析下面这份报告并给出三个关键结论');
@@ -72,10 +83,11 @@ for await (const event of session.stream()) {
 await session.close();
 ```
 
-一次性请求可以使用 `prompt()`：
+一次性请求可以使用 `prompt()`。需要访问本地文件时继续用 `/node`；
+只有当进程本身不应具备本地访问能力时才换成 `/server`：
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/server';
+import { prompt } from '@blade-ai/agent-sdk/node';
 
 const result = await prompt('解释这个 API 的能力边界', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -86,6 +98,20 @@ console.log(result.result);
 console.log(result.toolCalls);
 console.log(result.usage);
 ```
+
+### `/node` 与 `/server` 怎么选
+
+两个入口共用同一套 Session API、内置工具与协议，区别在于进程的运行位置和可触达范围：
+
+| | `/node` | `/server` |
+|---|---------|-----------|
+| 本地文件与 Shell 工具 | 配置 `filesystem` capability 后可用 | 工具相同，但 server profile 不做环境、Skill 与子 Agent 发现 |
+| `storagePath` | 由本地 JSONL 持久化支撑 | 直接抛 `ConfigError`：服务端 Session 需要 `sessionRepository` 与 `sessionEventStore` |
+| 默认持久化 | 设置 `storagePath` 时写本地 JSONL | 未注入 repository 时仅内存 |
+| 上下文与 Skill 发现 | 开启 | 关闭（`localDiscovery` 为 false） |
+
+本地 Agent 或 CLI 从 `/node` 开始；只有在构建共享的多租户服务、并显式注入存储时才用
+`/server`。
 
 ## 核心能力
 
@@ -248,6 +274,7 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 - [Execution Host](./docs/execution-host.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
+- [迁移到真实仓库](./docs/migrating-to-your-repository.md)
 - [可运行 Golden Paths](./examples/README.md)
 - [Runtime 基准](./docs/runtime-benchmarks.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)

@@ -24,6 +24,7 @@ const publicDocuments = [
   'recipes.md',
   'type-architecture.md',
   'api-reference.md',
+  'migrating-to-your-repository.md',
 ] as const;
 
 function changelogVersions(file: string): string[] {

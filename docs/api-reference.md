@@ -8,7 +8,7 @@ OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 pee
 
 包还提供 `create-blade-agent` 可执行文件。它通过
 `--preset <local|web|production>` 选择生成项目的拓扑，`--verify` 负责安装后
-验收；省略 `--preset` 时保持 production 默认值。该 CLI 不属于 JavaScript
+验收；省略 `--preset` 时默认生成 `local` starter。该 CLI 不属于 JavaScript
 package export；通过 npm bin 调用。
 
 ## 包入口

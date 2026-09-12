@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_DIRECTORY = 'blade-agent';
-const DEFAULT_PRESET: CreateBladeAgentPreset = 'production';
+const DEFAULT_PRESET: CreateBladeAgentPreset = 'local';
 const FIRST_SUCCESS_BUDGET_MS: Readonly<Record<CreateBladeAgentPreset, number>> = {
   local: 60 * 1_000,
   web: 2 * 60 * 1_000,

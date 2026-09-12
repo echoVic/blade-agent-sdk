@@ -21,12 +21,34 @@ afterEach(async () => {
 });
 
 describe('createBladeAgent', () => {
+  it('defaults to the local preset so a first run needs no Docker or PostgreSQL', async () => {
+    const cwd = await temporaryDirectory();
+    const result = await createBladeAgent({
+      cwd,
+      directory: 'default-agent',
+      packageManager: 'npm',
+      sdkSpecifier: 'file:/tmp/blade-agent-sdk.tgz',
+      skipInstall: true,
+    });
+
+    expect(result).toMatchObject({
+      preset: 'local',
+      budgetMs: 60_000,
+    });
+    const manifest = JSON.parse(await readFile(join(result.directory, 'package.json'), 'utf8'));
+    expect(Object.keys(manifest.dependencies)).toEqual(['@blade-ai/agent-sdk']);
+    expect(await readFile(join(result.directory, 'src/index.mjs'), 'utf8')).toContain(
+      '@blade-ai/agent-sdk/node',
+    );
+  });
+
   it('generates a standalone production-stack project without installing', async () => {
     const cwd = await temporaryDirectory();
     const result = await createBladeAgent({
       cwd,
       directory: 'My Agent',
       packageManager: 'pnpm',
+      preset: 'production',
       sdkSpecifier: 'file:/tmp/blade-agent-sdk.tgz',
       skipInstall: true,
     });

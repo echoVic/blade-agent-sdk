@@ -55,8 +55,18 @@ export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = 
   aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
-  parameters: JSONSchema7;
-  sideEffect: ToolSideEffect;
+  /**
+   * JSON Schema, or a Zod schema that is converted with the same rules as
+   * `createTool`. Passing a Zod schema keeps the declaration close to the
+   * parameters the `execute` callback receives.
+   */
+  parameters: JSONSchema7 | z.ZodSchema;
+  /**
+   * How a repeated execution behaves. Defaults to `non_idempotent`, so a tool
+   * that omits it is never replayed during recovery; declare `pure` or
+   * `idempotent` to opt into retryable recovery.
+   */
+  sideEffect?: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];

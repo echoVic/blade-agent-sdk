@@ -60,7 +60,7 @@ describe('createTool', () => {
   });
 
   describe('tool properties', () => {
-    it('rejects a missing side-effect contract at runtime', () => {
+    it('rejects a missing side-effect contract at runtime for createTool', () => {
       expect(() =>
         createTool({
           name: 'MissingSideEffect',
@@ -71,13 +71,19 @@ describe('createTool', () => {
           execute: () => completeToolExecution({ status: 'success', model: '' }),
         } as never),
       ).toThrow(/sideEffect must be/);
+    });
+
+    it('rejects an unknown side-effect value at runtime', () => {
       expect(() =>
-        defineTool({
-          name: 'MissingDefinitionSideEffect',
-          description: 'Invalid definition',
-          parameters: { type: 'object' },
+        createTool({
+          name: 'BadSideEffect',
+          displayName: 'Bad Side Effect',
+          kind: ToolKind.ReadOnly,
+          sideEffect: 'sometimes' as never,
+          description: { short: 'Invalid tool' },
+          schema: z.object({}),
           execute: () => completeToolExecution({ status: 'success', model: '' }),
-        } as never),
+        }),
       ).toThrow(/sideEffect must be/);
     });
 
@@ -640,6 +646,71 @@ describe('createTool', () => {
         sideEffect: 'pure',
         tags: ['search', 'catalog'],
       });
+    });
+
+    it('treats a missing sideEffect as non-idempotent instead of rejecting the definition', () => {
+      expect(defineTool({
+        name: 'Unlabelled',
+        description: 'No side effect declared',
+        parameters: { type: 'object', properties: {} },
+        execute() {
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      }).sideEffect).toBeUndefined();
+
+      const tool = toolFromDefinition<Record<string, never>>({
+        name: 'Unlabelled',
+        description: 'No side effect declared',
+        parameters: { type: 'object', properties: {} },
+        execute() {
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      });
+
+      expect(tool.sideEffect).toBe('non_idempotent');
+      expect(tool.getBehaviorHint?.()).toMatchObject({ sideEffect: 'non_idempotent' });
+    });
+
+    it('accepts a Zod schema and validates parameters against it', async () => {
+      const tool = toolFromDefinition<{ query: string }>({
+        name: 'ZodTool',
+        description: 'Declared with Zod',
+        parameters: z.object({ query: z.string() }),
+        execute(params) {
+          return completeToolExecution({ status: 'success', model: `query=${params.query}` });
+        },
+      });
+
+      expect(tool.getFunctionDeclaration().parameters).toMatchObject({
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
+      });
+
+      const accepted = await collectToolExecution(
+        tool.execute({ query: 'blade' }),
+      );
+      expect(accepted).toMatchObject({ status: 'success', model: 'query=blade' });
+
+      expect(() => tool.execute({ query: 42 })).toThrow(/query/);
+    });
+
+    it('keeps a JSON Schema advisory and does not validate parameters against it', async () => {
+      const tool = toolFromDefinition<{ message: string }>({
+        name: 'JsonSchemaTool',
+        description: 'Declared with JSON Schema',
+        parameters: {
+          type: 'object',
+          properties: { message: { type: 'string' } },
+          required: ['message'],
+        },
+        execute(params) {
+          return completeToolExecution({ status: 'success', model: `message=${String(params.message)}` });
+        },
+      });
+
+      const result = await collectToolExecution(tool.execute({ message: 7 }));
+      expect(result).toMatchObject({ status: 'success', model: 'message=7' });
     });
   });
 });

@@ -9,6 +9,28 @@ import { zodToFunctionSchema } from '../validation/zodToJson.js';
 import { UnifiedToolInvocation } from './ToolInvocation.js';
 
 /**
+ * A tool that does not declare how a repeated execution behaves is treated as
+ * non-idempotent, so recovery never replays it without an explicit opt-in.
+ */
+const DEFAULT_TOOL_SIDE_EFFECT = 'non_idempotent' as const;
+
+function isZodSchema(value: unknown): value is z.ZodSchema {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { safeParse?: unknown }).safeParse === 'function';
+}
+
+function resolveDefinitionParameters(parameters: ToolDefinition['parameters']): {
+  readonly jsonSchema: import('json-schema').JSONSchema7;
+  readonly raw: ToolDefinition['parameters'];
+} {
+  if (isZodSchema(parameters)) {
+    return { jsonSchema: zodToFunctionSchema(parameters), raw: parameters };
+  }
+  return { jsonSchema: parameters as import('json-schema').JSONSchema7, raw: parameters };
+}
+
+/**
  * 创建工具的工厂函数
  */
 export function createTool<TSchema extends z.ZodSchema>(
@@ -218,9 +240,14 @@ export function toolFromDefinition<TParams = JsonObject>(
     typeof definition.description === 'string'
       ? { short: definition.description }
       : definition.description;
+  const sideEffect = definition.sideEffect ?? DEFAULT_TOOL_SIDE_EFFECT;
+  if (!isToolSideEffect(sideEffect)) {
+    throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
+  }
+  const { jsonSchema, raw } = resolveDefinitionParameters(definition.parameters);
   const staticBehavior = createToolBehavior(
     definition.kind || ToolKind.Execute,
-    definition.sideEffect,
+    sideEffect,
     {
       isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
     },
@@ -256,7 +283,7 @@ export function toolFromDefinition<TParams = JsonObject>(
       return {
         name: definition.name,
         description: formatToolDescription(description),
-        parameters: definition.parameters as import('json-schema').JSONSchema7,
+        parameters: jsonSchema,
       };
     },
 
@@ -270,12 +297,17 @@ export function toolFromDefinition<TParams = JsonObject>(
         category: definition.category,
         tags: definition.tags || [],
         description,
-        schema: definition.parameters,
+        schema: raw,
       };
     },
 
     build(params: unknown): ToolInvocation<TParams> {
-      const typedParams = params as TParams;
+      // A Zod schema declares the parameter contract, so validate it the same
+      // way createTool does. A plain JSON Schema stays an advisory declaration
+      // for the model, which matches the previous behaviour.
+      const typedParams = isZodSchema(raw)
+        ? (parseWithZod(raw, params) as TParams)
+        : (params as TParams);
       return new UnifiedToolInvocation<TParams>(
         definition.name,
         typedParams,
@@ -365,7 +397,7 @@ function isPathLikeKey(key: string): boolean {
 export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
   definition: ToolDefinition<TParams, TData>,
 ): ToolDefinition<TParams, TData> {
-  if (!isToolSideEffect(definition.sideEffect)) {
+  if (definition.sideEffect !== undefined && !isToolSideEffect(definition.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   return definition;

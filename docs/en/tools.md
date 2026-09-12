@@ -4,9 +4,9 @@ The SDK exposes three tool authoring APIs:
 
 | API | Schema | Use |
 |-----|--------|-----|
-| `defineTool()` | JSON Schema | Lightweight typed definitions accepted by Session |
+| `defineTool()` | JSON Schema or Zod | Lightweight typed definitions accepted by Session |
 | `createTool()` | Zod | Full inference, runtime validation, and interruption policy |
-| `toolFromDefinition()` | JSON Schema | Convert a definition into the internal `Tool` interface |
+| `toolFromDefinition()` | JSON Schema or Zod | Convert a definition into the internal `Tool` interface |
 
 Every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
 
@@ -49,7 +49,39 @@ const searchDocs = defineTool<
 });
 ```
 
-Use `ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`. TypeScript does not accept raw string literals for this enum.
+### What you can omit
+
+Only `name`, `description`, `parameters`, and `execute` are required:
+
+- **`sideEffect` is optional.** When it is omitted the tool counts as
+  `non_idempotent`, so recovery never replays it. Declare `ToolSideEffect.PURE` or
+  `ToolSideEffect.IDEMPOTENT` on read-only or safely repeatable tools to admit
+  them into retryable recovery.
+- **`parameters` accepts a Zod schema directly.** The SDK reuses the `createTool`
+  conversion to build the JSON Schema sent to the model and **validates incoming
+  parameters against it**. A plain JSON Schema stays an advisory declaration for
+  the model and is not validated at runtime, matching the previous behavior.
+
+```ts
+import { z } from 'zod';
+import { defineTool } from '@blade-ai/agent-sdk';
+
+const lookup = defineTool<{ id: string }>({
+  name: 'Lookup',
+  description: 'Look up one record by id',
+  parameters: z.object({ id: z.string() }),
+  kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
+  async *execute({ id }) {
+    return { status: 'success', model: await lookupRecord(id) };
+  },
+});
+```
+
+`kind` and `sideEffect` may both be omitted. When you do set `kind`, use the
+`ToolKind` enum (`ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`)
+imported from `@blade-ai/agent-sdk`; TypeScript does not accept raw string
+literals for it.
 
 ## createTool
 

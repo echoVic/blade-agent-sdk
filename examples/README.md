@@ -72,7 +72,7 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 
 The CLI installs the generated dependencies and includes setup time in each
 first-result budget: one minute for local, two minutes for Web, and five minutes
-for production. Omitting `--preset` keeps the production default.
+for production. Omitting `--preset` generates the default `local` starter.
 
 ## Local CLI Agent
 

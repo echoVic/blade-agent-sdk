@@ -21,12 +21,15 @@ pnpm add @blade-ai/agent-sdk
 
 ## Choose a Starting Point
 
-Create a local Node.js Agent without PostgreSQL or Docker:
+Create a local Node.js Agent that reads your project files, without PostgreSQL or
+Docker. This is the default preset:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
+
+Omit `--preset` and you get this same local starter.
 
 Create a Browser + AgentServer application with in-process Sessions:
 
@@ -49,19 +52,28 @@ preset includes the browser client, `AgentServer`, PostgreSQL, `AgentWorker`
 running a real SDK Session, Docker repository tools with a write-approval
 prompt, and operations endpoints. Its smoke kills the Worker after a saved
 edit and verifies that a successor finishes the task. Omitting `--preset`
-preserves the production default. Omit `--verify` to avoid running the smoke,
-or use `--skip-install` to write files only.
+generates the `local` starter. Omit `--verify` to avoid running the smoke, or
+use `--skip-install` to write files only.
 
 ## Quick Start
 
+This example reads files from the current directory. The `filesystem`
+capability is what grants local file access, and only the `/node` entry applies
+it by default:
+
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createSession } from '@blade-ai/agent-sdk/node';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o-mini',
   temperature: 0.2,
   maxOutputTokens: 4096,
+  defaultContext: {
+    capabilities: {
+      filesystem: { roots: [process.cwd()], cwd: process.cwd() },
+    },
+  },
 });
 
 await session.send('Analyze this report and return three key findings');
@@ -75,10 +87,12 @@ for await (const event of session.stream()) {
 await session.close();
 ```
 
-For a one-shot request, use `prompt()`:
+For a one-shot request, use `prompt()`. Keep the `/node` import when the task
+must touch local files; switch to `/server` only when the process must not have
+local access:
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/server';
+import { prompt } from '@blade-ai/agent-sdk/node';
 
 const result = await prompt('Explain this API surface', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -89,6 +103,21 @@ console.log(result.result);
 console.log(result.toolCalls);
 console.log(result.usage);
 ```
+
+### Choosing between `/node` and `/server`
+
+Both entries share the Session API, the built-in tool set, and the protocol.
+They differ in where the process runs and what it may touch:
+
+| | `/node` | `/server` |
+|---|---------|-----------|
+| Local file and Shell tools | Available once a `filesystem` capability is configured | Same tools, but the server profile omits environment, Skill, and subagent discovery |
+| `storagePath` | Backed by local JSONL persistence | Throws `ConfigError`: server Sessions need `sessionRepository` and `sessionEventStore` |
+| Default persistence | Local JSONL when `storagePath` is set | In memory unless you inject a repository |
+| Context and Skill discovery | Enabled | Disabled (`localDiscovery` is off) |
+
+Start with `/node` for a local agent or CLI. Use `/server` when the runtime is
+a shared multi-tenant service and you inject storage explicitly.
 
 ## Core Capabilities
 
@@ -256,6 +285,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 - [Execution Host](./docs/en/execution-host.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
+- [Migrating to your own repository](./docs/en/migrating-to-your-repository.md)
 - [Runnable golden paths](./examples/README.md)
 - [Runtime benchmarks](./docs/en/runtime-benchmarks.md)
 - [English changelog](./CHANGELOG.md)

@@ -13,7 +13,7 @@ const HELP = `create-blade-agent [directory] [options]
 Create a runnable local, Web, or production Agent project.
 
 Options:
-  --preset <local|web|production>        Starter topology (default: production)
+  --preset <local|web|production>        Starter topology (default: local)
   --package-manager <npm|pnpm|yarn|bun>  Package manager used for installation
   --sdk-version <version-or-specifier>   SDK dependency (defaults to this CLI version)
   --skip-install                        Generate files without installing dependencies

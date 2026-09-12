@@ -241,7 +241,7 @@ try {
   ) {
     throw new Error(`Files-only next steps were incomplete:\n${filesOnly.stdout}`);
   }
-  await verifyProject(filesOnlyDirectory, 'production', tarball);
+  await verifyProject(filesOnlyDirectory, 'local', tarball);
 
   const results = [];
   for (const preset of ['local', 'web', 'production']) {
