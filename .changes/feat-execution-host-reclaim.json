@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add ExecutionHost.reclaim() so a successor process can clean up an execution it never provisioned without knowing how the backend names its resources, and use it in the production example instead of a raw container removal.",
-  "zh-CN": "新增 ExecutionHost.reclaim()：后继进程无需了解后端资源命名即可清理自己从未创建的执行；production 示例改用它，不再直接删除容器。"
-}

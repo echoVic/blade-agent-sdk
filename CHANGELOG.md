@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.2.0] - 2026-09-12
+
+### Features
+
+- Add ExecutionHost.reclaim() so a successor process can clean up an execution it never provisioned without knowing how the backend names its resources, and use it in the production example instead of a raw container removal.
+
 ## [7.1.10] - 2026-09-12
 
 ### Refactoring
