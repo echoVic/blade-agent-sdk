@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.5] - 2026-09-12
+
+### Fixes
+
+- Discover Skills per project instead of freezing the first caller's configuration, and resolve the Skill list from the working directory the execution runs in.
+
 ## [7.1.4] - 2026-09-12
 
 ### Fixes
