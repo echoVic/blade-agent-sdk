@@ -31,7 +31,30 @@ const DEFAULT_CONFIG: ResolvedSkillRegistryConfig = {
   additionalSources: [],
 };
 
-let instance: SkillRegistry | null = null;
+/**
+ * One registry per discovery configuration.
+ *
+ * A registry caches what it discovered, because discovery is expensive and callers
+ * expect a stable view. Keying that cache by configuration is what keeps two
+ * projects in one process from seeing each other's Skills: a global singleton whose
+ * configuration was fixed by whichever caller came first reported project A's
+ * Skills for project B.
+ */
+const registries = new Map<string, SkillRegistry>();
+
+function registryKey(config: ResolvedSkillRegistryConfig): string {
+  return JSON.stringify([
+    config.userSkillsDir ?? null,
+    config.projectSkillsDir ?? null,
+    config.cwd ?? null,
+    (config.additionalSources ?? []).map((source) => [
+      source.kind,
+      source.directory,
+      source.precedence ?? null,
+      source.sourceId ?? null,
+    ]),
+  ]);
+}
 
 export class SkillRegistry {
   private skills: Map<string, SkillMetadata> = new Map();
@@ -43,17 +66,30 @@ export class SkillRegistry {
   }
 
   static getInstance(config?: SkillRegistryConfig): SkillRegistry {
-    if (!instance) {
-      instance = new SkillRegistry(config);
+    const key = registryKey({ ...DEFAULT_CONFIG, ...config });
+    const existing = registries.get(key);
+    if (existing) {
+      return existing;
     }
-    return instance;
+    const created = new SkillRegistry(config);
+    registries.set(key, created);
+    return created;
   }
 
   static resetInstance(): void {
-    instance = null;
+    registries.clear();
   }
 
-  async initialize(): Promise<SkillDiscoveryResult> {
+  /**
+   * Re-run when the working directory changes. The project source is derived from
+   * it, so a cached result for another directory would be wrong, not just stale.
+   */
+  async initialize(config?: { cwd?: string }): Promise<SkillDiscoveryResult> {
+    if (config?.cwd !== undefined && config.cwd !== this.config.cwd) {
+      this.config = { ...this.config, cwd: config.cwd };
+      this.initialized = false;
+      this.skills.clear();
+    }
     if (this.initialized) {
       return {
         skills: Array.from(this.skills.values()),
@@ -265,5 +301,5 @@ export async function discoverSkills(
   config?: SkillRegistryConfig,
 ): Promise<SkillDiscoveryResult> {
   const registry = getSkillRegistry(config);
-  return registry.initialize();
+  return registry.initialize({ ...(config?.cwd !== undefined ? { cwd: config.cwd } : {}) });
 }

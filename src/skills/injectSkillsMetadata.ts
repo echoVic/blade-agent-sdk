@@ -27,8 +27,11 @@ const AVAILABLE_SKILLS_REGEX = /<available_skills>\s*<\/available_skills>/;
 export function injectSkillsMetadata(
   tools: FunctionDeclaration[],
   activationContext?: SkillActivationContext,
+  cwd?: string,
 ): FunctionDeclaration[] {
-  const registry = getSkillRegistry();
+  // Resolved per working directory so a project does not advertise another
+  // project's Skills.
+  const registry = getSkillRegistry(cwd ? { cwd } : undefined);
   const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有发现任何 skills，返回原数组

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Discover Skills per project instead of freezing the first caller's configuration, and resolve the Skill list from the working directory the execution runs in.",
+  "zh-CN": "Skill 发现按项目隔离，不再固化首个调用方的配置；Skill 列表按执行所在的工作目录解析。"
+}

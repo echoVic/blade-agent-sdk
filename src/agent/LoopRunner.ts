@@ -461,7 +461,11 @@ export class LoopRunner {
           rawExposurePlan.discoverableTools,
         );
         let rawTools = rawExposurePlan.declarations;
-        rawTools = injectSkillsMetadata(rawTools, skillActivationContext);
+        rawTools = injectSkillsMetadata(
+          rawTools,
+          skillActivationContext,
+          loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath,
+        );
         return rawTools;
       },
       resolveModelService: () => this.modelManager.getModelService(),

@@ -20,6 +20,59 @@ async function createSkill(rootDir: string, skillDirName: string, content: strin
   return skillFile;
 }
 
+describe('SkillRegistry project isolation', () => {
+  const roots: string[] = [];
+
+  async function projectWith(skillName: string): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `skills-project-${skillName}-`));
+    roots.push(root);
+    await createSkill(path.join(root, 'skills'), skillName, BASE_SKILL(skillName, `${skillName} skill`));
+    return root;
+  }
+
+  afterEach(async () => {
+    SkillRegistry.resetInstance();
+    await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+  });
+
+  it('discovers each project independently instead of freezing the first configuration', async () => {
+    const projectA = await projectWith('alpha');
+    const projectB = await projectWith('beta');
+
+    const a = await SkillRegistry.getInstance({ cwd: projectA }).initialize();
+    const b = await SkillRegistry.getInstance({ cwd: projectB }).initialize();
+
+    expect(a.skills.map((skill) => skill.name)).toEqual(['alpha']);
+    expect(b.skills.map((skill) => skill.name)).toEqual(['beta']);
+  });
+
+  it('answers for the project it is asked about, not the one seen first', async () => {
+    const projectA = await projectWith('alpha');
+    const projectB = await projectWith('beta');
+
+    await SkillRegistry.getInstance({ cwd: projectA }).initialize();
+    await SkillRegistry.getInstance({ cwd: projectB }).initialize();
+
+    // Asking A again must still describe A.
+    const again = await SkillRegistry.getInstance({ cwd: projectA }).initialize();
+    expect(again.skills.map((skill) => skill.name)).toEqual(['alpha']);
+  });
+
+  it('re-discovers when the same registry is driven from another directory', async () => {
+    const projectA = await projectWith('alpha');
+    const projectB = await projectWith('beta');
+
+    // One registry instance whose configuration changes must not keep serving the
+    // previous project's Skills.
+    const registry = SkillRegistry.getInstance({ cwd: projectA });
+    expect((await registry.initialize()).skills.map((skill) => skill.name)).toEqual(['alpha']);
+    expect((await registry.initialize({ cwd: projectB })).skills.map((skill) => skill.name))
+      .toEqual(['beta']);
+    expect((await registry.initialize({ cwd: projectA })).skills.map((skill) => skill.name))
+      .toEqual(['alpha']);
+  });
+});
+
 describe('SkillRegistry', () => {
   let tmpDir: string;
 

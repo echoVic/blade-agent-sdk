@@ -58,8 +58,9 @@ Important:
   async *execute(params, context) {
     const { skill, args } = params;
 
-    // 获取 SkillRegistry
-    const registry = getSkillRegistry();
+    // The Skill list belongs to the project this execution runs in.
+    const projectDir = getEffectiveProjectDir(context);
+    const registry = getSkillRegistry(projectDir ? { cwd: projectDir } : undefined);
     const skillMetadata = registry.get(skill);
 
     // 检查 skill 是否存在

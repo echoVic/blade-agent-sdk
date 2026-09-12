@@ -164,7 +164,7 @@ export async function buildSystemPrompt(
 
   // 注入 Skills 元数据到 <available_skills> 占位符
   if (includeSkills) {
-    prompt = injectSkillsToPrompt(prompt, skillActivationContext);
+    prompt = injectSkillsToPrompt(prompt, skillActivationContext, projectPath);
   }
 
   // 注入语言指令
@@ -176,8 +176,13 @@ export async function buildSystemPrompt(
 /**
  * 注入 Skills 列表到系统提示的 <available_skills> 占位符
  */
-function injectSkillsToPrompt(prompt: string, activationContext?: SkillActivationContext): string {
-  const registry = getSkillRegistry();
+function injectSkillsToPrompt(
+  prompt: string,
+  activationContext?: SkillActivationContext,
+  cwd?: string,
+): string {
+  // The project's own Skills, not whichever configuration was seen first.
+  const registry = getSkillRegistry(cwd ? { cwd } : undefined);
   const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有 skills，保持占位符为空（但保留标签结构）
