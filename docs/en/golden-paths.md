@@ -103,6 +103,23 @@ Open <http://127.0.0.1:8787>. Browser code uses `AgentClient`; the server uses
 deterministic local provider when `OPENAI_API_KEY` is absent and real OpenAI
 when it is present.
 
+The page supports consecutive turns, cancellation, and reconnecting without
+duplicating streamed text. This tab's `sessionStorage` saves the displayed
+conversation, active request, and event cursor together; refreshing also resumes
+an in-progress response. `Cancel` waits for server acknowledgement. `Reconnect`
+continues the same request after connection retries are exhausted, and
+`New session` starts a fresh conversation after the current request settles.
+
+Server Sessions in this Web preset are in memory: refresh recovery requires the
+same server process to remain running. If the Session is lost after a restart or
+the cursor expires, the page preserves saved text and offers a new session.
+Closing the tab ends its saved browser view. This is not persistence across
+server restarts.
+
+After building, `node examples/web-agent-server/server.mjs --smoke` verifies
+multiple turns, cursor reconnect, history recovery, and cancellation. Smoke
+always uses the deterministic provider, even when an API key is configured.
+
 ## PostgreSQL + Two Workers + Docker Recovery
 
 ```bash

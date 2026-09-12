@@ -96,6 +96,18 @@ pnpm example:web
 `AgentServer` 和 Fetch-compatible handler。未设置 `OPENAI_API_KEY` 时使用
 确定性本地 provider，设置后调用真实 OpenAI。
 
+页面支持连续多轮、取消和断线续读。当前标签页通过 `sessionStorage` 同时保存
+已显示的对话、活动请求和 event cursor，刷新后可继续接收进行中的回答。
+`Cancel` 等待服务端确认取消；连接重试耗尽后，点击 `Reconnect` 继续同一个请求。
+当前请求结束后，可用 `New session` 开始新对话。
+
+此 Web preset 的服务端 Session 保存在内存中，刷新恢复要求原服务进程仍在运行。
+服务重启导致会话丢失、或事件 cursor 过期时，页面保留已保存的文字并提供新建入口；
+关闭标签页会结束浏览器侧的保存。它不提供跨服务重启的持久化保证。
+
+构建后执行 `node examples/web-agent-server/server.mjs --smoke`，可验证多轮、
+cursor 续读、历史恢复和取消。该验收始终使用确定性 provider，不消耗模型 API。
+
 ## PostgreSQL + 两个 Worker + Docker 恢复
 
 ```bash

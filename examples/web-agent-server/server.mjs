@@ -2,6 +2,8 @@ import { createServer } from 'node:http';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
@@ -10,26 +12,34 @@ import {
   ProviderRegistry,
 } from '@blade-ai/agent-sdk/server';
 
-const apiKey = process.env.OPENAI_API_KEY;
 const smoke = process.argv.includes('--smoke');
+const apiKey = smoke ? undefined : process.env.OPENAI_API_KEY;
 const startedAt = performance.now();
 const FIRST_RESULT_BUDGET_MS = 2 * 60 * 1_000;
 const demoProvider = new ProviderRegistry([{
   type: 'golden-path-demo',
   create(config) {
     return {
-      async chat() {
+      async chat(_messages, _tools, signal) {
+        signal?.throwIfAborted();
         return { content: 'Golden Path is ready.' };
       },
-      async sideQuery() {
+      async sideQuery(_messages, signal) {
+        signal?.throwIfAborted();
         return { content: 'Golden Path is ready.' };
       },
-      async *streamChat(messages) {
+      async *streamChat(messages, _tools, signal) {
         const last = messages.at(-1);
         const input = typeof last?.content === 'string'
           ? last.content
           : 'your request';
-        yield { content: `AgentServer received: ${input}` };
+        const output = `AgentServer received: ${input}`;
+        // Keep the demo visibly streaming so disconnects and cancellation can be tried locally.
+        for (let offset = 0; offset < output.length; offset += 8) {
+          await delay(smoke ? 20 : 120, undefined, { signal });
+          signal?.throwIfAborted();
+          yield { content: output.slice(offset, offset + 8) };
+        }
         yield {
           finishReason: 'stop',
           usage: {
@@ -92,6 +102,14 @@ async function requestBody(request) {
 }
 
 const server = createServer(async (request, response) => {
+  const connectionController = new AbortController();
+  const onDisconnect = () => {
+    if (!response.writableFinished) {
+      connectionController.abort(new Error('HTTP client disconnected'));
+    }
+  };
+  request.once('aborted', onDisconnect);
+  response.once('close', onDisconnect);
   try {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     if (request.method === 'GET' && url.pathname === '/') {
@@ -114,6 +132,7 @@ const server = createServer(async (request, response) => {
       new Request(`http://127.0.0.1${request.url || '/'}`, {
         method: request.method,
         headers: request.headers,
+        signal: connectionController.signal,
         ...(body ? { body } : {}),
       }),
     );
@@ -122,12 +141,23 @@ const server = createServer(async (request, response) => {
       response.end();
       return;
     }
-    Readable.fromWeb(upstream.body).pipe(response);
+    // pipeline destroys the source when the browser closes the SSE connection.
+    await pipeline(Readable.fromWeb(upstream.body), response);
   } catch (error) {
+    if (connectionController.signal.aborted || response.destroyed) {
+      return;
+    }
+    if (response.headersSent) {
+      response.destroy(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
     response.writeHead(500, { 'content-type': 'application/json' });
     response.end(JSON.stringify({
       error: error instanceof Error ? error.message : String(error),
     }));
+  } finally {
+    request.removeListener('aborted', onDisconnect);
+    response.removeListener('close', onDisconnect);
   }
 });
 
@@ -159,7 +189,7 @@ function closeServer() {
 }
 
 async function runSmoke(baseUrl) {
-  const client = new AgentClient({
+  const createClient = () => new AgentClient({
     baseUrl: `${baseUrl}/v1/agent`,
     client: {
       name: 'blade-web-starter-smoke',
@@ -169,71 +199,131 @@ async function runSmoke(baseUrl) {
       authorization: 'Bearer local-demo',
     },
   });
-  const session = await client.createSession({ source: 'web-starter-smoke' });
   const eventController = new AbortController();
+  const { signal } = eventController;
   const deadline = setTimeout(
-    () => eventController.abort(new Error('Two-minute Web first-result budget exceeded')),
+    () => eventController.abort(new Error('Two-minute Web smoke budget exceeded')),
     Math.max(1, FIRST_RESULT_BUDGET_MS - (performance.now() - startedAt)),
   );
-  let resolveResult;
-  let rejectResult;
-  let resultSettled = false;
-  const resultReceived = new Promise((resolve, reject) => {
-    resolveResult = resolve;
-    rejectResult = reject;
-  });
-  void resultReceived.catch(() => undefined);
-  const events = (async () => {
-    let output = '';
-    try {
-      for await (const event of session.events({ signal: eventController.signal })) {
-        if (event.type === 'session.stream' && event.data.type === 'content') {
-          output += event.data.delta;
-        }
-        if (event.type === 'session.stream' && event.data.type === 'result') {
-          resultSettled = true;
-          resolveResult({
-            output,
-            result: event.data,
-          });
-        }
-        if (event.type === 'session.closed') {
-          if (!resultSettled) {
-            rejectResult(new Error('Session closed before producing a result'));
-          }
-          return;
-        }
-      }
-      throw new Error('Session event stream ended before session.closed');
-    } catch (error) {
-      if (!resultSettled) {
-        rejectResult(error);
-      }
-      throw error;
+  let session;
+  let cursor = null;
+  const requestIds = new Set();
+
+  const send = async (input) => {
+    const submission = await session.send(input, { signal });
+    if (submission.status !== 'started' || !submission.requestId
+      || requestIds.has(submission.requestId)) {
+      throw new Error(`Unexpected Web submission: ${JSON.stringify(submission)}`);
     }
-  })();
-  try {
-    const input = 'minimal web starter smoke';
-    await session.send(input);
-    const completed = await resultReceived;
+    requestIds.add(submission.requestId);
+    return submission.requestId;
+  };
+
+  const collect = async (
+    requestId,
+    { output = '', disconnect = false, allowOtherRequests = false } = {},
+  ) => {
+    for await (const event of session.events({ after: cursor, signal })) {
+      if (cursor && event.sequence <= cursor.sequence) {
+        throw new Error('Web event replay duplicated an already consumed event');
+      }
+      cursor = {
+        protocolVersion: event.protocolVersion,
+        sessionId: event.sessionId,
+        sequence: event.sequence,
+        eventId: event.eventId,
+      };
+      if (event.type === 'session.closed') {
+        throw new Error('Session closed before producing a result');
+      }
+      if (event.type !== 'session.stream') {
+        continue;
+      }
+      if (event.requestId !== requestId) {
+        if (allowOtherRequests) {
+          continue;
+        }
+        throw new Error(`Received events for another request: ${event.requestId}`);
+      }
+      if (event.data.type === 'error') {
+        throw new Error(event.data.message);
+      }
+      if (event.data.type === 'content') {
+        output += event.data.delta;
+        if (disconnect) {
+          return { output };
+        }
+      }
+      if (event.data.type === 'result') {
+        return { output, result: event.data };
+      }
+    }
+    signal.throwIfAborted();
+    throw new Error('Session event stream ended before producing a result');
+  };
+
+  const assertResult = (completed, input) => {
     const expected = `AgentServer received: ${input}`;
-    if (completed.output !== expected || completed.result.subtype !== 'success') {
+    if (completed.output !== expected || completed.result?.subtype !== 'success'
+      || completed.result.content !== expected) {
       throw new Error(`Unexpected Web starter result: ${JSON.stringify(completed)}`);
     }
+  };
+
+  try {
+    session = await createClient().createSession({ source: 'web-starter-smoke' }, { signal });
+    const firstInput = 'minimal web starter smoke';
+    const first = await collect(await send(firstInput));
+    assertResult(first, firstInput);
     const firstResultMs = Math.round((performance.now() - startedAt) * 100) / 100;
     if (firstResultMs > FIRST_RESULT_BUDGET_MS) {
       throw new Error(`Web first result exceeded ${FIRST_RESULT_BUDGET_MS}ms`);
     }
-    await session.close();
-    await events;
+
+    const secondInput = 'second turn after reconnect';
+    const secondRequestId = await send(secondInput);
+    const partial = await collect(secondRequestId, { disconnect: true });
+    // A new client mirrors a page refresh. Resume keeps the request alive; the
+    // saved cursor resumes its output without replaying the first turn or prefix.
+    session = await createClient().resumeSession(session.sessionId, { signal });
+    const second = await collect(secondRequestId, { output: partial.output });
+    assertResult(second, secondInput);
+    const restored = await session.read({ signal });
+    const history = restored.messages
+      ?.filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({ role: message.role, content: message.content }));
+    const expectedHistory = [
+      { role: 'user', content: firstInput },
+      { role: 'assistant', content: first.output },
+      { role: 'user', content: secondInput },
+      { role: 'assistant', content: second.output },
+    ];
+    if (JSON.stringify(history) !== JSON.stringify(expectedHistory)) {
+      throw new Error(`Web session history was not restored: ${JSON.stringify(history)}`);
+    }
+
+    const cancelledRequestId = await send('cancel this request before its complete response');
+    await collect(cancelledRequestId, { disconnect: true });
+    // Cancellation is acknowledged by abort(); it need not emit a result event.
+    await session.abort({ signal });
+    const afterCancelInput = 'a new turn after cancellation';
+    const afterCancel = await collect(await send(afterCancelInput), { allowOtherRequests: true });
+    assertResult(afterCancel, afterCancelInput);
+    await session.close({ signal });
+    session = undefined;
     return {
       firstResultMs,
-      output: completed.output,
+      output: first.output,
+      secondOutput: second.output,
+      resumedMessages: history.length,
+      reconnected: true,
+      cancelled: true,
+      afterCancelOutput: afterCancel.output,
     };
   } finally {
     clearTimeout(deadline);
     eventController.abort();
-    await events.catch(() => undefined);
+    await session?.close({ signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
   }
 }
 

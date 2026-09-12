@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Fix repeated answers in Web starters and preserve the current conversation across page refreshes and reconnects, with explicit cancellation feedback.",
+  "zh-CN": "修复 Web 示例多轮回答重复，支持刷新和重连后恢复当前对话，并提供明确的取消反馈。"
+}
