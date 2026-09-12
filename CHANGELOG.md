@@ -2,6 +2,17 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.1] - 2026-09-12
+
+### Refactoring
+
+- The production example reads its crash-recovery boundary from PostgreSQL route state instead of caching worker notifications in the launcher, so a successor process sees the same committed checkpoint and no recovery state lives outside the store.
+- Split tool execution into explicit stages (middleware, hooks, authorization, confirmation, file lock, invocation, result normalization) with a single cleanup guard that owns quarantine and cancellation bookkeeping. Tool behavior, permission decisions, and timeouts are unchanged.
+
+### Documentation
+
+- Document which parts of the production starter the SDK owns — route queue, leases, recovery planning, checkpoints — and which parts are your own repository policy, so the copied modules are adapted rather than re-implemented.
+
 ## [7.4.0] - 2026-09-12
 
 ### Features

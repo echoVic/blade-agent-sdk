@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "The production example reads its crash-recovery boundary from PostgreSQL route state instead of caching worker notifications in the launcher, so a successor process sees the same committed checkpoint and no recovery state lives outside the store.",
-  "zh-CN": "生产示例改为从 PostgreSQL 路由状态读取崩溃恢复边界，不再在启动器中缓存 Worker 通知：后继进程看到同一个已提交检查点，恢复状态不再存放在存储之外。"
-}
