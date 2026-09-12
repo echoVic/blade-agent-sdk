@@ -53,6 +53,10 @@ restarts while the launcher stays running. The launcher automatically starts a
 successor when its Worker exits unexpectedly. Stopping the launcher deletes its
 temporary database and checkpoints.
 
+The launcher keeps no in-process recovery cache: it reads the route state,
+fencing token, and committed workspace checkpoint from PostgreSQL, so a successor
+process observes the same recovery boundary.
+
 Recovery is limited to outcomes the example can verify. File replacement uses
 expected-content checks and checkpoints before reporting success. An interrupted
 test command with an unknown outcome stops for reconciliation. The example uses

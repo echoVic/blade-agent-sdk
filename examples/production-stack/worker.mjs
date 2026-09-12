@@ -54,7 +54,6 @@ async function start(config) {
         image: config.image, repositoryPath: config.repositoryPath, revision: config.revision,
       },
       publish,
-      onCheckpoint: async (checkpoint) => send({ type: 'checkpoint', ...checkpoint }),
     }),
     workerTtlMs: config.smoke ? 3_000 : 30_000,
     sessionLeaseTtlMs: config.smoke ? 3_000 : 30_000,

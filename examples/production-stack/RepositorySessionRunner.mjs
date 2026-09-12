@@ -23,12 +23,11 @@ function buildTerminalOutcome({ sessionId, cancelled, succeeded, terminal, error
 export class RepositorySessionRunner {
   managesLease = true;
 
-  constructor({ state, repositoryConfig, smoke = false, publish, onCheckpoint }) {
+  constructor({ state, repositoryConfig, smoke = false, publish }) {
     this.state = state;
     this.repositoryConfig = repositoryConfig;
     this.smoke = smoke;
     this.publish = publish;
-    this.onCheckpoint = onCheckpoint;
   }
 
   async run(context) {
@@ -168,7 +167,7 @@ export class RepositorySessionRunner {
       recoveryLease.abandon(new Error('Execution lease heartbeat transferred to SDK Session'));
       recoveryLease = undefined;
 
-      const checkpoint = async ({ executionId, path, toolName, signal }) => {
+      const checkpoint = async ({ executionId, path, signal }) => {
         const checkpointSignal = signal ? AbortSignal.any([localSignal, signal]) : localSignal;
         checkpointSignal.throwIfAborted();
         if (executionId !== handle.executionId) throw new Error('Checkpoint target is not the active workspace');
@@ -185,8 +184,9 @@ export class RepositorySessionRunner {
           },
         });
         await this.state.update(sessionId, { checkpointId: savedCheckpoint.checkpointId, changedPath: path });
-        await this.onCheckpoint?.({ sessionId, requestId: logicalRequestId, executionId,
-          checkpointId: savedCheckpoint.checkpointId, toolName, crashReady: shouldCrash });
+        // The checkpoint is published in the route metadata above and in
+        // repository_state here; the caller reads that durable state instead of
+        // receiving a notification it would have to cache.
         if (shouldCrash) {
           // This is the real fault boundary: file and checkpoint are committed,
           // but the SDK has not yet recorded the idempotent tool's result.

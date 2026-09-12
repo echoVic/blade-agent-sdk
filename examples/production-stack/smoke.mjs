@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
 
 export async function runProductionSmoke({ baseUrl, store, state, tenantId, launchedAt,
-  waitForCheckpoint, restartWorker, getWorker }) {
+  waitForCrashBoundary, restartWorker, getWorker }) {
   const client = new AgentClient({ baseUrl: `${baseUrl}/v1/agent`,
     client: { name: 'blade-production-repository-smoke', version: '1.0.0' },
     headers: { authorization: 'Bearer local-demo' } });
@@ -23,7 +23,8 @@ export async function runProductionSmoke({ baseUrl, store, state, tenantId, laun
     const toolNames = [];
     if (crash) {
       recovery = (async () => {
-        const checkpoint = await waitForCheckpoint(session.sessionId, budget);
+        // The crash boundary is durable route state, not a worker message.
+        const checkpoint = await waitForCrashBoundary(session.sessionId, budget);
         reconnect = true;
         controller.abort();
         const previousFence = (await store.getSessionRoute(tenantId, session.sessionId)).fencingToken;

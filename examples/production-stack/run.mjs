@@ -33,7 +33,6 @@ let store;
 let worker;
 let workerConfig;
 let repositoryState;
-const checkpoints = new Map();
 const ownedContainers = new Set();
 let agent;
 let operations;
@@ -121,10 +120,6 @@ async function startWorker() {
       if (message.snapshot) proxy.snapshot = message.snapshot;
       if (message.health) proxy.health = message.health;
       if (message.type === 'ready') { started = true; clearTimeout(timer); resolve(); }
-      if (message.type === 'checkpoint') {
-        checkpoints.set(message.sessionId, message);
-        if (message.executionId) ownedContainers.add(`blade-execution-${message.executionId}`);
-      }
       if (message.type === 'error') process.stderr.write(`Worker: ${message.message}\n`);
     });
     child.once('exit', (code, signal) => {
@@ -184,12 +179,26 @@ async function initializeWithRetry(target, { attempts = 30, delayMs = 500 } = {}
   throw lastError;
 }
 
-async function waitForCheckpoint(sessionId, signal) {
+/**
+ * Wait for the injected crash boundary by reading the durable session route.
+ *
+ * The runner commits the checkpoint and marks `crashCheckpointCommitted` in the
+ * route metadata before it parks, so the fault boundary is observable in the
+ * store. A successor process, or any other operator, reads the same state — no
+ * in-process cache or IPC channel is required.
+ */
+async function waitForCrashBoundary(sessionId, signal) {
   await waitUntil(async () => {
     signal.throwIfAborted();
-    return checkpoints.has(sessionId);
+    const route = await store.getSessionRoute(tenantId, sessionId);
+    return route.metadata?.bladeRepository?.crashCheckpointCommitted === true;
   }, 120_000);
-  return checkpoints.get(sessionId);
+  const { metadata } = await store.getSessionRoute(tenantId, sessionId);
+  const repository = metadata.bladeRepository;
+  if (repository?.executionId) {
+    ownedContainers.add(`blade-execution-${repository.executionId}`);
+  }
+  return repository;
 }
 
 async function cleanup() {
@@ -393,7 +402,7 @@ try {
 
   if (smoke) {
     const result = await runProductionSmoke({ baseUrl, store, state: repositoryState, tenantId,
-      launchedAt, waitForCheckpoint, restartWorker, getWorker: () => worker.getSnapshot() });
+      launchedAt, waitForCrashBoundary, restartWorker, getWorker: () => worker.getSnapshot() });
     process.stdout.write(`${JSON.stringify({
       baseUrl,
       ...result,

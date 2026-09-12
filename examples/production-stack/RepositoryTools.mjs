@@ -153,8 +153,6 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
         await checkpoint({
           executionId: handle.executionId,
           path: params.file_path,
-          content: params.content,
-          toolName: 'RepoWrite',
           signal: context.signal,
         });
         return {
