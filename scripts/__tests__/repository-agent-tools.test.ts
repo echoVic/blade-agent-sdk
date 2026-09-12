@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,6 +26,25 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
+/**
+ * Feed a fixture command its stdin. A command that exits without reading its
+ * input closes the pipe first, so the write must not surface as an unhandled
+ * stream error while the caller asserts the resulting exit code.
+ */
+function feedStdin(
+  pending: Promise<unknown> & { child: ChildProcess },
+  stdin: string,
+): void {
+  const stream = pending.child.stdin;
+  if (stream === null) {
+    return;
+  }
+  stream.on('error', () => {
+    // The exit code already reports a command that stopped reading stdin.
+  });
+  stream.end(stdin);
+}
+
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), 'blade-repository-tools-'));
   directories.push(directory);
@@ -41,7 +61,7 @@ async function setup() {
         encoding: 'utf8',
         maxBuffer: 64 * 1024,
       });
-      child.child.stdin?.end(request.stdin ?? '');
+      feedStdin(child, request.stdin ?? '');
       try {
         const result = await child;
         return { ...result, exitCode: 0 };

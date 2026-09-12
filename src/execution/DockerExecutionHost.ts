@@ -1891,6 +1891,11 @@ export class DockerExecutionHost implements ExecutionHost {
           stderr: redact(Buffer.concat(stderr).toString('utf8')),
         });
       });
+      child.stdin.on('error', () => {
+        // A command that exits without reading its input closes the pipe first.
+        // The exit code already reports that outcome, so a broken pipe here must
+        // not become an uncaught stream error.
+      });
       if (options.stdin !== undefined) {
         child.stdin.end(options.stdin);
       } else {
