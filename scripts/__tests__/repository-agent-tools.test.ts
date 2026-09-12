@@ -100,7 +100,7 @@ describe('repository fixture tools', () => {
     const written = await invoke('RepoWrite', { ...writeInput, content: alternative });
     expect(written.model).toMatchObject({ changed: true, after: alternative });
     expect(checkpoint).toHaveBeenCalledWith({
-      executionId: 'fixture-execution', path: GREETING_PATH, content: alternative, toolName: 'RepoWrite', signal: undefined,
+      executionId: 'fixture-execution', path: GREETING_PATH, signal: undefined,
     });
     expect((await invoke('RepoRunTests', {})).model).toMatchObject({
       passed: true,
