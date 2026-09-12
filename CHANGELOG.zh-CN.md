@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.1.0] - 2026-09-12
+
+### 新功能
+
+- 降低首次任务门槛：create-blade-agent 默认生成 local starter，defineTool 支持 Zod 参数并将省略的 sideEffect 保守默认为 non_idempotent，并新增从 production 示例迁移到自有仓库的教程。
+
 ## [7.0.6] - 2026-09-12
 
 ### 文档

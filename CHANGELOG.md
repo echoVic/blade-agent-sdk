@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.0] - 2026-09-12
+
+### Features
+
+- Make the first task easier: create-blade-agent defaults to the local starter, defineTool accepts Zod parameters and defaults an omitted sideEffect to non_idempotent, and a new guide covers migrating the production example to your own repository.
+
 ## [7.0.6] - 2026-09-12
 
 ### Documentation
