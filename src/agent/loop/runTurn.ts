@@ -264,6 +264,22 @@ async function* runStreamingWithTools(
 
   const queue = new AsyncEventQueue<AgentEvent>({
     isLive: () => epoch.isValid,
+    // A slow consumer used to let text deltas pile up without bound. Merging
+    // consecutive deltas of the same kind keeps every character while holding the
+    // buffer down, and the queue's own cap fails loudly if a producer still
+    // outruns its consumer.
+    coalesce: (pending, incoming) => {
+      if (pending.type !== incoming.type) {
+        return undefined;
+      }
+      if (pending.type === 'content_delta' && incoming.type === 'content_delta') {
+        return { type: 'content_delta', delta: pending.delta + incoming.delta };
+      }
+      if (pending.type === 'thinking_delta' && incoming.type === 'thinking_delta') {
+        return { type: 'thinking_delta', delta: pending.delta + incoming.delta };
+      }
+      return undefined;
+    },
   });
   const registry = executionPipeline.getRegistry();
 

@@ -611,6 +611,29 @@ export class McpClient extends EventEmitter {
     return this.availableTools;
   }
 
+  /**
+   * Probes the server over its transport.
+   *
+   * Health checks need a round trip: cached tools and server info stay populated
+   * after a server stops answering, so reading them reports a healthy connection
+   * that no longer exists.
+   */
+  async ping(timeoutMs = 10_000): Promise<void> {
+    if (!this.sdkClient || this.status !== McpConnectionStatus.CONNECTED) {
+      throw new Error(`MCP connection is ${this.status}`);
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`MCP ping timed out after ${timeoutMs}ms`)), timeoutMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([this.sdkClient.ping(), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async readResource(uri: string, _serverId?: string): Promise<JsonValue> {
     if (!this.sdkClient) {
       throw new Error('客户端未连接');

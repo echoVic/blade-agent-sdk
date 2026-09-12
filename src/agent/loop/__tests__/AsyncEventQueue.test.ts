@@ -1,11 +1,61 @@
 import { describe, expect, it } from 'vitest';
-import { AsyncEventQueue } from '../AsyncEventQueue.js';
+import { AsyncEventQueue, AsyncEventQueueOverflowError } from '../AsyncEventQueue.js';
 
 async function collect<T>(queue: AsyncEventQueue<T>): Promise<T[]> {
   const out: T[] = [];
   for await (const event of queue) out.push(event);
   return out;
 }
+
+describe('AsyncEventQueue backpressure', () => {
+  it('merges consecutive text deltas instead of buffering each one', async () => {
+    const queue = new AsyncEventQueue<{ type: 'content_delta'; delta: string }>({
+      coalesce: (pending, incoming) => pending.type === incoming.type
+        ? { type: 'content_delta', delta: pending.delta + incoming.delta }
+        : undefined,
+    });
+
+    for (const char of ['H', 'e', 'l', 'l', 'o']) {
+      queue.enqueue({ type: 'content_delta', delta: char });
+    }
+    expect(queue.pending).toBe(1);
+    queue.close();
+
+    const seen = [];
+    for await (const event of queue) seen.push(event.delta);
+    // Every character survives; only the event count collapsed.
+    expect(seen).toEqual(['Hello']);
+  });
+
+  it('fails loudly rather than dropping events when the buffer is exceeded', async () => {
+    const queue = new AsyncEventQueue<number>({ maxBufferSize: 3 });
+    for (const value of [1, 2, 3]) {
+      queue.enqueue(value);
+    }
+    // The fourth event cannot be buffered, so the consumer must learn about it.
+    queue.enqueue(4);
+
+    const seen: number[] = [];
+    await expect((async () => {
+      for await (const event of queue) seen.push(event);
+    })()).rejects.toBeInstanceOf(AsyncEventQueueOverflowError);
+    expect(seen).toEqual([1, 2, 3]);
+  });
+
+  it('honours close and isLive without buffering dead events', async () => {
+    let live = true;
+    const queue = new AsyncEventQueue<number>({ isLive: () => live, maxBufferSize: 2 });
+    queue.enqueue(1);
+    live = false;
+    queue.enqueue(2);
+    expect(queue.pending).toBe(1);
+    queue.close();
+
+    const seen: number[] = [];
+    for await (const event of queue) seen.push(event);
+    expect(seen).toEqual([]);
+  });
+});
 
 describe('AsyncEventQueue', () => {
   it('yields events in enqueue order', async () => {

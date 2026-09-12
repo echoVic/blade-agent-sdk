@@ -6,6 +6,11 @@ import { McpConnectionStatus } from '../types.js';
 const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONNECTED) => ({
   connectionStatus: status,
   callTool: vi.fn(() => Promise.resolve({ content: [] })),
+  // The probe the monitor relies on; rejecting models a server that stopped
+  // answering while its cached tools and server info are still populated.
+  ping: vi.fn(() => Promise.resolve()),
+  availableTools: [{ name: 'cached-tool', description: 'still cached' }],
+  server: { name: 'cached-server', version: '1.0.0' },
   on: vi.fn(() => {}),
   emit: vi.fn(() => {}),
 });
@@ -13,6 +18,61 @@ const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONN
 function createMonitor(client: ReturnType<typeof createMockClient>, config: HealthCheckConfig) {
   return new HealthMonitor(client as unknown as McpClient, config);
 }
+
+describe('HealthMonitor probing', () => {
+  const config: HealthCheckConfig = { enabled: true, interval: 10_000, timeout: 500, failureThreshold: 2 };
+
+  it('reports unhealthy when a server with cached state stops answering', async () => {
+    const client = createMockClient();
+    client.ping.mockRejectedValue(new Error('transport closed'));
+    const monitor = createMonitor(client, config);
+    try {
+      // Cached tools and server info are present, but the probe is what decides.
+      const result = await monitor.performHealthCheck();
+      expect(client.ping).toHaveBeenCalled();
+      expect(result.status).not.toBe(HealthStatus.HEALTHY);
+    } finally {
+      monitor.stop();
+    }
+  });
+
+  it('reports healthy when the probe reaches the server', async () => {
+    const client = createMockClient();
+    const monitor = createMonitor(client, config);
+    try {
+      const result = await monitor.performHealthCheck();
+      expect(result.status).toBe(HealthStatus.HEALTHY);
+    } finally {
+      monitor.stop();
+    }
+  });
+
+  it('does not schedule another check when stopped during one', async () => {
+    vi.useFakeTimers();
+    const client = createMockClient();
+    let releaseProbe!: () => void;
+    client.ping.mockImplementation(() => new Promise<void>((resolve) => {
+      releaseProbe = resolve;
+    }));
+    const monitor = createMonitor(client, { ...config, interval: 1_000 });
+    try {
+      monitor.start();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(client.ping).toHaveBeenCalledTimes(1);
+
+      // Stop while the probe is still in flight.
+      monitor.stop();
+      releaseProbe();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(monitor.isRunning).toBe(false);
+      expect(client.ping).toHaveBeenCalledTimes(1);
+    } finally {
+      monitor.stop();
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe('HealthMonitor', () => {
   let monitor: HealthMonitor;

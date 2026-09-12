@@ -1,3 +1,5 @@
+const DEFAULT_MAX_BUFFER_SIZE = 10_000;
+
 /**
  * 简单的异步事件队列：producer 侧调用 enqueue/close/fail，
  * consumer 侧用 for-await 迭代即可按顺序拿到事件。
@@ -5,22 +7,73 @@
  * 可选 isLive() 谓词：入队时若返回 false 则静默丢弃。
  * 用来统一 epoch 失效时的事件过滤（避免手写 pendingEvents + waitForEventsResolve）。
  */
+/** Raised when a producer outruns its consumer past the configured bound. */
+export class AsyncEventQueueOverflowError extends Error {
+  constructor(readonly maxBufferSize: number) {
+    super(
+      `AsyncEventQueue exceeded its ${maxBufferSize}-event buffer; the consumer is not keeping up`,
+    );
+    this.name = 'AsyncEventQueueOverflowError';
+  }
+}
+
 export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private readonly buffer: T[] = [];
   private readonly isLive: () => boolean;
+  private readonly coalesce?: (pending: T, incoming: T) => T | undefined;
+  private readonly maxBufferSize: number;
   private closed = false;
   private error: unknown;
   private waiter: (() => void) | null = null;
 
-  constructor(opts?: { isLive?: () => boolean }) {
+  constructor(opts?: {
+    isLive?: () => boolean;
+    /**
+     * Merge `incoming` into the last buffered event. Returning a value keeps the
+     * content and holds the buffer size down; returning undefined appends instead.
+     * This is how a fast text stream stays lossless without growing without bound.
+     */
+    coalesce?: (pending: T, incoming: T) => T | undefined;
+    /**
+     * Hard bound on buffered events. Exceeding it fails the queue rather than
+     * dropping events silently, because a truncated stream is worse than a
+     * reported failure.
+     */
+    maxBufferSize?: number;
+  }) {
     this.isLive = opts?.isLive ?? (() => true);
+    this.coalesce = opts?.coalesce;
+    this.maxBufferSize = opts?.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE;
+    if (!Number.isSafeInteger(this.maxBufferSize) || this.maxBufferSize < 1) {
+      throw new RangeError('maxBufferSize must be a positive integer');
+    }
   }
 
   enqueue(event: T): void {
     if (this.closed) return;
     if (!this.isLive()) return;
+
+    if (this.coalesce && this.buffer.length > 0) {
+      const merged = this.coalesce(this.buffer[this.buffer.length - 1] as T, event);
+      if (merged !== undefined) {
+        this.buffer[this.buffer.length - 1] = merged;
+        this.flushWaiter();
+        return;
+      }
+    }
+
+    if (this.buffer.length >= this.maxBufferSize) {
+      this.fail(new AsyncEventQueueOverflowError(this.maxBufferSize));
+      return;
+    }
+
     this.buffer.push(event);
     this.flushWaiter();
+  }
+
+  /** The number of buffered events; exposes the bound to tests and diagnostics. */
+  get pending(): number {
+    return this.buffer.length;
   }
 
   close(): void {

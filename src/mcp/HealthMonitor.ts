@@ -49,6 +49,7 @@ export class HealthMonitor extends EventEmitter {
   private client: McpClient;
   private config: Required<HealthCheckConfig>;
   private checkTimer: NodeJS.Timeout | null = null;
+  private running = false;
   private isChecking = false;
   private consecutiveFailures = 0;
   private lastCheckTime = 0;
@@ -69,7 +70,7 @@ export class HealthMonitor extends EventEmitter {
    * 启动健康监控
    */
   start(): void {
-    if (this.checkTimer) {
+    if (this.running) {
       console.warn('[HealthMonitor] 健康监控已在运行');
       return;
     }
@@ -80,6 +81,7 @@ export class HealthMonitor extends EventEmitter {
     }
 
     console.log(`[HealthMonitor] 启动健康监控（间隔: ${this.config.interval}ms）`);
+    this.running = true;
     this.scheduleNextCheck();
   }
 
@@ -87,6 +89,10 @@ export class HealthMonitor extends EventEmitter {
    * 停止健康监控
    */
   stop(): void {
+    // The flag is what stops the loop: a check already in flight used to schedule
+    // its successor after this returned, leaving a monitor running that the caller
+    // had stopped.
+    this.running = false;
     if (this.checkTimer) {
       clearTimeout(this.checkTimer);
       this.checkTimer = null;
@@ -94,14 +100,27 @@ export class HealthMonitor extends EventEmitter {
     }
   }
 
+  get isRunning(): boolean {
+    return this.running;
+  }
+
   /**
    * 调度下一次检查
    */
   private scheduleNextCheck(): void {
+    if (!this.running) {
+      return;
+    }
     this.checkTimer = setTimeout(async () => {
-      await this.performHealthCheck();
-      this.scheduleNextCheck();
+      this.checkTimer = null;
+      try {
+        await this.performHealthCheck();
+      } finally {
+        // Re-check after the await: `stop()` during a check must not be undone.
+        this.scheduleNextCheck();
+      }
     }, this.config.interval);
+    this.checkTimer.unref?.();
   }
 
   /**
@@ -181,23 +200,13 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Ping 服务器（通过列出工具）
    */
+  /**
+   * A health check only means something if it reaches the server. Reading cached
+   * tools or server info succeeds even when the server stopped answering, which
+   * reported a healthy connection that no longer existed.
+   */
   private async pingServer(): Promise<void> {
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Health check timeout')), this.config.timeout);
-    });
-
-    // 使用列出工具作为 ping
-    const checkPromise = (async () => {
-      const tools = this.client.availableTools;
-      if (tools.length === 0) {
-        // 如果没有工具，至少检查客户端是否存在
-        if (!this.client.server) {
-          throw new Error('Server info not available');
-        }
-      }
-    })();
-
-    await Promise.race([checkPromise, timeoutPromise]);
+    await this.client.ping(this.config.timeout);
   }
 
   /**
