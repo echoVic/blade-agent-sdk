@@ -102,7 +102,7 @@ describe('package entrypoints', () => {
 
   it('ships the create-blade-agent executable and its verified template assets', () => {
     expect(packageJson.bin).toEqual({
-      'create-blade-agent': './dist/cli/create-blade-agent.js',
+      'create-blade-agent': 'dist/cli/create-blade-agent.js',
     });
     expect(packageJson.files).toEqual(
       expect.arrayContaining([

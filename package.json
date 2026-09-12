@@ -12,7 +12,7 @@
     "node": ">=22.14.0"
   },
   "bin": {
-    "create-blade-agent": "./dist/cli/create-blade-agent.js"
+    "create-blade-agent": "dist/cli/create-blade-agent.js"
   },
   "packageManager": "pnpm@10.6.0",
   "main": "./dist/index.js",
@@ -132,6 +132,13 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
+  "pnpm": {
+    "overrides": {
+      "hono@<4.13.5": "^4.13.7",
+      "js-yaml@<3.15.2": "^3.15.2",
+      "qs@<6.16.0": "^6.16.0"
+    }
+  },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/azure": "^3.0.54",
@@ -173,10 +180,10 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.53",
-    "@ai-sdk/openai-compatible": "^2.0.41",
+    "@ai-sdk/openai": "^3.0.112",
+    "@ai-sdk/openai-compatible": "^2.0.75",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "ai": "^6.0.168",
+    "ai": "^6.0.282",
     "async-mutex": "^0.5.0",
     "chalk": "^5.6.2",
     "diff": "^9.0.0",

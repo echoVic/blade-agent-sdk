@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Clear the production dependency audit: raise the AI SDK packages and pin patched hono, js-yaml, and qs resolutions, and correct the package manifest so the CLI bin registers on install.",
+  "zh-CN": "修复生产依赖安全审计：升级 AI SDK 依赖并锁定已修复的 hono、js-yaml、qs 版本，同时修正包清单让 CLI bin 在安装后正确注册。"
+}
