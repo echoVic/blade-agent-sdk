@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.8] - 2026-09-12
+
+### Fixes
+
+- Probe an MCP server over its transport instead of trusting cached tools, stop the health monitor for real when it is stopped mid-check, and bound the streaming event buffer with lossless text merging.
+
 ## [7.1.7] - 2026-09-12
 
 ### Fixes
