@@ -65,6 +65,20 @@ provider: {
 请求，并抛出 `ModelTimeoutError`；错误码分别为
 `MODEL_REQUEST_TIMEOUT` 和 `MODEL_STREAM_IDLE_TIMEOUT`，不会伪装成用户取消。
 
+## 重试
+
+重试由 SDK 独占。SDK 会关闭 AI SDK 自带的重试（每个请求都设置
+`maxRetries: 0`），因此一次失败产生的请求次数与 SDK 通过 `ModelRetryEvent`
+上报的次数一致，不会出现分层各重试一遍的情况。
+
+两种模式的覆盖范围不同：
+
+- **非流式请求整体重试**，重试等待时间计入 `requestTimeoutMs`。
+- **流式请求只在建立阶段重试**。一旦已向调用方交付过 chunk，中途的 provider
+  失败会抛出 `ModelStreamError`（错误码 `MODEL_STREAM_FAILED`），而不是静默结束响应；
+  这种情况不会重试——重放已部分交付的响应会让调用方看到重复文本。请按失败请求处理，
+  自行决定是否重发。
+
 assistant 历史会记录生成响应时的逻辑 Provider ID、API adapter 和模型。
 只有来源三元组完全相同时，原生 reasoning block 才会按原格式回放。切换
 Provider、adapter、模型，或恢复不含来源信息的旧历史时，reasoning 会降级为

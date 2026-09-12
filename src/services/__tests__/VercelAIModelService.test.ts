@@ -47,6 +47,67 @@ describe('VercelAIModelService', () => {
     mockStreamText.mockReset();
   });
 
+  it('fails the stream when the provider reports an error mid-response', async () => {
+    // The AI SDK encodes a request failure as an event, so a consumer that ignores
+    // it observes partial text as a completed response.
+    async function* fullStream() {
+      yield { type: 'text-delta', text: 'Partial answer' };
+      yield { type: 'error', errorText: 'upstream 503' };
+    }
+    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+
+    const service = new VercelAIModelService(
+      { provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5' },
+      NOOP_LOGGER,
+    );
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+
+    const seen: unknown[] = [];
+    await expect((async () => {
+      for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+        seen.push(chunk);
+      }
+    })()).rejects.toThrow('upstream 503');
+
+    // The partial text was emitted, but the call did not end as a success.
+    expect(seen).toEqual([{ content: 'Partial answer' }]);
+  });
+
+  it('leaves retrying to Blade instead of the SDK', async () => {
+    async function* fullStream() {
+      yield { type: 'text-delta', text: 'ok' };
+      yield { type: 'finish', finishReason: 'stop', totalUsage: { totalTokens: 1 } };
+    }
+    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+    mockGenerateText.mockResolvedValue({
+      text: 'ok',
+      content: [],
+      toolCalls: [],
+      finishReason: 'stop',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      response: { messages: [] },
+    });
+
+    const service = new VercelAIModelService(
+      { provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5' },
+      NOOP_LOGGER,
+    );
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+
+    for await (const _chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+      // drain
+    }
+    await service.chat([{ role: 'user', content: 'hi' }]);
+
+    // Two retry owners would multiply attempts and desynchronise the retry events
+    // Blade reports, so the SDK must not retry at all.
+    for (const call of [...mockStreamText.mock.calls, ...mockGenerateText.mock.calls]) {
+      expect(call[0]).toMatchObject({ maxRetries: 0 });
+    }
+    expect(mockStreamText.mock.calls.length).toBeGreaterThan(0);
+    expect(mockGenerateText.mock.calls.length).toBeGreaterThan(0);
+  });
+
   it('uses the native OpenAI provider for openai configs', async () => {
     const service = new VercelAIModelService(
       {

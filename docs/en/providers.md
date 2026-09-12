@@ -68,6 +68,24 @@ provider request and throws `ModelTimeoutError` with code
 `MODEL_REQUEST_TIMEOUT` or `MODEL_STREAM_IDLE_TIMEOUT`; it is not reported as a
 user cancellation.
 
+## Retries
+
+The SDK owns retrying. It disables the AI SDK's built-in retry
+(`maxRetries: 0` on every request) so a failure produces exactly the attempts the
+SDK reports through `ModelRetryEvent` instead of attempting each request several
+times per layer.
+
+What is covered differs by mode:
+
+- A non-streaming request is retried as a whole, including its retry delays
+  inside `requestTimeoutMs`.
+- A streaming request is retried while the stream is being established. Once
+  chunks have been handed to the caller, a mid-stream provider failure throws
+  `ModelStreamError` with code `MODEL_STREAM_FAILED` rather than silently ending
+  the response, and it is not retried: replaying a partially delivered response
+  would duplicate the text the caller already saw. Treat it as a failed request
+  and decide whether to send it again.
+
 ## OpenAI
 
 ```ts

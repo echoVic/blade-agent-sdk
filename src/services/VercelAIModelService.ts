@@ -1,5 +1,6 @@
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
+import { ModelStreamError } from '../errors/ModelStreamError.js';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ModelServiceConfig, OutputFormat } from '../model/config.js';
@@ -808,6 +809,11 @@ export class VercelAIModelService implements ModelService {
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
+            // Blade's withRetry is the single retry owner. The AI SDK defaults to
+            // two retries of its own, which would multiply attempts and leave the
+            // emitted ModelRetryEvent stream describing fewer requests than were
+            // actually sent.
+            maxRetries: 0,
           }),
         retryConfig,
         signal,
@@ -858,6 +864,11 @@ export class VercelAIModelService implements ModelService {
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
+            // Blade's withRetry is the single retry owner. The AI SDK defaults to
+            // two retries of its own, which would multiply attempts and leave the
+            // emitted ModelRetryEvent stream describing fewer requests than were
+            // actually sent.
+            maxRetries: 0,
           }),
         this.retryConfig,
         signal,
@@ -904,6 +915,8 @@ export class VercelAIModelService implements ModelService {
               abortSignal: signal,
               experimental_output: experimentalOutput,
               providerOptions: this.getProviderOptions(),
+              // Single retry owner: see the non-streaming calls above.
+              maxRetries: 0,
             }),
           ),
         this.retryConfig,
@@ -968,6 +981,20 @@ export class VercelAIModelService implements ModelService {
                 ).providerMetadata,
               ),
             };
+            break;
+
+          case 'error': {
+            // The SDK reports a mid-stream failure as an event, not a rejection.
+            // Ignoring it let a truncated response look like a completed one, so
+            // the caller was asked to treat partial output as the model's answer.
+            const reason = (part as { errorText?: string }).errorText
+              ?? 'The model stream reported an error';
+            throw new ModelStreamError(reason);
+          }
+
+          default:
+            // Unknown parts are ignored on purpose: the SDK adds event kinds over
+            // time and an unrecognised one is not a failure.
             break;
         }
       }

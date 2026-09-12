@@ -2,6 +2,8 @@ export { AbortError } from './AbortError.js';
 export { ConfigError } from './ConfigError.js';
 export { HookTimeoutError } from './HookTimeoutError.js';
 export type { HookTimeoutErrorCode } from './HookTimeoutError.js';
+export { ModelStreamError } from './ModelStreamError.js';
+export type { ModelStreamErrorCode } from './ModelStreamError.js';
 export { ModelTimeoutError } from './ModelTimeoutError.js';
 export type { ModelTimeoutErrorCode } from './ModelTimeoutError.js';
 export { PermissionDeniedError } from './PermissionDeniedError.js';

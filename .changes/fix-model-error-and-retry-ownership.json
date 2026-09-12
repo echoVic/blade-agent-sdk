@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Fail a model stream that reports an error instead of returning partial text as a completed response, and disable the AI SDK's built-in retry so the SDK is the single retry owner.",
+  "zh-CN": "模型流中上报错误时抛出失败，不再把部分文本当作完整响应返回；关闭 AI SDK 自带重试，由 SDK 独占重试职责。"
+}
