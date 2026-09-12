@@ -2,6 +2,13 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.3] - 2026-09-12
+
+### Fixes
+
+- Clear the production dependency audit: raise the AI SDK packages and pin patched hono, js-yaml, and qs resolutions, and correct the package manifest so the CLI bin registers on install.
+- Stop an uncaught broken-pipe error when a Docker command exits without reading its stdin, and make the repository fixture tests feed stdin without racing the command exit.
+
 ## [7.0.2] - 2026-09-12
 
 ### Fixes
