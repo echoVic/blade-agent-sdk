@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, rm as remove, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FileSystemMemoryStore } from '../FileSystemMemoryStore.js';
@@ -15,6 +15,78 @@ async function createTempDir(): Promise<string> {
   tempDirs.push(dir);
   return dir;
 }
+
+describe('FileSystemMemoryStore concurrency and recovery', () => {
+  it('keeps every memory when saves run concurrently', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+
+    await Promise.all([
+      store.save({ name: 'alpha', description: 'first', type: 'project', body: 'a' }),
+      store.save({ name: 'beta', description: 'second', type: 'project', body: 'b' }),
+      store.save({ name: 'gamma', description: 'third', type: 'project', body: 'c' }),
+    ]);
+
+    // Every file exists, so every memory must be listed and searchable.
+    const names = (await store.list()).map((memory) => memory.name).sort();
+    expect(names).toEqual(['alpha', 'beta', 'gamma']);
+  });
+
+  it('recovers memories when the index is deleted', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+    await store.save({ name: 'alpha', description: 'first', type: 'project', body: 'a' });
+    await store.save({ name: 'beta', description: 'second', type: 'project', body: 'b' });
+
+    await remove(join(root, 'MEMORY.md'));
+
+    // The files are the authority, so the index is not required to find them.
+    expect((await store.list()).map((memory) => memory.name).sort()).toEqual(['alpha', 'beta']);
+  });
+
+  it('repairs a corrupted index from the files on rebuild', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+    await store.save({ name: 'alpha', description: 'first', type: 'project', body: 'a' });
+
+    await writeFile(join(root, 'MEMORY.md'), 'not an index at all\n', 'utf8');
+    await store.rebuildIndex();
+
+    const index = await readFile(join(root, 'MEMORY.md'), 'utf8');
+    expect(index).toContain('[alpha](alpha.md)');
+    expect(index).toContain('first');
+  });
+
+  it('reports a read failure instead of pretending the memory is absent', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+
+    // A directory where the memory file is expected: reading it fails, which is
+    // not the same fact as "no such memory".
+    await store.save({ name: 'alpha', description: 'first', type: 'project', body: 'a' });
+    await rm(join(root, 'alpha.md'));
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(root, 'alpha.md'), { recursive: true });
+
+    await expect(store.get('alpha')).rejects.toThrow();
+    expect(await store.get('missing')).toBeUndefined();
+  });
+
+  it('reports the file modification time rather than the read time', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+    await store.save({ name: 'alpha', description: 'first', type: 'project', body: 'a' });
+
+    const first = await store.get('alpha');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const second = await store.get('alpha');
+
+    // Two reads of an unchanged file must agree. Returning the read time would
+    // make `updatedAt` advance on every read and hide when the memory changed.
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+    expect(first?.updatedAt).toBeLessThanOrEqual(Date.now());
+  });
+});
 
 describe('FileSystemMemoryStore', () => {
   it('persists memory records and updates MEMORY.md', async () => {
