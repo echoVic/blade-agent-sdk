@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.2.1] - 2026-09-12
+
+### Refactoring
+
+- Build every tool through one internal assembler so createTool and toolFromDefinition cannot drift apart, keeping their differences to parameter declaration and validation.
+
 ## [7.2.0] - 2026-09-12
 
 ### Features
