@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.3.0] - 2026-09-12
+
+### Features
+
+- Make subagent Session storage an injectable capability so a parent Session on a shared repository can give its subagents the same cross-host recovery, and document that the default file store is host-local.
+
 ## [7.2.1] - 2026-09-12
 
 ### Refactoring
