@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.1] - 2026-09-12
+
+### Refactoring
+
+- Derive release versions from the latest v* tag and the conventional commits after it; changelog fragments now only select the changelog section instead of voting on the version.
+
 ## [7.1.0] - 2026-09-12
 
 ### Features
