@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Split tool execution into explicit stages (middleware, hooks, authorization, confirmation, file lock, invocation, result normalization) with a single cleanup guard that owns quarantine and cancellation bookkeeping. Tool behavior, permission decisions, and timeouts are unchanged.",
+  "zh-CN": "把工具执行拆成显式阶段（中间件、Hook、授权、确认、文件锁、调用、结果归一化），并由统一的清理守卫负责隔离与取消记账。工具行为、权限决策与超时语义保持不变。"
+}

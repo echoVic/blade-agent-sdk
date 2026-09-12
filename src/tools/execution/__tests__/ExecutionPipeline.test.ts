@@ -1250,14 +1250,21 @@ describe('ExecutionPipeline', () => {
 
       const internalHandler = (async (request) =>
         waitForRelease(request.signal, { behavior: 'allow' as const })) satisfies PermissionHandler;
+      // The authorization stage owns these handlers; swap them at the stage so
+      // the pipeline still routes the callback through its cancellation guard.
+      const authorizationStage = (
+        pipeline as unknown as {
+          authorizationStage: {
+            ruleHandler: PermissionHandler;
+            pathSafetyHandler: PermissionHandler;
+          };
+        }
+      ).authorizationStage;
       if (boundary === 'permissionRuleHandler') {
-        (
-          pipeline as unknown as { permissionRuleHandler: PermissionHandler }
-        ).permissionRuleHandler = internalHandler;
+        authorizationStage.ruleHandler = internalHandler;
       }
       if (boundary === 'pathSafetyHandler') {
-        (pipeline as unknown as { pathSafetyHandler: PermissionHandler }).pathSafetyHandler =
-          internalHandler;
+        authorizationStage.pathSafetyHandler = internalHandler;
       }
 
       const permissionResolutions: string[] = [];
