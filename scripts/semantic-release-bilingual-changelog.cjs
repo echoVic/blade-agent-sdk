@@ -231,15 +231,18 @@ async function hasReleasableCommit(cwd, base) {
   return releaseType !== null;
 }
 
+/**
+ * Version selection belongs to the tag history: semantic-release derives the next
+ * version from the latest `v*` tag plus the conventional commits after it. This
+ * plugin therefore never votes on the release type, and `.changes` fragments only
+ * supply the bilingual changelog text.
+ */
 async function analyzeCommits(_pluginConfig, context) {
   const fragments = readFragments(context.cwd);
-  const releaseType = releaseTypeFromFragments(fragments);
-  if (releaseType) {
-    context.logger.log(
-      `Selected ${releaseType} release from ${fragments.length} bilingual changelog fragment(s)`,
-    );
-  }
-  return releaseType;
+  context.logger.log(
+    `Version comes from the tag history; ${fragments.length} bilingual changelog fragment(s) will render the notes`,
+  );
+  return null;
 }
 
 async function verifyRange(cwd, base) {

@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Derive release versions from the latest v* tag and the conventional commits after it; changelog fragments now only select the changelog section instead of voting on the version.",
+  "zh-CN": "发布版本改由最新的 v* tag 及其后的 conventional commits 决定；变更片段只决定变更日志分节，不再参与版本判定。"
+}

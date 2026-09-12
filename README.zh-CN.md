@@ -304,10 +304,10 @@ pnpm run docs:build
 ```
 
 文件名必须唯一且使用 kebab-case。`type` 只允许 `breaking`、`feature`、
-`fix`、`performance`、`refactor` 和 `docs`。
+`fix`、`performance`、`refactor` 和 `docs`，它决定变更日志的分节，不决定版本号。
 
 1. 校验、构建并测试 package 和文档；
-2. 取 fragment 中最高的 `type` 决定下一版本（`breaking` → major、`feature` → minor、其余 → patch）；
+2. 由最新的 `v*` tag 和其后的 conventional commits 推导下一版本：`fix`/`perf`/`refactor`/`docs` 出 patch，`feat` 出 minor，`!` 或 `BREAKING CHANGE` 出 major；
 3. 更新 `package.json`、`CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`；
 4. 提交生成的发布元数据；
 5. 发布 npm package 和 GitHub Release。

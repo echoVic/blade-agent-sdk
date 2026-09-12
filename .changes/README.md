@@ -19,5 +19,6 @@ Allowed `type` values:
 - `fix` / `performance` / `refactor` / `docs` → patch
 
 Use a unique kebab-case filename. Both language fields are required and must
-describe user-visible behavior rather than commit mechanics. The highest
-fragment type determines the semantic-release version.
+describe user-visible behavior rather than commit mechanics. The fragment type
+picks the changelog section; the semantic-release version comes from the latest
+`v*` tag and the conventional commits after it.

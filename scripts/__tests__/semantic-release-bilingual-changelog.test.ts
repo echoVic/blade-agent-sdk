@@ -16,7 +16,6 @@ const require = createRequire(import.meta.url);
 const plugin = require('../semantic-release-bilingual-changelog.cjs');
 const {
   readFragments,
-  releaseTypeFromFragments,
   renderRelease,
   verifyRange,
 } = plugin._internals;
@@ -91,10 +90,9 @@ describe('bilingual changelog fragments', () => {
         '- Fix session recovery.',
       ].join('\n'),
     );
-    expect(releaseTypeFromFragments(fragments)).toBe('minor');
   });
 
-  it('uses the highest changelog fragment type as the release level', async () => {
+  it('leaves the release level to the tag history instead of the fragments', async () => {
     const directory = createTemporaryDirectory();
     writeFragment(directory, 'repair-runtime.json', {
       type: 'fix',
@@ -108,12 +106,14 @@ describe('bilingual changelog fragments', () => {
     });
     const logger = { log: vi.fn() };
 
+    // Even a breaking fragment must not vote: conventional commits and the latest
+    // v* tag decide the version.
     await expect(plugin.analyzeCommits({}, {
       cwd: directory,
       logger,
-    })).resolves.toBe('major');
+    })).resolves.toBeNull();
     expect(logger.log).toHaveBeenCalledWith(
-      'Selected major release from 2 bilingual changelog fragment(s)',
+      'Version comes from the tag history; 2 bilingual changelog fragment(s) will render the notes',
     );
   });
 
@@ -194,6 +194,41 @@ describe('bilingual changelog fragments', () => {
         },
       ),
     ).rejects.toThrow('requires at least one bilingual');
+  });
+});
+
+describe('release level ownership', () => {
+  // Mirrors semantic-release's analyzeCommits postprocess: the highest release
+  // type across plugins wins, and a null vote cannot lower or raise it.
+  function resolveReleaseType(results: (string | null)[]): string | undefined {
+    const ordered = ['major', 'minor', 'patch'];
+    return ordered[
+      results.reduce((highest, result) => {
+        const index = result === null ? -1 : ordered.indexOf(result);
+        return index > highest ? index : highest;
+      }, -1)
+    ];
+  }
+
+  it('cannot override the commit-derived release type', async () => {
+    const directory = createTemporaryDirectory();
+    writeFragment(directory, 'rewrite-message-envelope.json', {
+      type: 'fix',
+      en: 'Replace the message envelope.',
+      'zh-CN': '替换消息封装。',
+    });
+
+    const pluginVote = await plugin.analyzeCommits({}, {
+      cwd: directory,
+      logger: { log() {} },
+    });
+
+    expect(pluginVote).toBeNull();
+    // commit-analyzer's verdict survives the null vote from this plugin.
+    expect(resolveReleaseType(['patch', pluginVote])).toBe('patch');
+    expect(resolveReleaseType(['major', pluginVote])).toBe('major');
+    // A breaking fragment no longer forces a major on its own.
+    expect(resolveReleaseType([pluginVote])).toBeUndefined();
   });
 });
 

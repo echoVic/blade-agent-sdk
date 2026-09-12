@@ -315,11 +315,13 @@ Releases are managed only by `semantic-release`. Every releasable pull request m
 ```
 
 Use a unique kebab-case filename. Allowed types are `breaking`, `feature`,
-`fix`, `performance`, `refactor`, and `docs`.
+`fix`, `performance`, `refactor`, and `docs`; they select the changelog section,
+not the version.
 
 1. validates, builds, and tests the package and documentation;
-2. takes the highest fragment type as the next version (`breaking` → major,
-   `feature` → minor, everything else → patch);
+2. derives the next version from the latest `v*` tag and the conventional
+   commits after it, so `fix`/`perf`/`refactor`/`docs` release a patch,
+   `feat` a minor, and `!` or `BREAKING CHANGE` a major;
 3. updates `package.json`, `CHANGELOG.md`, and `CHANGELOG.zh-CN.md`;
 4. commits the generated release metadata;
 5. publishes the npm package and GitHub Release.

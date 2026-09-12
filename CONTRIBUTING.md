@@ -105,8 +105,10 @@ A release fragment is a uniquely named JSON file under `.changes/`:
 ```
 
 Allowed types are `breaking`, `feature`, `fix`, `performance`, `refactor`,
-and `docs`. The highest type across all fragments decides the release:
-`breaking` is a major, `feature` is a minor, and every other type is a patch.
+and `docs`. A fragment selects the section its text appears in; it does not pick
+the version. The version comes from the latest `v*` tag plus the conventional
+commits after it, so `fix`, `perf`, `refactor`, and `docs` commits release a
+patch, `feat` a minor, and a `!` or `BREAKING CHANGE` commit a major.
 Use a kebab-case filename and validate it with:
 
 ```bash
