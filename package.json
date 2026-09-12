@@ -134,9 +134,13 @@
   },
   "pnpm": {
     "overrides": {
+      "@ai-sdk/provider-utils@>=4.0.0-beta.10 <4.0.33": "^4.0.51",
+      "esbuild@<0.28.1": "^0.28.2",
       "hono@<4.13.5": "^4.13.7",
       "js-yaml@<3.15.2": "^3.15.2",
-      "qs@<6.16.0": "^6.16.0"
+      "js-yaml@>=4.0.0 <4.3.2": "^4.3.2",
+      "qs@<6.16.0": "^6.16.0",
+      "undici@<6.28.0": "^6.28.1"
     }
   },
   "peerDependencies": {
@@ -213,7 +217,7 @@
     "@biomejs/biome": "^2.4.12",
     "@opentelemetry/api": "^1.9.0",
     "@semantic-release/commit-analyzer": "13.0.1",
-    "@semantic-release/git": "10.0.1",
+    "@semantic-release/git": "11.0.1",
     "@types/json-schema": "^7.0.15",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^22.15.0",
@@ -226,10 +230,10 @@
     "fs-native-extensions": "1.5.0",
     "koffi": "3.1.6",
     "pg": "8.23.0",
-    "semantic-release": "^25.0.5",
+    "semantic-release": "^25.0.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitepress": "^1.6.4",
-    "vitest": "^3.2.4"
+    "vitepress": "2.0.0-alpha.20",
+    "vitest": "^5.0.0"
   }
 }

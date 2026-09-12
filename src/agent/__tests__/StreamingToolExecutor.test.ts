@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ModelResponse, ModelStreamChunk } from '../../model/service.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
@@ -1201,7 +1201,7 @@ describe('StreamingToolExecutor', () => {
 });
 
 function executionPipelineFromMock(
-  execute: ReturnType<typeof vi.fn>,
+  execute: Mock,
   toolConfigs?: Record<
     string,
     { kind?: 'readonly' | 'write' | 'execute'; interruptBehavior?: 'cancel' | 'block' }
