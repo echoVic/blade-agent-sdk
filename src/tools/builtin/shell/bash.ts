@@ -222,9 +222,11 @@ Before executing commands:
     };
   },
 
-  checkPermissions: ({ command }) => {
+  checkPermissions: ({ command }, context) => {
     const sandboxService = getSandboxService();
-    const sandboxCheck = sandboxService.checkCommand({ command });
+    // The policy comes from the execution snapshot, never from process state.
+    const settings = context.contextSnapshot?.sandbox ?? {};
+    const sandboxCheck = sandboxService.checkCommand({ command }, settings);
 
     switch (sandboxCheck.outcome) {
       case 'disabled':
@@ -252,13 +254,14 @@ Before executing commands:
 
     try {
       const sandboxService = getSandboxService();
+      const settings = context.contextSnapshot?.sandbox ?? {};
       const workDir = cwd || context.contextSnapshot?.cwd;
       if (!workDir) {
         throw new Error('validateInput should guarantee a working directory');
       }
-      const effectiveCommand = sandboxService.wrapCommandForSandbox(command, workDir);
+      const effectiveCommand = sandboxService.wrapCommandForSandbox(command, workDir, settings);
 
-      if (sandboxService.isEnabled() && effectiveCommand !== command) {
+      if (sandboxService.isEnabled(settings) && effectiveCommand !== command) {
         yield {
           kind: 'message',
           content: { summary: `Executing in sandbox: ${command}` },

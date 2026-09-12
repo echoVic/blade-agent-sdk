@@ -232,7 +232,48 @@ class Session implements ISession {
     this.options = options;
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
-    this.defaultContext = options.defaultContext ?? {};
+    // The sandbox policy travels with this Session's context, so two Sessions with
+    // different policies cannot affect each other's executions. An explicit
+    // context capability wins over the session option.
+    const sandboxPolicy = options.defaultContext?.capabilities?.sandbox ?? options.sandbox;
+    this.defaultContext = sandboxPolicy
+      ? {
+          ...(options.defaultContext ?? {}),
+          capabilities: {
+            ...(options.defaultContext?.capabilities ?? {}),
+            // Copy the arrays: the caller keeps owning the object it passed, and
+            // mutating it later must not change this Session's policy.
+            sandbox: {
+              ...sandboxPolicy,
+              ...(sandboxPolicy.excludedCommands
+                ? { excludedCommands: [...sandboxPolicy.excludedCommands] }
+                : {}),
+              ...(sandboxPolicy.ignoreViolations
+                ? {
+                    ignoreViolations: {
+                      ...(sandboxPolicy.ignoreViolations.file
+                        ? { file: [...sandboxPolicy.ignoreViolations.file] }
+                        : {}),
+                      ...(sandboxPolicy.ignoreViolations.network
+                        ? { network: [...sandboxPolicy.ignoreViolations.network] }
+                        : {}),
+                    },
+                  }
+                : {}),
+              ...(sandboxPolicy.network
+                ? {
+                    network: {
+                      ...sandboxPolicy.network,
+                      ...(sandboxPolicy.network.allowUnixSockets
+                        ? { allowUnixSockets: [...sandboxPolicy.network.allowUnixSockets] }
+                        : {}),
+                    },
+                  }
+                : {}),
+            },
+          },
+        }
+      : options.defaultContext ?? {};
     this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
     this.confirmationHandler =
       options.confirmationHandlerFactory?.(this.sessionId) ?? options.confirmationHandler;

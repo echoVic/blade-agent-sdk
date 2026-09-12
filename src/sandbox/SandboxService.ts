@@ -21,9 +21,16 @@ export interface SandboxCheckResult {
   reason: string;
 }
 
+/**
+ * Sandbox policy decisions. The service holds no policy of its own: settings are
+ * passed per call, because one process serves many Sessions and a stored policy
+ * would leak one Session's configuration into another's executions.
+ *
+ * Only platform capability detection is process-wide, which is the one fact that
+ * is genuinely shared.
+ */
 export class SandboxService {
   private static instance: SandboxService | null = null;
-  private settings: SandboxSettings = {};
 
   private constructor() {}
 
@@ -38,59 +45,86 @@ export class SandboxService {
     SandboxService.instance = null;
   }
 
-  configure(settings: SandboxSettings): void {
-    this.settings = { ...settings };
-    const executor = getSandboxExecutor();
-    executor.configure(settings);
-    if (this.isEnabled() && !executor.getCapabilities().available) {
+  /**
+   * Fail closed when an enabled policy has no usable platform sandbox, at the
+   * point the policy is validated rather than at the point of execution.
+   */
+  assertUsable(settings: SandboxSettings): void {
+    if (settings.enabled === true && !getSandboxExecutor().getCapabilities().available) {
       throw createSandboxUnavailableError();
     }
   }
 
-  getSettings(): SandboxSettings {
-    return { ...this.settings };
+  getSettings(settings: SandboxSettings): SandboxSettings {
+    // Deep enough that a caller mutating the copy cannot reach the original arrays.
+    return {
+      ...settings,
+      ...(settings.excludedCommands ? { excludedCommands: [...settings.excludedCommands] } : {}),
+      ...(settings.ignoreViolations
+        ? {
+            ignoreViolations: {
+              ...(settings.ignoreViolations.file
+                ? { file: [...settings.ignoreViolations.file] }
+                : {}),
+              ...(settings.ignoreViolations.network
+                ? { network: [...settings.ignoreViolations.network] }
+                : {}),
+            },
+          }
+        : {}),
+      ...(settings.network
+        ? {
+            network: {
+              ...settings.network,
+              ...(settings.network.allowUnixSockets
+                ? { allowUnixSockets: [...settings.network.allowUnixSockets] }
+                : {}),
+            },
+          }
+        : {}),
+    };
   }
 
-  isEnabled(): boolean {
-    return this.settings.enabled === true;
+  isEnabled(settings: SandboxSettings): boolean {
+    return settings.enabled === true;
   }
 
-  shouldAutoAllowBash(): boolean {
+  shouldAutoAllowBash(settings: SandboxSettings): boolean {
     return (
-      this.isEnabled() &&
-      this.settings.autoAllowBashIfSandboxed === true &&
-      getSandboxExecutor().canUseSandbox()
+      this.isEnabled(settings) &&
+      settings.autoAllowBashIfSandboxed === true &&
+      getSandboxExecutor().canUseSandbox(settings)
     );
   }
 
-  isCommandExcluded(command: string): boolean {
-    if (!this.settings.excludedCommands || this.settings.excludedCommands.length === 0) {
+  isCommandExcluded(command: string, settings: SandboxSettings): boolean {
+    if (!settings.excludedCommands || settings.excludedCommands.length === 0) {
       return false;
     }
 
     const commandName = this.extractCommandName(command);
-    return this.settings.excludedCommands.some(
+    return settings.excludedCommands.some(
       (excluded) => commandName === excluded || command.startsWith(`${excluded} `),
     );
   }
 
-  allowsUnsandboxedCommands(): boolean {
-    return this.settings.allowUnsandboxedCommands === true;
+  allowsUnsandboxedCommands(settings: SandboxSettings): boolean {
+    return settings.allowUnsandboxedCommands === true;
   }
 
-  checkCommand(ctx: SandboxExecutionContext): SandboxCheckResult {
+  checkCommand(ctx: SandboxExecutionContext, settings: SandboxSettings): SandboxCheckResult {
     const { command, dangerouslyDisableSandbox } = ctx;
 
-    if (!this.isEnabled()) {
+    if (!this.isEnabled(settings)) {
       return { outcome: 'disabled', reason: 'Sandbox is disabled' };
     }
 
-    if (this.isCommandExcluded(command)) {
+    if (this.isCommandExcluded(command, settings)) {
       return { outcome: 'excluded', reason: 'Command is in excluded list' };
     }
 
     if (dangerouslyDisableSandbox) {
-      if (this.allowsUnsandboxedCommands()) {
+      if (this.allowsUnsandboxedCommands(settings)) {
         return {
           outcome: 'requires_permission',
           reason: 'Command requests unsandboxed execution',
@@ -102,7 +136,7 @@ export class SandboxService {
       };
     }
 
-    if (!getSandboxExecutor().canUseSandbox()) {
+    if (!getSandboxExecutor().canUseSandbox(settings)) {
       return {
         outcome: 'unavailable',
         reason: createSandboxUnavailableError().message,
@@ -112,12 +146,12 @@ export class SandboxService {
     return { outcome: 'sandboxed', reason: 'Command will run in sandbox' };
   }
 
-  shouldIgnoreFileViolation(filePath: string): boolean {
-    if (!this.settings.ignoreViolations?.file) {
+  shouldIgnoreFileViolation(filePath: string, settings: SandboxSettings): boolean {
+    if (!settings.ignoreViolations?.file) {
       return false;
     }
 
-    return this.settings.ignoreViolations.file.some((pattern) => {
+    return settings.ignoreViolations.file.some((pattern) => {
       if (pattern.includes('*')) {
         const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
         return regex.test(filePath);
@@ -126,12 +160,12 @@ export class SandboxService {
     });
   }
 
-  shouldIgnoreNetworkViolation(target: string): boolean {
-    if (!this.settings.ignoreViolations?.network) {
+  shouldIgnoreNetworkViolation(target: string, settings: SandboxSettings): boolean {
+    if (!settings.ignoreViolations?.network) {
       return false;
     }
 
-    return this.settings.ignoreViolations.network.some((pattern) => {
+    return settings.ignoreViolations.network.some((pattern) => {
       if (pattern.includes('*')) {
         const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
         return regex.test(target);
@@ -140,16 +174,16 @@ export class SandboxService {
     });
   }
 
-  getNetworkSettings() {
-    return this.settings.network || {};
+  getNetworkSettings(settings: SandboxSettings) {
+    return settings.network || {};
   }
 
-  allowsLocalBinding(): boolean {
-    return this.settings.network?.allowLocalBinding === true;
+  allowsLocalBinding(settings: SandboxSettings): boolean {
+    return settings.network?.allowLocalBinding === true;
   }
 
-  isUnixSocketAllowed(socketPath: string): boolean {
-    const network = this.settings.network;
+  isUnixSocketAllowed(socketPath: string, settings: SandboxSettings): boolean {
+    const network = settings.network;
     if (!network) {
       return false;
     }
@@ -171,18 +205,18 @@ export class SandboxService {
     return parts[0] || '';
   }
 
-  wrapCommandForSandbox(command: string, workDir: string): string {
-    if (!this.isEnabled()) {
-      return command;
-    }
-
-    if (this.isCommandExcluded(command)) {
-      return command;
-    }
-
+  /**
+   * The executor decides whether the command is wrapped, so an excluded or
+   * disabled policy is expressed as `enabled: false` rather than as a shortcut
+   * here. The result is the same command, and one code path owns the decision.
+   */
+  wrapCommandForSandbox(command: string, workDir: string, settings: SandboxSettings): string {
     const executor = getSandboxExecutor();
-    const options = executor.buildExecutionOptions(workDir, this.settings.network);
-    return executor.wrapCommand(command, options);
+    const effective = this.isCommandExcluded(command, settings)
+      ? { ...settings, enabled: false }
+      : settings;
+    const options = executor.buildExecutionOptions(workDir, effective.network);
+    return executor.wrapCommand(command, options, effective);
   }
 
   getCapabilities() {

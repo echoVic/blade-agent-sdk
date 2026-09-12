@@ -37,6 +37,14 @@ import type { LoopSkillState } from './state/TurnState.js';
 
 export class RuntimePatchManager {
   private runtimeSkillState?: LoopSkillState;
+  /**
+   * The session-scoped policy, kept separately from the effective one. A turn patch
+   * overrides it for the duration of the turn and must not erase it on cleanup.
+   */
+  private sessionToolPolicy?: {
+    allow?: string[];
+    deny?: string[];
+  };
   private runtimeToolPolicy?: {
     allow?: string[];
     deny?: string[];
@@ -134,12 +142,17 @@ export class RuntimePatchManager {
     });
 
     if (patch.toolPolicy) {
+      if (patch.scope === 'session') {
+        this.sessionToolPolicy = { allow: patch.toolPolicy.allow, deny: patch.toolPolicy.deny };
+      }
       this.runtimeToolPolicy = {
         allow: patch.toolPolicy.allow,
         deny: patch.toolPolicy.deny,
         scope: patch.scope,
       };
     } else if (patch.skill) {
+      // A skill patch replaces the effective policy but leaves the session baseline
+      // intact, so cleanup returns to what the session declared.
       this.runtimeToolPolicy = undefined;
     }
 
@@ -369,7 +382,11 @@ ${summary}`,
 
   clearTurnScopedRuntimeState(): void {
     if (this.runtimeToolPolicy?.scope === 'turn') {
-      this.runtimeToolPolicy = undefined;
+      // Restore the session baseline instead of clearing: an empty effective policy
+      // would report no restriction while the patch history still claims one.
+      this.runtimeToolPolicy = this.sessionToolPolicy
+        ? { ...this.sessionToolPolicy, scope: 'session' }
+        : undefined;
     }
     if (this.runtimeSkillState?.scope === 'turn') {
       this.runtimeSkillState = undefined;

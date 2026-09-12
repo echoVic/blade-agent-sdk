@@ -247,8 +247,11 @@ export class SessionRuntime {
     if (this.hostProfile === NODE_SESSION_HOST) {
       BackgroundShellManager.getInstance().openSession(this.sessionId);
       if (this.options.sandbox) {
-        getSandboxExecutor(this.rootLogger);
-        getSandboxService().configure(this.options.sandbox);
+        getSandboxExecutor(this.rootLogger).setLogger(this.rootLogger);
+        // Validate the policy against platform capabilities here, then carry it in
+        // this Session's context. Storing it in the service would share it with
+        // every other Session in the process.
+        getSandboxService().assertUsable(this.options.sandbox);
       }
     }
 

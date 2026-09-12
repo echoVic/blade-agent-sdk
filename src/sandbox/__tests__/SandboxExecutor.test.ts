@@ -33,24 +33,22 @@ describe('SandboxExecutor', () => {
     });
   });
 
-  describe('configure', () => {
-    it('should store settings', () => {
-      const executor = getSandboxExecutor();
-      executor.configure({ enabled: true });
-      expect(executor.isEnabled()).toBe(true);
-    });
-  });
-
   describe('isEnabled', () => {
-    it('should return false by default', () => {
+    it('reads the policy it is given, not process state', () => {
       const executor = getSandboxExecutor();
-      expect(executor.isEnabled()).toBe(false);
+      expect(executor.isEnabled({})).toBe(false);
+      expect(executor.isEnabled({ enabled: true })).toBe(true);
+      // Nothing is remembered between calls: one process serves many Sessions.
+      expect(executor.isEnabled({})).toBe(false);
     });
 
-    it('should return true when enabled', () => {
+    it('keeps two policies independent inside one process', () => {
       const executor = getSandboxExecutor();
-      executor.configure({ enabled: true });
-      expect(executor.isEnabled()).toBe(true);
+      const sessionA = { enabled: true, allowUnsandboxedCommands: false };
+      const sessionB = { enabled: true, allowUnsandboxedCommands: true };
+      expect(executor.isEnabled(sessionA)).toBe(true);
+      expect(executor.isEnabled(sessionB)).toBe(true);
+      expect(executor.isEnabled(sessionA)).toBe(true);
     });
   });
 
@@ -80,23 +78,28 @@ describe('SandboxExecutor', () => {
   });
 
   describe('canUseSandbox', () => {
-    it('should return false when not enabled', () => {
+    it('should return false when the policy is disabled', () => {
       const executor = getSandboxExecutor();
-      expect(executor.canUseSandbox()).toBe(false);
+      expect(executor.canUseSandbox({ enabled: false })).toBe(false);
+    });
+
+    it('needs both an enabled policy and platform support', () => {
+      const executor = getSandboxExecutor();
+      // Platform capability is the shared fact; the policy is the caller's.
+      expect(executor.canUseSandbox({ enabled: true }))
+        .toBe(executor.getCapabilities().available);
     });
   });
 
   describe('wrapCommand', () => {
-    it('should return original command when sandbox cannot be used', () => {
+    it('should return original command when the policy is disabled', () => {
       const executor = getSandboxExecutor();
-      executor.configure({ enabled: false });
-      const result = executor.wrapCommand('ls -la', { workDir: '/home/test' });
+      const result = executor.wrapCommand('ls -la', { workDir: '/home/test' }, { enabled: false });
       expect(result).toBe('ls -la');
     });
 
     it('should fail closed when sandbox is enabled but unavailable', () => {
       const executor = getSandboxExecutor();
-      executor.configure({ enabled: true });
       vi.spyOn(executor, 'getCapabilities').mockReturnValue({
         available: false,
         type: 'none',
@@ -107,9 +110,9 @@ describe('SandboxExecutor', () => {
         },
       });
 
-      expect(() => executor.wrapCommand('echo unsafe', { workDir: '/home/test' })).toThrow(
-        'Sandbox is enabled, but no supported sandbox executor is available',
-      );
+      expect(() =>
+        executor.wrapCommand('echo unsafe', { workDir: '/home/test' }, { enabled: true }),
+      ).toThrow('Sandbox is enabled, but no supported sandbox executor is available');
     });
   });
 

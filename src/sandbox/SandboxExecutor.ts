@@ -31,7 +31,6 @@ export class SandboxExecutor {
   private static instance: SandboxExecutor | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.TOOL);
   private capabilities: SandboxCapabilities | null = null;
-  private settings: SandboxSettings = {};
 
   private constructor() {}
 
@@ -51,10 +50,6 @@ export class SandboxExecutor {
 
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.TOOL);
-  }
-
-  configure(settings: SandboxSettings): void {
-    this.settings = { ...settings };
   }
 
   getCapabilities(): SandboxCapabilities {
@@ -147,16 +142,24 @@ export class SandboxExecutor {
     };
   }
 
-  isEnabled(): boolean {
-    return this.settings.enabled === true;
+  isEnabled(settings: SandboxSettings): boolean {
+    return settings.enabled === true;
   }
 
-  canUseSandbox(): boolean {
-    return this.isEnabled() && this.getCapabilities().available;
+  canUseSandbox(settings: SandboxSettings): boolean {
+    return this.isEnabled(settings) && this.getCapabilities().available;
   }
 
-  wrapCommand(command: string, options: SandboxExecutionOptions): string {
-    if (!this.isEnabled()) {
+  /**
+   * Sandbox policy is a parameter, never executor state: one process serves many
+   * Sessions, and a policy stored here would be shared between them.
+   */
+  wrapCommand(
+    command: string,
+    options: SandboxExecutionOptions,
+    settings: SandboxSettings,
+  ): string {
+    if (!this.isEnabled(settings)) {
       return command;
     }
 
