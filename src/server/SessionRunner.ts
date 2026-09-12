@@ -23,6 +23,12 @@ export interface SessionRunnerContext {
   ): Promise<RuntimeSessionRoute>;
 }
 
+/**
+ * The requested route outcome. finalize runs only after its fenced settlement
+ * or handoff succeeds, and is skipped if that transition fails. Runners must
+ * finish resource cleanup before returning from run; finalize is for publishing
+ * the confirmed outcome and must not be used for required cleanup.
+ */
 export type SessionRunResult =
   | {
       readonly status: 'idle';

@@ -542,12 +542,9 @@ export class AgentWorker {
   }
 
   private async finishSession(active: ActiveSession, result: SessionRunResult): Promise<void> {
-    let transitionError: unknown;
-    try {
-      if (result.status === 'suspended') {
-        await this.handoffActiveSession(active, result.metadata);
-        return;
-      }
+    if (result.status === 'suspended') {
+      await this.handoffActiveSession(active, result.metadata);
+    } else {
       const target = result.status;
       await active.transitionMutex.runExclusive(async () => {
         active.route = await this.options.store.settleSession(
@@ -567,22 +564,8 @@ export class AgentWorker {
           this.sessionsFailed += 1;
         }
       });
-    } catch (error) {
-      transitionError = error;
-      throw error;
-    } finally {
-      if (result.finalize) {
-        await result.finalize().catch((finalizeError) => {
-          if (transitionError !== undefined) {
-            throw new AggregateError(
-              [transitionError, finalizeError],
-              `Session ${active.route.sessionId} transition and finalization failed`,
-            );
-          }
-          throw finalizeError;
-        });
-      }
     }
+    await result.finalize?.();
   }
 
   private async handoffActiveSession(active: ActiveSession, metadata?: JsonObject): Promise<void> {

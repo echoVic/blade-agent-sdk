@@ -292,6 +292,100 @@ describe('AgentWorker', () => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 
+  it('finalizes a suspended Session after its handoff succeeds', async () => {
+    const sessionClaim = claim();
+    const store = createStore(sessionClaim);
+    const handoff = Promise.withResolvers<RuntimeSessionRoute>();
+    vi.mocked(store.handoffSession).mockReturnValue(handoff.promise);
+    const finalize = vi.fn(async () => undefined);
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run(context) {
+          await context.transition('running');
+          return { status: 'suspended', finalize };
+        },
+      },
+      heartbeatIntervalMs: 50,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
+
+    try {
+      await worker.start();
+      await vi.waitFor(() => {
+        expect(store.handoffSession).toHaveBeenCalledWith(
+          'tenant-1', sessionClaim.lease, undefined,
+        );
+      });
+      expect(finalize).not.toHaveBeenCalled();
+      expect(worker.getSnapshot().metrics.sessionsSuspended).toBe(0);
+      handoff.resolve(route('suspended'));
+      await vi.waitFor(() => {
+        expect(finalize).toHaveBeenCalledOnce();
+        expect(worker.getSnapshot().metrics.sessionsSuspended).toBe(1);
+      });
+    } finally {
+      handoff.resolve(route('suspended'));
+      await worker.shutdown();
+    }
+  });
+
+  it.each(['idle', 'suspended'] as const)(
+    'does not finalize a %s outcome when its fenced transition is rejected',
+    async (status) => {
+      const store = createStore(claim());
+      const rejection = new WorkerRuntimeError(
+        'SESSION_STATE_CONFLICT',
+        'The Session lease was replaced',
+      );
+      const finish = status === 'suspended' ? store.handoffSession : store.settleSession;
+      vi.mocked(finish).mockRejectedValue(rejection);
+      const finalize = vi.fn(async () => undefined);
+      const onError = vi.fn();
+      const worker = new AgentWorker({
+        store,
+        workerId,
+        capacity: 1,
+        sessionRunner: {
+          async run(context) {
+            await context.transition('running');
+            // A stale Worker also cannot publish a failure over its successor.
+            vi.mocked(store.transitionSession).mockRejectedValue(rejection);
+            return { status, finalize };
+          },
+        },
+        onError,
+        heartbeatIntervalMs: 50,
+        workerTtlMs: 500,
+        sessionLeaseTtlMs: 500,
+        pollIntervalMs: 10,
+        recoveryIntervalMs: 100,
+      });
+
+      try {
+        await worker.start();
+        await vi.waitFor(() => {
+          expect(onError).toHaveBeenCalled();
+          expect(worker.getSnapshot().metrics.activeSessions).toBe(0);
+        });
+        expect(finish).toHaveBeenCalledOnce();
+        expect(finalize).not.toHaveBeenCalled();
+        expect(worker.getSnapshot().metrics).toMatchObject({
+          sessionsIdle: 0,
+          sessionsSuspended: 0,
+          sessionsFailed: 0,
+        });
+      } finally {
+        await worker.shutdown();
+      }
+    },
+  );
+
   it('serializes lease renewal with route transitions', async () => {
     const sessionClaim = claim();
     const store = createStore(sessionClaim);

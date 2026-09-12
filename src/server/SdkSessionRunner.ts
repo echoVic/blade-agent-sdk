@@ -96,14 +96,16 @@ export class SdkSessionRunner implements SessionRunner {
     }
     try {
       await context.transition('running', route.metadata);
+      let activeRequestId = session.getDurableProjection()?.activeRequest?.requestId;
       let terminal: Extract<SessionStreamEvent, { type: 'result' }> | undefined;
       for await (const event of session.stream()) {
+        activeRequestId = requestIdOf(event) ?? activeRequestId;
         await this.options.publish?.(
           route.tenantId,
           route.sessionId,
           'session.stream',
           event,
-          requestIdOf(event),
+          activeRequestId,
         );
         if (event.type === 'result') {
           terminal = event;
@@ -111,6 +113,9 @@ export class SdkSessionRunner implements SessionRunner {
       }
       const detached = await beginHandoff();
       const metadata = handoffMetadata(route.metadata, detached);
+      if (context.signal.aborted) {
+        return { status: 'suspended', metadata };
+      }
       if (!terminal || terminal.subtype === 'error') {
         return {
           status: 'failed',
