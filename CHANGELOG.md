@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.3] - 2026-09-12
+
+### Fixes
+
+- Abandon sealed commands that never reported a result instead of answering in_progress forever, confirm cancellation only after the execution environment is stopped, and publish SessionRunner terminal results after the route settles.
+
 ## [7.1.2] - 2026-09-12
 
 ### Fixes
