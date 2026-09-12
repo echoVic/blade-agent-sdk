@@ -15,8 +15,8 @@ pnpm example:production
 Browser AgentClient
 → AgentServer
 → PostgreSQL route queue
-→ AgentWorker
-→ DockerExecutionHost
+→ AgentWorker + SDK Session
+→ Docker repository tools
 → PostgreSQL event log
 → SSE
 ```
@@ -29,7 +29,24 @@ pnpm verify:production-example
 ```
 
 输出中的 `firstResultMs` 从基础设施编排开始计时；smoke 只有在五分钟内收到
-Docker worker 生成的精确结果后才成功。
+真实仓库测试通过的结果后才成功。它会读取文件、批准修改，在写入检查点保存后
+强制终止 Worker，再重连 SSE，确认新 Worker 以更高的 fencing token 完成任务。
+同一验收还覆盖等待审批时的 Worker 重启、第二轮对话、拒绝写入、取消，以及取消后的新任务。
+
+页面可以输入：**修复 greeting，让它输出 Hello, Blade!，然后运行测试。**
+Agent 会先读文件，展示待修改内容，等待 **Approve once** 或 **Deny**，再执行
+写入和测试。页面会显示工具进度、测试输出和最终回答。
+不设置 API key 时，确定性的模型适配器驱动真实 SDK 工具调用；设置
+`OPENAI_API_KEY` 和可选的 `OPENAI_MODEL` 后使用模型。`--smoke` 始终使用确定性适配器。
+
+示例使用临时 Git 小仓库，允许读取两个文件、修改一个源文件，并执行固定测试命令。
+接入其他仓库时，可扩展 `RepositoryTools.mjs` 的路径和工具约束。模型运行在 Worker，
+文件操作和测试运行在禁用网络的 Docker 容器中。Worker 意外退出后，启动器会自动拉起新进程。启动器运行期间，聊天记录、审批、
+取消意图和工作区检查点能跨 Worker 重启保存；退出启动器会删除临时数据库和检查点。
+
+自动恢复只处理结果可确认的步骤：文件替换校验预期内容，保存检查点后才返回成功；
+若测试执行中断且结果未知，则停止并要求核验。示例使用单个 API 进程，不提供 API
+故障切换，也不保证任意工具恰好执行一次。
 
 同一 smoke 还会验证无需鉴权的 `/v1/runtime/readyz`，以及使用本地 operator
 令牌访问的、按租户隔离的 `/v1/runtime/metrics`。只有 Worker ready 且队列指标

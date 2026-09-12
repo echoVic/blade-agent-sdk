@@ -1,22 +1,19 @@
-import { execFile } from 'node:child_process';
+import { execFile, fork } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { AgentClient } from '@blade-ai/agent-sdk/browser';
-import { WorkerId } from '@blade-ai/agent-sdk/core';
 import {
   AgentRuntimeOperations,
   AgentServer,
-  AgentWorker,
 } from '@blade-ai/agent-sdk/server';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { DockerExecutionHost } from '@blade-ai/agent-sdk/node';
-import { DockerPromptRunner } from './DockerPromptRunner.mjs';
+import { RepositoryState } from './RepositoryState.mjs';
+import { runProductionSmoke } from './smoke.mjs';
 import { QueuedSessionExecutor } from './QueuedSessionExecutor.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -29,11 +26,14 @@ const tablePrefix = 'runtime';
 const tenantId = 'production-demo';
 const smoke = process.argv.includes('--smoke');
 const launchedAt = performance.now();
-const FIRST_RESULT_BUDGET_MS = 5 * 60 * 1_000;
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'blade-production-stack-'));
 const generated = join(temporaryRoot, 'web');
 let store;
 let worker;
+let workerConfig;
+let repositoryState;
+const checkpoints = new Map();
+const ownedContainers = new Set();
 let agent;
 let operations;
 let httpServer;
@@ -105,110 +105,67 @@ function closeServer(server) {
   });
 }
 
-async function runSmoke(baseUrl) {
-  const client = new AgentClient({
-    baseUrl: `${baseUrl}/v1/agent`,
-    client: {
-      name: 'blade-production-stack-smoke',
-      version: '1.0.0',
-    },
-    headers: {
-      authorization: 'Bearer local-demo',
-    },
-  });
-  const session = await client.createSession({
-    source: 'production-stack-smoke',
-  });
-  const eventController = new AbortController();
-  const deadline = setTimeout(
-    () => eventController.abort(new Error('Five-minute first-result budget exceeded')),
-    Math.max(1, FIRST_RESULT_BUDGET_MS - (performance.now() - launchedAt)),
-  );
-  let resolveResult;
-  let rejectResult;
-  let resultSettled = false;
-  const resultReceived = new Promise((resolve, reject) => {
-    resolveResult = resolve;
-    rejectResult = reject;
-  });
-  const events = (async () => {
-    let output = '';
-    try {
-      for await (const event of session.events({
-        signal: eventController.signal,
-      })) {
-        if (event.type === 'session.stream' && event.data.type === 'content') {
-          output += event.data.delta;
-        }
-        if (event.type === 'session.stream' && event.data.type === 'result') {
-          resultSettled = true;
-          resolveResult({
-            output,
-            result: event.data,
-          });
-        }
-        if (event.type === 'session.closed') {
-          if (!resultSettled) {
-            rejectResult(new Error('Session closed before producing a result'));
-          }
-          return;
-        }
+async function startWorker() {
+  const child = fork(join(root, 'worker.mjs'), [], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  child.stdout.pipe(process.stderr);
+  child.stderr.pipe(process.stderr);
+  const proxy = { child, snapshot: null, health: { live: false, ready: false, status: 'not_ready' },
+    getSnapshot() { return this.snapshot; }, getHealth() { return this.health; } };
+  worker = proxy;
+  let started = false;
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Worker startup timed out')), 30_000);
+    child.once('error', reject);
+    child.on('message', (message) => {
+      if (message.snapshot) proxy.snapshot = message.snapshot;
+      if (message.health) proxy.health = message.health;
+      if (message.type === 'ready') { started = true; clearTimeout(timer); resolve(); }
+      if (message.type === 'checkpoint') {
+        checkpoints.set(message.sessionId, message);
+        if (message.executionId) ownedContainers.add(`blade-execution-${message.executionId}`);
       }
-      throw new Error('Session event stream ended before session.closed');
-    } catch (error) {
-      if (!resultSettled) {
-        rejectResult(error);
+      if (message.type === 'error') process.stderr.write(`Worker: ${message.message}\n`);
+    });
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      proxy.health = { ...proxy.health, live: false, ready: false, status: 'not_ready', workerStatus: 'stopped' };
+      reject(new Error(`Worker exited during startup: ${code ?? signal}`));
+      if (started && !child.expectedExit && !cleanupStarted) {
+        process.stderr.write('Worker stopped unexpectedly; starting a successor.\n');
+        void startWorker().catch((error) => process.stderr.write(`Worker restart failed: ${error.message}\n`));
       }
-      throw error;
-    }
-  })();
-  try {
-    await session.send('single-command production path');
-    const completed = await resultReceived;
-    const firstResultMs = Math.round((performance.now() - launchedAt) * 100) / 100;
-    const expected = 'Docker worker received: single-command production path';
-    if (
-      completed.output !== expected
-      || completed.result.subtype !== 'success'
-    ) {
-      throw new Error(`Unexpected production stack result: ${JSON.stringify(completed)}`);
-    }
-    if (firstResultMs > FIRST_RESULT_BUDGET_MS) {
-      throw new Error(`First result exceeded ${FIRST_RESULT_BUDGET_MS}ms`);
-    }
-    await waitUntil(
-      async () =>
-        (await store.getSessionRoute(tenantId, session.sessionId))?.state === 'idle',
-    );
-    const headers = { authorization: 'Bearer local-demo' };
-    const [readyResponse, metricsResponse] = await Promise.all([
-      fetch(`${baseUrl}/v1/runtime/readyz`),
-      fetch(`${baseUrl}/v1/runtime/metrics`, { headers }),
-    ]);
-    if (!readyResponse.ok || !metricsResponse.ok) {
-      throw new Error(
-        `Runtime operations failed: ready=${readyResponse.status}, metrics=${metricsResponse.status}`,
-      );
-    }
-    const health = await readyResponse.json();
-    const metrics = await metricsResponse.json();
-    await session.close();
-    await events;
-    return {
-      sessionId: session.sessionId,
-      firstResultMs,
-      output: completed.output,
-      operations: {
-        health,
-        queue: metrics.queue,
-      },
-      worker: worker.getSnapshot(),
-    };
-  } finally {
-    clearTimeout(deadline);
-    eventController.abort();
-    await events.catch(() => undefined);
+    });
+  });
+  child.send({ type: 'start', config: { ...workerConfig, workerId: `production-worker-${child.pid}` } });
+  await ready;
+}
+
+async function stopWorker(signal = 'SIGTERM') {
+  const child = worker?.child;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  child.expectedExit = true;
+  const exited = new Promise((resolve) => child.once('exit', resolve));
+  child.kill(signal);
+  const force = setTimeout(() => child.kill('SIGKILL'), 10_000);
+  try { await exited; } finally { clearTimeout(force); }
+}
+
+async function restartWorker(checkpoint) {
+  await stopWorker('SIGKILL');
+  if (checkpoint.executionId) {
+    const name = `blade-execution-${checkpoint.executionId}`;
+    await execFileAsync('docker', ['rm', '-f', '-v', name]);
+    ownedContainers.delete(name);
   }
+  await startWorker();
+}
+
+async function waitForCheckpoint(sessionId, signal) {
+  await waitUntil(async () => {
+    signal.throwIfAborted();
+    return checkpoints.has(sessionId);
+  }, 120_000);
+  return checkpoints.get(sessionId);
 }
 
 async function cleanup() {
@@ -220,7 +177,11 @@ async function cleanup() {
     await closeServer(httpServer).catch(() => undefined);
   }
   await agent?.close().catch(() => undefined);
-  await worker?.shutdown().catch(() => undefined);
+  await stopWorker().catch(() => undefined);
+  for (const name of ownedContainers) {
+    await execFileAsync('docker', ['rm', '-f', '-v', name]).catch(() => undefined);
+  }
+  await repositoryState?.close().catch(() => undefined);
   await store?.close().catch(() => undefined);
   if (composeStarted) {
     await dockerCompose('down', '--volumes', '--remove-orphans')
@@ -244,8 +205,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 try {
-  await dockerCompose('up', '--detach', '--wait');
   composeStarted = true;
+  await dockerCompose('up', '--detach', '--wait');
   const { stdout: portOutput } = await dockerCompose('port', 'postgres', '5432');
   const databasePort = portOutput.trim().split(':').at(-1);
   if (!databasePort) {
@@ -277,7 +238,9 @@ try {
       type,
       data,
     });
-  const executor = new QueuedSessionExecutor(store, publish);
+  repositoryState = new RepositoryState({ connectionString, schema });
+  await repositoryState.initialize();
+  const executor = new QueuedSessionExecutor(store, publish, { state: repositoryState, smoke });
   agent = new AgentServer({
     runtimeStore: store,
     sessionExecutor: executor,
@@ -292,24 +255,20 @@ try {
       };
     },
   });
-  const host = new DockerExecutionHost({
-    rootDirectory: join(temporaryRoot, 'executions'),
-    checkpointDirectory: join(temporaryRoot, 'checkpoints'),
-  });
-  worker = new AgentWorker({
-    store,
-    workerId: WorkerId(`production-worker-${process.pid}`),
-    tenantId,
-    capacity: 2,
-    executionHost: host,
-    sessionRunner: new DockerPromptRunner({ image, publish }),
-    workerTtlMs: 5_000,
-    sessionLeaseTtlMs: 5_000,
-    heartbeatIntervalMs: 500,
-    pollIntervalMs: 25,
-    recoveryIntervalMs: 250,
-  });
-  await worker.start();
+  // Each session gets a git-worktree of this disposable fixture; the SDK checkout is untouched.
+  const repositoryPath = join(temporaryRoot, 'repository');
+  await cp(join(root, 'fixture'), repositoryPath, { recursive: true });
+  await execFileAsync('git', ['init', '--quiet', repositoryPath]);
+  await execFileAsync('git', ['-C', repositoryPath, 'add', '.']);
+  await execFileAsync('git', ['-C', repositoryPath, '-c', 'user.name=Blade Example',
+    '-c', 'user.email=example@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
+    'commit', '--quiet', '-m', 'Repository task fixture']);
+  const { stdout: revisionOutput } = await execFileAsync('git', ['-C', repositoryPath, 'rev-parse', 'HEAD']);
+  workerConfig = { connectionString, schema, tablePrefix, tenantId, image,
+    rootDirectory: join(temporaryRoot, 'executions'), checkpointDirectory: join(temporaryRoot, 'checkpoints'),
+    repositoryPath, revision: revisionOutput.trim(), smoke };
+  // AgentWorker + DockerExecutionHost run in a separate process for real crash recovery.
+  await startWorker();
   operations = new AgentRuntimeOperations({
     store,
     workers: () => [worker],
@@ -399,15 +358,19 @@ try {
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   if (smoke) {
-    const result = await runSmoke(baseUrl);
+    const result = await runProductionSmoke({ baseUrl, store, state: repositoryState, tenantId,
+      launchedAt, waitForCheckpoint, restartWorker, getWorker: () => worker.getSnapshot() });
     process.stdout.write(`${JSON.stringify({
       baseUrl,
       ...result,
     }, null, 2)}\n`);
   } else {
-    process.stdout.write(`Production Agent stack: ${baseUrl}\n`);
+    process.stdout.write(`Production repository Agent: ${baseUrl}\n`);
     await new Promise(() => undefined);
   }
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+  process.exitCode = 1;
 } finally {
   await cleanup();
 }

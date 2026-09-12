@@ -1,218 +1,213 @@
 import { randomUUID } from 'node:crypto';
-import {
-  InputId,
-  RequestId,
-  SessionId,
-} from '@blade-ai/agent-sdk/core';
+import { createSession, resumeSession } from '@blade-ai/agent-sdk/session';
 import { AgentProtocolError } from '@blade-ai/agent-sdk/protocol';
+import { createRepositorySessionOptions } from './RepositoryDemoProvider.mjs';
 
 export const QUEUED_REQUEST_METADATA_KEY = 'bladeQueuedRequest';
 
-function sessionId() {
-  return SessionId(`session-${randomUUID()}`);
-}
-
-function requireQueuedRequest(metadata) {
+export function requireQueuedRequest(metadata) {
   const value = metadata[QUEUED_REQUEST_METADATA_KEY];
-  if (
-    typeof value !== 'object'
-    || value === null
-    || Array.isArray(value)
-    || typeof value.input !== 'string'
-    || typeof value.inputId !== 'string'
-    || typeof value.requestId !== 'string'
-  ) {
+  if (!value || typeof value.input !== 'string' || typeof value.inputId !== 'string'
+      || typeof value.requestId !== 'string') {
     throw new Error('Session route does not contain a valid queued request');
   }
   return value;
 }
 
+/** One local API process accepts input; independent Workers execute it. */
 export class QueuedSessionExecutor {
-  constructor(store, publish) {
+  constructor(store, publish, { state, smoke = false }) {
     this.store = store;
     this.publish = publish;
+    this.state = state;
+    this.smoke = smoke;
+    this.operations = new Map();
+    this.closed = false;
+  }
+
+  options(tenantId) {
+    const persistence = this.store.forTenant(tenantId);
+    return {
+      ...createRepositorySessionOptions({ smoke: this.smoke, tools: [] }),
+      sessionRepository: persistence,
+      sessionEventStore: persistence,
+      durableEventStore: persistence,
+      executionLease: {
+        ownerId: `production-api-${process.pid}`,
+        leaseId: `accept-${randomUUID()}`,
+        ttlMs: 15_000,
+      },
+    };
   }
 
   async create(context, data) {
-    const now = new Date().toISOString();
-    const record = {
-      tenantId: context.principal.tenantId,
-      createdBy: context.principal.subject,
-      sessionId: sessionId(),
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-      ...(data.metadata ? { metadata: data.metadata } : {}),
-    };
-    await this.store.putSession(record);
-    return record;
+    const session = await createSession(this.options(context.principal.tenantId));
+    try {
+      const now = new Date().toISOString();
+      const record = {
+        tenantId: context.principal.tenantId,
+        createdBy: context.principal.subject,
+        sessionId: session.sessionId,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+        ...(data.metadata ? { metadata: data.metadata } : {}),
+      };
+      await this.store.putSession(record);
+      return record;
+    } finally {
+      await session.suspendForHandoff();
+    }
   }
 
   async read(context, data) {
-    const session = await this.requireSession(
-      context.principal.tenantId,
-      data.sessionId,
-    );
-    const route = await this.store.getSessionRoute(
-      context.principal.tenantId,
-      data.sessionId,
-    );
-    const queuedRequest = route ? this.readQueuedRequest(route.metadata) : null;
+    const session = await this.requireSession(context.principal.tenantId, data.sessionId);
+    const snapshot = await this.store.forTenant(session.tenantId).loadState(data.sessionId);
     return {
       session,
-      messages: [],
-      pendingInputs:
-        route?.state === 'queued' && queuedRequest
-          ? [{
-              inputId: InputId(queuedRequest.inputId),
-              content: queuedRequest.input,
-              priority: 'later',
-              targetRequestId: RequestId(queuedRequest.requestId),
-              acceptedAt: queuedRequest.acceptedAt,
-            }]
-          : [],
+      messages: snapshot?.messages ?? [],
+      pendingInputs: snapshot?.pendingInputs ?? [],
     };
   }
 
   async resume(context, data) {
-    return this.requireSession(context.principal.tenantId, data.sessionId);
-  }
-
-  async fork(context, data) {
-    const source = await this.requireSession(
-      context.principal.tenantId,
-      data.sessionId,
-    );
-    return this.create(context, {
-      metadata: {
-        ...(source.metadata ?? {}),
-        ...(data.metadata ?? {}),
-        forkedFrom: source.sessionId,
-      },
-    });
-  }
-
-  async submit(context, data) {
-    const tenantId = context.principal.tenantId;
-    const session = await this.requireSession(tenantId, data.sessionId);
+    const session = await this.requireSession(context.principal.tenantId, data.sessionId);
     if (session.status === 'closed') {
       throw new AgentProtocolError('SESSION_CONFLICT', 'Session is closed', 409);
     }
-    if (typeof data.input !== 'string') {
-      throw new AgentProtocolError(
-        'INVALID_COMMAND',
-        'The production stack example accepts text input only',
-        400,
-      );
-    }
-    const current = await this.store.getSessionRoute(tenantId, data.sessionId);
-    if (current && current.state !== 'idle') {
-      throw new AgentProtocolError(
-        'SESSION_CONFLICT',
-        `Session ${data.sessionId} is ${current.state}`,
-        409,
-        true,
-        250,
-      );
-    }
+    return session;
+  }
 
-    const inputId = InputId(`input-${randomUUID()}`);
-    const requestId = RequestId(`request-${randomUUID()}`);
-    await this.store.enqueueSession(tenantId, data.sessionId, {
-      metadata: {
-        ...(session.metadata ?? {}),
-        [QUEUED_REQUEST_METADATA_KEY]: {
-          version: 1,
-          inputId,
-          requestId,
-          input: data.input,
-          acceptedAt: Date.now(),
+  async fork() {
+    throw new AgentProtocolError('INVALID_COMMAND', 'This repository example does not support workspace forks', 400);
+  }
+
+  submit(context, data) {
+    return this.serialize(data.sessionId, async () => {
+      const tenantId = context.principal.tenantId;
+      const record = await this.requireSession(tenantId, data.sessionId);
+      if (record.status === 'closed') {
+        throw new AgentProtocolError('SESSION_CONFLICT', 'Session is closed', 409);
+      }
+      if (typeof data.input !== 'string' || data.input.length > 16_384) {
+        throw new AgentProtocolError('INVALID_COMMAND', 'Enter a text task of at most 16,384 characters', 400);
+      }
+      const route = await this.store.getSessionRoute(tenantId, data.sessionId);
+      if (route && route.state !== 'idle') {
+        throw new AgentProtocolError('SESSION_CONFLICT', `Session is ${route.state}`, 409);
+      }
+      const session = await resumeSession({ ...this.options(tenantId), sessionId: data.sessionId });
+      let submission;
+      try {
+        submission = await session.send(data.input, {
+          ...(data.maxTurns !== undefined ? { maxTurns: data.maxTurns } : {}),
+          ...(data.expectedRequestId ? { expectedRequestId: data.expectedRequestId } : {}),
+        });
+        await this.state.update(data.sessionId, {
+          submission: { ...submission, input: data.input, commandId: context.commandId },
+        });
+      } finally {
+        await session.suspendForHandoff();
+      }
+      await this.store.enqueueSession(tenantId, data.sessionId, {
+        metadata: {
+          ...(route?.metadata ?? {}),
+          [QUEUED_REQUEST_METADATA_KEY]: {
+            version: 1,
+            ...submission,
+            input: data.input,
+            acceptedAt: Date.now(),
+            crashAfterWrite: this.smoke && record.metadata?.smokeCrashAfterWrite === true,
+          },
         },
-      },
+      });
+      return { sessionId: data.sessionId, ...submission };
     });
-    return {
-      sessionId: data.sessionId,
-      inputId,
-      requestId,
-      status: 'started',
-    };
   }
 
   async abort(context, data) {
-    const route = await this.store.getSessionRoute(
-      context.principal.tenantId,
-      data.sessionId,
-    );
-    if (route && route.state !== 'idle') {
-      throw new AgentProtocolError(
-        'SESSION_CONFLICT',
-        'This example can abort only after the active Docker execution settles',
-        409,
-        true,
-        250,
-      );
-    }
-  }
-
-  async closeSession(context, data) {
     const tenantId = context.principal.tenantId;
-    const record = await this.requireSession(tenantId, data.sessionId);
+    await this.requireSession(tenantId, data.sessionId);
     const route = await this.store.getSessionRoute(tenantId, data.sessionId);
-    if (
-      route
-      && route.state !== 'idle'
-      && route.state !== 'completed'
-      && route.state !== 'failed'
-    ) {
-      throw new AgentProtocolError(
-        'SESSION_CONFLICT',
-        `Session ${data.sessionId} cannot close while ${route.state}`,
-        409,
-        true,
-        250,
-      );
+    if (!route || ['idle', 'completed', 'failed'].includes(route.state)) return;
+    const request = requireQueuedRequest(route.metadata);
+    await this.state.requestCancel(data.sessionId, request.requestId);
+    // Keep the command in progress across transport reconnects. A cached timeout
+    // failure would prevent the same commandId ever observing the eventual ACK.
+    while (!this.closed) {
+      const [cancellation, current] = await Promise.all([
+        this.state.getCancellation(data.sessionId, request.requestId),
+        this.store.getSessionRoute(tenantId, data.sessionId),
+      ]);
+      if (cancellation?.status === 'completed') return;
+      if (['idle', 'completed', 'failed'].includes(current?.state)) {
+        await this.state.markCancelled(data.sessionId, request.requestId);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    const closed = {
-      ...record,
-      status: 'closed',
-      updatedAt: new Date().toISOString(),
-    };
-    await this.store.putSession(closed);
-    await this.publish(tenantId, data.sessionId, 'session.closed', {
-      reason: 'user',
+    throw new AgentProtocolError('SESSION_CONFLICT', 'The API is shutting down; cancellation remains persisted', 409);
+  }
+
+  closeSession(context, data) {
+    return this.serialize(data.sessionId, async () => {
+      const tenantId = context.principal.tenantId;
+      const record = await this.requireSession(tenantId, data.sessionId);
+      if (record.status === 'closed') return record;
+      const route = await this.store.getSessionRoute(tenantId, data.sessionId);
+      if (route && !['idle', 'completed', 'failed'].includes(route.state)) {
+        throw new AgentProtocolError('SESSION_CONFLICT', `Session cannot close while ${route.state}`, 409);
+      }
+      // A failed recovery may need operator reconciliation before Session.close can run.
+      if (route?.state !== 'failed') {
+        const session = await resumeSession({ ...this.options(tenantId), sessionId: data.sessionId });
+        await session.close();
+      }
+      const closed = { ...record, status: 'closed', updatedAt: new Date().toISOString() };
+      await this.store.putSession(closed);
+      await this.publish(tenantId, data.sessionId, 'session.closed', { reason: 'user' });
+      return closed;
     });
-    return closed;
   }
 
-  async resolvePermission() {
-    throw new AgentProtocolError(
-      'PERMISSION_NOT_FOUND',
-      'This example does not request permissions',
-      404,
-    );
+  async resolvePermission(context, data) {
+    await this.requireSession(context.principal.tenantId, data.sessionId);
+    const route = await this.store.getSessionRoute(context.principal.tenantId, data.sessionId);
+    const permission = await this.state.getPermission(data.sessionId, data.permissionRequestId);
+    if (!route || !['running', 'waiting_approval'].includes(route.state)
+        || !permission || permission.status !== 'pending'
+        || permission.requestId !== requireQueuedRequest(route.metadata).requestId
+        || await this.state.isCancelled(data.sessionId, permission.requestId)) {
+      throw new AgentProtocolError('PERMISSION_NOT_FOUND', 'This permission is no longer pending', 404);
+    }
+    if (data.scope && data.scope !== 'once') {
+      throw new AgentProtocolError('INVALID_COMMAND', 'Repository writes require approval for each operation', 400);
+    }
+    await this.state.resolvePermission(data.sessionId, permission.requestId, data.permissionRequestId, {
+      approved: data.approved,
+      scope: 'once',
+      ...(data.reason ? { reason: data.reason } : {}),
+    });
   }
 
-  async shutdown() {}
+  async shutdown() {
+    this.closed = true;
+    await Promise.allSettled(this.operations.values());
+  }
 
   async requireSession(tenantId, id) {
     const record = await this.store.getSession(tenantId, id);
-    if (!record) {
-      throw new AgentProtocolError(
-        'SESSION_NOT_FOUND',
-        `Session ${id} was not found`,
-        404,
-      );
-    }
+    if (!record) throw new AgentProtocolError('SESSION_NOT_FOUND', `Session ${id} was not found`, 404);
     return record;
   }
 
-  readQueuedRequest(metadata) {
-    try {
-      return requireQueuedRequest(metadata);
-    } catch {
-      return null;
-    }
+  serialize(id, operation) {
+    const previous = this.operations.get(id) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(operation);
+    this.operations.set(id, current);
+    void current.finally(() => {
+      if (this.operations.get(id) === current) this.operations.delete(id);
+    }).catch(() => undefined);
+    return current;
   }
 }
-
-export { requireQueuedRequest };

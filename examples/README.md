@@ -16,8 +16,24 @@ AgentClient -> AgentServer -> PostgreSQL -> AgentWorker -> DockerExecutionHost
 ```
 
 The control plane only persists and queues requests. `AgentWorker` claims each
-route, executes the prompt in a network-disabled Docker container, and publishes
-the result through the durable SSE event log. `Ctrl+C` removes the PostgreSQL
+route and runs a real SDK Session. The Agent reads `src/greeting.sh`, requests
+write approval in the browser, edits the isolated repository, and runs its shell
+tests through Docker tools. Results stream through the durable SSE event log.
+Try: **Fix the greeting to say Hello, Blade! and run the tests.**
+
+Without an API key, a deterministic model adapter drives the same real tools.
+Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` for model-driven tasks.
+`--smoke` always uses the deterministic adapter. Model calls stay in the Worker;
+Docker tools have no network access. The fixture allows two read paths, one
+write path, and a fixed test command; extend `RepositoryTools.mjs` for another
+repository.
+
+Each edit is checkpointed before the tool reports success. PostgreSQL keeps
+transcripts, approvals, cancellation intent and runtime events; Worker restarts
+can recover a saved edit and continue the conversation. Interrupted test
+commands with unknown outcomes require reconciliation. This example uses one
+API process and temporary infrastructure; it does not implement API failover or
+exactly-once arbitrary tools. `Ctrl+C` removes the PostgreSQL
 container, execution containers, volumes, and temporary files.
 
 The same process exposes runtime readiness and tenant-scoped queue metrics:
@@ -36,7 +52,10 @@ pnpm verify:production-example
 ```
 
 The smoke command prints `firstResultMs` and fails unless the browser protocol
-receives the exact output produced by the Docker worker within five minutes.
+receives passing test results within five minutes. It exercises approval, a
+real Worker SIGKILL after a saved edit, cursor-based SSE reconnection, a second
+turn using the saved workspace, denial, and cancellation followed by another
+task. Exiting the launcher removes the temporary database and checkpoints.
 
 Generate any Golden Path as an independent project from the published package:
 

@@ -151,10 +151,17 @@ async function copyProductionTemplate(sourceRoot: string, directory: string): Pr
       source: 'production-stack/QueuedSessionExecutor.mjs',
       target: 'src/QueuedSessionExecutor.mjs',
     },
-    {
-      source: 'production-stack/DockerPromptRunner.mjs',
-      target: 'src/DockerPromptRunner.mjs',
-    },
+    ...[
+      'RepositoryState.mjs',
+      'RepositoryTools.mjs',
+      'RepositoryDemoProvider.mjs',
+      'RepositorySessionRunner.mjs',
+      'RepositoryRecovery.mjs',
+      'worker.mjs',
+      'smoke.mjs',
+      'fixture/src/greeting.sh',
+      'fixture/test/greeting.test.sh',
+    ].map((file) => ({ source: `production-stack/${file}`, target: `src/${file}` })),
     {
       source: 'production-stack/compose.yaml',
       target: 'compose.yaml',
@@ -353,14 +360,17 @@ Requires Node.js 22.14 or later and Docker with the Compose plugin.
 ${run} start
 \`\`\`
 
-Open the printed URL and send a prompt. The request traverses:
+Open the printed URL and ask: "Fix the greeting to say Hello, Blade! and run the tests."
+Review the proposed file change and choose **Approve once** or **Deny**.
+The Agent reads and edits a disposable Git repository and runs its shell tests
+inside Docker. The request traverses:
 
 \`\`\`text
 Browser AgentClient
 → AgentServer
 → PostgreSQL route queue
-→ AgentWorker
-→ DockerExecutionHost
+→ AgentWorker + SDK Session
+→ Docker repository tools
 → PostgreSQL event log
 → SSE
 \`\`\`
@@ -370,6 +380,20 @@ Run the non-interactive five-minute acceptance check with:
 \`\`\`bash
 ${run} smoke
 \`\`\`
+
+Without an API key, a deterministic model adapter exercises the same real tool
+loop. Set \`OPENAI_API_KEY\` and optionally \`OPENAI_MODEL\` for model-driven tasks.
+The smoke always uses the deterministic adapter and checks write approval,
+SIGKILL recovery after a saved edit, SSE reconnection, a second turn, denial,
+and cancellation.
+
+This fixture permits reading two files, editing \`src/greeting.sh\`, and running a
+fixed test command. Extend \`RepositoryTools.mjs\` to support your repository.
+Changes live in isolated Docker workspaces; checkpoints, transcripts and
+approvals survive Worker restarts during this run. Stopping the launcher removes
+its temporary PostgreSQL data and checkpoints. This is a single API process
+example, not an API failover or arbitrary tool exactly-once guarantee.
+Unknown interrupted test outcomes require reconciliation before retry.
 
 Runtime probes are available at \`/v1/runtime/healthz\`,
 \`/v1/runtime/readyz\`, and \`/v1/runtime/metrics\`. The metrics endpoint uses

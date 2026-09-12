@@ -11,7 +11,13 @@ const goldenPaths = [
   'examples/postgres-worker-recovery/run.mjs',
   'examples/postgres-worker-recovery/worker.mjs',
   'examples/production-stack/compose.yaml',
-  'examples/production-stack/DockerPromptRunner.mjs',
+  'examples/production-stack/RepositorySessionRunner.mjs',
+  'examples/production-stack/RepositoryRecovery.mjs',
+  'examples/production-stack/RepositoryState.mjs',
+  'examples/production-stack/RepositoryTools.mjs',
+  'examples/production-stack/RepositoryDemoProvider.mjs',
+  'examples/production-stack/worker.mjs',
+  'examples/production-stack/smoke.mjs',
   'examples/production-stack/QueuedSessionExecutor.mjs',
   'examples/production-stack/run.mjs',
 ] as const;
@@ -68,6 +74,8 @@ describe('golden paths', () => {
       resolve('examples/production-stack/run.mjs'),
       'utf8',
     );
+    const productionWorker = readFileSync(resolve('examples/production-stack/worker.mjs'), 'utf8');
+    const productionSmoke = readFileSync(resolve('examples/production-stack/smoke.mjs'), 'utf8');
     for (const boundary of [
       'AgentClient',
       'AgentServer',
@@ -75,7 +83,7 @@ describe('golden paths', () => {
       'AgentWorker',
       'DockerExecutionHost',
     ]) {
-      expect(production).toContain(boundary);
+      expect(production + productionWorker + productionSmoke).toContain(boundary);
     }
   });
 

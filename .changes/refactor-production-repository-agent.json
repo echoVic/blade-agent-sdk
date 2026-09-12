@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Run an approved repository editing and testing workflow through durable SDK Sessions, Docker Workers, and browser recovery in the production preset.",
+  "zh-CN": "production 预设接入真实仓库编辑、审批和测试，支持持久化 SDK Session、Docker Worker 及浏览器恢复。"
+}

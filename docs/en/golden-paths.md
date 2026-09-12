@@ -17,8 +17,8 @@ exit. Each request traverses the complete path:
 Browser AgentClient
 → AgentServer
 → PostgreSQL route queue
-→ AgentWorker
-→ DockerExecutionHost
+→ AgentWorker + SDK Session
+→ Docker repository tools
 → PostgreSQL event log
 → SSE
 ```
@@ -31,8 +31,33 @@ pnpm verify:production-example
 ```
 
 The reported `firstResultMs` starts before infrastructure orchestration. The
-smoke command succeeds only after receiving the exact Docker worker output
-within five minutes.
+smoke command succeeds only after the repository tests pass within five minutes.
+It reads the fixture, approves an edit, kills the Worker after the edit is
+checkpointed, reconnects SSE, and verifies that a new Worker completes the task
+with a higher fencing token. It also checks a Worker crash while approval is pending, a second turn, denied
+writes, and cancellation followed by a new task.
+
+Try: **Fix the greeting to say Hello, Blade! and run the tests.** The browser
+shows the proposed edit before you choose **Approve once** or **Deny**. Tool
+progress, test output, and the final answer appear in the conversation.
+Without an API key, a deterministic adapter drives real SDK tool calls. Set
+`OPENAI_API_KEY` and optionally `OPENAI_MODEL` to use a model; `--smoke` always
+uses the deterministic adapter.
+
+The example works on a disposable Git fixture, with two readable files, one
+writable source file, and a fixed test command. `RepositoryTools.mjs` is the
+extension point for another repository. The model runs in the Worker; file and
+test operations run inside a network-disabled Docker container. Transcripts,
+approvals, cancellation intent, and workspace checkpoints survive Worker
+restarts while the launcher stays running. The launcher automatically starts a
+successor when its Worker exits unexpectedly. Stopping the launcher deletes its
+temporary database and checkpoints.
+
+Recovery is limited to outcomes the example can verify. File replacement uses
+expected-content checks and checkpoints before reporting success. An interrupted
+test command with an unknown outcome stops for reconciliation. The example uses
+one API process and does not guarantee API failover or exactly-once arbitrary
+tool execution.
 
 The same smoke verifies unauthenticated `/v1/runtime/readyz` and
 tenant-scoped `/v1/runtime/metrics` using the local operator token. Acceptance
