@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.6] - 2026-09-12
+
+### Documentation
+
+- Correct runtime documentation against the code: effect error semantics, session fork scopes, four-part approval isolation, required network policy, cursor and finalization details, worker defaults, and the Chinese and English differences.
+
 ## [7.0.5] - 2026-09-12
 
 ### Documentation
