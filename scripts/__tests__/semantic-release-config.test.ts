@@ -23,7 +23,20 @@ describe('semantic-release configuration', () => {
     };
 
     expect(config.plugins).toEqual([
-      ['@semantic-release/commit-analyzer', { parserOpts }],
+      [
+        '@semantic-release/commit-analyzer',
+        {
+          parserOpts,
+          releaseRules: [
+            { breaking: true, release: 'major' },
+            { revert: true, release: 'patch' },
+            { type: 'docs', release: 'patch' },
+            { type: 'refactor', release: 'patch' },
+            { type: 'performance', release: 'patch' },
+            { type: 'build', release: 'patch' },
+          ],
+        },
+      ],
       ['@semantic-release/release-notes-generator', { parserOpts }],
       './scripts/semantic-release-bilingual-changelog.cjs',
       '@semantic-release/npm',
@@ -41,6 +54,39 @@ describe('semantic-release configuration', () => {
       ],
       '@semantic-release/github',
     ]);
+  });
+});
+
+describe('release level rules', () => {
+  it('maps every releasable commit type to its documented level', async () => {
+    const { analyzeCommits } = await import('@semantic-release/commit-analyzer');
+    const config = require('../../release.config.cjs');
+    const analyzerEntry = config.plugins.find(
+      (plugin: unknown) => Array.isArray(plugin) && plugin[0] === '@semantic-release/commit-analyzer',
+    ) as [string, Record<string, unknown>];
+    const analyzerOptions = analyzerEntry[1];
+    const analyze = async (message: string) =>
+      analyzeCommits(
+        analyzerOptions,
+        {
+          commits: [{ hash: 'abc', message }],
+          cwd: process.cwd(),
+          logger: { log() {} },
+        } as never,
+      );
+
+    await expect(analyze('fix(server): repair a route')).resolves.toBe('patch');
+    await expect(analyze('refactor(release): move version ownership')).resolves.toBe('patch');
+    await expect(analyze('docs: correct a shipped claim')).resolves.toBe('patch');
+    await expect(analyze('perf(runtime): bound a queue')).resolves.toBe('patch');
+    await expect(analyze('feat: add a capability')).resolves.toBe('minor');
+    await expect(analyze('feat!: replace a contract')).resolves.toBe('major');
+    await expect(
+      analyze('refactor: replace a contract\n\nBREAKING CHANGE: the field is gone'),
+    ).resolves.toBe('major');
+    // Commit types the project does not release on stay silent.
+    await expect(analyze('chore: tidy the repo')).resolves.toBeNull();
+    await expect(analyze('test: add coverage')).resolves.toBeNull();
   });
 });
 

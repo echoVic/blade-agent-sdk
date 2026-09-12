@@ -54,12 +54,19 @@ const RELEASE_TYPE_RANK = {
   minor: 2,
   major: 3,
 };
-const COMMIT_ANALYZER_OPTIONS = {
-  parserOpts: {
-    breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!: (.*)$/,
-    breakingHeaderCorrespondence: ['type', 'scope', 'subject'],
-  },
-};
+/**
+ * Reuse the commit-analyzer options from `release.config.cjs` so the pull-request
+ * fragment gate judges "releasable" exactly the way the release does. Keeping a
+ * second copy here let the two drift: a `refactor` commit once counted as
+ * releasable for the release but not for the gate.
+ */
+function commitAnalyzerOptions() {
+  const config = require(path.join(__dirname, '..', 'release.config.cjs'));
+  const entry = (config.plugins ?? []).find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/commit-analyzer',
+  );
+  return entry?.[1] ?? {};
+}
 
 function getFragmentPaths(cwd) {
   const directory = path.join(cwd, FRAGMENT_DIRECTORY);
@@ -221,7 +228,7 @@ async function hasReleasableCommit(cwd, base) {
     message,
   }));
   const releaseType = await analyzeCommits(
-    COMMIT_ANALYZER_OPTIONS,
+    commitAnalyzerOptions(),
     {
       commits,
       cwd,

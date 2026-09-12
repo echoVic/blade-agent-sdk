@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const require = createRequire(import.meta.url);
 const plugin = require('../semantic-release-bilingual-changelog.cjs');
 const {
+  hasReleasableCommit,
   readFragments,
   renderRelease,
   verifyRange,
@@ -289,8 +290,34 @@ describe('pull request fragment requirement', () => {
     }).trim();
 
     writeFileSync(join(directory, 'README.md'), '# Updated test\n');
-    commitAll(directory, 'docs: update guide');
+    commitAll(directory, 'chore: tidy the CI cache');
 
     await expect(verifyRange(directory, base)).resolves.toBeUndefined();
   });
+
+  it.each(['docs: update guide', 'refactor: split a module', 'perf: bound a queue'])(
+    'requires a fragment for %s, which releases a patch',
+    async (message) => {
+      const directory = createTemporaryDirectory();
+      initializeRepository(directory);
+      writeFileSync(join(directory, 'README.md'), '# Test\n');
+      commitAll(directory, 'chore: initialize');
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: directory,
+        encoding: 'utf8',
+      }).trim();
+
+      writeFileSync(join(directory, 'README.md'), `# ${message}\n`);
+      commitAll(directory, message);
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: directory,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(await hasReleasableCommit(directory, base)).toBe(true);
+      await expect(verifyRange(directory, base)).rejects.toThrow(
+        'require a bilingual .changes/*.json fragment',
+      );
+    },
+  );
 });
