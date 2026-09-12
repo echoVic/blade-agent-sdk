@@ -72,7 +72,7 @@ const restored = await host.restore({
 | PID | `PidsLimit` |
 | 运行时长 | host deadline、容器内自终止 deadline 和 `--rm` |
 | 输出 | stdout/stderr 合计字节上限 |
-| 网络 | 默认 `none`；proxy 模式只接受 `ExecutionEgressController` 创建的隔离网络 |
+| 网络 | `network` 是必填项；`mode: 'none'` 时容器不接入任何网络，proxy 模式只接受 `ExecutionEgressController` 创建的隔离网络 |
 
 容器同时使用只读 rootfs、`no-new-privileges`、numeric non-root user 和
 `cap-drop=ALL`，不重新添加 capability。provision 完成前会反向读取 Docker

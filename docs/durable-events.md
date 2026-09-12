@@ -86,14 +86,14 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `model_request_completed` | Request、Turn、`modelAttemptId` | 完整模型 `response` |
 | `model_request_failed` | Request、Turn、`modelAttemptId` | `error` |
 | `model_request_aborted` | Request、Turn、`modelAttemptId` | `reason` |
-| `tool_scheduled` | Request、Turn、`modelAttemptId`、`toolAttemptId` | `toolCallId`、`toolName`、`modelInput`、`input`、`sideEffect`、`interruptBehavior` |
+| `tool_scheduled` | Request、Turn、`toolAttemptId`（`modelAttemptId` 与 `modelInput` 在 schema v2 被禁止、v3+ 起必需） | `toolCallId`、`toolName`、`input`、`sideEffect`、`interruptBehavior` |
 | `tool_started` | Request、Turn、`toolAttemptId` | 工具标识、最终 `input`、解析后的 `sideEffect` |
 | `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
 | `tool_failed` | Request、Turn、`toolAttemptId` | 工具标识、`error` |
 | `tool_cancelled` | Request、Turn、`toolAttemptId` | 工具标识、`reason` |
 | `tool_outcome_unknown` | Request、Turn、`toolAttemptId` | 工具标识、`reason` |
-| `permission_requested` | Request、Turn、`toolAttemptId` | `permissionRequestId`、工具标识、`input` |
-| `permission_resolved` | Request、Turn、`toolAttemptId` | `permissionRequestId`、`decision` |
+| `permission_requested` | Request、Turn、`toolAttemptId` | `permissionRequestId`、工具标识、`input`、可选 `message` |
+| `permission_resolved` | Request、Turn、`toolAttemptId` | `permissionRequestId`、`decision`、可选 `message` |
 | `input_applied` | `requestId`、可选 `turnId` | `inputId`、`priority` |
 
 `request_accepted.recovery` 始终使用 v2 的
@@ -204,8 +204,8 @@ console.log(journal.getProjection().status); // open
 一个 command 的事件必须在日志中连续；同一 ID 分散在多个区间也按冲突处理。
 依赖当前 projection 生成的 command 应通过 `expectedHeadSequence` 固定其观察
 到的 head，避免同进程或其他 writer 更新状态后仍提交旧决策。Recovery
-Coordinator 对所有恢复 command 强制设置该前置条件；相同 command 已由竞争者
-提交时仍返回 `reconciled`。
+Coordinator 对**首次提交**的恢复 command 强制设置该前置条件；相同 command 已由
+竞争者提交时走幂等 replay，不再校验 head，并仍返回 `reconciled`。
 
 当底层写入报错后，Journal 会重新读取 canonical log：
 
@@ -242,8 +242,8 @@ console.log(page.hasMore);
 ## 可重连事件订阅
 
 `DurableEventSubscription` 将 cursor 分页读取封装为 pull-based
-`AsyncIterableIterator`。订阅打开时固定一个 replay head，先回放该位置之前的
-事件，再发送一次 `caught_up` barrier，之后到达的事件标记为 `live`：
+`AsyncIterableIterator`。订阅打开时固定一个 replay head，先回放**到该位置（含
+head 事件本身）**，再发送一次 `caught_up` barrier，之后到达的事件标记为 `live`：
 
 ```ts
 const subscription = await DurableEventSubscription.open(store, sessionId, {
@@ -271,7 +271,9 @@ const subscription = await session.subscribeDurableEvents({
 });
 ```
 
-cursor 是严格版本化的 JSON 值，包含 `sessionId`、`sequence` 和 `eventId`。
+cursor 是严格版本化的 JSON 值，包含 `version`、`sessionId`、`sequence` 和
+`eventId`，请用 `durableEventCursor()` 生成、用 `parseDurableEventCursor()`
+解析：解析要求恰好这 4 个键，缺少 `version` 会 fail closed。
 重连时会验证 cursor 指向的事件仍是 canonical log 中的同一事件；跨 Session、
 超前、被替换或产生 sequence gap 的 cursor 会 fail closed，而不是跳过数据。
 
@@ -339,7 +341,10 @@ Store 的写入方必须自行遵守同一契约。
 Recovery plan 还返回 `activeModelAttempt`，并分别返回
 `retryableToolAttempts`、`cancelableToolAttempts`、`unknownToolAttempts` 和
 `pendingPermissions`。started 或
-`tool_outcome_unknown` 状态的 `pure` / `idempotent` 工具进入 retryable 集合；
+`tool_outcome_unknown` 状态的 `pure` / `idempotent` 工具进入 retryable 集合，
+前提是它所属的 Model Attempt 已经 `completed`——模型结果尚未确认的工具不进入该集合，
+而是进入 cancelable 集合，其 continuation 标记为
+`discarded_unconfirmed_model_response`；
 `non_idempotent` 工具进入 unknown 集合，必须在外部对账后由
 `tool_completed`、`tool_failed` 或 `tool_cancelled` 解析。在此之前投影器不会
 允许 Turn 结束。
@@ -739,6 +744,7 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DURABLE_EXECUTION_LEASE_LOST` | lease 已过期、释放或被更高 token 替换 |
 | `DURABLE_EXECUTION_LEASE_TIMEOUT` | lease Store 调用超过 deadline |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
+| `DurableSessionRecoveryError` | Recovery Coordinator 状态非法、目标不存在或 rollover 不安全（`DURABLE_RECOVERY_INVALID_STATE`、`DURABLE_RECOVERY_TARGET_NOT_FOUND`、`DURABLE_RECOVERY_UNSAFE_ROLLOVER`） |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
 | `DURABLE_EVENT_INVALID_OPTIONS` | JSONL Store 构造参数无效 |
@@ -747,5 +753,5 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DURABLE_EVENT_IO_TIMEOUT` | durable Store append、read 或 head 查询超过 deadline |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |
 
-完整、已换行但 schema 错误或 sequence 不连续的记录被视为损坏日志；Store
+完整、已换行但 schema 错误、事件 ID 重复或 sequence 不连续的记录被视为损坏日志；Store
 不会跳过后继续执行。

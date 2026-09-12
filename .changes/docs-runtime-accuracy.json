@@ -1,0 +1,5 @@
+{
+  "type": "docs",
+  "en": "Correct runtime documentation against the code: effect error semantics, session fork scopes, four-part approval isolation, required network policy, cursor and finalization details, worker defaults, and the Chinese and English differences.",
+  "zh-CN": "按代码修正运行时文档：effect 错误语义、session fork 所需 scope、四元组审批隔离、必填的 network 策略、cursor 与终结细节、Worker 默认值，以及中英文之间的差异。"
+}

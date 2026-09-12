@@ -49,10 +49,54 @@ await worker.run(shutdownController.signal);
 `SdkSessionRunner` 恢复已经持久化的 Request，并自动注入当前 tenant Store 与
 worker lease。单轮完成后路由进入 `idle` 并释放 lease；后续输入可以重新入队。
 
+它有三条需要显式处理的契约：
+
+- **发布流事件**：`session.stream()` 的事件不会自动进入控制面，必须传入 `publish`
+  回调，否则浏览器看不到任何流式输出或结果：
+
+  ```ts
+  sessionRunner: new SdkSessionRunner({
+    resolveSessionOptions: () => ({ provider, model, allowedTools: [] }),
+    publish: async (tenantId, sessionId, type, data, requestId) => {
+      await store.appendEvent(tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        requestId,
+        occurredAt: new Date().toISOString(),
+        type,
+        data,
+      });
+    },
+  }),
+  ```
+
+- **请求关联**：每条发布的事件都绑定到产生它的 request；当事件自身不带 request id 时，
+  沿用本轮的 active request id，因此同一次请求的输出不会串到相邻请求上。
+- **失去路由即挂起**：worker 被 drain 或取消时 runner 返回 `{ status: 'suspended' }`，
+  由 Worker 走 handoff，而不是把过期结果当作正常结束。
+- **独占 persistence 与 executionLease**：`resolveSessionOptions` 若返回
+  `sessionRepository`、`sessionEventStore`、`durableEventStore` 或 `executionLease`
+  会直接抛 `TypeError`；结束时 runner 会把 `durableHandoff` 合并进 route metadata。
+
 需要隔离 workspace 时使用 `ExecutionHostSessionRunner`。它会在 route metadata
 中持久化 checkpoint 引用，后继 worker 可通过同一个 `ExecutionHost` backend
 恢复。完整可运行示例见
 [`examples/postgres-worker-recovery`](https://github.com/echoVic/blade-agent-sdk/tree/main/examples/postgres-worker-recovery)。
+
+### 默认值与约束
+
+`AgentWorker` 在未传参时使用以下默认值：
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `workerTtlMs` | `15_000` | worker 注册租约 |
+| `sessionLeaseTtlMs` | `30_000` | 单次 Session claim 的租约 |
+| `heartbeatIntervalMs` | `5_000` | 必须小于上面两个 TTL，否则构造器抛 `TypeError` |
+| `pollIntervalMs` | `250` | 空队列时的轮询间隔 |
+| `recoveryIntervalMs` | `5_000` | 过期租约的恢复扫描间隔 |
+
+`EffectDispatcher` 默认 `retryDelayMs` 为 `1_000`、`maxRetryDelayMs` 为 `30_000`、
+`maxAttempts` 为 `3`、`leaseTtlMs` 为 `30_000`、`claimLimit` 为 `10`（超过 100 直接报错）。
 
 ## Worker 生命周期
 
@@ -91,7 +135,10 @@ await store.drainWorker(workerId);
 ```
 
 `draining` worker 不再 claim 新 Session 或 effect，但可继续 heartbeat 并完成
-已领取工作。完成 `suspendForHandoff()` 后，再持久化 handoff：
+已领取工作。如果 drain 与 claim 竞争，worker 可能已领到 Session 但状态不再是
+`running`，此时它会立刻把该 Session handoff 出去，并在 route metadata 上写入
+`handoffReason: 'worker_draining_before_start'`。完成 `suspendForHandoff()` 后，
+再持久化 handoff：
 
 ```ts
 await store.handoffSession(tenantId, lease, {
@@ -232,9 +279,10 @@ await dispatcher.run(shutdownSignal);
 
 `at_most_once` 保证“不重复”，不保证“一定执行”。`uncertain` 不能直接重试；
 业务对账后通过 `reconcileEffect()` 将其明确收敛为 `completed` 或 `failed`。
-handler 已发出请求但无法确认结果时应抛出
-`UncertainRuntimeEffectError`；明确可重试的幂等失败使用
-`RetryableRuntimeEffectError`。
+`at_most_once` 的 handler 已发出请求但无法确认结果时，抛
+`UncertainRuntimeEffectError` 会把该 effect 标为 `uncertain`；`idempotent` 的
+handler 抛这个错误不会被当作可重试，而是直接记为终态 `failed`，此时应改用
+`RetryableRuntimeEffectError` 表达可重试的失败。
 
 长任务应同时续期 worker heartbeat 和 effect lease：
 

@@ -51,11 +51,61 @@ await worker.run(shutdownController.signal);
 tenant Store and worker lease. After a turn settles, the route enters `idle`
 and releases its lease so later input can enqueue it again.
 
+Four contracts matter when you use it:
+
+- **Publish stream events.** Events from `session.stream()` do not reach the
+  control plane on their own, so pass a `publish` callback. Without it the
+  browser receives no streamed output or result:
+
+  ```ts
+  sessionRunner: new SdkSessionRunner({
+    resolveSessionOptions: () => ({ provider, model, allowedTools: [] }),
+    publish: async (tenantId, sessionId, type, data, requestId) => {
+      await store.appendEvent(tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        requestId,
+        occurredAt: new Date().toISOString(),
+        type,
+        data,
+      });
+    },
+  }),
+  ```
+
+- **Request correlation.** Every published event is bound to the request that
+  produced it. When an event carries no request id of its own, the runner reuses
+  the active request id of the turn, so one request's output cannot leak into a
+  neighbouring request.
+- **Losing the route suspends the run.** When the worker is drained or
+  cancelled, the runner returns `{ status: 'suspended' }` and the Worker hands
+  the Session off instead of reporting a stale result as a normal completion.
+- **It owns persistence and the execution lease.** If `resolveSessionOptions`
+  returns `sessionRepository`, `sessionEventStore`, `durableEventStore`, or
+  `executionLease`, the runner throws a `TypeError`. On completion it merges
+  `durableHandoff` into route metadata.
+
 Use `ExecutionHostSessionRunner` when the workload needs an isolated workspace.
 It persists checkpoint references in route metadata so a successor worker can
 restore through the same `ExecutionHost` backend. See the runnable
 [`examples/postgres-worker-recovery`](https://github.com/echoVic/blade-agent-sdk/tree/main/examples/postgres-worker-recovery)
 example.
+
+### Defaults and constraints
+
+`AgentWorker` uses these defaults when an option is omitted:
+
+| Option | Default | Notes |
+|--------|---------|-------|
+| `workerTtlMs` | `15_000` | Worker registration lease |
+| `sessionLeaseTtlMs` | `30_000` | Lease for one Session claim |
+| `heartbeatIntervalMs` | `5_000` | Must be lower than both TTLs or the constructor throws a `TypeError` |
+| `pollIntervalMs` | `250` | Poll interval for an empty queue |
+| `recoveryIntervalMs` | `5_000` | Recovery scan interval for expired leases |
+
+`EffectDispatcher` defaults to `retryDelayMs` `1_000`, `maxRetryDelayMs`
+`30_000`, `maxAttempts` `3`, `leaseTtlMs` `30_000`, and `claimLimit` `10`; a
+`claimLimit` above 100 is rejected.
 
 ## Worker lifecycle
 
@@ -78,7 +128,7 @@ await store.registerWorker({
   workerId,
   capacity: 8,
   ttlMs: 30_000,
-  metadata: { zone: 'us-east-1' },
+  metadata: { zone: 'cn-north-1' },
 });
 
 await store.heartbeatWorker(workerId, 30_000);
@@ -95,8 +145,11 @@ await store.drainWorker(workerId);
 ```
 
 A `draining` worker cannot claim new Sessions or effects. It may keep
-heartbeating while it finishes owned work. After `suspendForHandoff()`
-completes, persist the handoff:
+heartbeating while it finishes owned work. If a drain races a claim, the worker
+can hold a Session whose status is no longer `running`; it then hands that
+Session off immediately and records
+`handoffReason: 'worker_draining_before_start'` in the route metadata. After
+`suspendForHandoff()` completes, persist the handoff:
 
 ```ts
 await store.handoffSession(tenantId, lease, {
@@ -248,9 +301,11 @@ At-most-once delivery prevents duplicates but does not guarantee execution.
 An `uncertain` effect must not be retried directly. After business
 reconciliation, use `reconcileEffect()` to resolve it explicitly to
 `completed` or `failed`.
-When a handler has sent a request but cannot prove its outcome, it should throw
-`UncertainRuntimeEffectError`. Explicitly retryable idempotent failures use
-`RetryableRuntimeEffectError`.
+When an `at_most_once` handler has sent a request but cannot prove its outcome,
+throwing `UncertainRuntimeEffectError` marks the effect `uncertain`. Throwing it
+from an `idempotent` handler is not treated as retryable: the effect is recorded
+as a terminal `failed`, so express retryable idempotent failures with
+`RetryableRuntimeEffectError` instead.
 
 Long-running work must renew both worker heartbeat and the effect lease:
 

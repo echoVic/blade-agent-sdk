@@ -91,14 +91,14 @@ are rejected before append.
 | `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
 | `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
 | `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
-| `tool_scheduled` | Request, Turn, `modelAttemptId`, `toolAttemptId` | `toolCallId`, `toolName`, `modelInput`, `input`, `sideEffect`, `interruptBehavior` |
+| `tool_scheduled` | Request, Turn, `toolAttemptId` (`modelAttemptId` and `modelInput` are forbidden in schema v2 and required from v3) | `toolCallId`, `toolName`, `input`, `sideEffect`, `interruptBehavior` |
 | `tool_started` | Request, Turn, `toolAttemptId` | Tool identity, final `input`, resolved `sideEffect` |
 | `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
 | `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
 | `tool_cancelled` | Request, Turn, `toolAttemptId` | Tool identity, `reason` |
 | `tool_outcome_unknown` | Request, Turn, `toolAttemptId` | Tool identity, `reason` |
-| `permission_requested` | Request, Turn, `toolAttemptId` | `permissionRequestId`, tool identity, `input` |
-| `permission_resolved` | Request, Turn, `toolAttemptId` | `permissionRequestId`, `decision` |
+| `permission_requested` | Request, Turn, `toolAttemptId` | `permissionRequestId`, tool identity, `input`, optional `message` |
+| `permission_resolved` | Request, Turn, `toolAttemptId` | `permissionRequestId`, `decision`, optional `message` |
 | `input_applied` | `requestId`, optional `turnId` | `inputId`, `priority` |
 
 `request_accepted.recovery` always retains the v2
@@ -211,8 +211,8 @@ journal; the same ID appearing in separate ranges is also a conflict.
 Commands derived from the current projection should pin the observed head with
 `expectedHeadSequence` so stale decisions cannot commit after either local or
 external writers advance the state. The Recovery Coordinator enforces this for
-all recovery commands; the same command committed by a competitor still
-returns `reconciled`.
+first-time recovery commands; a replay of a command a competitor already
+committed skips the head check and still returns `reconciled`.
 
 After a lower-level write error, the Journal reloads the canonical log:
 
@@ -280,10 +280,12 @@ const subscription = await session.subscribeDurableEvents({
 });
 ```
 
-A cursor is a strictly versioned JSON value containing `sessionId`, `sequence`,
-and `eventId`. Reconnection verifies that the cursor still names the same event
-in the canonical log. A foreign, ahead-of-head, replaced, or sequence-gapped
-cursor fails closed instead of skipping data.
+A cursor is a strictly versioned JSON value containing `version`, `sessionId`,
+`sequence`, and `eventId`; create it with `durableEventCursor()` and read it with
+`parseDurableEventCursor()`, which requires exactly those four keys and fails
+closed when `version` is missing. Reconnection verifies that the cursor still
+names the same event in the canonical log. A foreign, ahead-of-head, replaced, or
+sequence-gapped cursor fails closed instead of skipping data.
 
 The subscription reads another page only when the consumer asks for another
 item, bounding memory and read pressure by `pageSize`. It ends after
@@ -356,7 +358,10 @@ Store directly must preserve the same contract themselves.
 The plan also exposes `activeModelAttempt` and separates
 `retryableToolAttempts`, `cancelableToolAttempts`, `unknownToolAttempts`, and
 `pendingPermissions`. Started or
-`tool_outcome_unknown` tools declared `pure` or `idempotent` are retryable.
+`tool_outcome_unknown` tools declared `pure` or `idempotent` are retryable once
+their Model Attempt is `completed`; a tool whose model response is still
+unconfirmed is not retryable, but cancelable, and its continuation is marked
+`discarded_unconfirmed_model_response`.
 `non_idempotent` tools remain unknown and require external reconciliation with
 `tool_completed`, `tool_failed`, or `tool_cancelled`; the projector does not
 allow the Turn to end before then.
@@ -810,6 +815,7 @@ journal.
 | `DURABLE_EXECUTION_LEASE_LOST` | The lease expired, was released, or was replaced by a higher token. |
 | `DURABLE_EXECUTION_LEASE_TIMEOUT` | A lease Store call exceeded its deadline. |
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
+| `DurableSessionRecoveryError` | Recovery Coordinator state is invalid, a target is missing, or a rollover is unsafe (`DURABLE_RECOVERY_INVALID_STATE`, `DURABLE_RECOVERY_TARGET_NOT_FOUND`, `DURABLE_RECOVERY_UNSAFE_ROLLOVER`). |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
 | `DURABLE_EVENT_INVALID_OPTIONS` | JSONL Store construction options are invalid. |

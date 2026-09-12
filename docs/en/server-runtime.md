@@ -175,7 +175,8 @@ const client = new AgentClient({
   }),
 });
 
-const session = await client.createSession({ source: 'console' });
+// createSession accepts only metadata, persisted together with session.create
+const session = await client.createSession({ origin: 'console' });
 await session.send('Review today\'s deployment risks');
 
 for await (const event of session.events()) {
@@ -193,9 +194,9 @@ for await (const event of session.events()) {
 ```
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
-network failures, HTTP 429, or HTTP 503. Each command method also accepts an
-explicit `commandId`. The SSE client reconnects from the last sequence and
-stops after `session.closed`.
+network failures, HTTP 408, HTTP 429, and every 5xx response. Each command
+method also accepts an explicit `commandId`. The SSE client reconnects from the
+last sequence and stops after `session.closed`.
 
 ## Protocol v1
 
@@ -227,7 +228,7 @@ versions are rejected.
 | Scope | Command |
 |-------|---------|
 | `session:create` | `session.create` |
-| `session:read` | `session.read`, `session.list`, `session.fork`, and SSE |
+| `session:read` | `session.read`, `session.list`, and SSE (`session.fork` requires both `session:read` and `session:create`) |
 | `session:write` | `session.resume`, `session.close`, `input.submit`, and `request.abort` |
 | `permission:resolve` | `permission.resolve` |
 | `session:admin` | Satisfies every scope |
@@ -290,9 +291,9 @@ A full queue returns `OVERLOADED`; a rate violation returns `RATE_LIMITED` with
 `retryAfterMs`. Aborted requests are removed from the wait queue.
 
 Tool confirmation is published as `permission.requested` and completed with a
-`permission.resolve` command. Pending approvals are isolated by tenant,
-Session, and `permissionRequestId`, and are cancelled on timeout, request
-abort, Session close, or server close.
+`permission.resolve` command. Pending approvals are isolated by tenant, Session,
+approver `subject`, and `permissionRequestId`, and are cancelled on timeout,
+request abort, Session close, or server close.
 
 `OpenTelemetryAgentServerTelemetry` records:
 

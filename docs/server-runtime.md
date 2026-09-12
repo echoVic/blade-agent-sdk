@@ -169,7 +169,8 @@ const client = new AgentClient({
   }),
 });
 
-const session = await client.createSession({ source: 'console' });
+// createSession 的唯一参数是 metadata，会随 session.create 一起持久化
+const session = await client.createSession({ origin: 'console' });
 await session.send('检查今天的部署风险');
 
 for await (const event of session.events()) {
@@ -186,8 +187,8 @@ for await (const event of session.events()) {
 }
 ```
 
-`AgentClient` 为命令生成稳定的 `commandId`，网络错误、HTTP 429 和 HTTP 503
-重试同一个 command。也可通过每个方法的 `commandId` 选项显式控制幂等键。
+`AgentClient` 为命令生成稳定的 `commandId`，网络错误、HTTP 408、HTTP 429 和所有
+5xx 响应会重试同一个 command。也可通过每个方法的 `commandId` 选项显式控制幂等键。
 SSE 断开后从最后一个 sequence 重连；收到 `session.closed` 后停止。
 
 ## Protocol v1
@@ -219,7 +220,7 @@ Events：
 | Scope | Command |
 |-------|---------|
 | `session:create` | `session.create` |
-| `session:read` | `session.read`、`session.list`、`session.fork`、SSE |
+| `session:read` | `session.read`、`session.list`、SSE（`session.fork` 需要 `session:read` + `session:create`） |
 | `session:write` | `session.resume`、`session.close`、`input.submit`、`request.abort` |
 | `permission:resolve` | `permission.resolve` |
 | `session:admin` | 满足全部 scope |
@@ -275,8 +276,8 @@ SDK 附带的 `InMemoryAgentServerStore` 只用于单进程和测试。它不提
 `retryAfterMs`。等待中的 command 在请求 abort 后会从队列移除。
 
 工具确认通过 `permission.requested` event 发布，`permission.resolve` command
-完成。审批以 tenant、Session 和 `permissionRequestId` 三元组隔离，并在超时、
-请求 abort、Session close 或 server close 时取消。
+完成。审批以 tenant、Session、审批者 `subject` 和 `permissionRequestId` 四元组
+隔离，并在超时、请求 abort、Session close 或 server close 时取消。
 
 `OpenTelemetryAgentServerTelemetry` 记录：
 

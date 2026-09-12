@@ -75,7 +75,7 @@ Every `ExecutionResourceLimits` field is mandatory:
 | PIDs | `PidsLimit` |
 | Runtime | host deadline, in-container self-termination, and `--rm` |
 | Output | combined stdout/stderr byte limit |
-| Network | `none` by default; proxy mode accepts only an isolated network from `ExecutionEgressController` |
+| Network | `network` is required; with `mode: 'none'` the container joins no network, and proxy mode accepts only an isolated network from `ExecutionEgressController` |
 
 The container also uses a read-only root filesystem,
 `no-new-privileges`, a numeric non-root user, and `cap-drop=ALL`. The
@@ -166,7 +166,7 @@ complete provision validation again before loading the workspace through a
 bounded tar stream into a new container. A checkpoint contains no process,
 memory, network connection, or credential state.
 
-The default checkpoint directory is local and supports single-host recovery
-and handoff. Cross-worker scheduling needs a shared `ExecutionHost`
-implementation or controlled checkpoint upload to object storage. A local
-checkpoint ID is not a distributed source of truth.
+Checkpoints live in the local `checkpointDirectory` by default and support
+single-host recovery and handoff. Cross-worker scheduling needs a shared
+`ExecutionHost` implementation or controlled checkpoint upload to object
+storage. A local checkpoint ID is not a distributed source of truth.
