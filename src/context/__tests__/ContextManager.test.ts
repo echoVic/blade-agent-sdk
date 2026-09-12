@@ -86,17 +86,16 @@ describe('ContextManager', () => {
     await contextManager.initialize();
     const loaded = await contextManager.loadSession(sessionId);
     const state = await sessionStore.loadState(sessionId);
-    const formatted = await contextManager.getFormattedContext();
 
     expect(loaded).toBe(true);
     expect(state).not.toBeNull();
     assertDefined(state);
-    expect(formatted.context.layers.conversation.messages.map((message) => message.id)).toEqual(
-      state.messageIds,
-    );
-    expect(formatted.context.layers.conversation.summary).toBe('Compacted summary');
-    expect(formatted.context.layers.tool.recentCalls).toHaveLength(1);
-    expect(formatted.context.layers.tool.recentCalls[0]?.status).toBe('success');
+    // The persisted projection is the observable fact; the retired formatting path
+    // used to expose it a second time.
+    expect(state.messageIds).toHaveLength(4);
+    expect(state.summary).toBe('Compacted summary');
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.toolCalls[0]?.status).toBe('success');
   });
 
   it('keeps pending tool-use message IDs scoped to their session', async () => {

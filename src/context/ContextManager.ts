@@ -1,5 +1,4 @@
 import { nanoid } from 'nanoid';
-import * as crypto from 'node:crypto';
 import { ConfigError } from '../errors/ConfigError.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelContent, ModelMessage } from '../model/message.js';
@@ -14,7 +13,7 @@ import {
   type SessionRepositorySubagentInfo,
   type SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
-import type { SessionState, SessionSummary } from '../session/SessionStore.js';
+import type { SessionState } from '../session/SessionStore.js';
 import type { PersistedPendingInput } from '../session/transcript.js';
 import {
   type InputId,
@@ -25,16 +24,13 @@ import {
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
-import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
 import type {
-  CompressedContext,
   ContextData,
   ContextManagerOptions,
   ContextMessage,
   ContextToolCall,
-  ContextFilter as FilterOptions,
   SystemContext,
   WorkspaceContext,
 } from './types.js';
@@ -62,7 +58,6 @@ export class ContextManager {
   private readonly eventStore: SessionEventStore;
   private readonly cache: CacheStore;
   private readonly compressor: ContextCompressor;
-  private readonly filter: ContextFilter;
   private readonly options: ContextManagerOptions;
   private readonly projectPath?: string;
 
@@ -123,7 +118,6 @@ export class ContextManager {
 
     // 初始化处理器
     this.compressor = new ContextCompressor();
-    this.filter = new ContextFilter(this.options.defaultFilter);
   }
 
   /**
@@ -312,10 +306,6 @@ export class ContextManager {
 
     this.memory.addToolCall(toolCall);
 
-    // 缓存成功的工具调用结果
-    if (toolCall.status === 'success' && toolCall.output) {
-      this.cache.cacheToolResult(toolCall.name, toolCall.input, toolCall.output);
-    }
   }
 
   /** 保存消息到 repository，不依赖 currentSessionId。 */
@@ -438,94 +428,6 @@ export class ContextManager {
   }
 
   /**
-   * 获取格式化的上下文用于 Prompt 构建
-   */
-  async getFormattedContext(filterOptions?: FilterOptions): Promise<{
-    context: ContextData;
-    compressed?: CompressedContext;
-    tokenCount: number;
-  }> {
-    const contextData = this.memory.getContext();
-    if (!contextData) {
-      throw new Error('没有可用的上下文数据');
-    }
-
-    // 应用过滤器
-    const filteredContext = this.filter.filter(contextData, filterOptions);
-
-    // 检查是否需要压缩
-    const shouldCompress = this.shouldCompress(filteredContext);
-    let compressed: CompressedContext | undefined;
-
-    if (shouldCompress) {
-      // 尝试从缓存获取压缩结果
-      const contextHash = this.hashContext(filteredContext);
-      compressed = this.cache.getCompressedContext(contextHash) ?? undefined;
-
-      if (!compressed) {
-        compressed = await this.compressor.compress(filteredContext);
-        this.cache.cacheCompressedContext(contextHash, compressed);
-      }
-    }
-
-    return {
-      context: filteredContext,
-      compressed,
-      tokenCount: compressed ? compressed.tokenCount : filteredContext.metadata.totalTokens,
-    };
-  }
-
-  /**
-   * 搜索历史会话
-   */
-  async searchSessions(
-    query: string,
-    limit = 10,
-  ): Promise<
-    Array<{
-      sessionId: SessionId;
-      summary: string;
-      lastActivity: number;
-      relevanceScore: number;
-    }>
-  > {
-    const sessions = await this.repository.listSessions();
-    const results: Array<{
-      sessionId: SessionId;
-      summary: string;
-      lastActivity: number;
-      relevanceScore: number;
-    }> = [];
-
-    for (const sessionId of sessions) {
-      const sid = SessionId(sessionId);
-      const summary = await this.repository.getSessionSummary(sid);
-      if (summary) {
-        const relevanceScore = this.calculateSummaryRelevance(query, summary);
-        if (relevanceScore > 0) {
-          results.push({
-            sessionId: sid,
-            summary: summary.summaryText
-              ? `${summary.messageCount}条消息，摘要：${summary.summaryText}`
-              : `${summary.messageCount}条消息`,
-            lastActivity: summary.lastActivity,
-            relevanceScore,
-          });
-        }
-      }
-    }
-
-    return results.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, limit);
-  }
-
-  /**
-   * 获取缓存的工具调用结果
-   */
-  getCachedToolResult(toolName: string, input: JsonValue): JsonValue | null {
-    return this.cache.getToolResult(toolName, input);
-  }
-
-  /**
    * 获取管理器统计信息
    */
   async getStats(): Promise<{
@@ -619,45 +521,6 @@ export class ContextManager {
 
   private async saveCurrentSession(): Promise<void> {
     return Promise.resolve();
-  }
-
-  private hashContext(contextData: ContextData): string {
-    const content = JSON.stringify({
-      messageCount: contextData.layers.conversation.messages.length,
-      lastMessage:
-        contextData.layers.conversation.messages[
-          contextData.layers.conversation.messages.length - 1
-        ]?.id,
-      toolCallCount: contextData.layers.tool.recentCalls.length,
-    });
-
-    return crypto.createHash('md5').update(content).digest('hex');
-  }
-
-  private calculateRelevance(query: string, topics: string[]): number {
-    const queryLower = query.toLowerCase();
-    let score = 0;
-
-    for (const topic of topics) {
-      if (queryLower.includes(topic.toLowerCase()) || topic.toLowerCase().includes(queryLower)) {
-        score += 1;
-      }
-    }
-
-    return score;
-  }
-
-  private calculateSummaryRelevance(query: string, summary: SessionSummary): number {
-    const topicsScore = this.calculateRelevance(query, summary.topics);
-    if (topicsScore > 0) {
-      return topicsScore;
-    }
-
-    if (!summary.summaryText) {
-      return 0;
-    }
-
-    return this.calculateRelevance(query, [summary.summaryText]);
   }
 
   private async buildContextDataFromState(state: SessionState): Promise<ContextData> {
