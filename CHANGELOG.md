@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.10] - 2026-09-12
+
+### Refactoring
+
+- Retire the ContextManager paths that no production caller used: a second formatting and compression-cache route, session search, and a tool-result cache that was written on every tool call but never read.
+
 ## [7.1.9] - 2026-09-12
 
 ### Fixes
