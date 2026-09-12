@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Scope the sandbox policy to each Session instead of one process-wide singleton, restore the session tool policy when a turn ends, and copy mutable runtime data so later configuration changes cannot alter an existing snapshot.",
-  "zh-CN": "沙箱策略改为按 Session 作用域，不再使用进程级单例；turn 结束时恢复 session 的工具策略；复制可变运行时数据，避免后续配置修改影响已创建的快照。"
-}

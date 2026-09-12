@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.4] - 2026-09-12
+
+### Fixes
+
+- Scope the sandbox policy to each Session instead of one process-wide singleton, restore the session tool policy when a turn ends, and copy mutable runtime data so later configuration changes cannot alter an existing snapshot.
+
 ## [7.1.3] - 2026-09-12
 
 ### Fixes
