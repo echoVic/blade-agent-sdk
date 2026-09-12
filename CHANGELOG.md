@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.6] - 2026-09-12
+
+### Fixes
+
+- Fail a model stream that reports an error instead of returning partial text as a completed response, and disable the AI SDK's built-in retry so the SDK is the single retry owner.
+
 ## [7.1.5] - 2026-09-12
 
 ### Fixes
