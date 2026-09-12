@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.5] - 2026-09-12
+
+### Documentation
+
+- Describe the production preset as the SDK Session and Docker repository workflow it now runs, document the SessionRunResult finalization contract, and state how changelog fragment types decide the release version.
+
 ## [7.0.4] - 2026-09-12
 
 ### Fixes
