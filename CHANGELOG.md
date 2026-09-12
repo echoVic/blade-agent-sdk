@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.1.9] - 2026-09-12
+
+### Fixes
+
+- Stop inline Skill commands when the Session is cancelled, and bound SSE frame buffering so a peer that never sends a delimiter cannot grow it without limit.
+
 ## [7.1.8] - 2026-09-12
 
 ### Fixes

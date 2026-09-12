@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Stop inline Skill commands when the Session is cancelled, and bound SSE frame buffering so a peer that never sends a delimiter cannot grow it without limit.",
-  "zh-CN": "Session 取消时终止 Skill 内联命令；SSE 帧缓冲加上限，不再因对端始终不发分隔符而无限增长。"
-}
