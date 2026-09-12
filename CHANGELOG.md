@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.0.4] - 2026-09-12
+
+### Fixes
+
+- Modernize the development toolchain: upgrade Vitest to 5, VitePress to its 2.0 preview on Vite 8, and pin patched transitive resolutions so the full dependency audit reports no known vulnerabilities.
+
 ## [7.0.3] - 2026-09-12
 
 ### Fixes

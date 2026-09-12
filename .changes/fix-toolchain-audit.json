@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Modernize the development toolchain: upgrade Vitest to 5, VitePress to its 2.0 preview on Vite 8, and pin patched transitive resolutions so the full dependency audit reports no known vulnerabilities.",
-  "zh-CN": "升级开发工具链：Vitest 升至 5、VitePress 升至基于 Vite 8 的 2.0 预览版，并锁定已修复的传递依赖版本，使完整依赖审计不再报告任何已知漏洞。"
-}
