@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Build every tool through one internal assembler so createTool and toolFromDefinition cannot drift apart, keeping their differences to parameter declaration and validation.",
+  "zh-CN": "两种工具入口改用同一个内部装配器构建，createTool 与 toolFromDefinition 不再各自维护一份装配逻辑，差异仅保留在参数声明与校验上。"
+}

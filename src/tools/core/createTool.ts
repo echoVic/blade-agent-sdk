@@ -2,7 +2,16 @@ import type { z } from 'zod';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { ExecutionContext } from '../types/execution.js';
 import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
-import type { Tool, ToolConfig, ToolDefinition, ToolInvocation } from '../types/tool.js';
+import type { ToolBehavior } from '../types/kind.js';
+import type {
+  Tool,
+  ToolConfig,
+  ToolDefinition,
+  ToolDescription,
+  ToolExposureMode,
+  ToolInvocation,
+} from '../types/tool.js';
+import type { ToolExecution, ToolValidationError } from '../types/result.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
@@ -28,6 +37,125 @@ function resolveDefinitionParameters(parameters: ToolDefinition['parameters']): 
     return { jsonSchema: zodToFunctionSchema(parameters), raw: parameters };
   }
   return { jsonSchema: parameters as import('json-schema').JSONSchema7, raw: parameters };
+}
+
+
+/**
+ * Assembles the `Tool` object from already-normalised inputs.
+ *
+ * Both authoring entry points describe the same runtime contract and differ only
+ * in how parameters are declared and validated, so the shape is built in one place:
+ * `createTool` supplies schema-backed validation, `toolFromDefinition` supplies a
+ * definition. Keeping a single assembler is what stops the two from drifting into
+ * subtly different tools.
+ */
+interface ToolAssembly<TParams> {
+  readonly name: string;
+  readonly aliases?: string[];
+  readonly displayName: string;
+  readonly kind: ToolKind;
+  readonly staticBehavior: ToolBehavior;
+  readonly behaviorHint: ToolBehavior;
+  readonly strict: boolean;
+  readonly maxResultSizeChars: number;
+  readonly description: ToolDescription;
+  readonly exposure: { mode: ToolExposureMode; alwaysLoad: boolean; discoveryHint: string };
+  readonly version: string;
+  readonly category?: string;
+  readonly tags: string[];
+  /** Description for model-facing declarations, already formatted. */
+  readonly declarationDescription: () => string;
+  /** JSON Schema sent to the model. */
+  readonly functionSchema: () => import('json-schema').JSONSchema7;
+  /** Zod schema for callers that validate params, when the tool has one. */
+  readonly metadataSchema: () => unknown;
+  readonly resolveDescription: (params?: unknown) => ToolDescription;
+  readonly invocationParams: (params: unknown) => TParams;
+  /** Validation the invocation runs before the tool body, with the schema parsed. */
+  readonly invocationValidation?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
+  /** Short description of a concrete invocation, used in confirmations. */
+  readonly invocationDescription?: (params: TParams) => string;
+  readonly execute: (params: TParams, context: ExecutionContext) => ToolExecution;
+  readonly validateInput?: Tool['validateInput'];
+  readonly checkPermissions?: Tool['checkPermissions'];
+  readonly resolveBehavior?: (params: unknown) => ToolBehavior;
+  readonly preparePermissionMatcher?: Tool['preparePermissionMatcher'];
+  /** Optional hint used by callers that plan without validated parameters. */
+  readonly getBehaviorHint?: () => ToolBehavior;
+}
+
+function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
+  return {
+    name: assembly.name,
+    aliases: assembly.aliases,
+    displayName: assembly.displayName,
+    kind: assembly.kind,
+    sideEffect: assembly.staticBehavior.sideEffect,
+    isReadOnly: assembly.behaviorHint.isReadOnly,
+    isConcurrencySafe: assembly.behaviorHint.isConcurrencySafe,
+    isDestructive: assembly.behaviorHint.isDestructive,
+    strict: assembly.strict,
+    maxResultSizeChars: assembly.maxResultSizeChars,
+    interruptBehavior: assembly.staticBehavior.interruptBehavior,
+    description: assembly.description,
+    exposure: assembly.exposure,
+    version: assembly.version,
+    category: assembly.category,
+    tags: assembly.tags,
+
+    describe(params?: unknown) {
+      return assembly.resolveDescription(params);
+    },
+
+    getFunctionDeclaration() {
+      return {
+        name: assembly.name,
+        description: assembly.declarationDescription(),
+        parameters: assembly.functionSchema(),
+      };
+    },
+
+    getMetadata() {
+      return {
+        name: assembly.name,
+        displayName: assembly.displayName,
+        kind: assembly.kind,
+        sideEffect: assembly.staticBehavior.sideEffect,
+        version: assembly.version,
+        category: assembly.category,
+        tags: assembly.tags,
+        description: assembly.description,
+        schema: assembly.metadataSchema(),
+      };
+    },
+
+    build(params: unknown): ToolInvocation<TParams> {
+      return new UnifiedToolInvocation<TParams>(
+        assembly.name,
+        assembly.invocationParams(params),
+        (resolvedParams, context) => assembly.execute(resolvedParams, context),
+        assembly.invocationValidation,
+        assembly.invocationDescription,
+        inferAffectedPaths,
+      );
+    },
+
+    execute(params: unknown, context: ExecutionContext = {}) {
+      const invocation = this.build(params);
+      return invocation.execute(context.signal ?? new AbortController().signal, context);
+    },
+
+    ...(assembly.validateInput ? { validateInput: assembly.validateInput } : {}),
+    ...(assembly.checkPermissions ? { checkPermissions: assembly.checkPermissions } : {}),
+    ...(assembly.resolveBehavior ? { resolveBehavior: assembly.resolveBehavior } : {}),
+    ...(assembly.preparePermissionMatcher
+      ? { preparePermissionMatcher: assembly.preparePermissionMatcher }
+      : {}),
+    ...(assembly.getBehaviorHint ? { getBehaviorHint: assembly.getBehaviorHint } : {}),
+  };
 }
 
 /**
@@ -73,122 +201,61 @@ export function createTool<TSchema extends z.ZodSchema>(
   const checkPermissionsFn = config.checkPermissions;
   const preparePermissionMatcherFn = config.preparePermissionMatcher;
 
-  return {
+  return assembleTool<TParams>({
     name: config.name,
     aliases: config.aliases,
     displayName: config.displayName,
     kind: config.kind,
-    sideEffect: staticBehavior.sideEffect,
-
-    // 🆕 isReadOnly 字段
-    // 优先使用 config 中的显式设置，否则根据 kind 推断
-    isReadOnly: behaviorHint.isReadOnly,
-
-    // 🆕 isConcurrencySafe 字段
-    // 优先使用 config 中的显式设置，否则默认 true
-    isConcurrencySafe: behaviorHint.isConcurrencySafe,
-
-    isDestructive: behaviorHint.isDestructive,
-
-    // 🆕 strict 字段（OpenAI Structured Outputs）
-    // 优先使用 config 中的显式设置，否则默认 false
+    staticBehavior,
+    behaviorHint,
     strict: config.strict ?? false,
-
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
-
-    interruptBehavior: staticBehavior.interruptBehavior,
-
     description: config.description,
     exposure,
     version: config.version || '1.0.0',
     category: config.category,
     tags: config.tags || [],
-
-    describe(params?: unknown) {
-      return resolveDescription(
-        params === undefined ? undefined : parseWithZod(getSchema(), params),
-      );
-    },
-
-    /**
-     * 获取函数声明 (用于 LLM function calling)
-     */
-    getFunctionDeclaration() {
-      if (!cachedFunctionSchema) {
-        cachedFunctionSchema = zodToFunctionSchema(getSchema());
-      }
+    declarationDescription: () => {
       if (!cachedStaticDescriptionText) {
         cachedStaticDescriptionText = formatToolDescription(resolveDescription());
       }
-
-      return {
-        name: config.name,
-        description: cachedStaticDescriptionText,
-        parameters: cachedFunctionSchema,
-      };
+      return cachedStaticDescriptionText;
     },
-
-    /**
-     * 获取工具元信息
-     */
-    getMetadata() {
+    functionSchema: () => {
       if (!cachedFunctionSchema) {
         cachedFunctionSchema = zodToFunctionSchema(getSchema());
       }
-
-      return {
-        name: config.name,
-        displayName: config.displayName,
-        kind: config.kind,
-        sideEffect: staticBehavior.sideEffect,
-        version: config.version || '1.0.0',
-        category: config.category,
-        tags: config.tags || [],
-        description: config.description,
-        schema: cachedFunctionSchema,
-      };
+      return cachedFunctionSchema;
     },
-
-    /**
-     * 构建工具调用
-     */
-    build(params: unknown): ToolInvocation<TParams> {
-      // 使用 Zod 验证参数
-      const validatedParams = parseWithZod(getSchema(), params);
-
-      return new UnifiedToolInvocation<TParams>(
-        config.name,
-        validatedParams,
-        config.execute,
-        config.validateInput,
-        (resolvedParams) => resolveDescription(resolvedParams).short,
-        inferAffectedPaths,
-      );
+    metadataSchema: () => {
+      if (!cachedFunctionSchema) {
+        cachedFunctionSchema = zodToFunctionSchema(getSchema());
+      }
+      return cachedFunctionSchema;
     },
-
-    /**
-     * 一键执行
-     */
-    execute(params: unknown, context: ExecutionContext = {}) {
-      const invocation = this.build(params);
-      return invocation.execute(context.signal ?? new AbortController().signal, context);
-    },
-
-    validateInput: validateInputFn
-      ? (params: unknown, context: ExecutionContext) =>
-          validateInputFn(parseWithZod(getSchema(), params), context)
-      : undefined,
-
-    getBehaviorHint() {
-      return behaviorHint;
-    },
-
-    checkPermissions: checkPermissionsFn
-      ? (params: unknown, context: ExecutionContext) =>
-          checkPermissionsFn(parseWithZod(getSchema(), params), context)
-      : undefined,
-
-    resolveBehavior(params: unknown) {
+    resolveDescription: (params?: unknown) =>
+      resolveDescription(params === undefined ? undefined : parseWithZod(getSchema(), params)),
+    // Zod validation is what makes a bad call fail before it reaches execute.
+    invocationParams: (params) => parseWithZod(getSchema(), params) as TParams,
+    ...(validateInputFn
+      ? { invocationValidation: (params: TParams, context: ExecutionContext) =>
+          validateInputFn(params, context) }
+      : {}),
+    invocationDescription: (params: TParams) => resolveDescription(params).short,
+    execute: (params, context) => config.execute(params, context),
+    ...(validateInputFn
+      ? {
+          validateInput: (params: unknown, context: ExecutionContext) =>
+            validateInputFn(parseWithZod(getSchema(), params), context),
+        }
+      : {}),
+    ...(checkPermissionsFn
+      ? {
+          checkPermissions: (params: unknown, context: ExecutionContext) =>
+            checkPermissionsFn(parseWithZod(getSchema(), params), context),
+        }
+      : {}),
+    resolveBehavior: (params: unknown) => {
       const validatedParams = parseWithZod(getSchema(), params);
       if (!config.resolveBehavior) {
         return staticBehavior;
@@ -198,11 +265,14 @@ export function createTool<TSchema extends z.ZodSchema>(
         ...config.resolveBehavior(validatedParams),
       };
     },
-
-    preparePermissionMatcher: preparePermissionMatcherFn
-      ? (params: unknown) => preparePermissionMatcherFn(parseWithZod(getSchema(), params))
-      : undefined,
-  };
+    ...(preparePermissionMatcherFn
+      ? {
+          preparePermissionMatcher: (params: unknown) =>
+            preparePermissionMatcherFn(parseWithZod(getSchema(), params)),
+        }
+      : {}),
+    getBehaviorHint: () => behaviorHint,
+  });
 }
 
 function formatToolDescription(description: {
@@ -245,26 +315,20 @@ export function toolFromDefinition<TParams = JsonObject>(
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
   const { jsonSchema, raw } = resolveDefinitionParameters(definition.parameters);
-  const staticBehavior = createToolBehavior(
-    definition.kind || ToolKind.Execute,
-    sideEffect,
-    {
-      isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
-    },
-  );
+  const kind = definition.kind || ToolKind.Execute;
+  const staticBehavior = createToolBehavior(kind, sideEffect, {
+    isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
+  });
 
-  return {
+  return assembleTool<TParams>({
     name: definition.name,
     aliases: definition.aliases,
     displayName: definition.displayName || definition.name,
-    kind: definition.kind || ToolKind.Execute,
-    sideEffect: staticBehavior.sideEffect,
-    isReadOnly: staticBehavior.isReadOnly,
-    isConcurrencySafe: staticBehavior.isConcurrencySafe,
-    isDestructive: staticBehavior.isDestructive,
+    kind,
+    staticBehavior,
+    behaviorHint: staticBehavior,
     strict: false,
     maxResultSizeChars: Number.POSITIVE_INFINITY,
-    interruptBehavior: staticBehavior.interruptBehavior,
     description,
     exposure: {
       mode: definition.exposure?.mode ?? 'eager',
@@ -274,63 +338,18 @@ export function toolFromDefinition<TParams = JsonObject>(
     version: '1.0.0',
     category: definition.category,
     tags: definition.tags || [],
-
-    describe() {
-      return description;
-    },
-
-    getFunctionDeclaration() {
-      return {
-        name: definition.name,
-        description: formatToolDescription(description),
-        parameters: jsonSchema,
-      };
-    },
-
-    getMetadata() {
-      return {
-        name: definition.name,
-        displayName: definition.displayName || definition.name,
-        kind: definition.kind || ToolKind.Execute,
-        sideEffect: staticBehavior.sideEffect,
-        version: '1.0.0',
-        category: definition.category,
-        tags: definition.tags || [],
-        description,
-        schema: raw,
-      };
-    },
-
-    build(params: unknown): ToolInvocation<TParams> {
-      // A Zod schema declares the parameter contract, so validate it the same
-      // way createTool does. A plain JSON Schema stays an advisory declaration
-      // for the model, which matches the previous behaviour.
-      const typedParams = isZodSchema(raw)
-        ? (parseWithZod(raw, params) as TParams)
-        : (params as TParams);
-      return new UnifiedToolInvocation<TParams>(
-        definition.name,
-        typedParams,
-        (p, ctx) => definition.execute(p, ctx),
-        undefined,
-        undefined,
-        inferAffectedPaths,
-      );
-    },
-
-    execute(params: unknown, context: ExecutionContext = {}) {
-      const invocation = this.build(params);
-      return invocation.execute(context.signal ?? new AbortController().signal, context);
-    },
-
-    getBehaviorHint() {
-      return staticBehavior;
-    },
-
-    resolveBehavior() {
-      return staticBehavior;
-    },
-  };
+    declarationDescription: () => formatToolDescription(description),
+    functionSchema: () => jsonSchema,
+    metadataSchema: () => raw,
+    resolveDescription: () => description,
+    // A Zod schema declares the contract, so validate against it the same way
+    // createTool does. A plain JSON Schema stays advisory for the model.
+    invocationParams: (params) =>
+      isZodSchema(raw) ? (parseWithZod(raw, params) as TParams) : (params as TParams),
+    execute: (params, context) => definition.execute(params, context),
+    getBehaviorHint: () => staticBehavior,
+    resolveBehavior: () => staticBehavior,
+  });
 }
 
 function inferAffectedPaths(params: unknown): string[] {
