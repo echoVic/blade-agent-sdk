@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Republish recorded terminal results only after the route settles for the same request and attempt with its lease released, so a client can never observe a finished request while the next input would still be refused. Outcomes whose route moved on to another request are superseded instead of published, and both the worker and the startup reconciler check the event log before appending.",
+  "zh-CN": "仅在路由以同一请求和 attempt 结算并释放租约后才补发已记录的终态结果，客户端不会再看到「请求已完成但下一轮输入仍被拒绝」。路由已切换到新请求的旧结果会被标记取代而不发布；Worker 与启动对账器在追加事件前都会先检查事件日志去重。"
+}

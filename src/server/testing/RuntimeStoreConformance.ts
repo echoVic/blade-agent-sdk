@@ -184,6 +184,10 @@ export async function assertRuntimeStoreConformance(
     agentEvents.events.length === 1 && agentEvents.events[0]?.sequence === 1,
     'Agent event stream must be sequenced',
   );
+  assert(
+    (await store.getLatestEventSequence?.(tenantId, sessionId)) === 1,
+    'Agent event stream must report its head for recovery cursors',
+  );
   checks.push('agent-events');
 
   const durable = await sessions.append(

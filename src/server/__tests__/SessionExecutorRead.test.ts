@@ -132,6 +132,21 @@ describe('AgentServer session.read recovery snapshot', () => {
     const sessionId = (created as { data: { session: { sessionId: SessionId } } })
       .data.session.sessionId;
 
+    // Three events: the recovery cursor must be the latest one, not the first.
+    for (const data of [
+      { type: 'content', delta: 'first', sessionId },
+      { type: 'content', delta: 'second', sessionId },
+      { type: 'result', subtype: 'success', content: 'done', sessionId },
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      });
+    }
+
     const read = await server.execute({
       protocolVersion: 1,
       commandId: CommandId('command-read-recovery'),
@@ -143,7 +158,40 @@ describe('AgentServer session.read recovery snapshot', () => {
     // Route state, load state, pending inputs and the event cursor must all be
     // server-provided, because a client that lost its storage has nothing else.
     expect(recovery).toMatchObject({ sessionLoaded: true, pendingInputCount: 0 });
-    expect(typeof recovery.lastEventSequence === 'number' || recovery.lastEventSequence === undefined)
-      .toBe(true);
+    // A client resuming from this cursor must not replay events its local state
+    // already contains, so the cursor is the head of the log, not its first page.
+    expect(recovery.lastEventSequence).toBe(3);
+  });
+
+  it('does not present an unknown pending-input projection as empty', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+
+    const store = new InMemoryAgentServerStore();
+    const owner = createExecutor(store);
+    const created = await owner.create(context('command-create-recovery-unloaded'), {
+      metadata: { origin: 'test' },
+    } as never);
+    // A second executor shares the store but has not resumed the Session, so the
+    // projection is unknown rather than empty.
+    const restarted = createExecutor(store);
+    const server = new AgentServer({
+      store,
+      sessionExecutor: restarted,
+      authenticate: () => principal,
+    });
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-recovery-unloaded'),
+      type: 'session.read',
+      data: { sessionId: created.sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    expect(recovery.sessionLoaded).toBe(false);
+    // An unloaded Session has no projection to count; reporting 0 would claim
+    // the unknown is empty.
+    expect(recovery.pendingInputCount).toBeUndefined();
   });
 });

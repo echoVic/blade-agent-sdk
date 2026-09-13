@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Bind queued submission recovery to the original command: a retry with a different input, command, or execution option is rejected instead of silently replacing the pending request, and the acceptance record is written before anything else can fail. Startup reconciliation also rebuilds an acceptance record lost before enqueueing directly from the Session journal.",
+  "zh-CN": "队列提交恢复现在绑定原始命令身份：输入、命令或执行选项不同的重试会被明确拒绝，而不是静默替换待恢复请求；接受记录在任何后续失败之前先行写入。启动对账还会在入队前的接受记录丢失时，直接从 Session 日志重建该记录。"
+}

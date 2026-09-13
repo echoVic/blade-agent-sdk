@@ -15,14 +15,16 @@ function toPendingSubmission(row) {
  * |------|-----------|------|
  * | Conversation transcript, stream events | Runtime Store | not stored; read through the Session |
  * | Route state, worker lease, fencing | `session_routes` / `execution_leases` | never copied |
- * | Accepted input | Session journal | `repository_submissions` records only that the input was handed to a Worker |
+ * | Accepted input | Session journal | `repository_submissions` records that the input was handed to a Worker; a row lost before enqueueing can be rebuilt from the journal |
  * | Workspace checkpoint | route metadata (`REPOSITORY_KEY`) | `repository_state.checkpointId` is a readable projection |
  * | Approval lifecycle | durable events | `repository_permissions` mirrors it for the approval API |
  * | Cancellation intent | nothing else records it | `repository_cancellations` is authoritative |
  * | Terminal result | durable events | `repository_outcomes` holds the copy that must still be published |
  *
- * Rows marked as projections may be rebuilt from the authority; the submission and
- * outcome rows may not, which is why they are the ones startup reconciliation drains.
+ * The submission rows are an acceptance record, not a second authority: startup
+ * reconciliation drains them, and when a row itself was lost it re-derives the
+ * pending request from the Session journal. The outcome rows cannot be rebuilt
+ * from anywhere, which is why they are recorded before the route settles.
  */
 export class RepositoryState {
   constructor({ connectionString, schema }) {
@@ -69,11 +71,25 @@ export class RepositoryState {
     )`);
     // The terminal result is recorded before the route settles, so a crash
     // between settling and publishing cannot lose the only copy of the outcome.
+    // `attempt` binds the outcome to the route claim that produced it, so
+    // reconciliation only republishes results for the attempt that actually
+    // settled. A re-run of the same request overwrites the record until it is
+    // published; once published it is immutable.
     await this.pool.query(`CREATE TABLE IF NOT EXISTS ${this.prefix}.repository_outcomes (
       session_id text NOT NULL, request_id text NOT NULL, event jsonb NOT NULL,
+      attempt integer, superseded_at timestamptz,
       published_at timestamptz, recorded_at timestamptz NOT NULL DEFAULT NOW(),
       PRIMARY KEY (session_id, request_id)
     )`);
+    // Older databases predate the attempt and superseded columns.
+    await this.pool.query(
+      `ALTER TABLE ${this.prefix}.repository_outcomes
+         ADD COLUMN IF NOT EXISTS attempt integer`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${this.prefix}.repository_outcomes
+         ADD COLUMN IF NOT EXISTS superseded_at timestamptz`,
+    );
   }
 
   async recordSubmissionAccepted({ sessionId, requestId, input, value }) {
@@ -122,11 +138,14 @@ export class RepositoryState {
     return rows[0] ? toPendingSubmission(rows[0]) : null;
   }
 
-  async recordOutcomePending({ sessionId, requestId, event }) {
+  async recordOutcomePending({ sessionId, requestId, event, attempt }) {
     await this.pool.query(
-      `INSERT INTO ${this.prefix}.repository_outcomes (session_id, request_id, event)
-       VALUES ($1, $2, $3::jsonb) ON CONFLICT (session_id, request_id) DO NOTHING`,
-      [sessionId, requestId, JSON.stringify(event)],
+      `INSERT INTO ${this.prefix}.repository_outcomes (session_id, request_id, event, attempt)
+       VALUES ($1, $2, $3::jsonb, $4)
+       ON CONFLICT (session_id, request_id) DO UPDATE
+         SET event = EXCLUDED.event, attempt = EXCLUDED.attempt, recorded_at = NOW()
+         WHERE ${this.prefix}.repository_outcomes.published_at IS NULL`,
+      [sessionId, requestId, JSON.stringify(event), attempt ?? null],
     );
   }
 
@@ -138,24 +157,37 @@ export class RepositoryState {
     );
   }
 
+  /**
+   * Resolve an outcome that can never be published: its route settled for a
+   * different request, so the client has already moved past this result.
+   */
+  async markOutcomeSuperseded(sessionId, requestId) {
+    await this.pool.query(
+      `UPDATE ${this.prefix}.repository_outcomes SET superseded_at = NOW()
+       WHERE session_id = $1 AND request_id = $2 AND published_at IS NULL`,
+      [sessionId, requestId],
+    );
+  }
+
   /** Terminal results recorded but never confirmed as published, oldest first. */
   async listUnpublishedOutcomes() {
     const { rows } = await this.pool.query(
-      `SELECT session_id AS "sessionId", request_id AS "requestId", event
+      `SELECT session_id AS "sessionId", request_id AS "requestId", event, attempt
        FROM ${this.prefix}.repository_outcomes
-       WHERE published_at IS NULL ORDER BY recorded_at`,
+       WHERE published_at IS NULL AND superseded_at IS NULL ORDER BY recorded_at`,
     );
-    return rows;
+    return rows.map((row) => ({ ...row, attempt: row.attempt ?? null }));
   }
 
   async getUnpublishedOutcome(sessionId, requestId) {
     const { rows } = await this.pool.query(
-      `SELECT session_id AS "sessionId", request_id AS "requestId", event
+      `SELECT session_id AS "sessionId", request_id AS "requestId", event, attempt
        FROM ${this.prefix}.repository_outcomes
-       WHERE session_id = $1 AND request_id = $2 AND published_at IS NULL`,
+       WHERE session_id = $1 AND request_id = $2 AND published_at IS NULL AND superseded_at IS NULL`,
       [sessionId, requestId],
     );
-    return rows[0] ?? null;
+    const row = rows[0];
+    return row ? { ...row, attempt: row.attempt ?? null } : null;
   }
 
   async get(sessionId) {

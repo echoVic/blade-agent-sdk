@@ -130,6 +130,45 @@ describe('AgentClient events', () => {
     })()).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
   });
 
+  it('rejects an oversized complete frame even when its delimiter arrives in the same chunk', async () => {
+    // The limit applies to every complete frame, not only to the unterminated
+    // remainder: a chunk that carries both an oversized frame and its delimiter
+    // must not sail past the check.
+    const oversized = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${JSON.stringify(
+            event(1, 'session.stream', { type: 'content', delta: 'x'.repeat(5 * 1024 * 1024), sessionId }),
+          )}\r\n\r\n`),
+        );
+      },
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === 'POST') {
+        const body = (await request.json()) as { commandId: string };
+        return initializeResponse(body.commandId);
+      }
+      return new Response(oversized, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    const client = new AgentClient({
+      baseUrl: 'https://agent.test/v1/agent',
+      client: { name: 'test-client', version: '1.0.0' },
+      fetch: fetchImpl,
+      maxEventReconnectAttempts: 0,
+      retryBaseDelayMs: 0,
+    });
+
+    await expect((async () => {
+      for await (const _event of client.events(sessionId)) {
+        // drain
+      }
+    })()).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
+  });
+
   it('stops after the configured number of clean disconnects', async () => {
     let eventRequests = 0;
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {

@@ -795,6 +795,18 @@ export class PostgresRuntimeStore implements RuntimeStore {
     };
   }
 
+  async getLatestEventSequence(tenantId: string, sessionId: SessionId): Promise<number | null> {
+    await this.initialize();
+    const result = await this.queryClient().query<StreamHeadRow>(
+      `SELECT first_sequence, next_sequence
+         FROM ${this.table('stream_heads')}
+        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
+      [tenantId, sessionId],
+    );
+    const row = result.rows[0];
+    return row ? asNumber(row.next_sequence) - 1 : null;
+  }
+
   async commitRuntimeTransaction(commit: RuntimeCommandCommit): Promise<RuntimeCommitResult> {
     await this.initialize();
     this.validateRuntimeCommit(commit);

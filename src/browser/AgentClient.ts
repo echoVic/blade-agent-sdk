@@ -579,6 +579,13 @@ export class AgentClient {
  */
 const MAX_SSE_FRAME_BYTES = 4 * 1024 * 1024;
 
+const sseEncoder = new TextEncoder();
+
+/** UTF-8 byte length; `string.length` would measure UTF-16 code units instead. */
+function sseFrameBytes(text: string): number {
+  return sseEncoder.encode(text).length;
+}
+
 async function* parseEventStream(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<AgentServerEvent> {
@@ -589,16 +596,18 @@ async function* parseEventStream(
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
-      if (buffer.length > MAX_SSE_FRAME_BYTES && !/\r?\n\r?\n/.test(buffer)) {
-        throw new AgentProtocolError(
-          'STREAM_FRAME_TOO_LARGE',
-          `A single event stream frame exceeded ${MAX_SSE_FRAME_BYTES} bytes without a delimiter`,
-          502,
-        );
-      }
       let boundary = /\r?\n\r?\n/.exec(buffer);
       while (boundary) {
         const frame = buffer.slice(0, boundary.index);
+        // A complete frame must respect the limit on its own: a chunk carrying
+        // an oversized frame and its delimiter would otherwise pass the check.
+        if (sseFrameBytes(frame) > MAX_SSE_FRAME_BYTES) {
+          throw new AgentProtocolError(
+            'STREAM_FRAME_TOO_LARGE',
+            `A single event stream frame exceeded ${MAX_SSE_FRAME_BYTES} bytes`,
+            502,
+          );
+        }
         buffer = buffer.slice(boundary.index + boundary[0].length);
         const data = frame
           .split(/\r?\n/)
@@ -609,6 +618,14 @@ async function* parseEventStream(
           yield parseAgentServerEvent(JSON.parse(data));
         }
         boundary = /\r?\n\r?\n/.exec(buffer);
+      }
+      // Whatever remains is an incomplete frame; bound its growth in bytes too.
+      if (sseFrameBytes(buffer) > MAX_SSE_FRAME_BYTES) {
+        throw new AgentProtocolError(
+          'STREAM_FRAME_TOO_LARGE',
+          `A single event stream frame exceeded ${MAX_SSE_FRAME_BYTES} bytes without a delimiter`,
+          502,
+        );
       }
       if (done) {
         return;

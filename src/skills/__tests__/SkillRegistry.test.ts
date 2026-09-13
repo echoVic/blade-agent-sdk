@@ -132,6 +132,50 @@ describe('SkillRegistry', () => {
     expect(registry.get('project-review')?.source.kind).toBe('project');
   });
 
+  it('treats different execution policies for the same directory as different registries', async () => {
+    const sourceDir = path.join(tmpDir, 'policy-sources');
+    await createSkill(sourceDir, 'policy-skill', BASE_SKILL('policy-skill', 'policy bound skill'));
+
+    const allow = SkillRegistry.getInstance({
+      additionalSources: [{
+        kind: 'bundled',
+        directory: sourceDir,
+        trustLevel: 'trusted',
+        shellPolicy: 'allow',
+        hookPolicy: 'allow',
+      }],
+    });
+    const deny = SkillRegistry.getInstance({
+      additionalSources: [{
+        kind: 'bundled',
+        directory: sourceDir,
+        trustLevel: 'workspace',
+        shellPolicy: 'deny',
+        hookPolicy: 'deny',
+      }],
+    });
+
+    // Two different execution policies are two configurations: the second caller
+    // must not receive the first caller's cached instance and its policy.
+    expect(deny).not.toBe(allow);
+
+    const allowed = await allow.initialize();
+    const denied = await deny.initialize();
+    expect(allowed.skills[0]?.source).toMatchObject({ trustLevel: 'trusted', shellPolicy: 'allow' });
+    expect(denied.skills[0]?.source).toMatchObject({ trustLevel: 'workspace', shellPolicy: 'deny' });
+
+    // The same policy is still the same configuration and stays shared.
+    expect(SkillRegistry.getInstance({
+      additionalSources: [{
+        kind: 'bundled',
+        directory: sourceDir,
+        trustLevel: 'trusted',
+        shellPolicy: 'allow',
+        hookPolicy: 'allow',
+      }],
+    })).toBe(allow);
+  });
+
   it('prefers the higher-precedence source when two sources resolve to the same canonical skill path', async () => {
     const canonicalRoot = path.join(tmpDir, 'canonical-skills');
     const shadowRoot = path.join(tmpDir, 'shadow-skills');

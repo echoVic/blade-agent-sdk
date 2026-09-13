@@ -93,16 +93,38 @@ export class QueuedSessionExecutor {
         throw new AgentProtocolError('INVALID_COMMAND', 'Enter a text task of at most 16,384 characters', 400);
       }
       const route = await this.store.getSessionRoute(tenantId, data.sessionId);
-      if (route && route.state !== 'idle') {
-        throw new AgentProtocolError('SESSION_CONFLICT', `Session is ${route.state}`, 409);
-      }
       // A previous attempt may have accepted this input and then failed to enqueue
       // it. The input is already durable in the Session journal, so enqueue that
-      // record instead of sending it again.
+      // record instead of sending it again. Recovery is bound to the command that
+      // was accepted: a different input, command or execution option must never be
+      // silently replaced by, or returned as, the pending record.
       const accepted = await this.state.getPendingSubmission(data.sessionId);
       if (accepted) {
+        if (accepted.value.input !== data.input
+            || accepted.value.commandId !== context.commandId
+            || (accepted.value.maxTurns ?? undefined) !== data.maxTurns
+            || (data.expectedRequestId !== undefined
+                && data.expectedRequestId !== accepted.value.requestId)) {
+          throw new AgentProtocolError(
+            'SESSION_CONFLICT',
+            'A different submission is already pending recovery for this Session',
+            409,
+          );
+        }
+        const queuedRequest = route?.metadata?.[QUEUED_REQUEST_METADATA_KEY];
+        if (route && route.state === 'queued' && queuedRequest?.requestId === accepted.value.requestId) {
+          // A previous attempt enqueued this exact submission before crashing;
+          // the same command observing that work is already in flight is success.
+          return { sessionId: data.sessionId, ...accepted.value };
+        }
+        if (route && route.state !== 'idle') {
+          throw new AgentProtocolError('SESSION_CONFLICT', `Session is ${route.state}`, 409);
+        }
         await this.enqueueAccepted(tenantId, data.sessionId, route, accepted, record);
         return { sessionId: data.sessionId, ...accepted.value };
+      }
+      if (route && route.state !== 'idle') {
+        throw new AgentProtocolError('SESSION_CONFLICT', `Session is ${route.state}`, 409);
       }
       const session = await resumeSession({ ...this.options(tenantId), sessionId: data.sessionId });
       let submission;
@@ -112,16 +134,22 @@ export class QueuedSessionExecutor {
           ...(data.maxTurns !== undefined ? { maxTurns: data.maxTurns } : {}),
           ...(data.expectedRequestId ? { expectedRequestId: data.expectedRequestId } : {}),
         });
-        // Record acceptance before releasing the Session: suspending can block, and a
-        // crash after this point must leave a record the startup sweep can find.
-        acceptedValue = { ...submission, input: data.input, commandId: context.commandId };
-        await this.state.update(data.sessionId, { submission: acceptedValue });
+        acceptedValue = {
+          ...submission,
+          input: data.input,
+          commandId: context.commandId,
+          ...(data.maxTurns !== undefined ? { maxTurns: data.maxTurns } : {}),
+        };
+        // The acceptance record is written before anything else can fail: the
+        // startup sweep reads it, and when even this write is lost it rebuilds
+        // the pending request from the Session journal itself.
         await this.state.recordSubmissionAccepted({
           sessionId: data.sessionId,
           requestId: submission.requestId,
           input: data.input,
           value: acceptedValue,
         });
+        await this.state.update(data.sessionId, { submission: acceptedValue });
       } finally {
         await session.suspendForHandoff();
       }

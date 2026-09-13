@@ -89,6 +89,12 @@ export interface AgentServerStore {
     sessionId: SessionId,
     options?: { after?: number; limit?: number },
   ): Promise<AgentEventPage>;
+  /**
+   * The highest committed event sequence for a Session, or null when the log is
+   * empty. Read after the session state snapshot so the recovery cursor is never
+   * behind the messages that snapshot already reflects.
+   */
+  getLatestEventSequence?(tenantId: string, sessionId: SessionId): Promise<number | null>;
   waitForEvents?(
     tenantId: string,
     sessionId: SessionId,
@@ -351,6 +357,14 @@ export class InMemoryAgentServerStore implements AgentServerStore {
         : null,
       hasMore: last !== undefined && log.events.some((event) => event.sequence > last.sequence),
     };
+  }
+
+  async getLatestEventSequence(tenantId: string, sessionId: SessionId): Promise<number | null> {
+    const log = this.eventLogs.get(scopedKey(tenantId, sessionId));
+    if (!log || log.events.length === 0) {
+      return null;
+    }
+    return log.nextSequence - 1;
   }
 
   async waitForEvents(

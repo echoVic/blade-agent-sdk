@@ -49,10 +49,13 @@ describe('VercelAIModelService', () => {
 
   it('fails the stream when the provider reports an error mid-response', async () => {
     // The AI SDK encodes a request failure as an event, so a consumer that ignores
-    // it observes partial text as a completed response.
+    // it observes partial text as a completed response. Current SDK streams carry
+    // the provider error object in `error`, not `errorText`.
+    const providerError = new Error('upstream 503') as Error & { statusCode: number };
+    providerError.statusCode = 503;
     async function* fullStream() {
       yield { type: 'text-delta', text: 'Partial answer' };
-      yield { type: 'error', errorText: 'upstream 503' };
+      yield { type: 'error', error: providerError };
     }
     mockStreamText.mockReturnValue({ fullStream: fullStream() });
 
@@ -67,9 +70,87 @@ describe('VercelAIModelService', () => {
       for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
         seen.push(chunk);
       }
-    })()).rejects.toThrow('upstream 503');
+    })()).rejects.toMatchObject({ message: 'upstream 503' });
 
     // The partial text was emitted, but the call did not end as a success.
+    expect(seen).toEqual([{ content: 'Partial answer' }]);
+  });
+
+  it('retries a stream whose provider fails before the first output', async () => {
+    let attempts = 0;
+    mockStreamText.mockImplementation(() => {
+      attempts += 1;
+      async function* fullStream() {
+        if (attempts === 1) {
+          const error = new Error('Service unavailable') as Error & { statusCode: number };
+          error.statusCode = 503;
+          yield { type: 'error', error };
+          return;
+        }
+        yield { type: 'text-delta', text: 'ok' };
+        yield { type: 'finish', finishReason: 'stop', totalUsage: { totalTokens: 1 } };
+      }
+      return { fullStream: fullStream() };
+    });
+
+    const service = new VercelAIModelService(
+      {
+        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
+      },
+      NOOP_LOGGER,
+    );
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+
+    const chunks: unknown[] = [];
+    for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+      chunks.push(chunk);
+    }
+
+    // The network failure surfaced while consuming the first stream, which used
+    // to sit outside the retry scope; it must now be retried like any request.
+    expect(attempts).toBe(2);
+    expect(chunks).toEqual([
+      { content: 'ok' },
+      expect.objectContaining({ finishReason: 'stop' }),
+    ]);
+  });
+
+  it('does not retry once output has already been forwarded', async () => {
+    let attempts = 0;
+    mockStreamText.mockImplementation(() => {
+      attempts += 1;
+      async function* fullStream() {
+        if (attempts === 1) {
+          yield { type: 'text-delta', text: 'Partial answer' };
+          const error = new Error('Service unavailable') as Error & { statusCode: number };
+          error.statusCode = 503;
+          yield { type: 'error', error };
+          return;
+        }
+        yield { type: 'text-delta', text: 'ok' };
+        yield { type: 'finish', finishReason: 'stop' };
+      }
+      return { fullStream: fullStream() };
+    });
+
+    const service = new VercelAIModelService(
+      {
+        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
+      },
+      NOOP_LOGGER,
+    );
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+
+    const seen: unknown[] = [];
+    await expect((async () => {
+      for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+        seen.push(chunk);
+      }
+    })()).rejects.toThrow('Service unavailable');
+
+    expect(attempts).toBe(1);
     expect(seen).toEqual([{ content: 'Partial answer' }]);
   });
 

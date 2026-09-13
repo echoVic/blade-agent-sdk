@@ -32,13 +32,14 @@ const DEFAULT_CONFIG: ResolvedSkillRegistryConfig = {
 };
 
 /**
- * One registry per discovery configuration.
+ * One registry per discovery and execution-policy configuration.
  *
  * A registry caches what it discovered, because discovery is expensive and callers
- * expect a stable view. Keying that cache by configuration is what keeps two
- * projects in one process from seeing each other's Skills: a global singleton whose
- * configuration was fixed by whichever caller came first reported project A's
- * Skills for project B.
+ * expect a stable view. Keying that cache by the full configuration is what keeps
+ * two projects in one process from seeing each other's Skills — and two callers
+ * with different trust, shell or hook policies from executing under each other's
+ * rules: a global singleton whose configuration was fixed by whichever caller came
+ * first reported project A's Skills for project B.
  */
 const registries = new Map<string, SkillRegistry>();
 
@@ -51,6 +52,13 @@ function registryKey(config: ResolvedSkillRegistryConfig): string {
       source.kind,
       source.directory,
       source.precedence ?? null,
+      // Execution policy is part of the configuration identity: two callers of
+      // the same directory with different trust/shell/hook policies must not
+      // share one registry instance, or the first caller's policy would apply
+      // to the second caller's executions.
+      source.trustLevel ?? null,
+      source.shellPolicy ?? null,
+      source.hookPolicy ?? null,
       source.sourceId ?? null,
     ]),
   ]);

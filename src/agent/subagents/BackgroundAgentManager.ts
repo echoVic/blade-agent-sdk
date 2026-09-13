@@ -181,6 +181,14 @@ export class BackgroundAgentManager {
 
     for (const session of sessions) {
       if (session.status === 'running' && !session.executionFence) {
+        // The repository can be shared by several runtimes. A Session that does
+        // not belong to this manager's parent is another runtime's live work,
+        // not an orphan; only this owner's own descendants may be declared
+        // failed by this startup. Cross-process ownership still needs a lease
+        // protocol — fencing records are skipped for the same reason.
+        if (this.ownerSessionId !== undefined && session.parentSessionId !== this.ownerSessionId) {
+          continue;
+        }
         const isInMemory = this.runningAgents.has(session.id);
         const age = now - session.lastActiveAt;
 

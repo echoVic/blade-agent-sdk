@@ -1404,7 +1404,7 @@ describe('LoopRunner', () => {
       expect(runner.skillContext).toBeUndefined();
     });
 
-    it('clears stale tool policy when a new skill runtime patch omits toolPolicy', async () => {
+    it('keeps the session policy baseline when a new skill runtime patch omits toolPolicy', async () => {
       const chatCalls: Array<Array<{ name: string }>> = [];
       const chatFn = vi.fn(async (_messages, tools = []) => {
         chatCalls.push((tools as Array<{ name: string }>).map((tool) => ({ name: tool.name })));
@@ -1539,13 +1539,13 @@ describe('LoopRunner', () => {
         expect.objectContaining({ name: 'Read' }),
         expect.objectContaining({ name: 'Skill' }),
       ]);
-      expect(chatCalls[2]).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: 'Read' }),
-          expect.objectContaining({ name: 'Write' }),
-          expect.objectContaining({ name: 'Skill' }),
-        ]),
-      );
+      // A skill patch without a toolPolicy keeps the session baseline instead of
+      // erasing it: losing the baseline would silently widen the exposure back
+      // to every tool while the patch history still claims a restriction.
+      expect(chatCalls[2]).toEqual([
+        expect.objectContaining({ name: 'Read' }),
+        expect.objectContaining({ name: 'Skill' }),
+      ]);
     });
 
     it('registers session-scoped runtime hooks from skill runtime patches', async () => {

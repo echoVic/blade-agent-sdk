@@ -186,14 +186,25 @@ describe('production QueuedSessionExecutor', () => {
     test.control.detachGate = new Promise<void>((resolve) => { detach = resolve; });
     const submitted = test.executor.submit(context, { ...input, maxTurns: 5 });
     await flush();
+    // The durable acceptance record comes before the projection update: the
+    // recovery sweep must find it, and a crash in between is rebuilt from the
+    // Session journal.
+    expect(test.state.recordSubmissionAccepted).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      input: input.input,
+      value: { status: 'started', requestId: 'request-1', inputId: 'input-1',
+        input: input.input, commandId: 'command-1', maxTurns: 5 },
+    });
     expect(test.state.update).toHaveBeenCalledWith('session-1', {
-      submission: { status: 'started', requestId: 'request-1', inputId: 'input-1', input: input.input, commandId: 'command-1' },
+      submission: { status: 'started', requestId: 'request-1', inputId: 'input-1',
+        input: input.input, commandId: 'command-1', maxTurns: 5 },
     });
     expect(test.store.enqueueSession).not.toHaveBeenCalled();
     detach();
     expect(await submitted).toMatchObject({ requestId: 'request-1', inputId: 'input-1', status: 'started' });
     expect(test.trace).toEqual([
-      'resume', 'send', 'submission-record', 'submission-accepted', 'detaching', 'detached', 'enqueue',
+      'resume', 'send', 'submission-accepted', 'submission-record', 'detaching', 'detached', 'enqueue',
     ]);
     expect(test.handles[0]?.send).toHaveBeenCalledWith(input.input, { maxTurns: 5 });
     expect(test.handles[0]?.stream).not.toHaveBeenCalled();
@@ -227,6 +238,110 @@ describe('production QueuedSessionExecutor', () => {
     await first;
     await rejected;
     expect(test.store.enqueueSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('records the acceptance before anything else can fail after the journal write', async () => {
+    const test = harness();
+    await test.executor.submit(context, input);
+    // The durable acceptance record must exist before the projection update:
+    // a crash between the Session journal write and the record is rebuilt from
+    // the journal, but the record is what the submit path itself must leave
+    // first when it survives.
+    expect(test.trace.indexOf('submission-accepted')).toBeGreaterThan(-1);
+    expect(test.trace.indexOf('submission-accepted'))
+      .toBeLessThan(test.trace.indexOf('submission-record'));
+    expect(test.state.recordSubmissionAccepted).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+      value: expect.objectContaining({
+        requestId: 'request-1',
+        input: 'Inspect the repository',
+        commandId: 'command-1',
+      }),
+    });
+  });
+
+  it('re-enqueues a pending record only when the retried command is identical', async () => {
+    const test = harness();
+    test.state.pendingSubmissions.set('session-1', {
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+      value: {
+        status: 'started',
+        inputId: 'input-1',
+        requestId: 'request-1',
+        input: 'Inspect the repository',
+        commandId: 'command-1',
+      },
+    });
+    const result = await test.executor.submit(context, input);
+    expect(result).toEqual({
+      sessionId: 'session-1',
+      status: 'started',
+      inputId: 'input-1',
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+      commandId: 'command-1',
+    });
+    expect(test.resumeSession).not.toHaveBeenCalled();
+    expect(test.store.enqueueSession).toHaveBeenCalledTimes(1);
+    expect((test.store.route as Route)?.metadata?.bladeQueuedRequest).toMatchObject({
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+    });
+  });
+
+  it.each([
+    { label: 'a different input', input: 'Completely different request', commandId: 'command-1' },
+    { label: 'a different command', input: 'Inspect the repository', commandId: 'command-2' },
+    { label: 'different execution options', input: 'Inspect the repository', commandId: 'command-1', maxTurns: 8 },
+  ])('rejects a new submission for %s while recovery is pending', async ({ input: nextInput, commandId, maxTurns }) => {
+    const test = harness();
+    test.state.pendingSubmissions.set('session-1', {
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+      value: {
+        status: 'started',
+        inputId: 'input-1',
+        requestId: 'request-1',
+        input: 'Inspect the repository',
+        commandId: 'command-1',
+      },
+    });
+    await expect(test.executor.submit({ ...context, commandId }, {
+      sessionId: 'session-1',
+      input: nextInput,
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
+    })).rejects.toMatchObject({
+      protocolCode: 'SESSION_CONFLICT',
+      message: expect.stringContaining('different submission'),
+    });
+    expect(test.resumeSession).not.toHaveBeenCalled();
+    expect(test.store.enqueueSession).not.toHaveBeenCalled();
+  });
+
+  it('confirms a retry whose submission a crashed attempt already enqueued', async () => {
+    const test = harness();
+    test.store.route = { state: 'queued', metadata: queued('request-1') };
+    test.state.pendingSubmissions.set('session-1', {
+      sessionId: 'session-1',
+      requestId: 'request-1',
+      input: 'Inspect the repository',
+      value: {
+        status: 'started',
+        inputId: 'input-1',
+        requestId: 'request-1',
+        input: 'Inspect the repository',
+        commandId: 'command-1',
+      },
+    });
+    const result = await test.executor.submit(context, input);
+    expect(result).toMatchObject({ requestId: 'request-1', input: 'Inspect the repository' });
+    expect(test.resumeSession).not.toHaveBeenCalled();
+    expect(test.store.enqueueSession).not.toHaveBeenCalled();
   });
 
   it('detaches failed submissions and never queues a request whose handoff failed', async () => {

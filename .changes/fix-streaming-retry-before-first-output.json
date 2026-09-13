@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Streaming model requests retry failures before the first output, including provider errors the AI SDK reports inside the stream. After output has been delivered the stream terminates with the provider's original error preserved as the cause, including its status code, instead of a generic message.",
+  "zh-CN": "流式模型请求现在会重试首个输出之前的失败，包括 AI SDK 在流内上报的提供方错误。输出已交付后流终止，并保留提供方原始错误（含状态码）作为 cause，不再退化为通用提示。"
+}

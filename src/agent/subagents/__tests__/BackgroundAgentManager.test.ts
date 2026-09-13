@@ -152,6 +152,68 @@ describe('BackgroundAgentManager', () => {
     );
   });
 
+  it('does not declare another parent session\'s running subagents orphaned', async () => {
+    const store = AgentSessionStore.create();
+    const foreign = {
+      id: AgentId('agent_foreign'),
+      subagentType: 'research',
+      description: 'Foreign work',
+      prompt: 'run',
+      messages: [],
+      status: 'running' as const,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      parentSessionId: 'parent-b',
+    };
+    const markCompleted = vi.fn(async () => undefined);
+    store.listSessions = vi.fn(async () => [foreign]);
+    store.markCompleted = markCompleted;
+
+    // A shared repository holds every runtime's subagents. A new runtime for
+    // parent A must leave parent B's running child alone even though it is not
+    // in this manager's in-memory map.
+    const managerA = BackgroundAgentManager.create(
+      NOOP_LOGGER,
+      store,
+      SessionId('parent-a'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(markCompleted).not.toHaveBeenCalled();
+    managerA.killAll();
+  });
+
+  it('still reclaims its own parent session\'s lost subagents', async () => {
+    const store = AgentSessionStore.create();
+    const own = {
+      id: AgentId('agent_own'),
+      subagentType: 'research',
+      description: 'Own work',
+      prompt: 'run',
+      messages: [],
+      status: 'running' as const,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      parentSessionId: 'parent-a',
+    };
+    const markCompleted = vi.fn(async () => undefined);
+    store.listSessions = vi.fn(async () => [own]);
+    store.markCompleted = markCompleted;
+
+    const managerA = BackgroundAgentManager.create(
+      NOOP_LOGGER,
+      store,
+      SessionId('parent-a'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(markCompleted).toHaveBeenCalledWith(
+      AgentId('agent_own'),
+      expect.objectContaining({ success: false }),
+    );
+    managerA.killAll();
+  });
+
   it('updates the session description when resuming with a new description', async () => {
     const agentId = AgentId(
       await manager.startBackgroundAgent({

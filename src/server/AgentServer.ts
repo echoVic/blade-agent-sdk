@@ -615,6 +615,12 @@ export class AgentServer {
    * server: the route says whether work is queued, running or settled; the pending
    * inputs say what was accepted but not applied; the last event sequence is the
    * cursor to resume the stream from.
+   *
+   * Read boundary: the state snapshot (`read`) is loaded by the executor before
+   * this method runs, and the event head is read afterwards, so the cursor is
+   * never behind events the returned messages already reflect. A client replaying
+   * from `lastEventSequence` can only re-see events appended between the two
+   * reads, which it can deduplicate by event id.
    */
   private async describeRecovery(
     tenantId: string,
@@ -624,8 +630,11 @@ export class AgentServer {
     const route = this.options.runtimeStore
       ? await this.options.runtimeStore.getSessionRoute(tenantId, sessionId)
       : null;
-    const events = await this.store.readEvents(tenantId, sessionId, { limit: 1 });
-    const lastSequence = events.events.at(-1)?.sequence;
+    // The head of the event log, not its first page: a client restoring from this
+    // cursor must not replay events its local state already contains.
+    const lastSequence = this.store.getLatestEventSequence
+      ? await this.store.getLatestEventSequence(tenantId, sessionId)
+      : undefined;
     return {
       sessionLoaded: read.loaded,
       ...(route
@@ -636,8 +645,12 @@ export class AgentServer {
             ...(route.workerId ? { workerId: route.workerId } : {}),
           }
         : {}),
-      pendingInputCount: read.pendingInputs.length,
-      ...(lastSequence !== undefined ? { lastEventSequence: Number(lastSequence) } : {}),
+      // An unloaded Session has no known pending-input projection; reporting a
+      // count would present the unknown as empty.
+      ...(read.loaded ? { pendingInputCount: read.pendingInputs.length } : {}),
+      ...(lastSequence !== null && lastSequence !== undefined
+        ? { lastEventSequence: lastSequence }
+        : {}),
     };
   }
 

@@ -151,9 +151,14 @@ export class RuntimePatchManager {
         scope: patch.scope,
       };
     } else if (patch.skill) {
-      // A skill patch replaces the effective policy but leaves the session baseline
-      // intact, so cleanup returns to what the session declared.
-      this.runtimeToolPolicy = undefined;
+      // A skill patch without an explicit toolPolicy keeps the effective policy
+      // at the session baseline. Recording the baseline with the patch's scope —
+      // instead of clearing the field — is what lets turn cleanup restore the
+      // session patch even though the effective field no longer carries a turn
+      // scope. An empty field cannot decide which baseline to recover.
+      this.runtimeToolPolicy = this.sessionToolPolicy
+        ? { ...this.sessionToolPolicy, scope: patch.scope }
+        : undefined;
     }
 
     this.applyRuntimeToolDiscovery(patch);

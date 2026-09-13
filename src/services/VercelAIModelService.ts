@@ -246,6 +246,54 @@ async function consumeRetryGenerator<T>(
   }
 }
 
+/**
+ * Builds the error for an AI SDK stream `error` part.
+ *
+ * Current SDK fullStreams carry the provider error object in `error` (legacy
+ * shapes used `errorText`). The original status code is preserved on the thrown
+ * error so retry classification can see it, and the original object is kept as
+ * the cause instead of being reduced to a generic message.
+ */
+function streamPartError(part: unknown): Error {
+  const record = (typeof part === 'object' && part !== null ? part : {}) as {
+    error?: unknown;
+    errorText?: string;
+  };
+  const cause = record.error;
+  const statusCode = errorStatusCode(cause);
+  const message = record.errorText
+    ?? errorMessage(cause)
+    ?? 'The model stream reported an error';
+  const error = new ModelStreamError(message, cause !== undefined ? { cause } : undefined) as
+    ModelStreamError & { statusCode?: number };
+  if (statusCode !== undefined) {
+    error.statusCode = statusCode;
+  }
+  return error;
+}
+
+function errorStatusCode(value: unknown): number | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const status = record.status ?? record.statusCode;
+  return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
+}
+
+function errorMessage(value: unknown): string | undefined {
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const message = (value as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+  return undefined;
+}
+
 export class VercelAIModelService implements ModelService {
   private model!: LanguageModel;
   private config: ModelServiceConfig;
@@ -903,100 +951,104 @@ export class VercelAIModelService implements ModelService {
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
-      const gen = withRetry(
-        (ctx: RetryContext) =>
-          Promise.resolve(
-            streamText({
-              model: this.model,
-              messages: coreMessages as never,
-              tools: coreTools as never,
-              maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-              temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
-              abortSignal: signal,
-              experimental_output: experimentalOutput,
-              providerOptions: this.getProviderOptions(),
-              // Single retry owner: see the non-streaming calls above.
-              maxRetries: 0,
-            }),
+      // `streamText()` resolves before any network I/O, so a provider failure
+      // surfaces while `fullStream` is consumed. Retrying only the factory left
+      // the real failure outside the retry scope. Each attempt now consumes the
+      // stream up to the first output part: a failure before any output is
+      // indistinguishable from a failed request and is retried, while a failure
+      // after output has been forwarded terminates the stream.
+      const attempt = await consumeRetryGenerator(
+        withRetry(
+          (ctx: RetryContext) => this.openStreamAttempt(
+            coreMessages, coreTools, experimentalOutput, ctx, signal,
           ),
-        this.retryConfig,
-        signal,
+          this.retryConfig,
+          signal,
+        ),
+        this.logger,
       );
-
-      const result = await consumeRetryGenerator(gen, this.logger);
 
       this.logger.debug('📥 [VercelAIModelService] Stream started');
 
       let toolCallIndex = 0;
-      for await (const part of result.fullStream) {
-        switch (part.type) {
-          case 'text-delta': {
-            const delta = getStreamTextDelta(part);
-            if (delta !== undefined) {
-              yield { content: delta };
+      let part = attempt.first;
+      try {
+        for (;;) {
+          if (part.done) {
+            break;
+          }
+          switch (part.value.type) {
+            case 'text-delta': {
+              const delta = getStreamTextDelta(part.value);
+              if (delta !== undefined) {
+                yield { content: delta };
+              }
+              break;
             }
-            break;
-          }
 
-          case 'reasoning-delta': {
-            const delta = getStreamTextDelta(part);
-            if (delta !== undefined) {
-              yield { reasoningContent: delta };
+            case 'reasoning-delta': {
+              const delta = getStreamTextDelta(part.value);
+              if (delta !== undefined) {
+                yield { reasoningContent: delta };
+              }
+              break;
             }
-            break;
-          }
 
-          case 'tool-call': {
-            const toolCall = getDeepSeekStreamToolCall(part, toolCallIndex);
-            yield {
-              toolCalls: [
-                {
-                  index: toolCallIndex++,
-                  ...toolCall,
-                },
-              ],
-            };
-            break;
-          }
+            case 'tool-call': {
+              const toolCall = getDeepSeekStreamToolCall(part.value, toolCallIndex);
+              yield {
+                toolCalls: [
+                  {
+                    index: toolCallIndex++,
+                    ...toolCall,
+                  },
+                ],
+              };
+              break;
+            }
 
-          case 'finish':
-            yield {
-              finishReason: (part as { finishReason?: string }).finishReason,
-              usage: this.convertUsage(
-                (
-                  part as {
-                    totalUsage?: Parameters<VercelAIModelService['convertUsage']>[0];
-                  }
-                ).totalUsage,
-                (
-                  part as {
-                    providerMetadata?: {
-                      anthropic?: {
-                        cacheCreationInputTokens?: number;
-                        cacheReadInputTokens?: number;
+            case 'finish':
+              yield {
+                finishReason: (part.value as { finishReason?: string }).finishReason,
+                usage: this.convertUsage(
+                  (
+                    part.value as {
+                      totalUsage?: Parameters<VercelAIModelService['convertUsage']>[0];
+                    }
+                  ).totalUsage,
+                  (
+                    part.value as {
+                      providerMetadata?: {
+                        anthropic?: {
+                          cacheCreationInputTokens?: number;
+                          cacheReadInputTokens?: number;
+                        };
+                        deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
                       };
-                      deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
-                    };
-                  }
-                ).providerMetadata,
-              ),
-            };
-            break;
+                    }
+                  ).providerMetadata,
+                ),
+              };
+              break;
 
-          case 'error': {
-            // The SDK reports a mid-stream failure as an event, not a rejection.
-            // Ignoring it let a truncated response look like a completed one, so
-            // the caller was asked to treat partial output as the model's answer.
-            const reason = (part as { errorText?: string }).errorText
-              ?? 'The model stream reported an error';
-            throw new ModelStreamError(reason);
+            case 'error': {
+              // The SDK reports a mid-stream failure as an event, not a rejection.
+              // Ignoring it let a truncated response look like a completed one, so
+              // the caller was asked to treat partial output as the model's answer.
+              // Output has started at this point, so the stream terminates instead
+              // of retrying, and the provider's error object is preserved.
+              throw streamPartError(part.value);
+            }
+
+            default:
+              // Unknown parts are ignored on purpose: the SDK adds event kinds over
+              // time and an unrecognised one is not a failure.
+              break;
           }
-
-          default:
-            // Unknown parts are ignored on purpose: the SDK adds event kinds over
-            // time and an unrecognised one is not a failure.
-            break;
+          part = await attempt.parts.next();
         }
+      } finally {
+        await attempt.parts.return?.().catch(() => undefined);
       }
 
       const duration = Date.now() - startTime;
@@ -1005,6 +1057,49 @@ export class VercelAIModelService implements ModelService {
       const duration = Date.now() - startTime;
       this.logger.error('❌ [VercelAIModelService] Stream failed after', duration, 'ms');
       throw error;
+    }
+  }
+
+  /**
+   * Opens one streamText attempt and consumes it up to the first output part.
+   *
+   * Failures before the first output are thrown here so the surrounding
+   * `withRetry` can retry them; non-output parts (step-start and friends) are
+   * skipped exactly like the main consumption loop skips unknown parts.
+   */
+  private async openStreamAttempt(
+    coreMessages: readonly unknown[],
+    coreTools: Record<string, unknown> | undefined,
+    experimentalOutput: ReturnType<VercelAIModelService['convertOutputFormat']>,
+    ctx: RetryContext,
+    signal?: AbortSignal,
+  ): Promise<{ first: IteratorResult<Record<string, unknown>>; parts: AsyncIterator<Record<string, unknown>> }> {
+    const result = streamText({
+      model: this.model,
+      messages: coreMessages as never,
+      tools: coreTools as never,
+      maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
+      temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
+      abortSignal: signal,
+      experimental_output: experimentalOutput,
+      providerOptions: this.getProviderOptions(),
+      // Single retry owner: see the non-streaming calls above.
+      maxRetries: 0,
+    });
+    const parts = result.fullStream[Symbol.asyncIterator]() as AsyncIterator<Record<string, unknown>>;
+    for (;;) {
+      const first = await parts.next();
+      if (first.done) {
+        return { first, parts };
+      }
+      const type = (first.value as { type?: unknown })?.type;
+      if (type === 'error') {
+        throw streamPartError(first.value);
+      }
+      if (type === 'text-delta' || type === 'reasoning-delta' || type === 'tool-call' || type === 'finish') {
+        return { first, parts };
+      }
+      // Skip non-output parts until the first output, matching the main loop.
     }
   }
 
