@@ -2,6 +2,15 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.5] - 2026-09-13
+
+### Fixes
+
+- Keep idempotency records for the Session's lifetime instead of inside the trimmable event log, so a retry whose original event has been retained away is still recognised as a repeat and does not publish a second time.
+- Recover an accepted-but-unenqueued submission from a journal longer than one replay budget by inspecting its tail, where that acceptance is the last durable event, instead of reporting a truncated scan on every startup.
+- Stop the session.read resume cursor at the last completed request instead of the event head: the message projection trails the log while a request streams, so a refreshed client could skip output it never received. It now replays the in-flight turn and deduplicates by event id.
+- Keep session-scoped tool discoveries through turn cleanup: discovery contributions are tracked per scope and the effective set is re-derived, so a temporary Skill can no longer drop the tools a session patch discovered.
+
 ## [7.4.4] - 2026-09-13
 
 ### Features
