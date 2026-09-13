@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Treat a failed message write as an open history gap that later successful requests cannot clear, and mark the terminal result so a client can tell execution success from a fully saved history.",
-  "zh-CN": "消息写失败会留下一个不会被后续成功请求清除的历史缺口，并在终态结果上标记，使客户端能区分“执行成功”和“历史已完整保存”。"
-}

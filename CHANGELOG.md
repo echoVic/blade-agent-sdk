@@ -2,6 +2,16 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.8] - 2026-09-13
+
+### Features
+
+- Record how far the message projection is complete next to the messages themselves, stop using a resume cursor past a recorded gap, report recoveryIncomplete when a trimmed log cannot be replayed in full, and add repairSessionHistory() to rebuild the missing messages from the durable journal without re-running any model or tool.
+
+### Fixes
+
+- Treat a failed message write as an open history gap that later successful requests cannot clear, and mark the terminal result so a client can tell execution success from a fully saved history.
+
 ## [7.4.7] - 2026-09-13
 
 ### Features

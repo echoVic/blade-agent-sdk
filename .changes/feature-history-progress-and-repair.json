@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Record how far the message projection is complete next to the messages themselves, stop using a resume cursor past a recorded gap, report recoveryIncomplete when a trimmed log cannot be replayed in full, and add repairSessionHistory() to rebuild the missing messages from the durable journal without re-running any model or tool.",
-  "zh-CN": "在消息写入的同时记录消息投影的完成进度；存在缺口时不再使用缺口之后的续读游标；日志被裁剪、无法完整重放时返回 recoveryIncomplete；新增 repairSessionHistory()，以 durable journal 为权威重建缺失消息且不重跑模型或工具。"
-}
