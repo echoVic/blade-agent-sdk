@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { assertSessionExecutorReadResult } from '../testing/index.js';
 import { CommandId, type InputId, type RequestId, type SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
 import type { PendingSessionInput } from '../../session/types.js';
@@ -30,6 +31,23 @@ function createExecutor(store: InMemoryAgentServerStore): InProcessSessionExecut
   });
 }
 
+/**
+ * A store that predates `getEventStreamRange`, as a host store may. A proxy is
+ * used because the method lives on the prototype: deleting it from the instance
+ * would leave the capable implementation in place.
+ */
+function createStoreWithoutEventStreamRange(): InMemoryAgentServerStore {
+  const store = new InMemoryAgentServerStore();
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (property === 'getEventStreamRange') {
+        return undefined;
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  }) as InMemoryAgentServerStore;
+}
+
 describe('InProcessSessionExecutor read', () => {
   it('reports a Session that another process owns as not loaded instead of empty', async () => {
     const store = new InMemoryAgentServerStore();
@@ -44,6 +62,7 @@ describe('InProcessSessionExecutor read', () => {
     const restarted = createExecutor(store);
     const result = await restarted.read(context('command-read'), { sessionId });
 
+    assertSessionExecutorReadResult(result, 'InProcessSessionExecutor.read');
     expect(result.session.sessionId).toBe(sessionId);
     expect(result.loaded).toBe(false);
     // Empty is the placeholder value; `loaded: false` is what makes it honest.
@@ -545,6 +564,105 @@ describe('AgentServer session.read recovery snapshot', () => {
     // The scan widens until it finds the boundary, so the client replays only the
     // in-flight turn instead of the whole retained log.
     expect(recovery.lastEventSequence).toBe(1);
+  });
+
+  it('does not hand a store without the retained-range capability an unsafe cursor', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    // Stands in for a host store that predates the retained-range capability.
+    const store = createStoreWithoutEventStreamRange();
+    const executor = new InProcessSessionExecutor({
+      store: store as never,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store: store as never,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-no-range'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    for (const delta of ['kept one', 'kept two']) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data: { type: 'content', delta, sessionId },
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-no-range'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const data = (read as { data: { messages: unknown[]; recovery: Record<string, unknown> } }).data;
+    expect(data.messages).toEqual([]);
+    // The head would be 2, which would skip both content events; without the
+    // capability the store gets the conservative start instead.
+    expect(data.recovery.lastEventSequence).toBe(0);
+    const replay = await store.readEvents(principal.tenantId, sessionId, { limit: 100 });
+    expect(replay.events).toHaveLength(2);
+  });
+
+  it('reports an incomplete recovery when no safe cursor can be established', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    // A trimmed log rejects a cursor it no longer retains, and the store has no
+    // retained-range capability to fall back on.
+    const store = createStoreWithoutEventStreamRange();
+    store.readEvents = async () => {
+      throw new RangeError('Event cursor is stale');
+    };
+    const executor = new InProcessSessionExecutor({
+      store: store as never,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store: store as never,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-trimmed'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-trimmed'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    expect(recovery.recoveryIncomplete).toBe(true);
+    expect(recovery).not.toHaveProperty('lastEventSequence');
   });
 
   it('does not present an unknown pending-input projection as empty', async () => {

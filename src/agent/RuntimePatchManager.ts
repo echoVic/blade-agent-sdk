@@ -36,6 +36,13 @@ import type { LoopState } from './state/LoopState.js';
 import type { LoopSkillState } from './state/TurnState.js';
 
 export class RuntimePatchManager {
+  /**
+   * Skill identities are held per layer like the rest of the scoped state: a
+   * turn-scoped Skill is the active identity for that turn, and cleanup must
+   * reveal the session-scoped Skill that is still applied rather than report none.
+   */
+  private sessionSkillState?: LoopSkillState;
+  private turnSkillState?: LoopSkillState;
   private runtimeSkillState?: LoopSkillState;
   /**
    * The session-scoped policy, kept separately from the effective one. A turn patch
@@ -88,22 +95,49 @@ export class RuntimePatchManager {
   }
 
   setSkillContext(ctx: LoopSkillState | undefined): void {
-    this.runtimeSkillState = ctx;
+    if (!ctx) {
+      this.sessionSkillState = undefined;
+      this.turnSkillState = undefined;
+    } else if ((ctx.scope ?? 'session') === 'turn') {
+      this.turnSkillState = ctx;
+    } else {
+      this.sessionSkillState = ctx;
+    }
+    this.recomputeSkillState();
     this.runtimeToolPolicy = ctx
       ? {
           allow: ctx.allowedTools,
           deny: ctx.deniedTools,
           scope: ctx.scope ?? 'session',
         }
+      : this.sessionToolPolicy
+        ? { ...this.sessionToolPolicy, scope: 'session' }
+        : undefined;
+  }
+
+  /**
+   * Deactivate the Skill that is currently active. The other layer stays: clearing
+   * a temporary Skill must not deactivate the session Skill underneath it, and an
+   * explicit deactivation must not erase a baseline it never set.
+   */
+  clearSkillContext(): void {
+    const deactivated = this.turnSkillState ?? this.sessionSkillState;
+    if (deactivated) {
+      this.logger.debug(`🎯 Skill "${deactivated.skillName}" deactivated`);
+    }
+    if (this.turnSkillState) {
+      this.turnSkillState = undefined;
+    } else {
+      this.sessionSkillState = undefined;
+    }
+    this.recomputeSkillState();
+    this.runtimeToolPolicy = this.sessionToolPolicy
+      ? { ...this.sessionToolPolicy, scope: 'session' }
       : undefined;
   }
 
-  clearSkillContext(): void {
-    if (this.runtimeSkillState) {
-      this.logger.debug(`🎯 Skill "${this.runtimeSkillState.skillName}" deactivated`);
-      this.runtimeSkillState = undefined;
-    }
-    this.runtimeToolPolicy = undefined;
+  private recomputeSkillState(): void {
+    this.runtimeSkillState = this.turnSkillState ?? this.sessionSkillState;
   }
 
   // ===== RuntimePatch 派生与应用 =====
@@ -195,7 +229,12 @@ export class RuntimePatchManager {
         basePath: patch.skill.basePath,
         scope: patch.scope,
       };
-      this.runtimeSkillState = nextSkillContext;
+      if (patch.scope === 'session') {
+        this.sessionSkillState = nextSkillContext;
+      } else {
+        this.turnSkillState = nextSkillContext;
+      }
+      this.recomputeSkillState();
       loopState.setActiveSkill(nextSkillContext);
     }
   }
@@ -443,8 +482,11 @@ ${summary}`,
         ? { ...this.sessionToolPolicy, scope: 'session' }
         : undefined;
     }
-    if (this.runtimeSkillState?.scope === 'turn') {
-      this.runtimeSkillState = undefined;
+    if (this.turnSkillState) {
+      // Reveal the session Skill instead of reporting that no Skill is active: its
+      // patches are still applied and its prompt is still in effect.
+      this.turnSkillState = undefined;
+      this.recomputeSkillState();
     }
     if (this.turnContextOverlay) {
       // Drop only the turn layer: the session's context contribution is not the

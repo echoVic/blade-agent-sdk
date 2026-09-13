@@ -537,7 +537,7 @@ export class AgentServer {
       case AgentCommandType.SESSION_READ: {
         // Resolved before the snapshot is loaded, so the cursor can never point
         // past events the snapshot was taken with.
-        const lastEventSequence = await this.resolveRecoveryCursor(
+        const recoveryCursor = await this.resolveRecoveryCursor(
           principal.tenantId,
           command.data.sessionId,
         );
@@ -552,7 +552,7 @@ export class AgentServer {
             principal.tenantId,
             command.data.sessionId,
             result,
-            lastEventSequence,
+            recoveryCursor,
           ),
         });
       }
@@ -649,16 +649,22 @@ export class AgentServer {
   private async resolveRecoveryCursor(
     tenantId: string,
     sessionId: SessionId,
-  ): Promise<number | undefined> {
+  ): Promise<RecoveryCursor> {
     if (!this.store.getEventStreamRange) {
-      const head = this.store.getLatestEventSequence
-        ? await this.store.getLatestEventSequence(tenantId, sessionId)
-        : null;
-      return head ?? undefined;
+      // A store without the retained-range capability cannot be given a safe
+      // cursor: the head is not one, because the snapshot's messages may lag it.
+      // Replay from the beginning when the log is readable from there, and say so
+      // when even that is impossible instead of pretending the head is safe.
+      try {
+        await this.store.readEvents(tenantId, sessionId, { after: 0, limit: 1 });
+      } catch {
+        return { incomplete: true };
+      }
+      return { cursor: 0, incomplete: false };
     }
     const range = await this.store.getEventStreamRange(tenantId, sessionId);
     if (!range) {
-      return undefined;
+      return { incomplete: false };
     }
     let windowEnd = range.headSequence;
     for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
@@ -672,7 +678,7 @@ export class AgentServer {
       });
       const boundary = [...page.events].reverse().find(isCompletedRequestEvent);
       if (boundary) {
-        return boundary.sequence;
+        return { cursor: boundary.sequence, incomplete: false };
       }
       if (windowStart <= range.firstSequence) {
         break;
@@ -680,7 +686,7 @@ export class AgentServer {
       windowEnd = windowStart - 1;
     }
     // Nothing completed within the scanned range: replay everything retained.
-    return range.firstSequence - 1;
+    return { cursor: range.firstSequence - 1, incomplete: false };
   }
 
   /**
@@ -702,12 +708,12 @@ export class AgentServer {
     tenantId: string,
     sessionId: SessionId,
     read: { readonly loaded: boolean; readonly pendingInputs: readonly PendingSessionInput[] },
-    snapshotHead?: number | null,
+    snapshotHead?: RecoveryCursor,
   ): Promise<JsonObject> {
     const route = this.options.runtimeStore
       ? await this.options.runtimeStore.getSessionRoute(tenantId, sessionId)
       : null;
-    const lastSequence = snapshotHead;
+    const lastSequence = snapshotHead?.cursor;
     return {
       sessionLoaded: read.loaded,
       ...(route
@@ -724,6 +730,9 @@ export class AgentServer {
       ...(lastSequence !== null && lastSequence !== undefined
         ? { lastEventSequence: lastSequence }
         : {}),
+      // A client must be able to tell "resume from here" apart from "this server
+      // cannot prove a safe resume point".
+      ...(snapshotHead?.incomplete ? { recoveryIncomplete: true } : {}),
     };
   }
 
@@ -984,6 +993,12 @@ export class AgentServer {
       ),
     ]);
   }
+}
+
+/** The resume cursor for a reconnecting client, or why one cannot be given. */
+interface RecoveryCursor {
+  readonly cursor?: number;
+  readonly incomplete: boolean;
 }
 
 /**

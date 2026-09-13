@@ -330,11 +330,10 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     const key = scopedKey(tenantId, sessionId);
     const log = this.getOrCreateEventLog(key);
     if (options.idempotencyKey !== undefined) {
-      const existing = await this.getEventByIdempotencyKey(
-        tenantId,
-        sessionId,
-        options.idempotencyKey,
-      );
+      // Checked synchronously and without awaiting anything: an `await` here would
+      // yield between the check and the write, letting a concurrent append with the
+      // same key pass its own check and store a second event.
+      const existing = this.readIdempotencyRecord(key, options.idempotencyKey);
       if (existing) {
         return existing;
       }
@@ -387,13 +386,20 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     sessionId: SessionId,
     idempotencyKey: string,
   ): Promise<AgentServerEvent | null> {
-    const key = scopedKey(tenantId, sessionId);
+    return this.readIdempotencyRecord(scopedKey(tenantId, sessionId), idempotencyKey);
+  }
+
+  /**
+   * The synchronous critical section for idempotent appends.
+   *
+   * Stores written before the key record existed (7.4.4 and earlier) kept the key
+   * as the event's own id, so a miss is looked up in the log and adopted in place.
+   */
+  private readIdempotencyRecord(key: string, idempotencyKey: string): AgentServerEvent | null {
     const existing = this.eventKeys.get(key)?.get(idempotencyKey);
     if (existing) {
       return structuredClone(existing);
     }
-    // Stores written before the key record existed (7.4.4 and earlier) kept the key
-    // as the event's own id; recognise and adopt that shape.
     const legacy = this.eventLogs
       .get(key)
       ?.events.find((candidate) => candidate.eventId === idempotencyKey);

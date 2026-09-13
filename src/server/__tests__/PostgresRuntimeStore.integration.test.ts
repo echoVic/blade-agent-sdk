@@ -20,6 +20,7 @@ import {
 } from '../EffectDispatcher.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { SdkSessionRunner } from '../SdkSessionRunner.js';
+import { assertAgentServerStoreConformance } from '../testing/AgentServerStoreConformance.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
 import { effectLease } from '../WorkerRuntime.js';
 
@@ -98,6 +99,19 @@ describePostgres('PostgresRuntimeStore', () => {
       'worker-routing',
       'worker-recovery',
       'effect-delivery',
+    ]);
+  });
+
+  it('passes the shared AgentServerStore contract', async () => {
+    const result = await assertAgentServerStoreConformance(store, {
+      idPrefix: `postgres-${process.pid}-${Date.now()}`,
+    });
+
+    expect(result.checks).toEqual([
+      'session-records',
+      'command-receipts',
+      'agent-events',
+      'idempotent-appends',
     ]);
   });
 

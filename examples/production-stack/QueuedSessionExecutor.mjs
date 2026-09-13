@@ -62,11 +62,16 @@ export class QueuedSessionExecutor {
 
   async read(context, data) {
     const session = await this.requireSession(context.principal.tenantId, data.sessionId);
+    // The persistent snapshot is authoritative for this executor, so the messages
+    // are known even though this process holds no live Session. Reporting
+    // `loaded: false` would tell the client the projection is unknown and drop
+    // `pendingInputCount` from the recovery snapshot.
     const snapshot = await this.store.forTenant(session.tenantId).loadState(data.sessionId);
     return {
       session,
       messages: snapshot?.messages ?? [],
       pendingInputs: snapshot?.pendingInputs ?? [],
+      loaded: true,
     };
   }
 

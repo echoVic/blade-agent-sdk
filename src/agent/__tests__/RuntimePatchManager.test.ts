@@ -202,6 +202,50 @@ describe('RuntimePatchManager tool policy scoping', () => {
     expect(context?.environment).not.toHaveProperty('BASE');
   });
 
+  it('reveals the session Skill after a turn-scoped Skill is cleaned up', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      skill: { id: 'base', name: 'base', basePath: '/tmp' },
+      systemPromptAppend: 'BASE_PROMPT',
+    }, loopState);
+    expect(manager.skillContext).toMatchObject({ skillId: 'base' });
+
+    manager.applyRuntimePatch({
+      scope: 'turn',
+      source: 'tool',
+      skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
+    }, loopState);
+    expect(manager.skillContext).toMatchObject({ skillId: 'temp' });
+
+    manager.clearTurnScopedRuntimeState();
+
+    // The session Skill is still applied (its prompt and patch history remain), so
+    // the identity has to match it instead of reporting "no active Skill".
+    expect(manager.skillContext).toMatchObject({ skillId: 'base', scope: 'session' });
+    expect(manager.getEffectiveSystemPromptAppend()).toContain('BASE_PROMPT');
+  });
+
+  it('keeps the session policy baseline when the skill context is cleared', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch(sessionPatch(), loopState);
+    manager.applyRuntimePatch({
+      scope: 'turn',
+      source: 'tool',
+      skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
+      toolPolicy: { allow: ['Read'] },
+    }, loopState);
+    expect(manager.runtimeToolPolicySnapshot).toEqual({ allow: ['Read'], deny: undefined, scope: 'turn' });
+
+    // Deactivating the temporary Skill restores the session baseline rather than
+    // leaving the effective policy empty while the session patch still applies.
+    manager.clearSkillContext();
+
+    expect(manager.skillContext).toBeUndefined();
+    expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
+  });
+
   it('reports no policy when neither a patch nor a baseline exists', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(turnSkillPatch(), loopState);

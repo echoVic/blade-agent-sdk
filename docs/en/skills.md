@@ -34,9 +34,11 @@ that boundary is required.
 
 A turn-scoped Skill lives for one turn and is cleaned up when that turn ends.
 Both cleanup and replacement are scope-aware: a session-scoped system-prompt
-append, environment baseline, tool-policy baseline, **tool-discovery set** or
-**context overlay** is never overwritten or deleted by a turn-scoped Skill, so it
-is still in effect after the turn. Within one scope, a later Skill that carries no
+append, environment baseline, tool-policy baseline, **tool-discovery set**,
+**context overlay** or **Skill identity** is never overwritten or deleted by a
+turn-scoped Skill, so it is still in effect after the turn. Cleaning up a
+temporary Skill reveals the session Skill that is still applied instead of
+reporting that no Skill is active. Within one scope, a later Skill that carries no
 `systemPromptAppend` / `environment` replaces the earlier contribution from that
 same scope, and `toolDiscovery.reset` as well as a context `reset` clear only the
 layer that declared them. The effective state is always re-derived from the layers

@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentProtocolError } from '../../src/protocol/index.js';
+import { assertSessionExecutorReadResult } from '../../src/server/testing/index.js';
 
 type Submission = { inputId: string; requestId: string; status: string };
 type Context = { principal: { tenantId: string; subject: string }; commandId: string };
@@ -359,6 +360,11 @@ describe('production QueuedSessionExecutor', () => {
   it('reads the tenant transcript projection and rejects cross-tenant submissions', async () => {
     const test = harness();
     const read = await test.executor.read(context, { sessionId: 'session-1' });
+    // The shipped example must satisfy the same read contract as the SDK's own
+    // executors: the server reads `loaded` to decide whether the pending-input
+    // projection is known, so omitting it silently weakens the recovery snapshot.
+    assertSessionExecutorReadResult(read as never, 'QueuedSessionExecutor.read');
+    expect(read).toMatchObject({ loaded: true });
     expect(read.messages).toEqual(test.snapshot.messages);
     expect(test.tenantStore.loadState).toHaveBeenCalledWith('session-1');
     await expect(test.executor.submit({ ...context, principal: { tenantId: 'other-tenant', subject: 'other-user' } }, input))

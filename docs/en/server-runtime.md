@@ -214,7 +214,14 @@ each. A boundary found inside them is used; when none is found the cursor falls
 back to the start of what the log still retains, replaying more rather than
 skipping the part that happened to fall outside the scan — a scan budget is not
 history that may be skipped. A trimmed log clamps the cursor into the retained
-range. When `loaded` is false the pending-input projection is unknown, so
+range.
+
+That retained range comes from the store's `getEventStreamRange`, which is part of
+the recovery guarantee: a custom store without it is never handed the event head as
+a cursor. The server replays from `0` when the log is still readable from the
+start, and when even that cannot be established (the log was trimmed) the recovery
+object carries `recoveryIncomplete: true` and omits `lastEventSequence` instead of
+offering a cursor that may skip content. When `loaded` is false the pending-input projection is unknown, so
 `pendingInputCount` is omitted instead of reporting the unknown as zero.
 
 `appendEvent(..., { idempotencyKey })` keeps its idempotency record for the
