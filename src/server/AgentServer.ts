@@ -51,6 +51,11 @@ const DEFAULT_COMMAND_LEASE_TTL_MS = 30_000;
  * long Session; anything it does not cover is replayed rather than skipped.
  */
 const RECOVERY_TAIL_EVENTS = 500;
+/**
+ * How many trailing windows a recovery snapshot may scan for the last completed
+ * request. The search is bounded, but a miss never turns into a skipped range.
+ */
+const RECOVERY_SCAN_WINDOWS = 4;
 const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
@@ -636,8 +641,10 @@ export class AgentServer {
    * request: the client replays the in-flight request (deduplicating by event id)
    * instead of losing it.
    *
-   * The window is bounded, and a window that does not reach back to a completed
-   * request is replayed from its start rather than from the head.
+   * The search is bounded, but a miss never becomes a skipped range: when no
+   * completed request is found, the cursor falls back to the start of what the log
+   * still retains, so the client replays more rather than losing the beginning of
+   * a long in-flight request.
    */
   private async resolveRecoveryCursor(
     tenantId: string,
@@ -653,16 +660,27 @@ export class AgentServer {
     if (!range) {
       return undefined;
     }
-    const windowStart = Math.max(
-      range.firstSequence,
-      range.headSequence - RECOVERY_TAIL_EVENTS + 1,
-    );
-    const page = await this.store.readEvents(tenantId, sessionId, {
-      after: windowStart - 1,
-      limit: RECOVERY_TAIL_EVENTS,
-    });
-    const boundary = [...page.events].reverse().find(isCompletedRequestEvent);
-    return boundary ? boundary.sequence : windowStart - 1;
+    let windowEnd = range.headSequence;
+    for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
+      const windowStart = Math.max(
+        range.firstSequence,
+        windowEnd - RECOVERY_TAIL_EVENTS + 1,
+      );
+      const page = await this.store.readEvents(tenantId, sessionId, {
+        after: windowStart - 1,
+        limit: RECOVERY_TAIL_EVENTS,
+      });
+      const boundary = [...page.events].reverse().find(isCompletedRequestEvent);
+      if (boundary) {
+        return boundary.sequence;
+      }
+      if (windowStart <= range.firstSequence) {
+        break;
+      }
+      windowEnd = windowStart - 1;
+    }
+    // Nothing completed within the scanned range: replay everything retained.
+    return range.firstSequence - 1;
   }
 
   /**

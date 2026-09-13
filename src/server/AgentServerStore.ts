@@ -330,9 +330,13 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     const key = scopedKey(tenantId, sessionId);
     const log = this.getOrCreateEventLog(key);
     if (options.idempotencyKey !== undefined) {
-      const existing = this.eventKeys.get(key)?.get(options.idempotencyKey);
+      const existing = await this.getEventByIdempotencyKey(
+        tenantId,
+        sessionId,
+        options.idempotencyKey,
+      );
       if (existing) {
-        return structuredClone(existing);
+        return existing;
       }
     }
     const stored = {
@@ -343,7 +347,10 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     } as AgentServerEvent;
     if (options.idempotencyKey !== undefined) {
       const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
-      keys.set(options.idempotencyKey, stored);
+      // Deep copy at the write boundary: the log stores a clone, and the key record
+      // must be isolated from the caller's object in the same way, or a later
+      // mutation of `event.data` would change one and not the other.
+      keys.set(options.idempotencyKey, structuredClone(stored));
       this.eventKeys.set(key, keys);
     }
     log.events.push(structuredClone(stored));
@@ -380,8 +387,23 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     sessionId: SessionId,
     idempotencyKey: string,
   ): Promise<AgentServerEvent | null> {
-    const existing = this.eventKeys.get(scopedKey(tenantId, sessionId))?.get(idempotencyKey);
-    return existing ? structuredClone(existing) : null;
+    const key = scopedKey(tenantId, sessionId);
+    const existing = this.eventKeys.get(key)?.get(idempotencyKey);
+    if (existing) {
+      return structuredClone(existing);
+    }
+    // Stores written before the key record existed (7.4.4 and earlier) kept the key
+    // as the event's own id; recognise and adopt that shape.
+    const legacy = this.eventLogs
+      .get(key)
+      ?.events.find((candidate) => candidate.eventId === idempotencyKey);
+    if (!legacy) {
+      return null;
+    }
+    const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
+    keys.set(idempotencyKey, structuredClone(legacy));
+    this.eventKeys.set(key, keys);
+    return structuredClone(legacy);
   }
 
   async readEvents(

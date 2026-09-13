@@ -198,6 +198,43 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
       .toMatchObject({ eventId: first.eventId });
   });
 
+  it('isolates the idempotency record from the caller object', async () => {
+    const store = new InMemoryAgentServerStore();
+    const draft = {
+      protocolVersion: 1,
+      sessionId,
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream',
+      data: { type: 'result', subtype: 'success', content: 'original', sessionId },
+    } as const;
+    const first = await store.appendEvent(tenantId, sessionId, draft, {
+      idempotencyKey: 'terminal-3',
+    });
+
+    // The caller mutates the object it passed in after the append.
+    (draft.data as { content: string }).content = 'mutated';
+
+    const logged = (await store.readEvents(tenantId, sessionId)).events[0];
+    const recorded = await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-3');
+    expect((logged?.data as { content?: string }).content).toBe('original');
+    expect((recorded?.data as { content?: string }).content).toBe('original');
+    expect(recorded?.eventId).toBe(first.eventId);
+  });
+
+  it('recognises a key written by the pre-7.4.5 event-id shape', async () => {
+    const store = new InMemoryAgentServerStore();
+    // 7.4.4 and earlier used the key as the event's own id and had no key record.
+    const legacy = await store.appendEvent(tenantId, sessionId, event);
+
+    const repeat = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: String(legacy.eventId),
+    });
+
+    expect(repeat.eventId).toBe(legacy.eventId);
+    expect(repeat.sequence).toBe(legacy.sequence);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(1);
+  });
+
   it('keeps appending without a key', async () => {
     const store = new InMemoryAgentServerStore();
     await store.appendEvent(tenantId, sessionId, event);

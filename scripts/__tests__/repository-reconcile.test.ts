@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { DurableEventStore } from '../../src/session/events/DurableEventStore.js';
 import { SessionId } from '../../src/types/identifiers.js';
 import { reconcilePendingWork } from '../../examples/production-stack/RepositoryReconcile.mjs';
 
@@ -8,6 +9,35 @@ import { reconcilePendingWork } from '../../examples/production-stack/Repository
  * journal is the authority, and a lost transcript write is the case the sweep
  * exists for.
  */
+/**
+ * The durable read port the reconciler uses. Typing the double against the SDK's
+ * own `DurableEventStore` keeps the fake honest: renaming `getHeadSequence` or
+ * `read` in the SDK breaks this file instead of silently disabling recovery.
+ */
+type DurableReadPort = Pick<DurableEventStore, 'read' | 'getHeadSequence'>;
+
+function createDurablePort(journals: Map<string, unknown[]>): DurableReadPort {
+  return {
+    getHeadSequence: async (sessionId) => {
+      const all = journals.get(String(sessionId)) ?? [];
+      return all.length === 0 ? null : (all.at(-1) as { sequence: number }).sequence;
+    },
+    read: async (sessionId, { after, limit = 500 } = {}) => {
+      const all = journals.get(String(sessionId)) ?? [];
+      const remaining = after === undefined
+        ? all
+        : all.filter((event) => Number((event as { sequence: number }).sequence) > Number(after));
+      const page = remaining.slice(0, limit);
+      return {
+        events: page,
+        headSequence: all.length === 0 ? null : (all.at(-1) as { sequence: number }).sequence,
+        nextCursor: (page.at(-1) as { sequence: number } | undefined)?.sequence ?? null,
+        hasMore: remaining.length > page.length,
+      };
+    },
+  } as DurableReadPort;
+}
+
 function createWorkerStore({
   routes = new Map(),
   events = new Map(),
@@ -64,23 +94,7 @@ function createWorkerStore({
       loadState: async () => {
         throw new Error('The reconciler must not read the transcript projection');
       },
-      getDurableHead: async (sessionId) => {
-        const all = journals.get(String(sessionId)) ?? [];
-        return all.length === 0 ? null : all.at(-1).sequence;
-      },
-      read: async (sessionId, { after, limit = 500 } = {}) => {
-        const all = journals.get(String(sessionId)) ?? [];
-        const remaining = after === undefined
-          ? all
-          : all.filter((event) => Number(event.sequence) > Number(after));
-        const page = remaining.slice(0, limit);
-        return {
-          events: page,
-          headSequence: all.length === 0 ? null : all.at(-1).sequence,
-          nextCursor: page.at(-1)?.sequence ?? null,
-          hasMore: remaining.length > page.length,
-        };
-      },
+      ...createDurablePort(journals),
     }),
   };
 }
@@ -200,6 +214,29 @@ function longDurableJournal(sessionId: string, requestId: string, inputId: strin
   });
   return events;
 }
+
+describe('durable read port contract', () => {
+  it('mirrors the methods the real tenant adapter exposes', async () => {
+    const { PostgresRuntimeStore } = await import(
+      '../../src/server/PostgresRuntimeStore.js'
+    );
+    // No connection is used: this only inspects the public surface of the adapter
+    // the reconciler is handed in production.
+    const store = new PostgresRuntimeStore({
+      pool: { query: async () => ({ rows: [] }) } as never,
+      schema: 'interface_contract',
+      tablePrefix: 'runtime',
+    } as never);
+    const adapter = store.forTenant('tenant-contract');
+    const realMethods = new Set(
+      Object.getOwnPropertyNames(Object.getPrototypeOf(adapter)),
+    );
+
+    for (const method of Object.keys(createDurablePort(new Map()))) {
+      expect(realMethods.has(method), `${method} must exist on the tenant adapter`).toBe(true);
+    }
+  });
+});
 
 describe('startup reconciliation', () => {
   it('enqueues a submission that was accepted but never handed to a Worker', async () => {

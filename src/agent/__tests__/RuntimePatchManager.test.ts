@@ -163,6 +163,45 @@ describe('RuntimePatchManager tool policy scoping', () => {
     expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Write']);
   });
 
+  it('keeps the session context overlay through a turn-scoped context patch', () => {
+    const { manager } = createManager();
+    manager.applyRuntimeContextPatch({
+      scope: 'session',
+      context: { environment: { BASE: 'on' } },
+    });
+    manager.applyRuntimeContextPatch({
+      scope: 'turn',
+      context: { environment: { TEMP: 'on' } },
+    });
+    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context)
+      .toMatchObject({ environment: { BASE: 'on', TEMP: 'on' } });
+
+    manager.clearTurnScopedRuntimeState();
+
+    // The turn overlay is dropped, the session overlay is not.
+    const context = manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context;
+    expect(context).toMatchObject({ environment: { BASE: 'on' } });
+    expect(context?.environment).not.toHaveProperty('TEMP');
+  });
+
+  it('drops only the layer that declares a context reset', () => {
+    const { manager } = createManager();
+    manager.applyRuntimeContextPatch({
+      scope: 'session',
+      context: { environment: { BASE: 'on' } },
+    });
+    manager.applyRuntimeContextPatch({
+      scope: 'turn',
+      context: { environment: { TEMP: 'on' } },
+    });
+
+    manager.applyRuntimeContextPatch({ scope: 'session', reset: true });
+
+    const context = manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context;
+    expect(context?.environment).toMatchObject({ TEMP: 'on' });
+    expect(context?.environment).not.toHaveProperty('BASE');
+  });
+
   it('reports no policy when neither a patch nor a baseline exists', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(turnSkillPatch(), loopState);

@@ -427,6 +427,126 @@ describe('AgentServer session.read recovery snapshot', () => {
     expect(replay.events.at(-1)?.sequence).toBe(range?.headSequence);
   });
 
+  it('replays a long in-flight request from its start instead of skipping the head of it', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-long-stream'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    // One request, 600 events, still streaming: more than one scan window, and no
+    // completed request anywhere in the log.
+    for (let index = 1; index <= 600; index += 1) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data: { type: 'content', delta: `delta-${index}`, sessionId },
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-long-stream'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const data = (read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } })
+      .data;
+    expect(data.messages).toEqual([]);
+    // Nothing in the snapshot covers this output, so the cursor must replay all of
+    // it - never the part that happened to fall outside the scan window.
+    expect(data.recovery.lastEventSequence).toBe(0);
+    const replay = await store.readEvents(principal.tenantId, sessionId, {
+      after: data.recovery.lastEventSequence,
+      limit: 1000,
+    });
+    expect(replay.events).toHaveLength(600);
+    expect((replay.events[0]?.data as { delta?: string }).delta).toBe('delta-1');
+  });
+
+  it('finds a completed request that lies beyond one scan window', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-deep-boundary'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    // The completed request is more than one window behind the head.
+    await store.appendEvent(principal.tenantId, sessionId, {
+      protocolVersion: 1,
+      sessionId,
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream',
+      data: { type: 'result', subtype: 'success', content: 'first turn', sessionId },
+    });
+    for (let index = 1; index <= 600; index += 1) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data: { type: 'content', delta: `turn-2-${index}`, sessionId },
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-deep-boundary'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
+    // The scan widens until it finds the boundary, so the client replays only the
+    // in-flight turn instead of the whole retained log.
+    expect(recovery.lastEventSequence).toBe(1);
+  });
+
   it('does not present an unknown pending-input projection as empty', async () => {
     const { AgentServer } = await import('../AgentServer.js');
     const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');

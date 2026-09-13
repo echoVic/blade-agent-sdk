@@ -795,6 +795,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
   /**
    * The payload an idempotency key already stored, read from the record rather
    * than the event log so event retention cannot forget it.
+   *
+   * Stores written before the key table existed (7.4.4 and earlier) kept the key
+   * as the event's own id, so a missing record falls back to that shape and
+   * backfills it. Without this an upgrade would not recognise a terminal result
+   * published by the previous version and would publish it again.
    */
   private async readIdempotencyRecord(
     client: PoolClient,
@@ -809,7 +814,43 @@ export class PostgresRuntimeStore implements RuntimeStore {
       [tenantId, sessionId, idempotencyKey],
     );
     const row = result.rows[0];
-    return row ? asJsonObject(row.payload) : null;
+    if (row) {
+      return asJsonObject(row.payload);
+    }
+
+    const legacy = await client.query<PayloadRow>(
+      `SELECT payload
+         FROM ${this.table('events')}
+        WHERE tenant_id = $1 AND session_id = $2
+          AND stream_name = 'agent' AND event_id = $3`,
+      [tenantId, sessionId, idempotencyKey],
+    );
+    const legacyRow = legacy.rows[0];
+    if (!legacyRow) {
+      return null;
+    }
+    const payload = asJsonObject(legacyRow.payload);
+    await this.backfillIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, payload);
+    return payload;
+  }
+
+  /** Record a key that only exists in the pre-7.4.5 event-id shape. */
+  private async backfillIdempotencyRecord(
+    client: PoolClient,
+    tenantId: string,
+    sessionId: SessionId,
+    idempotencyKey: string,
+    payload: JsonObject,
+  ): Promise<void> {
+    const sequence = Number(payload.sequence);
+    const eventId = payload.eventId;
+    if (!Number.isSafeInteger(sequence) || typeof eventId !== 'string') {
+      return;
+    }
+    await this.writeIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, {
+      eventId: EventId(eventId),
+      sequence: EventSequence(sequence),
+    }, payload);
   }
 
   private async writeIdempotencyRecord(
@@ -818,6 +859,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     idempotencyKey: string,
     event: { readonly eventId: EventId; readonly sequence: EventSequence },
+    payload: unknown = event,
   ): Promise<void> {
     await client.query(
       `INSERT INTO ${this.table('event_keys')} (
@@ -830,7 +872,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         idempotencyKey,
         Number(event.sequence),
         String(event.eventId),
-        JSON.stringify(event),
+        JSON.stringify(payload),
       ],
     );
   }

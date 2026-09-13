@@ -207,14 +207,22 @@ is written — so a cursor equal to the event head would let a refreshed page sk
 output the projection has not recorded yet. Stopping at the completed request
 means the client replays the in-flight turn and deduplicates by event id, which
 cannot lose content. The cursor is resolved before the snapshot is loaded, so the
-two reads cannot race, and it is derived from a bounded tail of the log: a window
-with no completed request is replayed from its start rather than from the head.
-When `loaded` is false the pending-input projection is unknown, so
+two reads cannot race.
+
+The search for that boundary is bounded: up to four trailing windows of 500 events
+each. A boundary found inside them is used; when none is found the cursor falls
+back to the start of what the log still retains, replaying more rather than
+skipping the part that happened to fall outside the scan — a scan budget is not
+history that may be skipped. A trimmed log clamps the cursor into the retained
+range. When `loaded` is false the pending-input projection is unknown, so
 `pendingInputCount` is omitted instead of reporting the unknown as zero.
 
 `appendEvent(..., { idempotencyKey })` keeps its idempotency record for the
 Session's lifetime, independent of event retention: a retry whose original event
 has already been trimmed is still recognised as a repeat and returns that event.
+7.4.4 and earlier stored the key as the event's own id with no separate record;
+either shape is recognised and the legacy one is backfilled in place, so an
+upgrade cannot publish an already-published terminal result again.
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command

@@ -184,12 +184,21 @@ async function readActiveDurableRequest(tenantStore, sessionId, report) {
   return acceptedRequestAtTail(tail);
 }
 
-/** The last durable events of a journal, without replaying the history. */
+/**
+ * The last durable events of a journal, without replaying the history.
+ *
+ * `getHeadSequence` is the durable store's own head accessor; the tenant adapter
+ * exposes the durable read port directly, so there is no separate head method.
+ */
 async function readDurableTail(tenantStore, sessionId) {
-  if (typeof tenantStore.getDurableHead !== 'function') {
-    return [];
+  if (typeof tenantStore.getHeadSequence !== 'function') {
+    // Fail loudly: a renamed or missing head accessor used to make the fallback
+    // silently recover nothing, which is indistinguishable from "nothing to do".
+    throw new Error(
+      'The durable store does not expose getHeadSequence; cannot inspect the journal tail',
+    );
   }
-  const head = await tenantStore.getDurableHead(sessionId);
+  const head = await tenantStore.getHeadSequence(sessionId);
   if (head === null || head === undefined) {
     return [];
   }

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Read the durable journal tail through the accessor the tenant adapter actually exposes (getHeadSequence), fail loudly when it is missing, and pin the reconciler's test double to the real durable read port so the two cannot drift apart again.",
+  "zh-CN": "长 journal 的兜底改为调用 tenant adapter 真正提供的 getHeadSequence；缺失时直接报错而不是静默返回空，并让补齐流程的测试替身对齐真实的 durable 读取端口，避免再次脱节。"
+}

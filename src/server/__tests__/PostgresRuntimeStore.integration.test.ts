@@ -132,6 +132,47 @@ describePostgres('PostgresRuntimeStore', () => {
       .toMatchObject({ eventId: first.eventId, sequence: first.sequence });
   });
 
+  it('recognises an idempotency key written by the previous release', async () => {
+    const tenantId = 'tenant-idempotency-upgrade';
+    const sessionId = SessionId(`session-upgrade-${Date.now()}`);
+    const legacyKey = `legacy-terminal-${Date.now()}`;
+    const event = {
+      protocolVersion: 1 as const,
+      sessionId,
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream' as const,
+      data: { type: 'result', subtype: 'success', content: 'legacy', sessionId },
+    };
+    // 7.4.4 stored no key record at all: the key was the event's own id. Reproduce
+    // that shape exactly - an event whose event_id is the key and no key row.
+    await store.appendEvent(tenantId, sessionId, event);
+    await pool?.query(
+      `UPDATE "${schema}"."runtime_events"
+          SET event_id = $3,
+              payload = jsonb_set(payload, '{eventId}', to_jsonb($3::text))
+        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
+      [tenantId, sessionId, legacyKey],
+    );
+    await pool?.query(
+      `DELETE FROM "${schema}"."runtime_event_keys"
+        WHERE tenant_id = $1 AND session_id = $2`,
+      [tenantId, sessionId],
+    );
+
+    const repeat = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: legacyKey,
+    });
+
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(1);
+    // The legacy record is adopted, so the next repeat is answered from the table.
+    const backfilled = await pool?.query(
+      `SELECT sequence FROM "${schema}"."runtime_event_keys"
+        WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3`,
+      [tenantId, sessionId, legacyKey],
+    );
+    expect(backfilled?.rows[0]).toMatchObject({ sequence: String(repeat.sequence) });
+  });
+
   it('rejects invalid transaction payloads before writing a receipt', async () => {
     const commandId = CommandId(`invalid-${Date.now()}`);
     await expect(

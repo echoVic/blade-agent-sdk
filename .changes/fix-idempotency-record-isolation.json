@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Deep-copy the event into the in-memory idempotency record, so mutating the caller's object after an append can no longer change what the record returns.",
+  "zh-CN": "内存 store 的幂等记录改为深拷贝：追加之后调用方再修改自己的对象，也不会改变幂等查询返回的内容。"
+}

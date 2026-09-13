@@ -50,10 +50,14 @@ export class RuntimePatchManager {
     deny?: string[];
     scope: 'turn' | 'session';
   };
-  private runtimeContextOverlay?: {
-    value: RuntimeContext;
-    scope: 'turn' | 'session';
-  };
+  /**
+   * Context overlays are held per layer for the same reason as the other state
+   * above: a turn-scoped overlay is merged on top of the session's for one turn,
+   * and dropping it must restore the session overlay instead of removing every
+   * context contribution.
+   */
+  private sessionContextOverlay?: RuntimeContext;
+  private turnContextOverlay?: RuntimeContext;
   /**
    * Session-scoped tool discoveries, kept separately from the effective set for
    * the same reason as `sessionToolPolicy`: a turn patch contributes to the
@@ -200,17 +204,24 @@ export class RuntimePatchManager {
 
   applyRuntimeContextPatch(patch: RuntimeContextPatch): void {
     if (patch.reset) {
-      this.runtimeContextOverlay = undefined;
+      // A reset clears the layer that declared it; the other layer's overlay is
+      // still in effect.
+      if (patch.scope === 'session') {
+        this.sessionContextOverlay = undefined;
+      } else {
+        this.turnContextOverlay = undefined;
+      }
     }
 
     if (!patch.context) {
       return;
     }
 
-    this.runtimeContextOverlay = {
-      value: patch.context,
-      scope: patch.scope,
-    };
+    if (patch.scope === 'session') {
+      this.sessionContextOverlay = mergeContext(this.sessionContextOverlay, patch.context);
+    } else {
+      this.turnContextOverlay = mergeContext(this.turnContextOverlay, patch.context);
+    }
   }
 
   refreshRuntimeContextSnapshot(loopState: LoopState): void {
@@ -229,7 +240,7 @@ export class RuntimePatchManager {
     snapshot?: ContextSnapshot,
   ): ContextSnapshot | undefined {
     const summary = summarizeRuntimePatchApplications(this.runtimePatchApplications);
-    if (!summary.mergedEnvironment && !this.runtimeContextOverlay) {
+    if (!summary.mergedEnvironment && !this.sessionContextOverlay && !this.turnContextOverlay) {
       return snapshot;
     }
 
@@ -251,8 +262,12 @@ export class RuntimePatchManager {
   ): RuntimeContext {
     let mergedContext = baseContext ?? {};
 
-    if (this.runtimeContextOverlay?.value) {
-      mergedContext = mergeContext(mergedContext, this.runtimeContextOverlay.value);
+    if (this.sessionContextOverlay) {
+      mergedContext = mergeContext(mergedContext, this.sessionContextOverlay);
+    }
+
+    if (this.turnContextOverlay) {
+      mergedContext = mergeContext(mergedContext, this.turnContextOverlay);
     }
 
     if (mergedEnvironment) {
@@ -431,8 +446,10 @@ ${summary}`,
     if (this.runtimeSkillState?.scope === 'turn') {
       this.runtimeSkillState = undefined;
     }
-    if (this.runtimeContextOverlay?.scope === 'turn') {
-      this.runtimeContextOverlay = undefined;
+    if (this.turnContextOverlay) {
+      // Drop only the turn layer: the session's context contribution is not the
+      // turn's to drop, and the effective snapshot is re-derived from what is left.
+      this.turnContextOverlay = undefined;
     }
     if (this.turnDiscoveredTools) {
       // Drop only the turn layer: the session's discoveries are not the turn's to
