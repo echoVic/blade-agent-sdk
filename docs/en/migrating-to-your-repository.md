@@ -39,7 +39,7 @@ guarantees the SDK already provides.
 | Post-crash recovery plan (model outcome, tool outcomes, pending approvals) | SDK | `DurableSessionRecoveryCoordinator`; the example only supplies the policy in `RepositoryRecovery.mjs` |
 | Workspace checkpoints and restore | SDK | `DockerExecutionHost` `checkpoint` / `restore` / `reclaim` |
 | Crash boundary and recovery state | PostgreSQL | The launcher caches none of it: route state, fencing token, and the committed checkpoint are read from the store |
-| Submission and terminal-event reconciliation | Your project | `RepositoryState.mjs` + `RepositoryReconcile.mjs` are your own queue tables and catch-up policy |
+| Submission and terminal-event reconciliation | Your project | `RepositoryState.mjs` + `RepositoryReconcile.mjs` are your own queue tables and catch-up policy. The example records acceptance before enqueueing, rebuilds a lost acceptance record from the Session journal, and republishes a recorded terminal result only after the route settles for the same request and attempt — a client can never receive a final result while the next input would still be refused |
 | Tool allowlists and approval policy | Your project | `RepositoryTools.mjs` and the approval records in `RepositoryState.mjs` |
 | Smoke assertions | Your project | `smoke.mjs` asserts against the example fixture; rewrite it for your repository |
 

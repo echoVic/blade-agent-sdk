@@ -85,6 +85,14 @@ TaskStop   { taskId: "agent-..." }
 
 Background agents separate lifecycle cancellation from the current work-unit signal. Stopping the lifecycle cascades to active work while allowing cleanup to run.
 
+When a runtime starts against a shared `AgentSessionRepository`, it reclaims only
+the running Sessions it owns: a Session is declared orphaned only when its
+`parentSessionId` matches this runtime's owner Session (or has no parent and the
+runtime owns no Session). Another parent's still-running children are live work
+and are never marked failed by a different runtime's startup. Cross-process
+ownership of the same parent still needs an explicit lease or ownership
+protocol; fenced (durable) Sessions are never reclaimed by the orphan sweep.
+
 ## Registry APIs
 
 The root package exports:

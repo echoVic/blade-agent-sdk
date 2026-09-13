@@ -19,10 +19,15 @@ When a Session has a filesystem `cwd`, project Skills are discovered under:
 The public `SessionOptions` API does not currently expose user-level directories or additional Skill sources. Applications that need those sources must integrate discovery explicitly.
 
 ::: warning Multiple workspaces
-The Skill registry is currently process-global and caches its first
-initialization. Do not assume separate Skill directories for Sessions with
-different `cwd` values in one process; use process isolation when that boundary
-is required.
+The Skill registry caches discovery per configuration. The cache identity is the
+full configuration: `cwd`, user and project directories, every additional source
+and its `trustLevel`, `shellPolicy`, and `hookPolicy`. Two callers with the same
+configuration share one registry, so they see a stable view of the same
+discovery; two callers with different execution policies for the same directory
+receive separate registries, and the first caller's policy never applies to the
+second caller's executions. Do not assume separate Skill directories for
+Sessions with different `cwd` values in one process; use process isolation when
+that boundary is required.
 :::
 
 ## SKILL.md

@@ -198,12 +198,20 @@ the route state, attempt, fencing token and worker when the Session is queued or
 running, whether this server has the Session loaded, how many inputs are accepted
 but not applied, and the last event sequence. A client that lost its own storage
 can reattach from these facts instead of guessing, and it must treat `messages`
-as unknown rather than empty when `loaded` is false.
+as unknown rather than empty when `loaded` is false. The snapshot is read before
+the event head, so `lastEventSequence` is never behind the messages returned in
+the same response: replaying from that cursor can only re-see events appended
+between the two reads, which the client deduplicates by event id. When
+`loaded` is false the pending-input projection is unknown, so `pendingInputCount`
+is omitted instead of reporting the unknown as zero.
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command
 method also accepts an explicit `commandId`. The SSE client reconnects from the
-last sequence and stops after `session.closed`.
+last sequence and stops after `session.closed`. One unserialised SSE frame is
+bounded at 4 MiB (measured in UTF-8 bytes): the limit applies to every complete
+frame, and to whatever remains buffered when a frame has no delimiter yet, so a
+peer cannot grow the parser by streaming bytes without ever ending a frame.
 
 ## Protocol v1
 

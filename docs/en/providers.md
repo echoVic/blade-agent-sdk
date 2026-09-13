@@ -79,12 +79,17 @@ What is covered differs by mode:
 
 - A non-streaming request is retried as a whole, including its retry delays
   inside `requestTimeoutMs`.
-- A streaming request is retried while the stream is being established. Once
-  chunks have been handed to the caller, a mid-stream provider failure throws
+- A streaming request is retried through the first output chunk. The provider
+  call resolves before any network I/O, and the AI SDK reports request failures
+  inside the stream, so opening the stream *and* receiving the first chunk both
+  stay inside the retry scope — a failure before any output, including a first
+  `error` part carrying an HTTP status, is retried like any request. Once chunks
+  have been handed to the caller, a mid-stream provider failure throws
   `ModelStreamError` with code `MODEL_STREAM_FAILED` rather than silently ending
   the response, and it is not retried: replaying a partially delivered response
-  would duplicate the text the caller already saw. Treat it as a failed request
-  and decide whether to send it again.
+  would duplicate the text the caller already saw. The provider's error object
+  is preserved as the error cause, including its status code. Treat it as a
+  failed request and decide whether to send it again.
 
 ## OpenAI
 
