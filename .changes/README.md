@@ -20,5 +20,8 @@ Allowed `type` values:
 
 Use a unique kebab-case filename. Both language fields are required and must
 describe user-visible behavior rather than commit mechanics. The fragment type
-picks the changelog section; the semantic-release version comes from the latest
-`v*` tag and the conventional commits after it.
+picks the changelog section only.
+
+The released version comes from the tag: pushing `v<major>.<minor>.<patch>`
+publishes exactly that version, and the release commit on `main` consumes every
+fragment in this directory. Pushing to `main` alone releases nothing.

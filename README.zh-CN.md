@@ -293,7 +293,8 @@ pnpm run docs:build
 
 ## 发布流程
 
-仓库仅使用 `semantic-release` 发布。每个会触发版本发布的 PR 必须在 `.changes/` 下增加一个双语 JSON fragment。代码进入 `main` 后，发布工作流会：
+发布版本号来自 Git tag，与 commit 类型无关。每个可发布的改动仍然要在 `.changes/`
+下增加一个双语 JSON fragment：
 
 ```json
 {
@@ -306,13 +307,22 @@ pnpm run docs:build
 文件名必须唯一且使用 kebab-case。`type` 只允许 `breaking`、`feature`、
 `fix`、`performance`、`refactor` 和 `docs`，它决定变更日志的分节，不决定版本号。
 
-1. 校验、构建并测试 package 和文档；
-2. 由最新的 `v*` tag 和其后的 conventional commits 推导下一版本：`fix`/`perf`/`refactor`/`docs` 出 patch，`feat` 出 minor，`!` 或 `BREAKING CHANGE` 出 major；
-3. 更新 `package.json`、`CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`；
-4. 提交生成的发布元数据；
-5. 发布 npm package 和 GitHub Release。
+要发布，就给 `main` 上的提交打 tag 并推送该 tag：
 
-使用 `pnpm run changelog:check` 校验 fragment，使用 `pnpm run release:dry` 预演发布。
+```bash
+git tag v7.4.2
+git push origin v7.4.2
+```
+
+发布工作流随后以该 tag 的代码树为准：
+
+1. 校验 fragment、lint、类型检查、构建并测试 package 和文档；
+2. 把 `v7.4.2` 原样发布到 npm 并带上 provenance——不会产生别的版本号；
+3. 在 `main` 上用一次 `chore(release): 7.4.2` 提交记录版本号、两份变更日志和已消费的 fragment；
+4. 用双语说明创建 GitHub Release。
+
+推送到 `main` 不再触发发布。用 `pnpm run changelog:check` 校验 fragment；
+先在本地打 tag，再用 `pnpm run release:dry --tag v7.4.2` 预演发布。
 
 更多贡献约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

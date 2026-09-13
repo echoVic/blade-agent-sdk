@@ -10,16 +10,22 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const plugin = require('../semantic-release-bilingual-changelog.cjs');
+const changelog = require('../bilingual-changelog.cjs');
 const {
+  changelogHasVersion,
   hasReleasableCommit,
+  isReleasableCommit,
+  prependRelease,
   readFragments,
+  readReleaseFragments,
+  removeConsumedFragments,
+  renderBilingualNotes,
   renderRelease,
   verifyRange,
-} = plugin._internals;
+} = changelog;
 const temporaryDirectories: string[] = [];
 
 function createTemporaryDirectory(): string {
@@ -76,9 +82,8 @@ describe('bilingual changelog fragments', () => {
     });
 
     const fragments = readFragments(directory);
-    const release = renderRelease('3.1.0', '2026-08-22', 'en', fragments);
 
-    expect(release).toBe(
+    expect(renderRelease('3.1.0', '2026-08-22', 'en', fragments)).toBe(
       [
         '## [3.1.0] - 2026-08-22',
         '',
@@ -91,31 +96,24 @@ describe('bilingual changelog fragments', () => {
         '- Fix session recovery.',
       ].join('\n'),
     );
+    expect(renderRelease('3.1.0', '2026-08-22', 'zh-CN', fragments)).toContain(
+      '- 新增会话转向。',
+    );
   });
 
-  it('leaves the release level to the tag history instead of the fragments', async () => {
+  it('renders both languages into the release notes', () => {
     const directory = createTemporaryDirectory();
-    writeFragment(directory, 'repair-runtime.json', {
-      type: 'fix',
-      en: 'Repair runtime behavior.',
-      'zh-CN': '修复运行时行为。',
+    writeFragment(directory, 'add-steering.json', {
+      type: 'feature',
+      en: 'Add session steering.',
+      'zh-CN': '新增会话转向。',
     });
-    writeFragment(directory, 'break-tool-contract.json', {
-      type: 'breaking',
-      en: 'Require a tool contract.',
-      'zh-CN': '要求工具契约。',
-    });
-    const logger = { log: vi.fn() };
 
-    // Even a breaking fragment must not vote: conventional commits and the latest
-    // v* tag decide the version.
-    await expect(plugin.analyzeCommits({}, {
-      cwd: directory,
-      logger,
-    })).resolves.toBeNull();
-    expect(logger.log).toHaveBeenCalledWith(
-      'Version comes from the tag history; 2 bilingual changelog fragment(s) will render the notes',
-    );
+    const notes = renderBilingualNotes('3.1.0', '2026-08-22', readFragments(directory));
+
+    expect(notes.indexOf('### Features')).toBeLessThan(notes.indexOf('### 新功能'));
+    expect(notes).toContain('- Add session steering.');
+    expect(notes).toContain('- 新增会话转向。');
   });
 
   it('rejects malformed content and non-kebab-case filenames', () => {
@@ -139,7 +137,15 @@ describe('bilingual changelog fragments', () => {
     );
   });
 
-  it('updates both changelogs and stages consumed fragment deletion', async () => {
+  it('requires at least one fragment before a release can render notes', () => {
+    const directory = createTemporaryDirectory();
+
+    expect(() => readReleaseFragments(directory)).toThrow(
+      'requires at least one bilingual',
+    );
+  });
+
+  it('prepends the release to both changelogs and removes the consumed fragments', () => {
     const directory = createTemporaryDirectory();
     initializeRepository(directory);
     writeFileSync(
@@ -157,84 +163,68 @@ describe('bilingual changelog fragments', () => {
     });
     commitAll(directory, 'chore: initialize release files');
 
-    const logger = { log: vi.fn() };
-    await plugin.prepare(
-      {},
-      {
-        cwd: directory,
-        logger,
-        nextRelease: { version: '3.1.0' },
-      },
-    );
+    const fragments = readReleaseFragments(directory);
+    for (const locale of Object.keys(changelog.CHANGELOGS)) {
+      prependRelease(directory, locale, renderRelease('3.1.0', '2026-08-23', locale, fragments));
+    }
+    removeConsumedFragments(directory, fragments);
 
-    expect(readFileSync(join(directory, 'CHANGELOG.md'), 'utf8')).toContain(
-      '## [3.1.0]',
-    );
-    expect(
-      readFileSync(join(directory, 'CHANGELOG.zh-CN.md'), 'utf8'),
-    ).toContain('## [3.1.0]');
-    expect(
-      execFileSync('git', ['diff', '--cached', '--name-status'], {
-        cwd: directory,
-        encoding: 'utf8',
-      }),
-    ).toContain('D\t.changes/session-steering.json');
-    expect(logger.log).toHaveBeenCalledOnce();
+    expect(readFileSync(join(directory, 'CHANGELOG.md'), 'utf8')).toContain('## [3.1.0]');
+    expect(readFileSync(join(directory, 'CHANGELOG.zh-CN.md'), 'utf8')).toContain('## [3.1.0]');
+    expect(changelogHasVersion(directory, '3.1.0')).toBe(true);
+    expect(readFragments(directory)).toEqual([]);
   });
 
-  it('rejects a releasable prepare step without fragments', async () => {
+  it('refuses to record the same version twice', () => {
     const directory = createTemporaryDirectory();
+    writeFileSync(
+      join(directory, 'CHANGELOG.md'),
+      '# Changelog\n\nAll notable changes.\n\n## [3.1.0] - 2026-08-23\n',
+    );
 
-    await expect(
-      plugin.prepare(
-        {},
-        {
-          cwd: directory,
-          logger: { log: vi.fn() },
-          nextRelease: { version: '3.1.0' },
-        },
-      ),
-    ).rejects.toThrow('requires at least one bilingual');
+    expect(() => prependRelease(directory, 'en', '## [3.1.0] - 2026-08-23'))
+      .toThrow('already contains ## [3.1.0]');
+    expect(changelogHasVersion(directory, '3.1.0')).toBe(true);
   });
 });
 
-describe('release level ownership', () => {
-  // Mirrors semantic-release's analyzeCommits postprocess: the highest release
-  // type across plugins wins, and a null vote cannot lower or raise it.
-  function resolveReleaseType(results: (string | null)[]): string | undefined {
-    const ordered = ['major', 'minor', 'patch'];
-    return ordered[
-      results.reduce((highest, result) => {
-        const index = result === null ? -1 : ordered.indexOf(result);
-        return index > highest ? index : highest;
-      }, -1)
-    ];
-  }
+describe('releasable commit classification', () => {
+  it('owes a fragment for releasable conventional types and breaking markers', () => {
+    for (const message of [
+      'fix(server): repair a route',
+      'feat: add a capability',
+      'refactor(release): move version ownership',
+      'docs: correct a shipped claim',
+      'perf(runtime): bound a queue',
+      'build: ship the release script',
+      'fix(api)!: replace the contract',
+      'chore: tidy up\n\nBREAKING CHANGE: the field is gone',
+      'Revert "feat: add a capability"',
+    ]) {
+      expect(isReleasableCommit(message), message).toBe(true);
+    }
+  });
 
-  it('cannot override the commit-derived release type', async () => {
-    const directory = createTemporaryDirectory();
-    writeFragment(directory, 'rewrite-message-envelope.json', {
-      type: 'fix',
-      en: 'Replace the message envelope.',
-      'zh-CN': '替换消息封装。',
-    });
+  it('does not owe a fragment for commits the project never releases', () => {
+    for (const message of [
+      'chore: tidy the repo',
+      'test: add coverage',
+      'ci: cache the pnpm store',
+      'chore(release): 3.1.0 [skip ci]',
+    ]) {
+      expect(isReleasableCommit(message), message).toBe(false);
+    }
+  });
 
-    const pluginVote = await plugin.analyzeCommits({}, {
-      cwd: directory,
-      logger: { log() {} },
-    });
-
-    expect(pluginVote).toBeNull();
-    // commit-analyzer's verdict survives the null vote from this plugin.
-    expect(resolveReleaseType(['patch', pluginVote])).toBe('patch');
-    expect(resolveReleaseType(['major', pluginVote])).toBe('major');
-    // A breaking fragment no longer forces a major on its own.
-    expect(resolveReleaseType([pluginVote])).toBeUndefined();
+  it('only treats a standalone BREAKING CHANGE footer as breaking', () => {
+    expect(isReleasableCommit('chore: note that xBREAKING CHANGE:y is a token')).toBe(false);
+    expect(isReleasableCommit('chore: note\n\nBREAKING CHANGE: the field is gone')).toBe(true);
+    expect(isReleasableCommit('chore: note\n\nBREAKING-CHANGE: the field is gone')).toBe(true);
   });
 });
 
 describe('pull request fragment requirement', () => {
-  it('requires a changed fragment for releasable commits', async () => {
+  it('requires a changed fragment for releasable commits', () => {
     const directory = createTemporaryDirectory();
     initializeRepository(directory);
     writeFileSync(join(directory, 'README.md'), '# Test\n');
@@ -247,7 +237,7 @@ describe('pull request fragment requirement', () => {
     writeFileSync(join(directory, 'fix.txt'), 'fixed\n');
     commitAll(directory, 'fix: repair behavior');
 
-    await expect(verifyRange(directory, base)).rejects.toThrow(
+    expect(() => verifyRange(directory, base)).toThrow(
       'require a bilingual .changes/*.json fragment',
     );
 
@@ -258,10 +248,10 @@ describe('pull request fragment requirement', () => {
     });
     commitAll(directory, 'docs: add changelog fragment');
 
-    await expect(verifyRange(directory, base)).resolves.toBeUndefined();
+    expect(() => verifyRange(directory, base)).not.toThrow();
   });
 
-  it('recognizes breaking-change bang headers as releasable', async () => {
+  it('recognizes breaking-change bang headers as releasable', () => {
     const directory = createTemporaryDirectory();
     initializeRepository(directory);
     writeFileSync(join(directory, 'README.md'), '# Test\n');
@@ -274,12 +264,12 @@ describe('pull request fragment requirement', () => {
     writeFileSync(join(directory, 'api.ts'), 'export const version = 2;\n');
     commitAll(directory, 'feat(api)!: replace the contract');
 
-    await expect(verifyRange(directory, base)).rejects.toThrow(
+    expect(() => verifyRange(directory, base)).toThrow(
       'require a bilingual .changes/*.json fragment',
     );
   });
 
-  it('does not require a fragment for non-releasable commits', async () => {
+  it('does not require a fragment for non-releasable commits', () => {
     const directory = createTemporaryDirectory();
     initializeRepository(directory);
     writeFileSync(join(directory, 'README.md'), '# Test\n');
@@ -292,12 +282,12 @@ describe('pull request fragment requirement', () => {
     writeFileSync(join(directory, 'README.md'), '# Updated test\n');
     commitAll(directory, 'chore: tidy the CI cache');
 
-    await expect(verifyRange(directory, base)).resolves.toBeUndefined();
+    expect(() => verifyRange(directory, base)).not.toThrow();
   });
 
   it.each(['docs: update guide', 'refactor: split a module', 'perf: bound a queue'])(
-    'requires a fragment for %s, which releases a patch',
-    async (message) => {
+    'requires a fragment for %s, which still ships a release',
+    (message) => {
       const directory = createTemporaryDirectory();
       initializeRepository(directory);
       writeFileSync(join(directory, 'README.md'), '# Test\n');
@@ -309,13 +299,9 @@ describe('pull request fragment requirement', () => {
 
       writeFileSync(join(directory, 'README.md'), `# ${message}\n`);
       commitAll(directory, message);
-      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: directory,
-        encoding: 'utf8',
-      }).trim();
 
-      expect(await hasReleasableCommit(directory, base)).toBe(true);
-      await expect(verifyRange(directory, base)).rejects.toThrow(
+      expect(hasReleasableCommit(directory, base)).toBe(true);
+      expect(() => verifyRange(directory, base)).toThrow(
         'require a bilingual .changes/*.json fragment',
       );
     },

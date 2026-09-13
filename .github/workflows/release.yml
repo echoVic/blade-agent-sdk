@@ -1,9 +1,16 @@
 name: Release
 
+# The version comes from the tag, never from commit types: pushing one annotated
+# or lightweight `v<major>.<minor>.<patch>` tag publishes exactly that version.
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing v<major>.<minor>.<patch> tag to publish'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-main
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -105,6 +112,7 @@ jobs:
         run: pnpm run test
 
       - name: Release
-        run: pnpm exec semantic-release
+        run: node scripts/release-from-tag.mjs --tag "${{ inputs.tag || github.ref_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

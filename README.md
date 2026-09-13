@@ -304,7 +304,8 @@ pnpm run docs:build
 
 ## Release Process
 
-Releases are managed only by `semantic-release`. Every releasable pull request must add a bilingual JSON fragment under `.changes/`. On `main`, the release workflow:
+The released version comes from the Git tag, never from commit types. Every
+releasable change still adds a bilingual JSON fragment under `.changes/`:
 
 ```json
 {
@@ -318,15 +319,23 @@ Use a unique kebab-case filename. Allowed types are `breaking`, `feature`,
 `fix`, `performance`, `refactor`, and `docs`; they select the changelog section,
 not the version.
 
-1. validates, builds, and tests the package and documentation;
-2. derives the next version from the latest `v*` tag and the conventional
-   commits after it, so `fix`/`perf`/`refactor`/`docs` release a patch,
-   `feat` a minor, and `!` or `BREAKING CHANGE` a major;
-3. updates `package.json`, `CHANGELOG.md`, and `CHANGELOG.zh-CN.md`;
-4. commits the generated release metadata;
-5. publishes the npm package and GitHub Release.
+To publish, tag the commit on `main` and push that tag:
 
-Run `pnpm run changelog:check` to validate fragments and `pnpm run release:dry` to preview a release.
+```bash
+git tag v7.4.2
+git push origin v7.4.2
+```
+
+The release workflow then, from the tagged tree:
+
+1. validates fragments, lints, type-checks, builds, and tests the package and documentation;
+2. publishes exactly `v7.4.2` to npm with provenance — no other number can be produced;
+3. records the version, both changelogs, and the consumed fragments in one `chore(release): 7.4.2` commit on `main`;
+4. creates the GitHub Release with the bilingual notes.
+
+Pushing to `main` no longer releases anything. Validate fragments with
+`pnpm run changelog:check`, and preview a release by creating the tag locally
+first and running `pnpm run release:dry --tag v7.4.2`.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidance.
 

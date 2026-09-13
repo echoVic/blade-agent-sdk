@@ -105,18 +105,18 @@ A release fragment is a uniquely named JSON file under `.changes/`:
 ```
 
 Allowed types are `breaking`, `feature`, `fix`, `performance`, `refactor`,
-and `docs`. A fragment selects the section its text appears in; it does not pick
-the version. The version comes from the latest `v*` tag plus the conventional
-commits after it, so `fix`, `perf`, `refactor`, and `docs` commits release a
-patch, `feat` a minor, and a `!` or `BREAKING CHANGE` commit a major.
-Use a kebab-case filename and validate it with:
+and `docs`. A fragment selects the section its text appears in; it never picks
+the version. The version comes from the `v<major>.<minor>.<patch>` tag a
+maintainer pushes: the release workflow publishes exactly that number, so commit
+types cannot raise or lower it. Use a kebab-case filename and validate it with:
 
 ```bash
 pnpm run changelog:check
 ```
 
 The release workflow consumes fragments and updates both `CHANGELOG.md` and
-`CHANGELOG.zh-CN.md`. Do not edit the package version manually.
+`CHANGELOG.zh-CN.md`. Do not edit the package version manually and do not tag a
+release unless you intend to publish it.
 
 ### 4. Test Your Changes
 

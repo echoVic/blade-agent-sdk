@@ -41,32 +41,21 @@ const TYPE_ORDER = [
   'refactor',
   'docs',
 ];
-const RELEASE_TYPE_BY_FRAGMENT = {
-  breaking: 'major',
-  feature: 'minor',
-  fix: 'patch',
-  performance: 'patch',
-  refactor: 'patch',
-  docs: 'patch',
-};
-const RELEASE_TYPE_RANK = {
-  patch: 1,
-  minor: 2,
-  major: 3,
-};
 /**
- * Reuse the commit-analyzer options from `release.config.cjs` so the pull-request
- * fragment gate judges "releasable" exactly the way the release does. Keeping a
- * second copy here let the two drift: a `refactor` commit once counted as
- * releasable for the release but not for the gate.
+ * Commit types that require a changelog fragment. This decides only whether a
+ * pull request owes a fragment; the released version number comes from the tag
+ * the maintainer pushes, never from the commit type.
  */
-function commitAnalyzerOptions() {
-  const config = require(path.join(__dirname, '..', 'release.config.cjs'));
-  const entry = (config.plugins ?? []).find(
-    (plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/commit-analyzer',
-  );
-  return entry?.[1] ?? {};
-}
+const RELEASABLE_COMMIT_TYPES = new Set([
+  'feat',
+  'fix',
+  'perf',
+  'refactor',
+  'docs',
+  'build',
+]);
+const CONVENTIONAL_HEADER = /^([a-z]+)(?:\([^)]*\))?(!)?:\s+\S/;
+const BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/m;
 
 function getFragmentPaths(cwd) {
   const directory = path.join(cwd, FRAGMENT_DIRECTORY);
@@ -122,6 +111,7 @@ function readFragments(cwd) {
 
     return {
       file,
+      filename,
       type: fragment.type,
       en: fragment.en.trim(),
       'zh-CN': fragment['zh-CN'].trim(),
@@ -129,18 +119,15 @@ function readFragments(cwd) {
   });
 }
 
-function releaseTypeFromFragments(fragments) {
-  let releaseType = null;
-  for (const fragment of fragments) {
-    const candidate = RELEASE_TYPE_BY_FRAGMENT[fragment.type];
-    if (
-      candidate
-      && (!releaseType || RELEASE_TYPE_RANK[candidate] > RELEASE_TYPE_RANK[releaseType])
-    ) {
-      releaseType = candidate;
-    }
+/** Fragments for a release: at least one is required to render the notes. */
+function readReleaseFragments(cwd) {
+  const fragments = readFragments(cwd);
+  if (fragments.length === 0) {
+    throw new Error(
+      'A release requires at least one bilingual .changes/*.json fragment',
+    );
   }
-  return releaseType;
+  return fragments;
 }
 
 function renderRelease(version, date, locale, fragments) {
@@ -157,6 +144,23 @@ function renderRelease(version, date, locale, fragments) {
     }
   }
   return lines.join('\n');
+}
+
+/** Release notes for the GitHub release: both languages, English first. */
+function renderBilingualNotes(version, date, fragments) {
+  return [
+    renderRelease(version, date, 'en', fragments),
+    '---',
+    renderRelease(version, date, 'zh-CN', fragments),
+  ].join('\n\n');
+}
+
+function changelogHasVersion(cwd, version) {
+  const heading = `## [${version}]`;
+  return Object.keys(CHANGELOGS).some((locale) => {
+    const file = path.join(cwd, CHANGELOGS[locale].file);
+    return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes(heading);
+  });
 }
 
 function prependRelease(cwd, locale, release) {
@@ -180,14 +184,14 @@ function prependRelease(cwd, locale, release) {
   fs.writeFileSync(file, `${content.trimEnd()}\n`);
 }
 
-function stageFragmentDeletions(cwd, fragments) {
+/** Delete the fragments consumed by a release; missing files mean already consumed. */
+function removeConsumedFragments(cwd, fragments) {
   for (const fragment of fragments) {
-    fs.unlinkSync(fragment.file);
+    const file = path.isAbsolute(fragment.file) ? fragment.file : path.join(cwd, fragment.file);
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
   }
-  execFileSync('git', ['add', '--update', '--', FRAGMENT_DIRECTORY], {
-    cwd,
-    stdio: 'pipe',
-  });
 }
 
 function getChangedFragmentPaths(cwd, base) {
@@ -221,39 +225,31 @@ function getCommitMessages(cwd, base) {
     .filter(Boolean);
 }
 
-async function hasReleasableCommit(cwd, base) {
-  const { analyzeCommits } = await import('@semantic-release/commit-analyzer');
-  const commits = getCommitMessages(cwd, base).map((message, index) => ({
-    hash: `range-${index}`,
-    message,
-  }));
-  const releaseType = await analyzeCommits(
-    commitAnalyzerOptions(),
-    {
-      commits,
-      cwd,
-      logger: { log() {} },
-    },
-  );
-  return releaseType !== null;
-}
-
 /**
- * Version selection belongs to the tag history: semantic-release derives the next
- * version from the latest `v*` tag plus the conventional commits after it. This
- * plugin therefore never votes on the release type, and `.changes` fragments only
- * supply the bilingual changelog text.
+ * Whether a commit owes a changelog fragment: a releasable conventional type, a
+ * breaking marker, or a revert.
  */
-async function analyzeCommits(_pluginConfig, context) {
-  const fragments = readFragments(context.cwd);
-  context.logger.log(
-    `Version comes from the tag history; ${fragments.length} bilingual changelog fragment(s) will render the notes`,
-  );
-  return null;
+function isReleasableCommit(message) {
+  const [header = ''] = message.split('\n', 1);
+  if (/^revert\b/i.test(header.trim())) {
+    return true;
+  }
+  if (BREAKING_FOOTER.test(message)) {
+    return true;
+  }
+  const match = CONVENTIONAL_HEADER.exec(header.trim());
+  if (!match) {
+    return false;
+  }
+  return match[2] === '!' || RELEASABLE_COMMIT_TYPES.has(match[1]);
 }
 
-async function verifyRange(cwd, base) {
-  if (!await hasReleasableCommit(cwd, base)) {
+function hasReleasableCommit(cwd, base) {
+  return getCommitMessages(cwd, base).some(isReleasableCommit);
+}
+
+function verifyRange(cwd, base) {
+  if (!hasReleasableCommit(cwd, base)) {
     return;
   }
   if (getChangedFragmentPaths(cwd, base).length === 0) {
@@ -263,34 +259,7 @@ async function verifyRange(cwd, base) {
   }
 }
 
-async function verifyConditions(_pluginConfig, context) {
-  readFragments(context.cwd);
-}
-
-async function prepare(_pluginConfig, context) {
-  const fragments = readFragments(context.cwd);
-  if (fragments.length === 0) {
-    throw new Error(
-      'A releasable change requires at least one bilingual .changes/*.json fragment',
-    );
-  }
-
-  const version = context.nextRelease.version;
-  const date = new Date().toISOString().slice(0, 10);
-  for (const locale of Object.keys(CHANGELOGS)) {
-    prependRelease(
-      context.cwd,
-      locale,
-      renderRelease(version, date, locale, fragments),
-    );
-  }
-  stageFragmentDeletions(context.cwd, fragments);
-  context.logger.log(
-    `Updated bilingual changelogs for ${version} from ${fragments.length} fragment(s)`,
-  );
-}
-
-async function runCli(cwd, args) {
+function runCli(cwd, args) {
   const fragments = readFragments(cwd);
   const baseIndex = args.indexOf('--base');
   if (baseIndex !== -1) {
@@ -298,7 +267,7 @@ async function runCli(cwd, args) {
     if (!base) {
       throw new Error('--base requires a Git revision');
     }
-    await verifyRange(cwd, base);
+    verifyRange(cwd, base);
   }
   process.stdout.write(
     `Validated ${fragments.length} bilingual changelog fragment(s)\n`,
@@ -306,26 +275,28 @@ async function runCli(cwd, args) {
 }
 
 if (require.main === module) {
-  runCli(process.cwd(), process.argv.slice(2)).catch((error) => {
+  try {
+    runCli(process.cwd(), process.argv.slice(2));
+  } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  });
+  }
 }
 
 module.exports = {
-  analyzeCommits,
-  verifyConditions,
-  prepare,
-  _internals: {
-    getFragmentPaths,
-    getChangedFragmentPaths,
-    getCommitMessages,
-    hasReleasableCommit,
-    prependRelease,
-    readFragments,
-    releaseTypeFromFragments,
-    renderRelease,
-    stageFragmentDeletions,
-    verifyRange,
-  },
+  CHANGELOGS,
+  TYPE_ORDER,
+  changelogHasVersion,
+  getChangedFragmentPaths,
+  getCommitMessages,
+  getFragmentPaths,
+  hasReleasableCommit,
+  isReleasableCommit,
+  prependRelease,
+  readFragments,
+  readReleaseFragments,
+  removeConsumedFragments,
+  renderBilingualNotes,
+  renderRelease,
+  verifyRange,
 };
