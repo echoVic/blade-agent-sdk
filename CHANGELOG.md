@@ -2,6 +2,16 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.6] - 2026-09-13
+
+### Fixes
+
+- Keep session-scoped context overlays through turn cleanup: context contributions are tracked per scope and merged session-then-turn, so a temporary context patch no longer erases the session baseline.
+- Read the durable journal tail through the accessor the tenant adapter actually exposes (getHeadSequence), fail loudly when it is missing, and pin the reconciler's test double to the real durable read port so the two cannot drift apart again.
+- Deep-copy the event into the in-memory idempotency record, so mutating the caller's object after an append can no longer change what the record returns.
+- Recognise idempotency keys written by 7.4.4 and earlier, which stored the key as the event's own id: the legacy shape is read and backfilled into the key table, so upgrading cannot republish a terminal result that the previous version already published.
+- Never let the session.read resume cursor skip unscanned output: the search for the last completed request widens over a bounded number of windows and, when it finds none, replays from the start of what the log still retains instead of from the window it happened to read.
+
 ## [7.4.5] - 2026-09-13
 
 ### Fixes

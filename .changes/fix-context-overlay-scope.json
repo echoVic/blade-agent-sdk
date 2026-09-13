@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Keep session-scoped context overlays through turn cleanup: context contributions are tracked per scope and merged session-then-turn, so a temporary context patch no longer erases the session baseline.",
-  "zh-CN": "session 作用域的 context overlay 不再被 turn 清理删除：context 贡献按作用域分别保存并按 session → turn 依次合并，临时 context 补丁不会抹掉 session 基线。"
-}

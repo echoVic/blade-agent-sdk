@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Never let the session.read resume cursor skip unscanned output: the search for the last completed request widens over a bounded number of windows and, when it finds none, replays from the start of what the log still retains instead of from the window it happened to read.",
-  "zh-CN": "session.read 的续读游标不再跳过未扫描的输出：查找最后一个已完成请求时会在有界窗口内向前扩展，找不到时从日志仍保留的起点开始重放，而不是从恰好读到的那个窗口开始。"
-}
