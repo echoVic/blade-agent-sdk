@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Release the version named by the pushed tag: the release workflow now publishes exactly the tagged version (with the same bilingual changelogs), instead of deriving a bump from commit types. Pushing to main no longer releases anything.",
-  "zh-CN": "发布版本号改为由推送的 tag 决定：发布工作流原样发布该 tag 的版本号（双语变更日志不变），不再由 commit 类型推导 bump；只推 main 不再触发发布。"
-}

@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.2] - 2026-09-13
+
+### Refactoring
+
+- Release the version named by the pushed tag: the release workflow now publishes exactly the tagged version (with the same bilingual changelogs), instead of deriving a bump from commit types. Pushing to main no longer releases anything.
+
 ## [7.4.1] - 2026-09-12
 
 ### Refactoring
