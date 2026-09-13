@@ -1,5 +1,0 @@
-{
-  "type": "docs",
-  "en": "Document the recovery snapshot read boundary, the streaming retry scope, the skill registry cache identity, background-agent ownership on shared repositories, and the production example's submission and terminal-outcome reconciliation contracts.",
-  "zh-CN": "补充文档：恢复快照的读取边界、流式重试范围、Skill 注册表缓存身份、共享存储上的后台子任务所有权，以及生产示例的提交与终态结果对账契约。"
-}

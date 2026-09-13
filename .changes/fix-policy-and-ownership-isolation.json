@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Turn-scoped skill patches without a toolPolicy keep the session policy baseline, so session restrictions survive temporary skill cleanup. Skill registries are cached per full configuration including trustLevel, shellPolicy, and hookPolicy, and background-agent orphan reclaim on shared repositories only touches the owning parent Session's children.",
-  "zh-CN": "不带 toolPolicy 的 turn 级 Skill 补丁保留 session 策略基线，临时 Skill 清理后会话限制不再丢失。Skill 注册表按包含 trustLevel、shellPolicy、hookPolicy 在内的完整配置缓存；共享存储上的子任务孤儿回收只处理所属父会话的后代。"
-}

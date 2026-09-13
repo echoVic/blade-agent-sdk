@@ -2,6 +2,20 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.3] - 2026-09-13
+
+### Fixes
+
+- Turn-scoped skill patches without a toolPolicy keep the session policy baseline, so session restrictions survive temporary skill cleanup. Skill registries are cached per full configuration including trustLevel, shellPolicy, and hookPolicy, and background-agent orphan reclaim on shared repositories only touches the owning parent Session's children.
+- The session.read recovery snapshot reports the head of the event log, never behind the messages it accompanies, and omits the pending-input count when the Session is not loaded instead of reporting the unknown as zero. The browser SSE parser enforces the 4 MiB frame limit per complete frame and per buffered remainder, measured in UTF-8 bytes.
+- Streaming model requests retry failures before the first output, including provider errors the AI SDK reports inside the stream. After output has been delivered the stream terminates with the provider's original error preserved as the cause, including its status code, instead of a generic message.
+- Bind queued submission recovery to the original command: a retry with a different input, command, or execution option is rejected instead of silently replacing the pending request, and the acceptance record is written before anything else can fail. Startup reconciliation also rebuilds an acceptance record lost before enqueueing directly from the Session journal.
+- Republish recorded terminal results only after the route settles for the same request and attempt with its lease released, so a client can never observe a finished request while the next input would still be refused. Outcomes whose route moved on to another request are superseded instead of published, and both the worker and the startup reconciler check the event log before appending.
+
+### Documentation
+
+- Document the recovery snapshot read boundary, the streaming retry scope, the skill registry cache identity, background-agent ownership on shared repositories, and the production example's submission and terminal-outcome reconciliation contracts.
+
 ## [7.4.2] - 2026-09-13
 
 ### Refactoring

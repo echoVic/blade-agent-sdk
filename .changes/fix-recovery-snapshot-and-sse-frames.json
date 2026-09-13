@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "The session.read recovery snapshot reports the head of the event log, never behind the messages it accompanies, and omits the pending-input count when the Session is not loaded instead of reporting the unknown as zero. The browser SSE parser enforces the 4 MiB frame limit per complete frame and per buffered remainder, measured in UTF-8 bytes.",
-  "zh-CN": "session.read 的恢复快照现在返回事件日志头部序号（不会早于同一响应中的消息快照），并在 Session 未加载时省略待处理输入计数，不再把未知表现为 0。浏览器 SSE 解析器按 UTF-8 字节对每个完整帧和未完成的剩余帧分别执行 4 MiB 上限。"
-}
