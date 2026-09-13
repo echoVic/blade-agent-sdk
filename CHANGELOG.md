@@ -2,6 +2,13 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.9] - 2026-09-13
+
+### Features
+
+- Read the resume cursor from the message projection's own coverage: the projection records the newest Request whose content it holds, the server maps that Request to its last event, and a gap plus a trimmed log still reports recoveryIncomplete instead of a lossless claim.
+- Repair a history gap from the durable journal with an explicit journal-to-message projection: rebuild the user input, the assistant output and tool messages by stable identity, only write data, and leave the gap open when the journal was trimmed.
+
 ## [7.4.8] - 2026-09-13
 
 ### Features
