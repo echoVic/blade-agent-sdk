@@ -132,11 +132,14 @@ export type {
   SessionRunResult,
 } from './SessionRunner.js';
 export {
+  coveredRequestOf,
   hasHistoryGap,
   type SessionHistoryProgress,
 } from '../session/historyProgress.js';
 export {
+  projectDurableHistory,
   repairSessionHistory,
+  type DurableHistoryProjection,
   type HistoryRepairOptions,
   type HistoryRepairReason,
   type HistoryRepairResult,

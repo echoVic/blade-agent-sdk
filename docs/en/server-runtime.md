@@ -216,13 +216,24 @@ skipping the part that happened to fall outside the scan — a scan budget is no
 history that may be skipped. A trimmed log clamps the cursor into the retained
 range.
 
-Whether a cursor is trustworthy also depends on the **message projection's own
-progress**. The projection commits a `historyProgress` record together with each
-message: a failed message write records a `state: 'failed'` gap, and later
-successful requests never clear it — only the repair path can. While a gap exists
+Whether a cursor is trustworthy depends on the **message projection's own
+progress**, not on the event log. The projection commits a `historyProgress`
+record together with each message. A failed message write records a
+`state: 'failed'` gap, and later successful requests never clear it — only the
+repair path can. The record also carries `coveredRequestId`: the newest request
+whose content the projection already holds. The transcript and the event log are
+separate stores that share no sequence, so the request is the only identity both
+of them carry — the server turns it into a cursor by finding that request in the
+log. Because the boundary comes from the snapshot, a request that completes
+between the snapshot read and the cursor resolution cannot move it.
+
+A projection without a coverage record falls back to the bounded search, and that
+search is itself bounded by the event head observed *before* the snapshot was
+taken, so a request that finishes mid-read is excluded as well. While a gap exists
 the server uses no boundary after it and replays from the start of what the log
-retains; if the log was trimmed it also reports `recoveryIncomplete: true`, because
-falling back recovers only what is still retained and is not claimed to be lossless.
+retains; if the log was trimmed, or the projection reports a gap, it also reports
+`recoveryIncomplete: true`, because falling back recovers only what is still
+retained and is not claimed to be lossless.
 
 `repairSessionHistory()` rebuilds the missing messages from the durable journal,
 which is the authority: a request's accepted input (by `inputId`), a completed tool
@@ -230,6 +241,14 @@ attempt (by `toolCallId`), and the turn's assistant output (matched through the 
 calls it requested). Repair only writes data — it never re-runs a model call or a
 tool — writes nothing on a second pass, and leaves the gap open with
 `insufficient-durable-data` when the journal itself was trimmed.
+
+Repair is scoped to the request and turn the *gap* belongs to, read from the gap
+record itself, and it reads the journal as a history: a request that finished
+normally is still repairable even though the execution projection has already
+dropped it. A tool-call declaration in an assistant message is not a tool result,
+so a pending tool call is rebuilt rather than assumed present. The gap is closed
+only after the transcript is re-read and every piece the journal knows about is
+confirmed to be there.
 
 That retained range comes from the store's `getEventStreamRange`, which is part of
 the recovery guarantee: a custom store without it is never handed the event head as

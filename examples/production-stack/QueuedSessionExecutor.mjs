@@ -72,6 +72,12 @@ export class QueuedSessionExecutor {
       messages: snapshot?.messages ?? [],
       pendingInputs: snapshot?.pendingInputs ?? [],
       loaded: true,
+      // Forwarded so the Server can see a recorded history gap: without it the
+      // database says `failed` and the Server still picks a terminal event as
+      // the recovery boundary.
+      ...(snapshot?.historyProgress
+        ? { historyProgress: snapshot.historyProgress }
+        : {}),
     };
   }
 

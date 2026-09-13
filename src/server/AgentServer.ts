@@ -536,13 +536,19 @@ export class AgentServer {
         return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_READ: {
-        // Resolved before the snapshot is loaded, so the cursor can never point
-        // past events the snapshot was taken with.
+        // The event-log head is observed *before* the snapshot is taken. A request
+        // that completes after this point produced no messages the snapshot can
+        // contain, so it must not move the recovery boundary.
+        const headBeforeRead = await this.readEventStreamHead(
+          principal.tenantId,
+          command.data.sessionId,
+        );
         const result = await this.sessionExecutor.read(context, command.data);
         const recoveryCursor = await this.resolveRecoveryCursor(
           principal.tenantId,
           command.data.sessionId,
           result,
+          headBeforeRead,
         );
         return this.success(command.commandId, {
           ...result,
@@ -632,31 +638,65 @@ export class AgentServer {
     }
   }
 
+  private async readEventStreamHead(tenantId: string, sessionId: SessionId): Promise<number | null> {
+    if (!this.store.getEventStreamRange) {
+      return null;
+    }
+    try {
+      const range = await this.store.getEventStreamRange(tenantId, sessionId);
+      return range ? Number(range.headSequence) : null;
+    } catch {
+      // The caller still has the conservative fallback; a failed head read must
+      // not turn a readable session into a failed one.
+      return null;
+    }
+  }
+
   /**
    * The cursor a reconnecting client should resume the event stream from.
    *
-   * A cursor is only safe when everything after it is *also* absent from the
-   * snapshot's messages. The message projection trails the event log while a
-   * request streams - content deltas are published before the assistant message
-   * is written - so a cursor equal to the head would let a refreshing client skip
-   * output it never received. The cursor therefore stops at the last completed
-   * request: the client replays the in-flight request (deduplicating by event id)
-   * instead of losing it.
+   * A cursor is only safe when everything up to it is *already* in the snapshot's
+   * messages. The message projection trails the event log while a request streams -
+   * content deltas are published before the assistant message is written - so a
+   * cursor equal to the head would let a refreshing client skip output it never
+   * received.
    *
-   * The search is bounded, but a miss never becomes a skipped range: when no
-   * completed request is found, the cursor falls back to the start of what the log
-   * still retains, so the client replays more rather than losing the beginning of
-   * a long in-flight request.
+   * The boundary is therefore taken from the snapshot itself whenever the
+   * projection recorded one: `historyProgress.coveredRequestId` names the newest
+   * request whose content the projection holds, and this method only has to find
+   * that request in the log. The snapshot and the cursor can then never disagree,
+   * no matter what completes between the two reads.
    */
   private async resolveRecoveryCursor(
     tenantId: string,
     sessionId: SessionId,
     read: { readonly historyProgress?: SessionHistoryProgress },
+    headBeforeRead?: number | null,
   ): Promise<RecoveryCursor> {
+    const progress = read.historyProgress;
+    // The projection's own boundary. It is committed with the messages it
+    // describes, so a request that finishes after the snapshot was read cannot
+    // move it.
+    const coveredRequestId = progress?.coveredRequestId;
+    if (coveredRequestId) {
+      const boundary = await this.findRequestBoundary(
+        tenantId,
+        sessionId,
+        coveredRequestId,
+        headBeforeRead,
+      );
+      if (boundary !== null) {
+        // A recorded gap means content the log streamed never reached the
+        // transcript, so replaying from here cannot make the history whole.
+        return { cursor: boundary, incomplete: hasHistoryGap(progress) };
+      }
+      // The covered request is not in the retained window: fall through and let
+      // the caller replay more rather than less.
+    }
     // A recorded gap means the transcript is missing content the event log already
     // streamed, so no boundary after it may be used. Replay what the log still
     // holds, and say so when that is only part of the history.
-    if (hasHistoryGap(read.historyProgress)) {
+    if (hasHistoryGap(progress)) {
       const range = this.store.getEventStreamRange
         ? await this.store.getEventStreamRange(tenantId, sessionId)
         : null;
@@ -684,7 +724,13 @@ export class AgentServer {
     if (!range) {
       return { incomplete: false };
     }
-    let windowEnd = range.headSequence;
+    // Only events that existed before the snapshot was read may form the
+    // boundary: anything appended after it may describe messages the snapshot
+    // does not hold yet.
+    let windowEnd =
+      headBeforeRead === null || headBeforeRead === undefined
+        ? range.headSequence
+        : Math.min(range.headSequence, headBeforeRead);
     for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
       const windowStart = Math.max(
         range.firstSequence,
@@ -694,7 +740,14 @@ export class AgentServer {
         after: windowStart - 1,
         limit: RECOVERY_TAIL_EVENTS,
       });
-      const boundary = [...page.events].reverse().find(isCompletedRequestEvent);
+      // The page may run past the window; only events that existed before the
+      // snapshot was read are allowed to form the boundary.
+      const boundary = [...page.events]
+        .reverse()
+        .find(
+          (event) =>
+            Number(event.sequence) <= windowEnd && isCompletedRequestEvent(event),
+        );
       if (boundary) {
         return { cursor: boundary.sequence, incomplete: false };
       }
@@ -708,6 +761,54 @@ export class AgentServer {
   }
 
   /**
+   * The newest event of one request, which is the boundary the projection covers.
+   *
+   * Bounded by `headBeforeRead` for the same reason the fallback scan is: events
+   * appended after the snapshot was read may describe messages it does not hold.
+   */
+  private async findRequestBoundary(
+    tenantId: string,
+    sessionId: SessionId,
+    requestId: RequestId,
+    headBeforeRead?: number | null,
+  ): Promise<number | null> {
+    if (!this.store.getEventStreamRange) {
+      return null;
+    }
+    const range = await this.store.getEventStreamRange(tenantId, sessionId);
+    if (!range) {
+      return null;
+    }
+    const limit =
+      headBeforeRead === null || headBeforeRead === undefined
+        ? range.headSequence
+        : Math.min(range.headSequence, headBeforeRead);
+    let windowEnd = limit;
+    for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
+      const windowStart = Math.max(range.firstSequence, windowEnd - RECOVERY_TAIL_EVENTS + 1);
+      const page = await this.store.readEvents(tenantId, sessionId, {
+        after: windowStart - 1,
+        limit: RECOVERY_TAIL_EVENTS,
+      });
+      const match = [...page.events]
+        .reverse()
+        .find(
+          (event) =>
+            event.requestId === requestId &&
+            Number(event.sequence) <= limit,
+        );
+      if (match) {
+        return Number(match.sequence);
+      }
+      if (windowStart <= range.firstSequence) {
+        break;
+      }
+      windowEnd = windowStart - 1;
+    }
+    return null;
+  }
+
+  /**
    * The authoritative recovery facts for one Session.
    *
    * A client that reconnects after losing its local state needs these from the
@@ -715,12 +816,12 @@ export class AgentServer {
    * inputs say what was accepted but not applied; the last event sequence is the
    * cursor to resume the stream from.
    *
-   * Read boundary: `snapshotHead` is resolved *before* the state snapshot is
-   * loaded and stops at the last completed request, so the cursor is never ahead
-   * of the content the returned messages can contain. A client replaying from
-   * `lastEventSequence` re-sees events it may already have - including the whole
-   * in-flight request - and must deduplicate them by event id; it can never miss
-   * one.
+   * Read boundary: `snapshotHead` comes either from the projection's own coverage
+   * record or from the part of the event log that already existed when the state
+   * snapshot was loaded, so the cursor is never ahead of the content the returned
+   * messages can contain. A client replaying from `lastEventSequence` re-sees
+   * events it may already have - including the whole in-flight request - and must
+   * deduplicate them by event id; it can never miss one.
    */
   private async describeRecovery(
     tenantId: string,

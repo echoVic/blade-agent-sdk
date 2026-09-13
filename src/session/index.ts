@@ -22,7 +22,12 @@ export type {
   SessionRepositorySubagentRef,
 } from './SessionRepository.js';
 export { isSessionEventStore } from './SessionRepository.js';
-export { hasHistoryGap, mergeHistoryProgress, type SessionHistoryProgress } from './historyProgress.js';
+export {
+  coveredRequestOf,
+  hasHistoryGap,
+  mergeHistoryProgress,
+  type SessionHistoryProgress,
+} from './historyProgress.js';
 export {
   repairSessionHistory,
   type HistoryRepairOptions,

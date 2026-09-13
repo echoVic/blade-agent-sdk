@@ -40,7 +40,7 @@ interface SessionTimelineEntry {
   message: ConversationMessage;
 }
 
-interface SessionToolCallState {
+export interface SessionToolCallState {
   id: ToolUseId;
   name: string;
   input: JsonValue;

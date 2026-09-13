@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Repair a history gap from the durable journal with an explicit journal-to-message projection: rebuild the user input, the assistant output and tool messages by stable identity, only write data, and leave the gap open when the journal was trimmed.",
+  "zh-CN": "以显式的 journal→消息投影从 durable journal 修复历史缺口：按稳定身份重建用户输入、assistant 输出与工具消息，只写数据不重跑副作用；journal 已被裁剪时保持缺口不关闭。"
+}

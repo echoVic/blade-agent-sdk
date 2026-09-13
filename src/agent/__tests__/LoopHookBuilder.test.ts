@@ -270,3 +270,100 @@ describe('LoopHookBuilder request signal', () => {
     compact.mockRestore();
   });
 });
+
+describe('LoopHookBuilder history persistence', () => {
+  function createAssistantConfig(options: {
+    saveMessage: () => Promise<unknown>;
+    recordHistoryWriteFailure: (...args: unknown[]) => Promise<void>;
+    sessionId?: SessionId;
+  }) {
+    const contextManager = {
+      saveMessage: options.saveMessage,
+      recordHistoryWriteFailure: options.recordHistoryWriteFailure,
+    };
+    return buildLoopConfig({
+      context: {
+        messages: [],
+        userId: 'test-user',
+        sessionId: options.sessionId ?? SessionId('loop-hook-builder-history'),
+        signal: undefined,
+      },
+      options: {},
+      loopState: { conversationState: {} } as never,
+      maxTurns: 1,
+      isYoloMode: false,
+      getLastUuid: () => null,
+      setLastUuid: () => {},
+      executionPipeline: {} as never,
+      logger: { warn: () => {}, error: () => {} } as never,
+      modelManager: { getContextManager: () => contextManager } as never,
+      runtimePatchManager: {} as never,
+      runControl: { requestId: RequestId('request-history-gap') } as never,
+    });
+  }
+
+  it('records a history gap when the message write rejects asynchronously', async () => {
+    const recordHistoryWriteFailure = vi.fn(async () => undefined);
+    const config = createAssistantConfig({
+      saveMessage: async () => {
+        throw new Error('disk full');
+      },
+      recordHistoryWriteFailure,
+    });
+    const onAssistant = config.hooks?.message?.onAssistant;
+    if (!onAssistant) {
+      throw new Error('Assistant hook was not configured');
+    }
+
+    // The write fails, but the request keeps running: what must not happen is a
+    // transcript that claims to be whole.
+    await expect(onAssistant({ content: 'hello', turn: 1 } as never)).resolves.toBeUndefined();
+
+    expect(recordHistoryWriteFailure).toHaveBeenCalledTimes(1);
+    expect(recordHistoryWriteFailure).toHaveBeenCalledWith(
+      SessionId('loop-hook-builder-history'),
+      'disk full',
+      { requestId: RequestId('request-history-gap') },
+    );
+  });
+
+  it('records no gap when the message write succeeds', async () => {
+    const recordHistoryWriteFailure = vi.fn(async () => undefined);
+    const config = createAssistantConfig({
+      saveMessage: async () => 'message-1',
+      recordHistoryWriteFailure,
+    });
+    const onAssistant = config.hooks?.message?.onAssistant;
+    if (!onAssistant) {
+      throw new Error('Assistant hook was not configured');
+    }
+
+    await onAssistant({ content: 'hello', turn: 1 } as never);
+
+    expect(recordHistoryWriteFailure).not.toHaveBeenCalled();
+  });
+
+  it('captures a rejection that only surfaces after the write is awaited', async () => {
+    const recordHistoryWriteFailure = vi.fn(async () => undefined);
+    const config = createAssistantConfig({
+      // Rejects on a later microtask, so only an awaited call can observe it.
+      saveMessage: () =>
+        Promise.resolve().then(() => {
+          throw new Error('late failure');
+        }),
+      recordHistoryWriteFailure,
+    });
+    const onAssistant = config.hooks?.message?.onAssistant;
+    if (!onAssistant) {
+      throw new Error('Assistant hook was not configured');
+    }
+
+    await onAssistant({ content: 'hello', turn: 1 } as never);
+
+    expect(recordHistoryWriteFailure).toHaveBeenCalledWith(
+      SessionId('loop-hook-builder-history'),
+      'late failure',
+      { requestId: RequestId('request-history-gap') },
+    );
+  });
+});

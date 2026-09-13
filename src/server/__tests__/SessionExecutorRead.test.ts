@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertSessionExecutorReadResult } from '../testing/index.js';
-import { CommandId, type InputId, type RequestId, type SessionId } from '../../types/identifiers.js';
+import { CommandId, type InputId, RequestId, type SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
 import type { PendingSessionInput } from '../../session/types.js';
 import {
@@ -663,6 +663,145 @@ describe('AgentServer session.read recovery snapshot', () => {
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     expect(recovery.recoveryIncomplete).toBe(true);
     expect(recovery).not.toHaveProperty('lastEventSequence');
+  });
+
+  it('takes the recovery boundary from the projection instead of the log', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-covered'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+
+    // Two requests: the first is fully in the transcript, the second is still
+    // streaming, so its messages are not.
+    for (const [requestId, data] of [
+      [RequestId('request-1'), { type: 'content', delta: 'first', sessionId }],
+      [RequestId('request-1'), { type: 'result', subtype: 'success', content: 'one', sessionId }],
+      [RequestId('request-2'), { type: 'content', delta: 'streaming', sessionId }],
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        requestId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      } as never);
+    }
+
+    // The projection states the boundary it covers. The cursor must come from it,
+    // so the two can never disagree.
+    const innerRead = executor.read.bind(executor);
+    executor.read = (async (ctx: SessionExecutorCommandContext, data: { sessionId: SessionId }) => ({
+      ...(await innerRead(ctx, data)),
+      historyProgress: {
+        state: 'complete',
+        updatedAt: Date.now(),
+        coveredRequestId: RequestId('request-1'),
+      },
+    })) as typeof executor.read;
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-covered'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    // The newest event of the covered request - not the head, which belongs to a
+    // request whose messages the snapshot cannot hold.
+    expect(recovery.lastEventSequence).toBe(2);
+  });
+
+  it('does not let a request that completes during the read move the cursor', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-race'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+
+    for (const data of [
+      { type: 'content', delta: 'first', sessionId },
+      { type: 'content', delta: 'second', sessionId },
+      { type: 'result', subtype: 'success', content: 'done', sessionId },
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      } as never);
+    }
+
+    // Another request finishes while the snapshot is being read. The snapshot the
+    // client receives cannot contain its messages, so the boundary must not move.
+    const innerRead = executor.read.bind(executor);
+    executor.read = (async (ctx: SessionExecutorCommandContext, data: { sessionId: SessionId }) => {
+      await store.appendEvent(principal.tenantId, data.sessionId, {
+        protocolVersion: 1,
+        sessionId: data.sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data: { type: 'result', subtype: 'success', content: 'late', sessionId: data.sessionId },
+      } as never);
+      return innerRead(ctx, data);
+    }) as typeof executor.read;
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-race'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    expect(recovery.lastEventSequence).toBe(3);
   });
 
   it('does not present an unknown pending-input projection as empty', async () => {

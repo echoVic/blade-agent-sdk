@@ -312,14 +312,21 @@ export class ContextManager {
    * Record that a message write failed, so the transcript now has a gap.
    *
    * The record is committed before the request continues: a client that reconnects
-   * must not be handed a cursor past content that never reached the transcript.
+   * must not be handed a cursor past content that never reached the transcript. The
+   * Request is recorded with it so repair can rebuild that Request's history rather
+   * than whichever request is active when repair happens to run.
    */
-  async recordHistoryWriteFailure(sessionId: SessionId, detail: string): Promise<void> {
+  async recordHistoryWriteFailure(
+    sessionId: SessionId,
+    detail: string,
+    scope?: { readonly requestId?: RequestId },
+  ): Promise<void> {
     try {
       await this.eventStore.saveHistoryProgress?.(sessionId, {
         state: 'failed',
         updatedAt: Date.now(),
         detail,
+        ...(scope?.requestId ? { requestId: scope.requestId } : {}),
       });
     } catch (error) {
       // The gap itself is real either way; a failed marker must not break the turn.

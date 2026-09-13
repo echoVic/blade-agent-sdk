@@ -26,9 +26,11 @@ import type {
 import { parseDurableEventDraft, parseDurableEventEnvelope } from '../session/events/schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
+  DurableEventType,
   type DurableEventAppendOptions,
   type DurableEventAppendResult,
   type DurableEventDraft,
+  type DurableEventEnvelope,
   type DurableEventPage,
   type DurableEventReadOptions,
 } from '../session/events/types.js';
@@ -1385,7 +1387,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
     });
     options.signal?.throwIfAborted();
-    return this.transaction(async (client) => {
+    const appended = await this.transaction(async (client) => {
       await this.workerRuntime.assertExecutionFenceWithClient(
         client,
         tenantId,
@@ -1439,6 +1441,46 @@ export class PostgresRuntimeStore implements RuntimeStore {
         lastSequence: last.sequence,
       };
     });
+    await this.advanceHistoryCoverage(tenantId, sessionId, appended.events);
+    return appended;
+  }
+
+  /**
+   * Advance the projection's coverage boundary to a request that is fully
+   * materialised.
+   *
+   * The transcript and the durable journal are separate stores that share no
+   * sequence, so the Request is the only identity both of them carry. A request's
+   * messages are written before its terminal event is appended, so once
+   * `request_completed` is durable the projection may claim that request. The
+   * merge rule refuses to advance while a gap is open, so a failed message write
+   * keeps the older boundary and the recovery cursor stays behind the hole.
+   */
+  private async advanceHistoryCoverage(
+    tenantId: string,
+    sessionId: SessionId,
+    events: readonly DurableEventEnvelope[],
+  ): Promise<void> {
+    const completed = events.find((event) => event.type === DurableEventType.REQUEST_COMPLETED);
+    if (!completed) {
+      return;
+    }
+    const requestId = 'requestId' in completed ? completed.requestId : undefined;
+    if (!requestId) {
+      return;
+    }
+    try {
+      await this.saveHistoryProgress(tenantId, sessionId, {
+        state: 'complete',
+        requestId,
+        coveredRequestId: requestId,
+        updatedAt: Date.now(),
+      });
+    } catch {
+      // Coverage turns the conservative replay-everything fallback into an exact
+      // boundary. Losing it costs a wider replay, so it must never invalidate a
+      // durable append that already committed.
+    }
   }
 
   async readDurableEvents(
@@ -1496,9 +1538,15 @@ export class PostgresRuntimeStore implements RuntimeStore {
       { state: progress.state, ...(progress.detail ? { detail: progress.detail } : {}) },
       (state, now) => {
         const next = { ...progress, updatedAt: progress.updatedAt || now };
+        const current = state.historyProgress;
         state.historyProgress = options.clearGap
-          ? next
-          : mergeHistoryProgress(state.historyProgress, next);
+          ? // The repair closed the gap, so the failed state no longer blocks the
+            // merge - but the boundary still cannot regress.
+            mergeHistoryProgress(
+              current ? { ...current, state: 'complete' } : undefined,
+              next,
+            )
+          : mergeHistoryProgress(current, next);
       },
     );
   }
@@ -2748,12 +2796,22 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     return this.runtime.saveHistoryProgress(this.tenantId, sessionId, progress);
   }
 
-  clearHistoryGap(sessionId: SessionId, repairedMessages: number): Promise<void> {
-    return this.runtime.saveHistoryProgress(this.tenantId, sessionId, {
-      state: 'complete',
-      updatedAt: Date.now(),
-      repairedMessages,
-    }, { clearGap: true });
+  clearHistoryGap(
+    sessionId: SessionId,
+    repairedMessages: number,
+    options: { readonly coveredRequestId?: RequestId } = {},
+  ): Promise<void> {
+    return this.runtime.saveHistoryProgress(
+      this.tenantId,
+      sessionId,
+      {
+        state: 'complete',
+        updatedAt: Date.now(),
+        repairedMessages,
+        ...(options.coveredRequestId ? { coveredRequestId: options.coveredRequestId } : {}),
+      },
+      { clearGap: true },
+    );
   }
 
   async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {

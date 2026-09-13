@@ -139,8 +139,15 @@ export interface SessionEventStore {
   /**
    * Close a recorded gap after the transcript was verified or rebuilt. Only the
    * repair path calls this: ordinary progress writes never clear a gap.
+   *
+   * `coveredRequestId` lets repair state which request it just rebuilt, so the
+   * projection can claim it as covered instead of losing the boundary it had.
    */
-  clearHistoryGap?(sessionId: SessionId, repairedMessages: number): Promise<void>;
+  clearHistoryGap?(
+    sessionId: SessionId,
+    repairedMessages: number,
+    options?: { readonly coveredRequestId?: RequestId },
+  ): Promise<void>;
 }
 
 /** Compatibility port for backends that expose reads and appends together. */

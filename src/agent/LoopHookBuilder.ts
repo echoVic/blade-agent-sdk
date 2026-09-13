@@ -23,6 +23,7 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolEffect } from '../tools/types/effects.js';
 import {
   type MessageId,
+  type RequestId,
   SessionId,
   type SessionId as SessionIdType,
   ToolUseId,
@@ -65,12 +66,16 @@ async function persistToJsonl<T>(
   assertExecutionLease?: () => Promise<void>,
   signal?: AbortSignal,
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
+  historyScope?: { readonly requestId?: RequestId },
 ): Promise<T | undefined> {
   try {
     signal?.throwIfAborted();
     const contextMgr = modelManager.getContextManager();
     if (contextMgr && sessionId) {
-      return runWithExecutionLeaseBoundary(
+      // `await` is load-bearing: without it the rejection of the returned promise
+      // escapes this `try`, so the gap below would never be recorded and the
+      // request would keep running with a transcript it believes is complete.
+      return await runWithExecutionLeaseBoundary(
         {
           signal,
           assertExecutionLease,
@@ -85,13 +90,16 @@ async function persistToJsonl<T>(
     }
     logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
     // Execution may continue, but the history is no longer complete: record the
-    // gap so recovery never claims the transcript is whole.
+    // gap so recovery never claims the transcript is whole. The request that
+    // produced it is recorded too, so repair can rebuild the right history
+    // instead of whatever happens to be active when it runs.
     const contextMgr = modelManager.getContextManager();
     if (contextMgr && sessionId) {
       await contextMgr
         .recordHistoryWriteFailure(
           sessionId,
           error instanceof Error ? error.message : String(error),
+          historyScope,
         )
         .catch(() => undefined);
     }
@@ -128,6 +136,11 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   let currentAssistantMessageId: MessageId | null = null;
   const inputApplicationLifecycle = options?.inputApplicationLifecycle;
   const requestSignal = options?.signal ?? context.signal;
+  // The Request a history gap belongs to. Repair needs it to rebuild the right
+  // history instead of whatever request happens to be active when it runs.
+  const historyScope = (): { requestId?: RequestId } => ({
+    ...(runControl?.requestId ? { requestId: runControl.requestId } : {}),
+  });
 
   const hooks: AgentLoopHooks = {
     input: {
@@ -167,6 +180,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           context.assertExecutionLease,
           requestSignal,
           context.runWithExecutionLease,
+          { requestId: runControl.requestId },
         );
         if (messageId) {
           setLastUuid(messageId);
@@ -263,6 +277,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             context.assertExecutionLease,
             requestSignal,
             context.runWithExecutionLease,
+            historyScope(),
           );
 
           return {
@@ -344,6 +359,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           context.assertExecutionLease,
           requestSignal,
           context.runWithExecutionLease,
+          historyScope(),
         );
 
         pendingToolResultCount = Math.max(0, pendingToolResultCount - 1);
@@ -387,6 +403,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             context.assertExecutionLease,
             requestSignal,
             context.runWithExecutionLease,
+            historyScope(),
           );
         }
 
@@ -467,6 +484,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           context.assertExecutionLease,
           requestSignal,
           context.runWithExecutionLease,
+          historyScope(),
         );
       },
     },

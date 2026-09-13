@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Read the resume cursor from the message projection's own coverage: the projection records the newest Request whose content it holds, the server maps that Request to its last event, and a gap plus a trimmed log still reports recoveryIncomplete instead of a lossless claim.",
+  "zh-CN": "续读游标改为读消息投影自身的覆盖进度：投影记录它已完整持有的最新请求，服务端再把这个请求映射到它在事件日志中的最后一个事件；存在缺口且日志被裁剪时仍返回 recoveryIncomplete，不宣称无损。"
+}
