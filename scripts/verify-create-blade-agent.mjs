@@ -38,6 +38,7 @@ const presetContracts = {
       'src/RepositorySessionRunner.mjs',
       'src/RepositoryRecovery.mjs',
       'src/RepositoryReconcile.mjs',
+      'src/RepositoryTerminalOutcome.mjs',
       'src/RepositoryState.mjs',
       'src/RepositoryTools.mjs',
       'src/RepositoryDemoProvider.mjs',
