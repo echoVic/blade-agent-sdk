@@ -200,14 +200,21 @@ but not applied, and the last event sequence. A client that lost its own storage
 can reattach from these facts instead of guessing, and it must treat `messages`
 as unknown rather than empty when `loaded` is false.
 
-`lastEventSequence` is the event head captured *before* the snapshot was read, so
-the cursor is never ahead of the `messages` in the same response: replaying from
-it can only re-see events appended while the snapshot loaded, which the client
-deduplicates by event id — it can never miss one. The other order (snapshot
-first, head second) would report events that the snapshot cannot contain and that
-the client would then skip, losing them permanently. When `loaded` is false the
-pending-input projection is unknown, so `pendingInputCount` is omitted instead of
-reporting the unknown as zero.
+`lastEventSequence` is where a reconnecting client resumes the stream, and it stops
+at the **last completed request**. The message projection trails the event log
+while a request runs — content deltas are published before the assistant message
+is written — so a cursor equal to the event head would let a refreshed page skip
+output the projection has not recorded yet. Stopping at the completed request
+means the client replays the in-flight turn and deduplicates by event id, which
+cannot lose content. The cursor is resolved before the snapshot is loaded, so the
+two reads cannot race, and it is derived from a bounded tail of the log: a window
+with no completed request is replayed from its start rather than from the head.
+When `loaded` is false the pending-input projection is unknown, so
+`pendingInputCount` is omitted instead of reporting the unknown as zero.
+
+`appendEvent(..., { idempotencyKey })` keeps its idempotency record for the
+Session's lifetime, independent of event retention: a retry whose original event
+has already been trimmed is still recognised as a repeat and returns that event.
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command

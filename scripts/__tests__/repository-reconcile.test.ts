@@ -64,6 +64,10 @@ function createWorkerStore({
       loadState: async () => {
         throw new Error('The reconciler must not read the transcript projection');
       },
+      getDurableHead: async (sessionId) => {
+        const all = journals.get(String(sessionId)) ?? [];
+        return all.length === 0 ? null : all.at(-1).sequence;
+      },
       read: async (sessionId, { after, limit = 500 } = {}) => {
         const all = journals.get(String(sessionId)) ?? [];
         const remaining = after === undefined
@@ -161,6 +165,40 @@ function createState({ submissions = [], outcomes = [] } = {}) {
       if (index !== -1) unpublishedOutcomes.splice(index, 1);
     },
   };
+}
+
+/** A journal whose history exceeds the replay budget, ending in one acceptance. */
+function longDurableJournal(sessionId: string, requestId: string, inputId: string) {
+  const events = [];
+  for (let sequence = 1; sequence <= 50_001; sequence += 1) {
+    events.push({
+      schemaVersion: 4,
+      eventId: `event-${sequence}`,
+      sequence,
+      sessionId,
+      recordedAt: '2023-11-14T22:13:20.000Z',
+      occurredAt: '2023-11-14T22:13:20.000Z',
+      commandId: `command-${sequence}`,
+      type: 'input_applied',
+      requestId,
+      data: { inputId },
+    });
+  }
+  // Nothing runs until the request is enqueued, so an accepted-but-lost request is
+  // the journal's last event - even in a history this long.
+  events.push({
+    schemaVersion: 4,
+    eventId: 'event-accepted',
+    sequence: 50_002,
+    sessionId,
+    recordedAt: '2023-11-14T22:13:21.000Z',
+    occurredAt: '2023-11-14T22:13:21.000Z',
+    requestId,
+    commandId: `command-accept-${requestId}`,
+    type: 'request_accepted',
+    data: { inputId, input: 'Fix the greeting', priority: 'next' },
+  });
+  return events;
 }
 
 describe('startup reconciliation', () => {
@@ -280,6 +318,70 @@ describe('startup reconciliation', () => {
       expect(result.enqueuedSubmissions).toBe(0);
       expect(store.enqueued).toEqual([]);
     }
+  });
+
+  it('recovers an accepted request from a journal longer than the replay budget', async () => {
+    const sessionId = SessionId('session-journal-long');
+    const store = createWorkerStore({
+      sessions: [{ tenantId, sessionId, status: 'active' }],
+      journals: new Map([[
+        String(sessionId),
+        longDurableJournal(sessionId, 'request-long', 'input-long'),
+      ]]),
+    });
+    const state = createState();
+    const reports = [];
+
+    const result = await reconcilePendingWork({
+      store, state, tenantId, publish: vi.fn(),
+      report: (entry) => reports.push(entry),
+    });
+
+    // The truncated scan falls back to the tail, which is decisive, so the
+    // request is recovered instead of being retried and truncated forever.
+    expect(result.enqueuedSubmissions).toBe(1);
+    expect(state.queued).toEqual([{ sessionId, requestId: 'request-long' }]);
+    const route = store.routes.get(String(sessionId));
+    expect(route?.metadata?.bladeQueuedRequest).toMatchObject({
+      requestId: 'request-long',
+      inputId: 'input-long',
+      input: 'Fix the greeting',
+      recoveredFrom: 'durable_journal',
+    });
+    expect(reports).toContainEqual(expect.objectContaining({
+      type: 'journal_scan_truncated',
+      lastEventType: 'request_accepted',
+    }));
+  });
+
+  it('does not rebuild a long journal whose tail is not an open acceptance', async () => {
+    const sessionId = SessionId('session-journal-long-settled');
+    const journal = longDurableJournal(sessionId, 'request-long', 'input-long');
+    // The accepted request was applied after all: its acceptance is no longer the
+    // last event, so there is nothing to recover.
+    journal.push({
+      schemaVersion: 4,
+      eventId: 'event-applied',
+      sequence: 50_003,
+      sessionId,
+      recordedAt: '2023-11-14T22:13:22.000Z',
+      occurredAt: '2023-11-14T22:13:22.000Z',
+      commandId: 'command-applied',
+      type: 'input_applied',
+      requestId: 'request-long',
+      data: { inputId: 'input-long' },
+    });
+    const store = createWorkerStore({
+      sessions: [{ tenantId, sessionId, status: 'active' }],
+      journals: new Map([[String(sessionId), journal]]),
+    });
+
+    const result = await reconcilePendingWork({
+      store, state: createState(), tenantId, publish: vi.fn(),
+    });
+
+    expect(result.enqueuedSubmissions).toBe(0);
+    expect(store.enqueued).toEqual([]);
   });
 
   it('republishes a terminal result after the route settled for the same request', async () => {

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Recover an accepted-but-unenqueued submission from a journal longer than one replay budget by inspecting its tail, where that acceptance is the last durable event, instead of reporting a truncated scan on every startup.",
+  "zh-CN": "journal 超过单次重放预算时改为检查尾部：未入队的已接受请求一定是最后一个 durable 事件，因此不再每次启动都只报扫描截断。"
+}

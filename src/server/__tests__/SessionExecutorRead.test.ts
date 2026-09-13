@@ -163,21 +163,138 @@ describe('AgentServer session.read recovery snapshot', () => {
     expect(recovery.lastEventSequence).toBe(3);
   });
 
+  it('replays streaming output the message projection has not recorded yet', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-streaming'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+
+    // One finished request, then content that is still streaming: the assistant
+    // message is written only when the turn completes, so `messages` cannot carry
+    // this output yet and the cursor must not step over it.
+    for (const data of [
+      { type: 'content', delta: 'finished output', sessionId },
+      { type: 'result', subtype: 'success', content: 'done', sessionId },
+      { type: 'content', delta: 'still streaming', sessionId },
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-streaming'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const data = (read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } })
+      .data;
+    // The projection is behind the log, which is exactly why the cursor stops at
+    // the last completed request instead of at the head.
+    expect(data.messages).toEqual([]);
+    expect(data.recovery.lastEventSequence).toBe(2);
+
+    const replay = await store.readEvents(principal.tenantId, sessionId, {
+      after: data.recovery.lastEventSequence,
+    });
+    expect(replay.events.map((event) => (event.data as { delta?: string }).delta))
+      .toEqual(['still streaming']);
+  });
+
+  it('replays the whole retained log when no request has completed yet', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const store = new InMemoryAgentServerStore();
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-first-turn'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    for (const data of [
+      { type: 'content', delta: 'only output so far', sessionId },
+      { type: 'content', delta: 'more output', sessionId },
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-first-turn'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
+    expect(recovery.lastEventSequence).toBe(0);
+    const replay = await store.readEvents(principal.tenantId, sessionId, {
+      after: recovery.lastEventSequence,
+    });
+    expect(replay.events).toHaveLength(2);
+  });
+
   it('never returns a cursor ahead of the snapshot it accompanies', async () => {
     const { AgentServer } = await import('../AgentServer.js');
     const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
     const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
 
-    const events: { sequence: number }[] = [];
-    let head = 0;
     class RacingStore extends InMemoryAgentServerStore {
-      appendEvent(...args: Parameters<InMemoryAgentServerStore['appendEvent']>) {
-        head += 1;
-        events.push({ sequence: head });
-        return super.appendEvent(...args);
-      }
-      getLatestEventSequence(): Promise<number | null> {
-        return Promise.resolve(head === 0 ? null : head);
+      getEventStreamRange(...args: Parameters<InMemoryAgentServerStore['getEventStreamRange']>) {
+        // The stream moves on between resolving the cursor and loading the state.
+        return super.getEventStreamRange(...args);
       }
     }
     const store = new RacingStore();
@@ -190,14 +307,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       }),
       publish: async () => undefined,
     });
-    // An event lands between the two reads: the cursor is captured first, then
-    // the snapshot is loaded, then the head moves again.
     const racingExecutor = new Proxy(executor, {
       get(target, property, receiver) {
         if (property === 'read') {
           return async (...args: Parameters<InProcessSessionExecutor['read']>) => {
-            head += 1;
-            events.push({ sequence: head });
+            await store.appendEvent(principal.tenantId, args[1].sessionId, {
+              protocolVersion: 1,
+              sessionId: args[1].sessionId,
+              occurredAt: new Date().toISOString(),
+              type: 'session.stream',
+              data: { type: 'content', delta: 'appended during read', sessionId: args[1].sessionId },
+            });
             return await target.read(...args);
           };
         }
@@ -209,7 +329,6 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: racingExecutor as never,
       authenticate: () => principal,
     });
-
     const created = await server.execute({
       protocolVersion: 1,
       commandId: CommandId('command-create-race'),
@@ -219,8 +338,8 @@ describe('AgentServer session.read recovery snapshot', () => {
     const sessionId = (created as { data: { session: { sessionId: SessionId } } })
       .data.session.sessionId;
     for (const data of [
-      { type: 'content', delta: 'first', sessionId },
-      { type: 'content', delta: 'second', sessionId },
+      { type: 'content', delta: 'finished', sessionId },
+      { type: 'result', subtype: 'success', content: 'done', sessionId },
     ] as const) {
       await store.appendEvent(principal.tenantId, sessionId, {
         protocolVersion: 1,
@@ -230,7 +349,6 @@ describe('AgentServer session.read recovery snapshot', () => {
         data,
       });
     }
-    const headBeforeRead = head;
 
     const read = await server.execute({
       protocolVersion: 1,
@@ -239,12 +357,74 @@ describe('AgentServer session.read recovery snapshot', () => {
       data: { sessionId },
     } as never, principal);
 
-    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
-    // The snapshot was loaded while event `headBeforeRead + 1` appeared, so the
-    // cursor must stay at the pre-read head: resuming replays one event rather
-    // than skipping it forever.
-    expect(head).toBe(headBeforeRead + 1);
-    expect(recovery.lastEventSequence).toBe(headBeforeRead);
+    const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
+    // Events appended while the snapshot loaded are replayed: the cursor stops at
+    // the completed request, never at a head read after the snapshot.
+    expect(recovery.lastEventSequence).toBe(2);
+    const replay = await store.readEvents(principal.tenantId, sessionId, {
+      after: recovery.lastEventSequence,
+    });
+    expect(replay.events.map((event) => (event.data as { delta?: string }).delta))
+      .toEqual(['appended during read']);
+  });
+
+  it('replays from the retained window when a long log holds no completed request', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    // Retention keeps the log short; the cursor still has to stay inside it and
+    // still has to replay the events that remain.
+    const store = new InMemoryAgentServerStore({ maxEventsPerSession: 3 });
+    const executor = new InProcessSessionExecutor({
+      store,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    const server = new AgentServer({
+      store,
+      sessionExecutor: executor,
+      authenticate: () => principal,
+    });
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-retained'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    for (const delta of ['one', 'two', 'three', 'four', 'five']) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data: { type: 'content', delta, sessionId },
+      });
+    }
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-retained'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
+    const range = await store.getEventStreamRange(principal.tenantId, sessionId);
+    // Never below what the log still retains, never above the head.
+    expect(recovery.lastEventSequence).toBeGreaterThanOrEqual((range?.firstSequence ?? 1) - 1);
+    expect(recovery.lastEventSequence).toBeLessThanOrEqual(range?.headSequence ?? 0);
+    const replay = await store.readEvents(principal.tenantId, sessionId, {
+      after: recovery.lastEventSequence,
+    });
+    expect(replay.events.length).toBeGreaterThan(0);
+    expect(replay.events.at(-1)?.sequence).toBe(range?.headSequence);
   });
 
   it('does not present an unknown pending-input projection as empty', async () => {

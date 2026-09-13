@@ -249,10 +249,39 @@ export async function assertRuntimeStoreConformance(
     raced[0]?.eventId === raced[1]?.eventId && raced[0]?.sequence === raced[1]?.sequence,
     'Concurrent appends under one idempotency key must resolve to the same event',
   );
+  const racedRequestId = RequestId('request-raced');
   assert(
-    afterRace.events.filter((event) => event.eventId === racedKey).length === 1,
+    afterRace.events.filter((event) => event.requestId === racedRequestId).length === 1,
     'Concurrent appends under one idempotency key must store exactly one event',
   );
+  // Retention may drop the original event, but a retry must still be recognised:
+  // otherwise a publish that outlives the retention window happens twice.
+  const retainedStore = store as RuntimeStore & {
+    trimAgentEventsForTesting?: (tenantId: string, sessionId: SessionId) => Promise<void>;
+  };
+  if (typeof retainedStore.trimAgentEventsForTesting === 'function') {
+    await retainedStore.trimAgentEventsForTesting(tenantId, sessionId);
+    const afterTrim = await store.readEvents(tenantId, sessionId);
+    assert(
+      !afterTrim.events.some((event) => event.requestId === racedRequestId),
+      'The test hook must remove the retained event before the repeat',
+    );
+    const repeatAfterTrim = await store.appendEvent(
+      tenantId,
+      sessionId,
+      racedDraft,
+      { idempotencyKey: racedKey },
+    );
+    const finalLog = await store.readEvents(tenantId, sessionId);
+    assert(
+      repeatAfterTrim.eventId === raced[0]?.eventId && repeatAfterTrim.sequence === raced[0]?.sequence,
+      'An idempotency key must be remembered after its event is no longer retained',
+    );
+    assert(
+      !finalLog.events.some((event) => event.requestId === racedRequestId),
+      'A repeat after retention must not append the trimmed event again',
+    );
+  }
   checks.push('agent-events');
 
   const durable = await sessions.append(

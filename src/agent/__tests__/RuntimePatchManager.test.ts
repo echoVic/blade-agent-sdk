@@ -117,6 +117,52 @@ describe('RuntimePatchManager tool policy scoping', () => {
       .toEqual(['second']);
   });
 
+  it('keeps session tool discoveries through a turn-scoped discovery patch', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      toolDiscovery: { discover: ['Read'] },
+    }, loopState);
+    // A temporary skill discovers another tool. Stamping the merged set with the
+    // turn scope would make cleanup drop the session's discovery with it.
+    manager.applyRuntimePatch({
+      scope: 'turn',
+      source: 'tool',
+      skill: { id: 'temp-skill', name: 'temp-skill', basePath: '/tmp' },
+      toolDiscovery: { discover: ['Write'] },
+    }, loopState);
+
+    expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Read', 'Write']);
+
+    manager.clearTurnScopedRuntimeState();
+
+    expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Read']);
+  });
+
+  it('drops the session discoveries only when the session resets them', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      toolDiscovery: { discover: ['Read'] },
+    }, loopState);
+    manager.applyRuntimePatch({
+      scope: 'turn',
+      source: 'tool',
+      toolDiscovery: { discover: ['Write'] },
+    }, loopState);
+
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      toolDiscovery: { reset: true },
+    }, loopState);
+
+    // The session reset clears the session layer; the turn's own discovery stays.
+    expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Write']);
+  });
+
   it('reports no policy when neither a patch nor a baseline exists', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(turnSkillPatch(), loopState);

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Stop the session.read resume cursor at the last completed request instead of the event head: the message projection trails the log while a request streams, so a refreshed client could skip output it never received. It now replays the in-flight turn and deduplicates by event id.",
+  "zh-CN": "session.read 的续读游标改为停在最后一个已完成请求，而不再等于事件头：请求运行期间消息投影落后于事件日志，刷新页面会跳过尚未落库的输出。现在客户端会重放正在生成的这一轮并按 event id 去重。"
+}

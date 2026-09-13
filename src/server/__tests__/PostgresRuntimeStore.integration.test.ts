@@ -101,6 +101,37 @@ describePostgres('PostgresRuntimeStore', () => {
     ]);
   });
 
+  it('remembers an idempotency key after its event is no longer retained', async () => {
+    const tenantId = 'tenant-idempotency-retention';
+    const sessionId = SessionId(`session-idempotency-${Date.now()}`);
+    const idempotencyKey = `terminal-${Date.now()}`;
+    const event = {
+      protocolVersion: 1 as const,
+      sessionId,
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream' as const,
+      data: { type: 'result', subtype: 'success', content: 'done', sessionId },
+    };
+    const first = await store.appendEvent(tenantId, sessionId, event, { idempotencyKey });
+
+    // Retention drops the event row; the record has to outlive it, or a retry that
+    // outlives the retention window publishes the result a second time.
+    await pool?.query(
+      `DELETE FROM "${schema}"."runtime_events"
+        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
+      [tenantId, sessionId],
+    );
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
+
+    const repeat = await store.appendEvent(tenantId, sessionId, event, { idempotencyKey });
+
+    expect(repeat.eventId).toBe(first.eventId);
+    expect(repeat.sequence).toBe(first.sequence);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
+    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, idempotencyKey))
+      .toMatchObject({ eventId: first.eventId, sequence: first.sequence });
+  });
+
   it('rejects invalid transaction payloads before writing a receipt', async () => {
     const commandId = CommandId(`invalid-${Date.now()}`);
     await expect(

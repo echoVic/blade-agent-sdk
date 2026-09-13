@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Keep idempotency records for the Session's lifetime instead of inside the trimmable event log, so a retry whose original event has been retained away is still recognised as a repeat and does not publish a second time.",
+  "zh-CN": "幂等记录改为按 Session 生命周期保存，不再寄存于会被裁剪的事件日志中：原事件被裁剪后重试同一个键仍会被识别为重复，不会再次发布。"
+}

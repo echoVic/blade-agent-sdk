@@ -5,6 +5,12 @@ const SETTLED_ROUTE_STATES = new Set(['idle', 'completed', 'failed']);
 /** Bound on how much of one durable journal a single startup pass replays. */
 const JOURNAL_PAGE_SIZE = 500;
 const JOURNAL_PAGE_LIMIT = 100;
+/**
+ * How much of a journal that exceeds the replay budget is inspected at its end.
+ * An accepted-but-unenqueued request is the journal's last event, so the tail
+ * decides the recovery without replaying the whole history.
+ */
+const JOURNAL_TAIL_EVENTS = 50;
 
 /**
  * Startup reconciliation for the windows a lease-based recovery scan cannot see.
@@ -145,7 +151,13 @@ function acceptedAtMs(acceptedAt) {
 
 /**
  * The active request from the durable journal projection, or null when the
- * journal holds no unfinished request or exceeds one startup pass.
+ * journal holds no unfinished request.
+ *
+ * A journal longer than the replay budget cannot be projected in one startup pass.
+ * It does not have to be: the window this sweep recovers - accepted but never
+ * enqueued - leaves the acceptance as the journal's *last* event, because nothing
+ * runs until the request is enqueued. The tail is therefore decisive, and the
+ * recovery no longer depends on how long the history is.
  */
 async function readActiveDurableRequest(tenantStore, sessionId, report) {
   const events = [];
@@ -161,8 +173,57 @@ async function readActiveDurableRequest(tenantStore, sessionId, report) {
     }
     after = read.nextCursor;
   }
-  report({ type: 'journal_scan_truncated', sessionId });
-  return null;
+
+  const tail = await readDurableTail(tenantStore, sessionId);
+  report({
+    type: 'journal_scan_truncated',
+    sessionId,
+    inspectedTailEvents: tail.length,
+    lastEventType: tail.at(-1)?.type ?? null,
+  });
+  return acceptedRequestAtTail(tail);
+}
+
+/** The last durable events of a journal, without replaying the history. */
+async function readDurableTail(tenantStore, sessionId) {
+  if (typeof tenantStore.getDurableHead !== 'function') {
+    return [];
+  }
+  const head = await tenantStore.getDurableHead(sessionId);
+  if (head === null || head === undefined) {
+    return [];
+  }
+  const headSequence = Number(head);
+  if (!Number.isSafeInteger(headSequence) || headSequence < 1) {
+    return [];
+  }
+  const after = Math.max(0, headSequence - JOURNAL_TAIL_EVENTS);
+  const page = await tenantStore.read(sessionId, {
+    ...(after > 0 ? { after } : {}),
+    limit: JOURNAL_TAIL_EVENTS,
+  });
+  return page.events;
+}
+
+/**
+ * The request an unfinished journal tail represents, or null when the last durable
+ * event is not an open acceptance.
+ */
+function acceptedRequestAtTail(events) {
+  const last = events.at(-1);
+  if (!last || last.type !== 'request_accepted') {
+    return null;
+  }
+  const data = last.data ?? {};
+  if (typeof data.input !== 'string' || typeof data.inputId !== 'string') {
+    return null;
+  }
+  return {
+    requestId: last.requestId,
+    inputId: data.inputId,
+    input: data.input,
+    acceptedAt: last.occurredAt,
+  };
 }
 
 async function reconcileOutcomes({ store, state, tenantId, publish, report, reconciled }) {

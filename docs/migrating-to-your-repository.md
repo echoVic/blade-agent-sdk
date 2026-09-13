@@ -34,7 +34,7 @@ production starter 会把示例模块复制进你的项目，因此先分清归�
 | 崩溃后的恢复计划（模型结果、工具结果、待审批） | SDK | `DurableSessionRecoveryCoordinator`，示例只在 `RepositoryRecovery.mjs` 里给出决策策略 |
 | 工作区检查点与恢复 | SDK | `DockerExecutionHost` 的 `checkpoint` / `restore` / `reclaim` |
 | 崩溃边界与恢复状态 | PostgreSQL | 启动器不缓存这类状态：路由状态、fencing token、已提交检查点都从存储读取 |
-| 提交与终态事件的补齐 | 你的项目 | `RepositoryState.mjs` + `RepositoryReconcile.mjs` 是你自己的队列表与补齐策略；恢复扫描读的是 durable journal 投影，不是 transcript 投影 |
+| 提交与终态事件的补齐 | 你的项目 | `RepositoryState.mjs` + `RepositoryReconcile.mjs` 是你自己的队列表与补齐策略；恢复扫描读的是 durable journal 投影，不是 transcript 投影。journal 超过单次重放预算时改看尾部：未入队的已接受请求一定是 journal 的最后一个事件，因此长会话同样能恢复 |
 | 终态事件的幂等写入 | SDK | `appendEvent(..., { idempotencyKey })` 让 Worker 与补齐流程并发发布同一个终态时只落一条事件 |
 | durable journal 投影 | SDK | `projectDurableSession` 把已接受的请求从 journal 还原出来；transcript 投影可能根本没有这条输入 |
 | 工具白名单与审批策略 | 你的项目 | `RepositoryTools.mjs` 与 `RepositoryState.mjs` 里的审批记录 |

@@ -151,3 +151,57 @@ describe('InMemoryAgentServerStore', () => {
     await expect(waiting).resolves.toBeUndefined();
   });
 });
+
+describe('InMemoryAgentServerStore idempotent appends', () => {
+  const tenantId = 'tenant-idempotent';
+  const sessionId = SessionId('session-idempotent');
+  const event = {
+    protocolVersion: 1,
+    sessionId,
+    occurredAt: new Date().toISOString(),
+    type: 'session.stream',
+    data: { type: 'result', subtype: 'success', content: 'done', sessionId },
+  } as const;
+
+  it('returns the stored event for a repeated key instead of appending again', async () => {
+    const store = new InMemoryAgentServerStore();
+    const first = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: 'terminal-1',
+    });
+    const repeat = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: 'terminal-1',
+    });
+
+    expect(repeat.eventId).toBe(first.eventId);
+    expect(repeat.sequence).toBe(first.sequence);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(1);
+  });
+
+  it('remembers the key after retention has dropped the original event', async () => {
+    const store = new InMemoryAgentServerStore();
+    const first = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: 'terminal-2',
+    });
+    // Retention trims the log; the idempotency record must outlive it, or a retry
+    // that outlives the retention window publishes the result a second time.
+    await store.trimAgentEventsForTesting(tenantId, sessionId);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
+
+    const repeat = await store.appendEvent(tenantId, sessionId, event, {
+      idempotencyKey: 'terminal-2',
+    });
+
+    expect(repeat.eventId).toBe(first.eventId);
+    expect(repeat.sequence).toBe(first.sequence);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
+    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-2'))
+      .toMatchObject({ eventId: first.eventId });
+  });
+
+  it('keeps appending without a key', async () => {
+    const store = new InMemoryAgentServerStore();
+    await store.appendEvent(tenantId, sessionId, event);
+    await store.appendEvent(tenantId, sessionId, event);
+    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(2);
+  });
+});

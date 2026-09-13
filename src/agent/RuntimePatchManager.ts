@@ -54,6 +54,14 @@ export class RuntimePatchManager {
     value: RuntimeContext;
     scope: 'turn' | 'session';
   };
+  /**
+   * Session-scoped tool discoveries, kept separately from the effective set for
+   * the same reason as `sessionToolPolicy`: a turn patch contributes to the
+   * effective set for one turn and must not take the session's discoveries with it
+   * when the turn is cleaned up.
+   */
+  private sessionDiscoveredTools?: Set<string>;
+  private turnDiscoveredTools?: Set<string>;
   private runtimeDiscoveredTools?: {
     values: Set<string>;
     scope: 'turn' | 'session';
@@ -300,30 +308,57 @@ export class RuntimePatchManager {
   // ===== Tool Discovery =====
 
   private applyRuntimeToolDiscovery(patch: RuntimePatch): void {
-    const nextDiscoveredTools = patch.toolDiscovery?.discover
+    if (patch.toolDiscovery?.reset) {
+      // A reset clears the layer that declared it; the other layer's discoveries
+      // stay in effect and are re-derived below.
+      if (patch.scope === 'session') {
+        this.sessionDiscoveredTools = undefined;
+      } else {
+        this.turnDiscoveredTools = undefined;
+      }
+    }
+
+    const discovered = patch.toolDiscovery?.discover
       ?.filter(
         (toolName): toolName is string => typeof toolName === 'string' && toolName.trim() !== '',
       )
       .map((toolName) => toolName.trim());
-
-    if (patch.toolDiscovery?.reset) {
-      this.runtimeDiscoveredTools = undefined;
+    if (discovered && discovered.length > 0) {
+      if (patch.scope === 'session') {
+        this.sessionDiscoveredTools ??= new Set<string>();
+        for (const toolName of discovered) {
+          this.sessionDiscoveredTools.add(toolName);
+        }
+      } else {
+        this.turnDiscoveredTools ??= new Set<string>();
+        for (const toolName of discovered) {
+          this.turnDiscoveredTools.add(toolName);
+        }
+      }
     }
 
-    if (!nextDiscoveredTools || nextDiscoveredTools.length === 0) {
+    this.recomputeDiscoveredTools();
+  }
+
+  /**
+   * Re-derive the effective discovery set from the two layers.
+   *
+   * Each layer keeps its own contributions: merging them into one set and stamping
+   * it with the last patch's scope would make turn cleanup drop the session's
+   * discoveries, and a reset in one layer would erase the other layer's tools.
+   */
+  private recomputeDiscoveredTools(): void {
+    const merged = new Set([
+      ...(this.sessionDiscoveredTools ?? []),
+      ...(this.turnDiscoveredTools ?? []),
+    ]);
+    if (merged.size === 0) {
+      this.runtimeDiscoveredTools = undefined;
       return;
     }
-
-    const current = this.runtimeDiscoveredTools?.values
-      ? new Set(this.runtimeDiscoveredTools.values)
-      : new Set<string>();
-    for (const toolName of nextDiscoveredTools) {
-      current.add(toolName);
-    }
-
     this.runtimeDiscoveredTools = {
-      values: current,
-      scope: patch.scope,
+      values: merged,
+      scope: (this.turnDiscoveredTools?.size ?? 0) > 0 ? 'turn' : 'session',
     };
   }
 
@@ -399,8 +434,11 @@ ${summary}`,
     if (this.runtimeContextOverlay?.scope === 'turn') {
       this.runtimeContextOverlay = undefined;
     }
-    if (this.runtimeDiscoveredTools?.scope === 'turn') {
-      this.runtimeDiscoveredTools = undefined;
+    if (this.turnDiscoveredTools) {
+      // Drop only the turn layer: the session's discoveries are not the turn's to
+      // drop, so the effective set is re-derived instead of cleared.
+      this.turnDiscoveredTools = undefined;
+      this.recomputeDiscoveredTools();
     }
     this.runtimePatchApplications = this.runtimePatchApplications.filter(
       (application) => application.patch.scope !== 'turn',

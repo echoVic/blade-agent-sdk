@@ -86,6 +86,11 @@ export interface AgentServerStore {
    * a second call with the same key stores nothing and returns the event the first
    * call stored. That is what lets a Worker and a reconciler publish the same
    * terminal result without a read-then-append race and without scanning the log.
+   *
+   * The key's record is kept for the Session's lifetime and is therefore *not*
+   * trimmed with the event log: a repeat after retention has dropped the original
+   * event must still be recognised, or a retry that outlives the retention window
+   * would publish the result a second time.
    */
   appendEvent(
     tenantId: string,
@@ -95,8 +100,8 @@ export interface AgentServerStore {
   ): Promise<AgentServerEvent>;
   /**
    * The event stored under an idempotency key, or null when nothing was appended
-   * with it. An indexed lookup, so a reconciler can report whether it published a
-   * terminal result without scanning the log.
+   * with it. An indexed lookup that survives event retention, so a reconciler can
+   * report whether it published a terminal result without scanning the log.
    */
   getEventByIdempotencyKey?(
     tenantId: string,
@@ -114,6 +119,15 @@ export interface AgentServerStore {
    * the cursor it reports can never be ahead of the messages in that snapshot.
    */
   getLatestEventSequence?(tenantId: string, sessionId: SessionId): Promise<number | null>;
+  /**
+   * The sequence range a Session's event log still retains. A recovery cursor has
+   * to be clamped into this range: below it the client would be told to replay
+   * events that no longer exist, and above it the cursor would skip events.
+   */
+  getEventStreamRange?(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<{ readonly firstSequence: number; readonly headSequence: number } | null>;
   waitForEvents?(
     tenantId: string,
     sessionId: SessionId,
@@ -156,6 +170,11 @@ export class InMemoryAgentServerStore implements AgentServerStore {
   private readonly sessions = new Map<string, AgentServerSessionRecord>();
   private readonly eventLogs = new Map<string, EventLog>();
   private readonly maxEventsPerSession: number;
+  /**
+   * Idempotency records, kept outside the (trimmable) event logs so a retry that
+   * outlives retention is still recognised.
+   */
+  private readonly eventKeys = new Map<string, Map<string, AgentServerEvent>>();
   private readonly now: () => number;
 
   constructor(options: InMemoryAgentServerStoreOptions = {}) {
@@ -311,9 +330,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     const key = scopedKey(tenantId, sessionId);
     const log = this.getOrCreateEventLog(key);
     if (options.idempotencyKey !== undefined) {
-      const existing = log.events.find(
-        (candidate) => candidate.eventId === options.idempotencyKey,
-      );
+      const existing = this.eventKeys.get(key)?.get(options.idempotencyKey);
       if (existing) {
         return structuredClone(existing);
       }
@@ -321,11 +338,14 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     const stored = {
       ...event,
       protocolVersion: AGENT_PROTOCOL_VERSION,
-      eventId: options.idempotencyKey === undefined
-        ? EventId(nanoid())
-        : EventId(options.idempotencyKey),
+      eventId: EventId(nanoid()),
       sequence: EventSequence(log.nextSequence++),
     } as AgentServerEvent;
+    if (options.idempotencyKey !== undefined) {
+      const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
+      keys.set(options.idempotencyKey, stored);
+      this.eventKeys.set(key, keys);
+    }
     log.events.push(structuredClone(stored));
     if (log.events.length > this.maxEventsPerSession) {
       const removeCount = log.events.length - this.maxEventsPerSession;
@@ -339,13 +359,28 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     return structuredClone(stored);
   }
 
+  /** Test hook: drop retained events without touching the idempotency records. */
+  async trimAgentEventsForTesting(tenantId: string, sessionId: SessionId): Promise<void> {
+    this.eventLogs.delete(scopedKey(tenantId, sessionId));
+  }
+
+  async getEventStreamRange(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<{ firstSequence: number; headSequence: number } | null> {
+    const log = this.eventLogs.get(scopedKey(tenantId, sessionId));
+    if (!log || log.nextSequence <= log.firstSequence) {
+      return null;
+    }
+    return { firstSequence: log.firstSequence, headSequence: log.nextSequence - 1 };
+  }
+
   async getEventByIdempotencyKey(
     tenantId: string,
     sessionId: SessionId,
     idempotencyKey: string,
   ): Promise<AgentServerEvent | null> {
-    const log = this.eventLogs.get(scopedKey(tenantId, sessionId));
-    const existing = log?.events.find((candidate) => candidate.eventId === idempotencyKey);
+    const existing = this.eventKeys.get(scopedKey(tenantId, sessionId))?.get(idempotencyKey);
     return existing ? structuredClone(existing) : null;
   }
 

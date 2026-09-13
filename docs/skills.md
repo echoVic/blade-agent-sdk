@@ -27,9 +27,11 @@ Skill registry 按配置缓存发现结果，缓存身份是完整配置：`cwd`
 ## 补丁作用域与临时 Skill
 
 临时（turn 作用域）Skill 只在当前回合生效，回合结束时清理。清理与替换都按作用域
-进行：session 作用域写入的 system prompt 追加与 environment 基线不会被 turn 作用域
-的 Skill 覆盖或删除，回合结束后仍然生效。反过来，同一作用域内后一个不带
-`systemPromptAppend` / `environment` 的 Skill 会替换掉前一个在该作用域内的贡献。
+进行：session 作用域写入的 system prompt 追加、environment 基线、工具策略基线和
+**工具发现集合**都不会被 turn 作用域的 Skill 覆盖或删除，回合结束后仍然生效。反过来，
+同一作用域内后一个不带 `systemPromptAppend` / `environment` 的 Skill 会替换掉前一个在
+该作用域内的贡献；`toolDiscovery.reset` 也只清空声明它的那一层。有效状态始终由仍然
+生效的各层重新派生，而不是把最后一层的作用域盖在整个集合上。
 
 ## SKILL.md 格式
 

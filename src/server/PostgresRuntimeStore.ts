@@ -752,7 +752,22 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('Event Session does not match the target event log');
     }
     await this.initialize();
+    const idempotencyKey = options.idempotencyKey;
     return this.transaction(async (client) => {
+      if (idempotencyKey !== undefined) {
+        // Serialised against other appends to this stream, so the check cannot
+        // race a concurrent publisher of the same key.
+        await this.lock(client, `stream:${tenantId}:${sessionId}:agent`);
+        const existing = await this.readIdempotencyRecord(
+          client,
+          tenantId,
+          sessionId,
+          idempotencyKey,
+        );
+        if (existing) {
+          return parseAgentServerEvent(existing);
+        }
+      }
       const [stored] = await this.appendStream(
         client,
         tenantId,
@@ -769,11 +784,78 @@ export class PostgresRuntimeStore implements RuntimeStore {
           }),
         ],
         this.maxAgentEventsPerSession,
-        undefined,
-        options.idempotencyKey,
       );
+      if (idempotencyKey !== undefined) {
+        await this.writeIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, stored);
+      }
       return parseAgentServerEvent(stored);
     });
+  }
+
+  /**
+   * The payload an idempotency key already stored, read from the record rather
+   * than the event log so event retention cannot forget it.
+   */
+  private async readIdempotencyRecord(
+    client: PoolClient,
+    tenantId: string,
+    sessionId: SessionId,
+    idempotencyKey: string,
+  ): Promise<JsonObject | null> {
+    const result = await client.query<PayloadRow>(
+      `SELECT payload
+         FROM ${this.table('event_keys')}
+        WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3`,
+      [tenantId, sessionId, idempotencyKey],
+    );
+    const row = result.rows[0];
+    return row ? asJsonObject(row.payload) : null;
+  }
+
+  private async writeIdempotencyRecord(
+    client: PoolClient,
+    tenantId: string,
+    sessionId: SessionId,
+    idempotencyKey: string,
+    event: { readonly eventId: EventId; readonly sequence: EventSequence },
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO ${this.table('event_keys')} (
+         tenant_id, session_id, idempotency_key, sequence, event_id, payload
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       ON CONFLICT (tenant_id, session_id, idempotency_key) DO NOTHING`,
+      [
+        tenantId,
+        sessionId,
+        idempotencyKey,
+        Number(event.sequence),
+        String(event.eventId),
+        JSON.stringify(event),
+      ],
+    );
+  }
+
+  async getEventStreamRange(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<{ firstSequence: number; headSequence: number } | null> {
+    await this.initialize();
+    const result = await this.queryClient().query<StreamHeadRow>(
+      `SELECT first_sequence, next_sequence
+         FROM ${this.table('stream_heads')}
+        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
+      [tenantId, sessionId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+    const nextSequence = asNumber(row.next_sequence);
+    const firstSequence = asNumber(row.first_sequence);
+    if (nextSequence <= firstSequence) {
+      return null;
+    }
+    return { firstSequence, headSequence: nextSequence - 1 };
   }
 
   async getEventByIdempotencyKey(
@@ -783,11 +865,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<AgentServerEvent | null> {
     await this.initialize();
     return this.transaction(async (client) => {
-      const payload = await this.findEventByKey(
+      const payload = await this.readIdempotencyRecord(
         client,
         tenantId,
         sessionId,
-        'agent',
         idempotencyKey,
       );
       return payload ? parseAgentServerEvent(payload) : null;
@@ -1708,6 +1789,20 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ON ${this.table('events')} (tenant_id, command_id)
         WHERE command_id IS NOT NULL;
 
+      -- Idempotency records live outside the trimmable event log: a retry that
+      -- outlives event retention must still be recognised as a repeat, and the
+      -- stored payload lets the repeat return the original event either way.
+      CREATE TABLE IF NOT EXISTS ${this.table('event_keys')} (
+        tenant_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        sequence BIGINT NOT NULL,
+        event_id TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, session_id, idempotency_key)
+      );
+
       CREATE TABLE IF NOT EXISTS ${this.table('outbox')} (
         tenant_id TEXT NOT NULL,
         effect_id TEXT NOT NULL,
@@ -1842,26 +1937,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
     await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lockKey[0], lockKey[1]]);
   }
 
-  /** The event already stored under an idempotency key, if any. */
-  private async findEventByKey(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    streamName: string,
-    idempotencyKey: string,
-  ): Promise<JsonObject | null> {
-    await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
-    const result = await client.query<PayloadRow>(
-      `SELECT payload
-         FROM ${this.table('events')}
-        WHERE tenant_id = $1 AND session_id = $2
-          AND stream_name = $3 AND event_id = $4`,
-      [tenantId, sessionId, streamName, idempotencyKey],
-    );
-    const row = result.rows[0];
-    return row ? asJsonObject(row.payload) : null;
-  }
-
   private async currentHead(
     client: PoolClient,
     tenantId: string,
@@ -1900,32 +1975,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }) => TPayload)[],
     retention?: number,
     quota?: number,
-    idempotencyKey?: string,
   ): Promise<TPayload[]> {
     const current =
       knownHead === undefined
         ? await this.currentHead(client, tenantId, sessionId, streamName)
         : knownHead;
-    if (idempotencyKey !== undefined) {
-      // The stream lock is held for the rest of this transaction, so a second
-      // append with the same key cannot slip in between this read and the insert.
-      const existing = await this.findEventByKey(
-        client,
-        tenantId,
-        sessionId,
-        streamName,
-        idempotencyKey,
-      );
-      if (existing) {
-        return [existing as TPayload];
-      }
-    }
     const firstSequence = (current ?? 0) + 1;
     const recordedAt = new Date().toISOString();
     const payloads = factories.map((factory, index) =>
       factory({
         sequence: EventSequence(firstSequence + index),
-        eventId: idempotencyKey === undefined ? EventId(nanoid()) : EventId(idempotencyKey),
+        eventId: EventId(nanoid()),
         recordedAt,
       }),
     );

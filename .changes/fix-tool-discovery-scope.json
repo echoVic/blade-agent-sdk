@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Keep session-scoped tool discoveries through turn cleanup: discovery contributions are tracked per scope and the effective set is re-derived, so a temporary Skill can no longer drop the tools a session patch discovered.",
+  "zh-CN": "session 作用域发现的工具不再被 turn 清理清掉：工具发现按作用域分别记录并重新派生有效集合，临时 Skill 不会再丢掉 session 补丁发现的工具。"
+}

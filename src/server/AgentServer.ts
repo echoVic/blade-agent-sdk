@@ -45,6 +45,12 @@ import {
 } from './TenantAdmissionController.js';
 
 const DEFAULT_COMMAND_LEASE_TTL_MS = 30_000;
+/**
+ * How many trailing events a recovery snapshot inspects to find the last
+ * completed request. The window bounds the work one `session.read` performs on a
+ * long Session; anything it does not cover is replayed rather than skipped.
+ */
+const RECOVERY_TAIL_EVENTS = 500;
 const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
@@ -524,15 +530,12 @@ export class AgentServer {
         return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_READ: {
-        // The cursor is captured *before* the snapshot is loaded. Reading it
-        // afterwards reports events that were appended while the snapshot was
-        // loading, and a client resuming from that cursor would skip them: the
-        // returned messages cannot contain an event that has not been appended
-        // yet. A cursor taken first can only make the client replay events it
-        // already has, which it deduplicates by event id.
-        const lastEventSequence = this.store.getLatestEventSequence
-          ? await this.store.getLatestEventSequence(principal.tenantId, command.data.sessionId)
-          : undefined;
+        // Resolved before the snapshot is loaded, so the cursor can never point
+        // past events the snapshot was taken with.
+        const lastEventSequence = await this.resolveRecoveryCursor(
+          principal.tenantId,
+          command.data.sessionId,
+        );
         const result = await this.sessionExecutor.read(context, command.data);
         return this.success(command.commandId, {
           ...result,
@@ -623,6 +626,46 @@ export class AgentServer {
   }
 
   /**
+   * The cursor a reconnecting client should resume the event stream from.
+   *
+   * A cursor is only safe when everything after it is *also* absent from the
+   * snapshot's messages. The message projection trails the event log while a
+   * request streams - content deltas are published before the assistant message
+   * is written - so a cursor equal to the head would let a refreshing client skip
+   * output it never received. The cursor therefore stops at the last completed
+   * request: the client replays the in-flight request (deduplicating by event id)
+   * instead of losing it.
+   *
+   * The window is bounded, and a window that does not reach back to a completed
+   * request is replayed from its start rather than from the head.
+   */
+  private async resolveRecoveryCursor(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<number | undefined> {
+    if (!this.store.getEventStreamRange) {
+      const head = this.store.getLatestEventSequence
+        ? await this.store.getLatestEventSequence(tenantId, sessionId)
+        : null;
+      return head ?? undefined;
+    }
+    const range = await this.store.getEventStreamRange(tenantId, sessionId);
+    if (!range) {
+      return undefined;
+    }
+    const windowStart = Math.max(
+      range.firstSequence,
+      range.headSequence - RECOVERY_TAIL_EVENTS + 1,
+    );
+    const page = await this.store.readEvents(tenantId, sessionId, {
+      after: windowStart - 1,
+      limit: RECOVERY_TAIL_EVENTS,
+    });
+    const boundary = [...page.events].reverse().find(isCompletedRequestEvent);
+    return boundary ? boundary.sequence : windowStart - 1;
+  }
+
+  /**
    * The authoritative recovery facts for one Session.
    *
    * A client that reconnects after losing its local state needs these from the
@@ -630,11 +673,12 @@ export class AgentServer {
    * inputs say what was accepted but not applied; the last event sequence is the
    * cursor to resume the stream from.
    *
-   * Read boundary: `snapshotHead` is the event head captured *before* the state
-   * snapshot was loaded, so the cursor is never ahead of the returned messages.
-   * A client replaying from `lastEventSequence` may re-see events that were
-   * appended while the snapshot loaded, and must deduplicate them by event id;
-   * it can never miss one.
+   * Read boundary: `snapshotHead` is resolved *before* the state snapshot is
+   * loaded and stops at the last completed request, so the cursor is never ahead
+   * of the content the returned messages can contain. A client replaying from
+   * `lastEventSequence` re-sees events it may already have - including the whole
+   * in-flight request - and must deduplicate them by event id; it can never miss
+   * one.
    */
   private async describeRecovery(
     tenantId: string,
@@ -922,4 +966,19 @@ export class AgentServer {
       ),
     ]);
   }
+}
+
+/**
+ * Whether an event closes a request.
+ *
+ * The terminal `result` of a request is published only after that request's
+ * transcript writes are done, so it is the newest sequence the message projection
+ * is known to cover. Events after it belong to a request that may still be
+ * streaming and must be replayed.
+ */
+function isCompletedRequestEvent(event: AgentServerEvent): boolean {
+  if (event.type !== 'session.stream') {
+    return false;
+  }
+  return (event.data as { type?: unknown } | undefined)?.type === 'result';
 }
