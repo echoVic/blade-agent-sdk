@@ -1,11 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-
-const workflow = () => parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
 
 import {
   assertBuiltArtifactsCarryVersion,
@@ -14,6 +20,36 @@ import {
   compareVersions,
   parseReleaseTag,
 } from '../release-from-tag.mjs';
+
+const workflow = () => parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
+
+/**
+ * The release workflow stamps the tag version into package.json *before* it
+ * builds, so between the stamp and the release commit the manifest is one release
+ * ahead of the newest changelog entry. Pending fragments are what makes that state
+ * legitimate; a manifest ahead of the changelog with nothing pending, or behind
+ * it, is a broken repository.
+ */
+function assertManifestMatchesChangelog(
+  packageVersion: string,
+  latestChangelog: string | undefined,
+  pendingFragments: number,
+): void {
+  if (packageVersion === latestChangelog) {
+    return;
+  }
+  expect(
+    packageVersion.localeCompare(latestChangelog ?? '', undefined, { numeric: true }),
+  ).toBeGreaterThan(0);
+  expect(pendingFragments).toBeGreaterThan(0);
+}
+
+function countPendingFragments(): number {
+  const directory = resolve('.changes');
+  return existsSync(directory)
+    ? readdirSync(directory).filter((name) => name.endsWith('.json')).length
+    : 0;
+}
 
 describe('release tag parsing', () => {
   it('accepts a v-prefixed three-part version and normalizes it', () => {
@@ -150,7 +186,20 @@ describe('tag-driven version ownership', () => {
     const changelog = readFileSync(resolve('CHANGELOG.md'), 'utf8');
     const latestVersion = /^## \[([^\]]+)\]/m.exec(changelog)?.[1];
 
-    expect(packageJson.version).toBe(latestVersion);
+    assertManifestMatchesChangelog(packageJson.version, latestVersion, countPendingFragments());
+  });
+
+  it('accepts a stamped manifest that the release commit has not recorded yet', () => {
+    // Exactly the state the release workflow runs its tests in.
+    expect(() => assertManifestMatchesChangelog('7.4.4', '7.4.3', 1)).not.toThrow();
+  });
+
+  it('rejects a manifest that is behind the changelog', () => {
+    expect(() => assertManifestMatchesChangelog('7.4.2', '7.4.3', 1)).toThrow();
+  });
+
+  it('rejects a manifest that is ahead of the changelog with nothing pending', () => {
+    expect(() => assertManifestMatchesChangelog('7.4.4', '7.4.3', 0)).toThrow();
   });
 });
 

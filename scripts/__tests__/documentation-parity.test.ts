@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import ts from 'typescript';
@@ -98,7 +98,18 @@ describe('release documentation parity', () => {
     const chineseVersions = changelogVersions('CHANGELOG.zh-CN.md');
 
     expect(chineseVersions).toEqual(englishVersions);
-    expect(englishVersions[0]).toBe(packageJson.version);
+    // The release workflow stamps the tag version before the changelog entry is
+    // written, so during a release the manifest is one version ahead of both
+    // changelogs until the release commit lands. Pending fragments make that
+    // state legitimate; otherwise the two must match.
+    if (englishVersions[0] !== packageJson.version) {
+      const pendingFragments = readdirSync(resolve('.changes'))
+        .filter((name) => name.endsWith('.json')).length;
+      expect(
+        packageJson.version.localeCompare(englishVersions[0] ?? '', undefined, { numeric: true }),
+      ).toBeGreaterThan(0);
+      expect(pendingFragments).toBeGreaterThan(0);
+    }
   });
 
   it('ships both README and changelog locales', () => {
