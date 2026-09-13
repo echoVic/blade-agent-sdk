@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Restore the session Skill identity after a turn-scoped Skill is cleaned up, so the reported active Skill matches the prompt and patch history that are still applied.",
-  "zh-CN": "turn 作用域 Skill 清理后恢复 session Skill 身份，使上报的活动 Skill 与仍在生效的 prompt、补丁历史一致。"
-}

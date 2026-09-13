@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Ship the AgentServerStore conformance suite as a public testing helper and run it against both shipped stores, so idempotent appends, command receipts, event sequencing and the retained-range capability cannot differ between implementations.",
-  "zh-CN": "把 AgentServerStore 契约测试作为公开 testing 助手导出，并对 SDK 自带的两个 store 都执行：幂等追加、命令回执、事件序号和保留区间能力不会再出现实现间差异。"
-}

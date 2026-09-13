@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Keep the in-memory store's idempotent append a synchronous critical section: awaiting the compatibility lookup let two concurrent appends with the same key both pass the check and store two events.",
-  "zh-CN": "内存 store 的幂等追加恢复为同步临界区：兼容旧格式的查询引入 await 后，两个并发同键追加会同时通过检查并各写一条事件。"
-}

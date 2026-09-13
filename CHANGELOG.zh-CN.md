@@ -2,6 +2,19 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.7] - 2026-09-13
+
+### 新功能
+
+- 把 AgentServerStore 契约测试作为公开 testing 助手导出，并对 SDK 自带的两个 store 都执行：幂等追加、命令回执、事件序号和保留区间能力不会再出现实现间差异。
+
+### 修复
+
+- production starter 的 SessionExecutor.read 补齐必需的 loaded 字段，并新增读取结果契约检查，让示例与宿主实现和 SDK 自带实现受同一接口约束。
+- 内存 store 的幂等追加恢复为同步临界区：兼容旧格式的查询引入 await 后，两个并发同键追加会同时通过检查并各写一条事件。
+- turn 作用域 Skill 清理后恢复 session Skill 身份，使上报的活动 Skill 与仍在生效的 prompt、补丁历史一致。
+- 对无法报告保留区间的 store，不再把事件头当作续读游标：能确定起点时从 0 重放，否则返回 recoveryIncomplete 且不给出游标。
+
 ## [7.4.6] - 2026-09-13
 
 ### 修复

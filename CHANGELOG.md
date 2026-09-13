@@ -2,6 +2,19 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.7] - 2026-09-13
+
+### Features
+
+- Ship the AgentServerStore conformance suite as a public testing helper and run it against both shipped stores, so idempotent appends, command receipts, event sequencing and the retained-range capability cannot differ between implementations.
+
+### Fixes
+
+- Return the required `loaded` flag from the production starter's SessionExecutor.read, and ship a shared read-result contract so the example and host executors are held to the same interface as the SDK's own.
+- Keep the in-memory store's idempotent append a synchronous critical section: awaiting the compatibility lookup let two concurrent appends with the same key both pass the check and store two events.
+- Restore the session Skill identity after a turn-scoped Skill is cleaned up, so the reported active Skill matches the prompt and patch history that are still applied.
+- Stop treating the event head as a resume cursor for stores that cannot report their retained range: the server replays from the start when possible and otherwise reports recoveryIncomplete with no cursor.
+
 ## [7.4.6] - 2026-09-13
 
 ### Fixes

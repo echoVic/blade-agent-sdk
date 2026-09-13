@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Stop treating the event head as a resume cursor for stores that cannot report their retained range: the server replays from the start when possible and otherwise reports recoveryIncomplete with no cursor.",
-  "zh-CN": "对无法报告保留区间的 store，不再把事件头当作续读游标：能确定起点时从 0 重放，否则返回 recoveryIncomplete 且不给出游标。"
-}
