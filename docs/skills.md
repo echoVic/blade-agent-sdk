@@ -17,10 +17,19 @@ Session 默认只在 filesystem context 的 `cwd` 下扫描 `skills/`。当前�
 应用完成发现并把能力显式接入。
 
 ::: warning 多 workspace 进程
-Skill registry 当前是进程级单例，并在第一次初始化后缓存结果。同一进程承载
-多个不同 `cwd` 时，不应假设每个 Session 都有独立的 Skill 目录；需要隔离时
-请使用独立进程。
+Skill registry 按配置缓存发现结果，缓存身份是完整配置：`cwd`、用户目录与项目
+目录、每个附加 source 及其 `trustLevel`、`shellPolicy`、`hookPolicy`。配置相同的
+调用方共享同一个 registry，看到同一份稳定视图；同一目录但执行策略不同则拿到各自
+独立的 registry，先调用方的策略不会作用于后调用方。同一进程承载多个不同 `cwd`
+时，不应假设每个 Session 都有独立的 Skill 目录；需要隔离时请使用独立进程。
 :::
+
+## 补丁作用域与临时 Skill
+
+临时（turn 作用域）Skill 只在当前回合生效，回合结束时清理。清理与替换都按作用域
+进行：session 作用域写入的 system prompt 追加与 environment 基线不会被 turn 作用域
+的 Skill 覆盖或删除，回合结束后仍然生效。反过来，同一作用域内后一个不带
+`systemPromptAppend` / `environment` 的 Skill 会替换掉前一个在该作用域内的贡献。
 
 ## SKILL.md 格式
 

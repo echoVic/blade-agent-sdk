@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Close the stream iterator of every failed model attempt before retrying, so a retry no longer leaves the previous provider reader open; cleanup is bounded and the original failure is preserved.",
+  "zh-CN": "模型流式重试前先关闭失败 attempt 的 iterator，重试不再遗留上一个 provider reader；清理有超时上限，并保留原始失败原因。"
+}

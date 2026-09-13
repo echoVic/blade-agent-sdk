@@ -316,10 +316,11 @@ git push origin v7.4.2
 
 发布工作流随后以该 tag 的代码树为准：
 
-1. 校验 fragment、lint、类型检查、构建并测试 package 和文档；
-2. 把 `v7.4.2` 原样发布到 npm 并带上 provenance——不会产生别的版本号；
-3. 在 `main` 上用一次 `chore(release): 7.4.2` 提交记录版本号、两份变更日志和已消费的 fragment；
-4. 用双语说明创建 GitHub Release。
+1. 先 checkout 它声明的 tag，并在**构建之前**把该版本号写进 `package.json`，避免 bundle 与 tarball manifest 携带上一个版本；
+2. 校验 fragment、lint、类型检查、构建并测试 package 和文档；
+3. 校验构建产物确实带有该版本号后，把 `v7.4.2` 原样发布到 npm 并带上 provenance——不会产生别的版本号；
+4. 在 `main` 上用一次 `chore(release): 7.4.2` 提交记录版本号、两份变更日志和已消费的 fragment；
+5. 用双语说明创建 GitHub Release。
 
 推送到 `main` 不再触发发布。用 `pnpm run changelog:check` 校验 fragment；
 先在本地打 tag，再用 `pnpm run release:dry --tag v7.4.2` 预演发布。

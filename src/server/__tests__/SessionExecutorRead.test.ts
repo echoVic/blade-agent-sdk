@@ -158,9 +158,93 @@ describe('AgentServer session.read recovery snapshot', () => {
     // Route state, load state, pending inputs and the event cursor must all be
     // server-provided, because a client that lost its storage has nothing else.
     expect(recovery).toMatchObject({ sessionLoaded: true, pendingInputCount: 0 });
-    // A client resuming from this cursor must not replay events its local state
-    // already contains, so the cursor is the head of the log, not its first page.
+    // The cursor is the head of the log at the moment the snapshot was taken —
+    // not its first page, and not a later head either.
     expect(recovery.lastEventSequence).toBe(3);
+  });
+
+  it('never returns a cursor ahead of the snapshot it accompanies', async () => {
+    const { AgentServer } = await import('../AgentServer.js');
+    const { InMemoryAgentServerStore } = await import('../AgentServerStore.js');
+    const { InProcessSessionExecutor } = await import('../SessionExecutor.js');
+
+    const events: { sequence: number }[] = [];
+    let head = 0;
+    class RacingStore extends InMemoryAgentServerStore {
+      appendEvent(...args: Parameters<InMemoryAgentServerStore['appendEvent']>) {
+        head += 1;
+        events.push({ sequence: head });
+        return super.appendEvent(...args);
+      }
+      getLatestEventSequence(): Promise<number | null> {
+        return Promise.resolve(head === 0 ? null : head);
+      }
+    }
+    const store = new RacingStore();
+    const executor = new InProcessSessionExecutor({
+      store: store as never,
+      resolveSessionOptions: () => ({
+        provider: { type: 'openai', apiKey: 'test-key' },
+        model: 'gpt-4o-mini',
+        persistSession: false,
+      }),
+      publish: async () => undefined,
+    });
+    // An event lands between the two reads: the cursor is captured first, then
+    // the snapshot is loaded, then the head moves again.
+    const racingExecutor = new Proxy(executor, {
+      get(target, property, receiver) {
+        if (property === 'read') {
+          return async (...args: Parameters<InProcessSessionExecutor['read']>) => {
+            head += 1;
+            events.push({ sequence: head });
+            return await target.read(...args);
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const server = new AgentServer({
+      store: store as never,
+      sessionExecutor: racingExecutor as never,
+      authenticate: () => principal,
+    });
+
+    const created = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-create-race'),
+      type: 'session.create',
+      data: { metadata: { origin: 'test' } },
+    } as never, principal);
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
+      .data.session.sessionId;
+    for (const data of [
+      { type: 'content', delta: 'first', sessionId },
+      { type: 'content', delta: 'second', sessionId },
+    ] as const) {
+      await store.appendEvent(principal.tenantId, sessionId, {
+        protocolVersion: 1,
+        sessionId,
+        occurredAt: new Date().toISOString(),
+        type: 'session.stream',
+        data,
+      });
+    }
+    const headBeforeRead = head;
+
+    const read = await server.execute({
+      protocolVersion: 1,
+      commandId: CommandId('command-read-race'),
+      type: 'session.read',
+      data: { sessionId },
+    } as never, principal);
+
+    const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
+    // The snapshot was loaded while event `headBeforeRead + 1` appeared, so the
+    // cursor must stay at the pre-read head: resuming replays one event rather
+    // than skipping it forever.
+    expect(head).toBe(headBeforeRead + 1);
+    expect(recovery.lastEventSequence).toBe(headBeforeRead);
   });
 
   it('does not present an unknown pending-input projection as empty', async () => {

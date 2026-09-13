@@ -192,6 +192,11 @@ attempt、fencing token 与 worker，同时给出本服务是否已加载该 Ses
 未生效，以及最后一个事件序号。丢失本地存储的客户端可以据此重连，而不必猜测；当
 `loaded` 为 false 时，`messages` 表示**未知**而不是空。
 
+`lastEventSequence` 是在读取快照**之前**取的事件头，因此游标永远不会越过同一次响应里的
+`messages`：从该游标重放最多重复看到快照加载期间追加的事件，客户端按 event id 去重即可，
+但不会漏事件。反过来（先读快照再取事件头）会把快照加载期间追加的事件编号也报给客户端，
+那些事件既不在快照里、又会被客户端跳过，等于永久丢失。
+
 `AgentClient` 为命令生成稳定的 `commandId`，网络错误、HTTP 408、HTTP 429 和所有
 5xx 响应会重试同一个 command。也可通过每个方法的 `commandId` 选项显式控制幂等键。
 SSE 断开后从最后一个 sequence 重连；收到 `session.closed` 后停止。

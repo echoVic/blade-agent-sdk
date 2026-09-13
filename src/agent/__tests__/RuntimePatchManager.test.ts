@@ -74,6 +74,49 @@ describe('RuntimePatchManager tool policy scoping', () => {
     expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
   });
 
+  it('keeps the session prompt and environment through a turn-scoped skill patch', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      systemPromptAppend: 'SESSION_SETTING',
+      environment: { SESSION_SETTING: 'on' },
+    }, loopState);
+    // A temporary skill carries neither field, which must not be read as "drop
+    // the session's contribution": the baselines live only in this application
+    // list, so pruning across scopes would make them unrecoverable.
+    manager.applyRuntimePatch(turnSkillPatch(), loopState);
+    expect(manager.getEffectiveSystemPromptAppend()).toContain('SESSION_SETTING');
+
+    manager.clearTurnScopedRuntimeState();
+
+    expect(manager.getEffectiveSystemPromptAppend()).toContain('SESSION_SETTING');
+    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context)
+      .toMatchObject({ environment: { SESSION_SETTING: 'on' } });
+    expect(manager.getRuntimePatchApplications().map((application) => application.patch.scope))
+      .toEqual(['session']);
+  });
+
+  it('still replaces a same-scope prompt contribution that a later skill resets', () => {
+    const { manager, loopState } = createManager();
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      skill: { id: 'first', name: 'first', basePath: '/tmp' },
+      systemPromptAppend: 'FIRST_SKILL',
+    }, loopState);
+    manager.applyRuntimePatch({
+      scope: 'session',
+      source: 'tool',
+      skill: { id: 'second', name: 'second', basePath: '/tmp' },
+    }, loopState);
+
+    expect(manager.getEffectiveSystemPromptAppend()).toBeUndefined();
+    // The resetting patch stays; only the contribution it replaces is gone.
+    expect(manager.getRuntimePatchApplications().map((application) => application.patch.skill?.id))
+      .toEqual(['second']);
+  });
+
   it('reports no policy when neither a patch nor a baseline exists', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(turnSkillPatch(), loopState);

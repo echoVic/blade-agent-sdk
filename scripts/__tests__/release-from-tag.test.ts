@@ -1,10 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
+const workflow = () => parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
+
 import {
+  assertBuiltArtifactsCarryVersion,
+  assertCheckoutMatchesTag,
   assertVersionAdvance,
   compareVersions,
   parseReleaseTag,
@@ -46,6 +51,88 @@ describe('release version ordering', () => {
   });
 });
 
+describe('published source identity', () => {
+  it('refuses to publish a tree that is not the tagged commit', () => {
+    const tag = 'v7.4.4';
+    const tagged = 'a'.repeat(40);
+    expect(() => assertCheckoutMatchesTag(tagged, tagged, tag)).not.toThrow();
+    expect(() => assertCheckoutMatchesTag('b'.repeat(40), tagged, tag)).toThrow(
+      `Checked out ${'b'.repeat(40)} but ${tag} points at ${tagged}`,
+    );
+  });
+
+  it('checks out the tag a manual run names', () => {
+    const checkout = workflow().jobs.release.steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@'));
+
+    expect(checkout.with).toMatchObject({
+      ref: '${{ inputs.tag || github.ref }}',
+      'fetch-depth': 0,
+    });
+  });
+
+  it('verifies the checkout inside the release script before publishing', () => {
+    const script = readFileSync(resolve('scripts/release-from-tag.mjs'), 'utf8');
+    const main = script.slice(script.indexOf('async function main()'));
+
+    // The guard runs against HEAD inside main(), before anything is published.
+    expect(main).toContain("assertCheckoutMatchesTag(git(['rev-parse', 'HEAD']), tagCommit, tag)");
+    expect(main.indexOf('assertCheckoutMatchesTag(')).toBeLessThan(
+      main.indexOf('await publishPackage('),
+    );
+  });
+});
+
+describe('built artifact identity', () => {
+  function withDist(
+    layout: Record<string, string>,
+    run: (directory: string) => void,
+  ): void {
+    const directory = mkdtempSync(join(tmpdir(), 'blade-dist-'));
+    try {
+      for (const [file, content] of Object.entries(layout)) {
+        mkdirSync(join(directory, file, '..'), { recursive: true });
+        writeFileSync(join(directory, file), content);
+      }
+      run(directory);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  it('accepts a build whose bundle inlines the released version', () => {
+    withDist({ 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.4"}' }, (directory) => {
+      expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).not.toThrow();
+    });
+  });
+
+  it('rejects a build that carries the previous version', () => {
+    // The exact failure this guards: build first, stamp second.
+    withDist({ 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.3"}' }, (directory) => {
+      expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).toThrow(
+        'does not carry version 7.4.4',
+      );
+    });
+  });
+
+  it('rejects a missing build instead of publishing an unverified artifact', () => {
+    withDist({}, (directory) => {
+      expect(() => assertBuiltArtifactsCarryVersion(join(directory, 'dist'), '7.4.4')).toThrow(
+        'dist/ is missing',
+      );
+    });
+  });
+
+  it('stamps the version before the build in the release workflow', () => {
+    const steps = workflow().jobs.release.steps as { name?: string; run?: string }[];
+    const stampIndex = steps.findIndex((step) => step.run?.includes('--stamp-only'));
+    const buildIndex = steps.findIndex((step) => step.run === 'pnpm run build');
+
+    expect(stampIndex).toBeGreaterThan(-1);
+    expect(stampIndex).toBeLessThan(buildIndex);
+  });
+});
+
 describe('tag-driven version ownership', () => {
   it('keeps no commit-type release rules anywhere in the repository', () => {
     expect(existsSync(resolve('release.config.cjs'))).toBe(false);
@@ -68,8 +155,6 @@ describe('tag-driven version ownership', () => {
 });
 
 describe('release workflow', () => {
-  const workflow = () => parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
-
   it('publishes only when a release tag is pushed', () => {
     expect(workflow().on.push).toEqual({ tags: ['v*'] });
     expect(workflow().on.push.branches).toBeUndefined();
@@ -95,6 +180,7 @@ describe('release workflow', () => {
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
+      'node scripts/release-from-tag.mjs --stamp-only --tag "${{ inputs.tag || github.ref_name }}"',
       [
         'docker pull alpine:3.22',
         `echo "TEST_DOCKER_IMAGE=$(docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.22)" >> "$GITHUB_ENV"`,

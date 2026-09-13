@@ -38,12 +38,12 @@ async function start(config) {
     rootDirectory: config.rootDirectory,
     checkpointDirectory: config.checkpointDirectory,
   });
-  const publish = async (eventTenantId, sessionId, type, data, requestId) => {
+  const publish = async (eventTenantId, sessionId, type, data, requestId, options) => {
     await store.appendEvent(eventTenantId, sessionId, {
       protocolVersion: 1, sessionId, requestId,
       occurredAt: new Date().toISOString(), type,
       data: JSON.parse(JSON.stringify(data)),
-    });
+    }, options);
   };
   worker = new AgentWorker({
     store, workerId: WorkerId(config.workerId), tenantId, capacity: 1,

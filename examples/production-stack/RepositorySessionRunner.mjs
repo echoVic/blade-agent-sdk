@@ -7,8 +7,8 @@ import {
 import { resumeSession } from '@blade-ai/agent-sdk/server';
 import { createRepositorySessionOptions } from './RepositoryDemoProvider.mjs';
 import { createRepositoryTools } from './RepositoryTools.mjs';
+import { publishTerminalOutcome } from './RepositoryTerminalOutcome.mjs';
 import { recoverRepositorySession } from './RepositoryRecovery.mjs';
-import { hasPublishedOutcome } from './RepositoryReconcile.mjs';
 
 const REPOSITORY_KEY = 'bladeRepository';
 
@@ -272,14 +272,19 @@ export class RepositorySessionRunner {
           if (cancelled) await this.state.markCancelled(sessionId, logicalRequestId);
           const pending = await this.state.getUnpublishedOutcome(sessionId, logicalRequestId);
           if (!pending) return;
-          // The reconciler may already have published this outcome; append only
-          // when the log does not contain it, since the event store cannot
-          // deduplicate on the caller's behalf.
-          if (await hasPublishedOutcome(context.store, tenantId, sessionId, logicalRequestId, outcomeData)) {
-            await this.state.markOutcomePublished(sessionId, logicalRequestId);
-            return;
-          }
-          await emit('session.stream', outcomeData);
+          // The reconciler may be publishing the same result concurrently. The
+          // append carries the terminal identity as its idempotency key, so the
+          // store keeps exactly one event and neither side has to check first.
+          await publishTerminalOutcome({
+            store: context.store,
+            publish: (eventTenantId, targetSessionId, type, data, requestId, options) =>
+              this.publish(eventTenantId, targetSessionId, type, data, requestId, options),
+            tenantId,
+            sessionId,
+            requestId: logicalRequestId,
+            attempt: route.attempt,
+            data: outcomeData,
+          });
           await this.state.markOutcomePublished(sessionId, logicalRequestId);
         },
       };
@@ -306,11 +311,16 @@ export class RepositorySessionRunner {
           await this.state.update(sessionId, { lastStatus: 'failed', error: message });
           const pending = await this.state.getUnpublishedOutcome(sessionId, logicalRequestId);
           if (!pending) return;
-          if (await hasPublishedOutcome(context.store, tenantId, sessionId, logicalRequestId, failureOutcome)) {
-            await this.state.markOutcomePublished(sessionId, logicalRequestId);
-            return;
-          }
-          await emit('session.stream', failureOutcome);
+          await publishTerminalOutcome({
+            store: context.store,
+            publish: (eventTenantId, targetSessionId, type, data, requestId, options) =>
+              this.publish(eventTenantId, targetSessionId, type, data, requestId, options),
+            tenantId,
+            sessionId,
+            requestId: logicalRequestId,
+            attempt: route.attempt,
+            data: failureOutcome,
+          });
           await this.state.markOutcomePublished(sessionId, logicalRequestId);
         },
       };

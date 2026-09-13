@@ -198,12 +198,16 @@ the route state, attempt, fencing token and worker when the Session is queued or
 running, whether this server has the Session loaded, how many inputs are accepted
 but not applied, and the last event sequence. A client that lost its own storage
 can reattach from these facts instead of guessing, and it must treat `messages`
-as unknown rather than empty when `loaded` is false. The snapshot is read before
-the event head, so `lastEventSequence` is never behind the messages returned in
-the same response: replaying from that cursor can only re-see events appended
-between the two reads, which the client deduplicates by event id. When
-`loaded` is false the pending-input projection is unknown, so `pendingInputCount`
-is omitted instead of reporting the unknown as zero.
+as unknown rather than empty when `loaded` is false.
+
+`lastEventSequence` is the event head captured *before* the snapshot was read, so
+the cursor is never ahead of the `messages` in the same response: replaying from
+it can only re-see events appended while the snapshot loaded, which the client
+deduplicates by event id — it can never miss one. The other order (snapshot
+first, head second) would report events that the snapshot cannot contain and that
+the client would then skip, losing them permanently. When `loaded` is false the
+pending-input projection is unknown, so `pendingInputCount` is omitted instead of
+reporting the unknown as zero.
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command

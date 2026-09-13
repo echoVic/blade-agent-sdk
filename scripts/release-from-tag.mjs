@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -85,6 +85,42 @@ function writePackageVersion(version) {
   log(`package version ${previous} -> ${version}`);
 }
 
+/**
+ * The built package must carry the version it is published under.
+ *
+ * `getVersion()` reads package.json, and the bundler inlines that file, so a build
+ * that ran before the stamp would ship the previous version into the runtime
+ * (the MCP handshake sends it). Checking the bundle is the only way to catch that
+ * from the outside.
+ */
+export function assertBuiltArtifactsCarryVersion(distDirectory, version) {
+  if (!existsSync(distDirectory)) {
+    throw new Error(`dist/ is missing at ${distDirectory}; build before publishing`);
+  }
+  const candidates = [];
+  for (const entry of readdirSync(distDirectory, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      candidates.push(join(distDirectory, entry.name));
+    } else if (entry.isDirectory()) {
+      for (const nested of readdirSync(join(distDirectory, entry.name))) {
+        if (nested.endsWith('.js')) {
+          candidates.push(join(distDirectory, entry.name, nested));
+        }
+      }
+    }
+  }
+  const found = candidates.some((file) => {
+    const source = readFileSync(file, 'utf8');
+    return source.includes(`version:"${version}"`) || source.includes(`"version":"${version}"`);
+  });
+  if (!found) {
+    throw new Error(
+      `The build in ${distDirectory} does not carry version ${version}; `
+      + 'stamp the version before building',
+    );
+  }
+}
+
 async function isPublished(name, version) {
   const response = await fetch(
     `${REGISTRY_URL}/${encodeURIComponent(name)}/${version}`,
@@ -123,6 +159,19 @@ function assertTagIsOnMain(tag) {
   return commit;
 }
 
+/**
+ * The published artifact must be built from the tagged commit: a manual run that
+ * checked out a newer branch head would publish that head's code under the tag's
+ * version number.
+ */
+export function assertCheckoutMatchesTag(head, tagCommit, tag) {
+  if (head !== tagCommit) {
+    throw new Error(
+      `Checked out ${head} but ${tag} points at ${tagCommit}; check out the tag before releasing`,
+    );
+  }
+}
+
 /** Whether main already carries the release metadata for a version. */
 function mainRecordsVersion(version) {
   const main = fetchMain();
@@ -139,11 +188,18 @@ async function publishPackage({ name, version, dryRun }) {
     log(`${name}@${version} is already published; skipping npm publish`);
     return;
   }
+  const manifest = readPackageJson();
+  if (manifest.version !== version) {
+    throw new Error(
+      `package.json says ${manifest.version} but ${version} is being published; `
+      + 'run the release workflow, which stamps the version before the build',
+    );
+  }
+  assertBuiltArtifactsCarryVersion(join(cwd, 'dist'), version);
   if (dryRun) {
-    log(`would set package.json to ${version} and publish ${name}@${version}`);
+    log(`would publish ${name}@${version} from a verified dist/`);
     return;
   }
-  writePackageVersion(version);
   run('npm', ['publish', '--access', 'public', '--provenance']);
 }
 
@@ -215,13 +271,28 @@ function tryRenderNotes(version, date) {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const stampOnly = args.includes('--stamp-only');
   const tagIndex = args.indexOf('--tag');
   const tag = (tagIndex === -1 ? process.env.GITHUB_REF_NAME : args[tagIndex + 1])?.trim();
   const { version } = parseReleaseTag(tag);
+
+  const tagCommit = assertTagIsOnMain(tag);
+  assertCheckoutMatchesTag(git(['rev-parse', 'HEAD']), tagCommit, tag);
+
+  if (stampOnly) {
+    // Runs before the build so the bundler inlines this version, not the old one.
+    const current = readPackageJson().version;
+    if (version !== current) {
+      assertVersionAdvance(current, version);
+      writePackageVersion(version);
+    }
+    log(`stamped ${tag} (version ${version}) into package.json for the build`);
+    return;
+  }
+
   const manifest = readPackageJson();
   log(`release ${tag} (version ${version})${dryRun ? ' [dry run]' : ''}`);
-
-  assertTagIsOnMain(tag);
+  log(`publishing the tree of ${tag} at ${tagCommit.slice(0, 12)}`);
   const current = manifest.version;
   if (version !== current) {
     assertVersionAdvance(current, version);

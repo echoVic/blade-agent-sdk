@@ -79,11 +79,30 @@ export interface AgentServerStore {
     tenantId: string,
     options?: { cursor?: string; limit?: number },
   ): Promise<{ sessions: AgentServerSessionRecord[]; nextCursor?: string }>;
+  /**
+   * Append one Session event to the `agent` stream.
+   *
+   * With `options.idempotencyKey`, the append is idempotent at the storage level:
+   * a second call with the same key stores nothing and returns the event the first
+   * call stored. That is what lets a Worker and a reconciler publish the same
+   * terminal result without a read-then-append race and without scanning the log.
+   */
   appendEvent(
     tenantId: string,
     sessionId: SessionId,
     event: Omit<AgentServerEvent, 'eventId' | 'sequence'>,
+    options?: { readonly idempotencyKey?: string },
   ): Promise<AgentServerEvent>;
+  /**
+   * The event stored under an idempotency key, or null when nothing was appended
+   * with it. An indexed lookup, so a reconciler can report whether it published a
+   * terminal result without scanning the log.
+   */
+  getEventByIdempotencyKey?(
+    tenantId: string,
+    sessionId: SessionId,
+    idempotencyKey: string,
+  ): Promise<AgentServerEvent | null>;
   readEvents(
     tenantId: string,
     sessionId: SessionId,
@@ -91,8 +110,8 @@ export interface AgentServerStore {
   ): Promise<AgentEventPage>;
   /**
    * The highest committed event sequence for a Session, or null when the log is
-   * empty. Read after the session state snapshot so the recovery cursor is never
-   * behind the messages that snapshot already reflects.
+   * empty. A recovery snapshot reads this *before* loading the session state, so
+   * the cursor it reports can never be ahead of the messages in that snapshot.
    */
   getLatestEventSequence?(tenantId: string, sessionId: SessionId): Promise<number | null>;
   waitForEvents?(
@@ -284,16 +303,27 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     tenantId: string,
     sessionId: SessionId,
     event: Omit<AgentServerEvent, 'eventId' | 'sequence'>,
+    options: { readonly idempotencyKey?: string } = {},
   ): Promise<AgentServerEvent> {
     if (event.sessionId !== sessionId) {
       throw new RangeError('Event Session does not match the target event log');
     }
     const key = scopedKey(tenantId, sessionId);
     const log = this.getOrCreateEventLog(key);
+    if (options.idempotencyKey !== undefined) {
+      const existing = log.events.find(
+        (candidate) => candidate.eventId === options.idempotencyKey,
+      );
+      if (existing) {
+        return structuredClone(existing);
+      }
+    }
     const stored = {
       ...event,
       protocolVersion: AGENT_PROTOCOL_VERSION,
-      eventId: EventId(nanoid()),
+      eventId: options.idempotencyKey === undefined
+        ? EventId(nanoid())
+        : EventId(options.idempotencyKey),
       sequence: EventSequence(log.nextSequence++),
     } as AgentServerEvent;
     log.events.push(structuredClone(stored));
@@ -307,6 +337,16 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     }
     log.waiters.clear();
     return structuredClone(stored);
+  }
+
+  async getEventByIdempotencyKey(
+    tenantId: string,
+    sessionId: SessionId,
+    idempotencyKey: string,
+  ): Promise<AgentServerEvent | null> {
+    const log = this.eventLogs.get(scopedKey(tenantId, sessionId));
+    const existing = log?.events.find((candidate) => candidate.eventId === idempotencyKey);
+    return existing ? structuredClone(existing) : null;
   }
 
   async readEvents(

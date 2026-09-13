@@ -262,6 +262,7 @@ try {
     type,
     data,
     requestId,
+    options,
   ) =>
     store.appendEvent(eventTenantId, sessionId, {
       protocolVersion: 1,
@@ -270,7 +271,7 @@ try {
       occurredAt: new Date().toISOString(),
       type,
       data,
-    });
+    }, options);
   repositoryState = new RepositoryState({ connectionString, schema });
   await initializeWithRetry(repositoryState);
   const executor = new QueuedSessionExecutor(store, publish, { state: repositoryState, smoke });

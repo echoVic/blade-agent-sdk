@@ -30,6 +30,15 @@ Sessions with different `cwd` values in one process; use process isolation when
 that boundary is required.
 :::
 
+## Patch scope and temporary Skills
+
+A turn-scoped Skill lives for one turn and is cleaned up when that turn ends.
+Both cleanup and replacement are scope-aware: a session-scoped system-prompt
+append or environment baseline is never overwritten or deleted by a turn-scoped
+Skill, so it is still in effect after the turn. Within one scope, a later Skill
+that carries no `systemPromptAppend` / `environment` replaces the earlier
+contribution from that same scope.
+
 ## SKILL.md
 
 ```markdown

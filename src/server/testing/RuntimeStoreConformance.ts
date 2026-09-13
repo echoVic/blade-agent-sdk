@@ -188,6 +188,71 @@ export async function assertRuntimeStoreConformance(
     (await store.getLatestEventSequence?.(tenantId, sessionId)) === 1,
     'Agent event stream must report its head for recovery cursors',
   );
+  // Terminal results are published by both the owning Worker and the reconciler;
+  // a stable key has to make the second append a no-op instead of a duplicate.
+  const idempotentKey = `terminal-${suffix}`;
+  const firstAppend = await store.appendEvent(
+    tenantId,
+    sessionId,
+    {
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      sessionId,
+      requestId: RequestId('request-idempotent'),
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream',
+      data: { type: 'result', subtype: 'success', content: 'done', sessionId },
+    },
+    { idempotencyKey: idempotentKey },
+  );
+  const replayAppend = await store.appendEvent(
+    tenantId,
+    sessionId,
+    {
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      sessionId,
+      requestId: RequestId('request-idempotent'),
+      occurredAt: new Date().toISOString(),
+      type: 'session.stream',
+      data: { type: 'result', subtype: 'success', content: 'done', sessionId },
+    },
+    { idempotencyKey: idempotentKey },
+  );
+  const afterIdempotent = await store.readEvents(tenantId, sessionId);
+  assert(
+    replayAppend.eventId === firstAppend.eventId &&
+      replayAppend.sequence === firstAppend.sequence,
+    'A repeated idempotency key must return the stored event, not a new one',
+  );
+  assert(
+    afterIdempotent.events.length === 2 &&
+      (await store.getLatestEventSequence?.(tenantId, sessionId)) === 2,
+    'A repeated idempotency key must not append a second event or advance the head',
+  );
+  // The real interleaving: a Worker and a reconciler publishing at the same time.
+  // Both may pass their own "is it there yet?" read, so the second store-level
+  // append has to be the one that keeps the log at a single event.
+  const racedKey = `terminal-raced-${suffix}`;
+  const racedDraft = {
+    protocolVersion: AGENT_PROTOCOL_VERSION,
+    sessionId,
+    requestId: RequestId('request-raced'),
+    occurredAt: new Date().toISOString(),
+    type: 'session.stream' as const,
+    data: { type: 'result', subtype: 'success', content: 'raced', sessionId },
+  };
+  const raced = await Promise.all([
+    store.appendEvent(tenantId, sessionId, racedDraft, { idempotencyKey: racedKey }),
+    store.appendEvent(tenantId, sessionId, racedDraft, { idempotencyKey: racedKey }),
+  ]);
+  const afterRace = await store.readEvents(tenantId, sessionId);
+  assert(
+    raced[0]?.eventId === raced[1]?.eventId && raced[0]?.sequence === raced[1]?.sequence,
+    'Concurrent appends under one idempotency key must resolve to the same event',
+  );
+  assert(
+    afterRace.events.filter((event) => event.eventId === racedKey).length === 1,
+    'Concurrent appends under one idempotency key must store exactly one event',
+  );
   checks.push('agent-events');
 
   const durable = await sessions.append(

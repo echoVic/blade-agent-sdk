@@ -328,10 +328,11 @@ git push origin v7.4.2
 
 The release workflow then, from the tagged tree:
 
-1. validates fragments, lints, type-checks, builds, and tests the package and documentation;
-2. publishes exactly `v7.4.2` to npm with provenance — no other number can be produced;
-3. records the version, both changelogs, and the consumed fragments in one `chore(release): 7.4.2` commit on `main`;
-4. creates the GitHub Release with the bilingual notes.
+1. checks out the tag it names and stamps that version into `package.json` **before** anything is built, so the bundle and the tarball manifest carry the released version rather than the previous one;
+2. validates fragments, lints, type-checks, builds, and tests the package and documentation;
+3. publishes exactly `v7.4.2` to npm with provenance — no other number can be produced — after checking that the built output really contains that version;
+4. records the version, both changelogs, and the consumed fragments in one `chore(release): 7.4.2` commit on `main`;
+5. creates the GitHub Release with the bilingual notes.
 
 Pushing to `main` no longer releases anything. Validate fragments with
 `pnpm run changelog:check`, and preview a release by creating the tag locally

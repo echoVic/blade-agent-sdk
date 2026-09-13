@@ -48,6 +48,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          # A manual run must build the tag it names, not the branch it ran from.
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -65,6 +67,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Stamp before anything is built or packed: the bundler inlines
+      # package.json, so building first would ship the previous version into the
+      # runtime (and into the tarball's manifest).
+      - name: Stamp the release version
+        run: node scripts/release-from-tag.mjs --stamp-only --tag "${{ inputs.tag || github.ref_name }}"
 
       - name: Resolve immutable Docker test image
         run: |

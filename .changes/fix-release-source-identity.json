@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Publish the code the tag names: a manual release run checks out the requested tag, verifies HEAD matches it, stamps the version before the build, and refuses to publish a bundle that does not carry the released version.",
+  "zh-CN": "发布 tag 指向的代码：手动发布先 checkout 指定 tag 并校验 HEAD 与之一致，在构建前写入版本号，并在构建产物未携带该版本时拒绝发布。"
+}

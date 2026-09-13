@@ -116,6 +116,57 @@ describe('VercelAIModelService', () => {
     ]);
   });
 
+  it('closes the iterator of every failed attempt before retrying', async () => {
+    const events: string[] = [];
+    let attempts = 0;
+    mockStreamText.mockImplementation(() => {
+      attempts += 1;
+      const index = attempts;
+      events.push(`start:${index}`);
+      async function* fullStream() {
+        try {
+          if (index <= 2) {
+            const error = new Error('Service unavailable') as Error & { statusCode: number };
+            error.statusCode = 503;
+            yield { type: 'error', error };
+            // Suspended here waiting for the next read: the consumer abandons the
+            // stream, so only an explicit close runs this generator's cleanup.
+            yield { type: 'text-delta', text: 'never consumed' };
+            return;
+          }
+          yield { type: 'text-delta', text: 'ok' };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { totalTokens: 1 } };
+        } finally {
+          events.push(`close:${index}`);
+        }
+      }
+      return { fullStream: fullStream() };
+    });
+
+    const service = new VercelAIModelService(
+      {
+        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
+      },
+      NOOP_LOGGER,
+    );
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+
+    const chunks: unknown[] = [];
+    for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+      chunks.push(chunk);
+    }
+
+    // Each failed attempt holds a provider reader; the retry must not start a new
+    // one while the previous stream is still open.
+    expect(attempts).toBe(3);
+    expect(events).toEqual(['start:1', 'close:1', 'start:2', 'close:2', 'start:3', 'close:3']);
+    expect(chunks).toEqual([
+      { content: 'ok' },
+      expect.objectContaining({ finishReason: 'stop' }),
+    ]);
+  });
+
   it('does not retry once output has already been forwarded', async () => {
     let attempts = 0;
     mockStreamText.mockImplementation(() => {

@@ -1,5 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -244,6 +251,41 @@ try {
   assertNoDisallowedImports(output);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
+}
+
+// The runtime version is inlined at build time, so the bundle must carry the
+// version the manifest declares. A build that ran before a version stamp would
+// otherwise ship the previous version into the MCP handshake.
+const manifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+const distRoot = join(repoRoot, 'dist');
+if (!existsSync(distRoot)) {
+  throw new Error('dist/ is missing; build before verifying the entry points');
+}
+// The manifest is inlined into a shared chunk, so every emitted file is scanned.
+const builtFiles = readdirSync(distRoot, { withFileTypes: true }).flatMap((entry) => {
+  if (entry.isFile() && entry.name.endsWith('.js')) {
+    return [join(distRoot, entry.name)];
+  }
+  if (entry.isDirectory()) {
+    return readdirSync(join(distRoot, entry.name))
+      .filter((name) => name.endsWith('.js'))
+      .map((name) => join(distRoot, entry.name, name));
+  }
+  return [];
+});
+if (builtFiles.length === 0) {
+  throw new Error('No built entry bundle was found under dist/');
+}
+const carriesVersion = builtFiles.some((file) => {
+  const source = readFileSync(file, 'utf8');
+  return source.includes(`version:"${manifest.version}"`)
+    || source.includes(`"version":"${manifest.version}"`);
+});
+if (!carriesVersion) {
+  throw new Error(
+    `Built bundles do not carry the manifest version ${manifest.version}; `
+    + 'rebuild after changing the version',
+  );
 }
 
 console.log('entrypoint verification passed');

@@ -420,6 +420,16 @@ ${summary}`,
 
   // ===== 内部辅助 =====
 
+  /**
+   * A skill patch that carries no prompt append / environment resets that
+   * contribution for its own layer.
+   *
+   * Only applications from the same scope are pruned. The prompt and environment
+   * baselines live in this application list — unlike the tool policy, they have no
+   * separate session field — so pruning across scopes would delete the session
+   * baseline that turn cleanup is supposed to fall back to, with nothing left to
+   * re-derive it from.
+   */
   private pruneRuntimePatchApplicationsForReset(patch: RuntimePatch): void {
     if (!patch.skill) {
       return;
@@ -435,6 +445,9 @@ ${summary}`,
     }
 
     this.runtimePatchApplications = this.runtimePatchApplications.filter((application) => {
+      if (application.patch.scope !== patch.scope) {
+        return true;
+      }
       if (shouldResetPromptAppend && application.patch.systemPromptAppend) {
         return false;
       }

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Return the event cursor that belongs to the session.read snapshot: it is captured before the snapshot is loaded, so a reconnecting client can replay events (and deduplicate by event id) but can never skip the ones appended while the snapshot loaded.",
+  "zh-CN": "session.read 返回与快照对应的事件游标：游标在读取快照之前取得，重连客户端最多重复收到快照加载期间追加的事件（按 event id 去重），但不会再漏事件。"
+}

@@ -1,6 +1,10 @@
-import { SessionId } from '@blade-ai/agent-sdk/core';
+import { projectDurableSession, SessionId } from '@blade-ai/agent-sdk/core';
+import { publishTerminalOutcome } from './RepositoryTerminalOutcome.mjs';
 
 const SETTLED_ROUTE_STATES = new Set(['idle', 'completed', 'failed']);
+/** Bound on how much of one durable journal a single startup pass replays. */
+const JOURNAL_PAGE_SIZE = 500;
+const JOURNAL_PAGE_LIMIT = 100;
 
 /**
  * Startup reconciliation for the windows a lease-based recovery scan cannot see.
@@ -9,8 +13,11 @@ const SETTLED_ROUTE_STATES = new Set(['idle', 'completed', 'failed']);
  *
  * - A submission was accepted into the Session journal but never enqueued. The
  *   acceptance row covers the enqueue; when even that row was lost, the request
- *   is rebuilt from the journal's pending input, so no ordinary write after the
- *   committed input is required for integrity.
+ *   is rebuilt from the durable journal projection, so no ordinary write after
+ *   the committed input is required for integrity. The transcript projection is
+ *   deliberately not consulted: `Session.send()` reports acceptance as soon as
+ *   the journal commit lands, so a missing transcript write is exactly the case
+ *   this sweep exists for.
  * - A terminal result was recorded but never published to the event log.
  *
  * Running this on every launcher start makes both windows self-healing.
@@ -23,11 +30,11 @@ const SETTLED_ROUTE_STATES = new Set(['idle', 'completed', 'failed']);
  * - The outcome is bound to the request and the route attempt that produced it;
  *   a settled route for a different request supersedes the old outcome instead of
  *   publishing it.
- * - Both the Worker's finalize and this reconciler check the event log before
- *   appending, because the store assigns its own event identity and cannot
- *   deduplicate on the caller's behalf. That leaves only the milliseconds between
- *   a settle and the finalize that immediately follows it as a theoretical
- *   double-append window.
+ * - Both the Worker's finalize and this reconciler publish under the terminal
+ *   identity as the store's idempotency key, so concurrent publishers produce one
+ *   event: the store serializes the appends and the second one is a no-op. Neither
+ *   side reads the log first, which also keeps long Sessions from turning a
+ *   publish into a full history scan.
  *
  * Enqueueing is idempotent: a Session already queued is left alone.
  */
@@ -74,12 +81,16 @@ async function reconcileSubmissionRecords({ store, state, tenantId, publish, rep
 }
 
 /**
- * Rebuilds submissions whose acceptance record was never written. The Session
- * journal is the authority for accepted input, so a pending input on a route no
- * Worker owns can only be a submission that crashed between the journal write and
- * the acceptance record.
+ * Rebuilds submissions whose acceptance record was never written.
+ *
+ * The durable Session journal is the authority for accepted input, so an
+ * unfinished request on a route no Worker owns can only be a submission that
+ * crashed between the journal commit and the acceptance record. The durable
+ * projection is read here, never the transcript projection: a transcript write
+ * that never happened would hide the very request this sweep has to recover.
  */
 async function reconcileJournalInputs({ store, state, tenantId, report, reconciled }) {
+  const tenantStore = store.forTenant(tenantId);
   let cursor;
   do {
     const page = await store.listSessions(tenantId, { ...(cursor ? { cursor } : {}), limit: 100 });
@@ -88,46 +99,70 @@ async function reconcileJournalInputs({ store, state, tenantId, report, reconcil
       const sessionId = SessionId(session.sessionId);
       const route = await store.getSessionRoute(tenantId, sessionId);
       if (route && route.state !== 'idle') continue;
-      const snapshot = await store.forTenant(tenantId).loadState(sessionId);
-      if (!snapshot) continue;
-      for (const pending of snapshot.pendingInputs ?? []) {
-        const requestId = pending.targetRequestId;
-        if (!requestId || typeof pending.content !== 'string') continue;
-        // The route already carries this request, so it was enqueued and the
-        // Worker consumed it; nothing to rebuild.
-        if (route?.metadata?.bladeQueuedRequest?.requestId === requestId) continue;
-        const value = {
-          status: 'started',
-          inputId: pending.inputId,
-          requestId,
-          input: pending.content,
-        };
-        // Record acceptance first so a crash between the rebuild steps is found
-        // by the ordinary sweep on the next start.
-        await state.recordSubmissionAccepted({
-          sessionId,
-          requestId,
-          input: pending.content,
-          value,
-        });
-        await store.enqueueSession(tenantId, sessionId, {
-          metadata: {
-            ...(route?.metadata ?? {}),
-            bladeQueuedRequest: {
-              version: 1,
-              ...value,
-              acceptedAt: pending.acceptedAt ?? Date.now(),
-              recoveredFrom: 'session_journal',
-            },
+      const request = await readActiveDurableRequest(tenantStore, sessionId, report);
+      if (!request || typeof request.input !== 'string') continue;
+      const requestId = request.requestId;
+      // The route already carries this request, so it was enqueued and the
+      // Worker consumed it; nothing to rebuild.
+      if (route?.metadata?.bladeQueuedRequest?.requestId === requestId) continue;
+      const value = {
+        status: 'started',
+        inputId: request.inputId,
+        requestId,
+        input: request.input,
+      };
+      // Record acceptance first so a crash between the rebuild steps is found
+      // by the ordinary sweep on the next start.
+      await state.recordSubmissionAccepted({
+        sessionId,
+        requestId,
+        input: request.input,
+        value,
+      });
+      await store.enqueueSession(tenantId, sessionId, {
+        metadata: {
+          ...(route?.metadata ?? {}),
+          bladeQueuedRequest: {
+            version: 1,
+            ...value,
+            acceptedAt: acceptedAtMs(request.acceptedAt),
+            recoveredFrom: 'durable_journal',
           },
-        });
-        await state.markSubmissionQueued(sessionId, requestId);
-        reconciled.enqueuedSubmissions += 1;
-        report({ type: 'reconciled_submission', sessionId, requestId, recoveredFrom: 'session_journal' });
-      }
+        },
+      });
+      await state.markSubmissionQueued(sessionId, requestId);
+      reconciled.enqueuedSubmissions += 1;
+      report({ type: 'reconciled_submission', sessionId, requestId, recoveredFrom: 'durable_journal' });
     }
     cursor = page.nextCursor;
   } while (cursor);
+}
+
+function acceptedAtMs(acceptedAt) {
+  const parsed = typeof acceptedAt === 'string' ? Date.parse(acceptedAt) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+/**
+ * The active request from the durable journal projection, or null when the
+ * journal holds no unfinished request or exceeds one startup pass.
+ */
+async function readActiveDurableRequest(tenantStore, sessionId, report) {
+  const events = [];
+  let after;
+  for (let page = 0; page < JOURNAL_PAGE_LIMIT; page += 1) {
+    const read = await tenantStore.read(sessionId, {
+      ...(after === undefined ? {} : { after }),
+      limit: JOURNAL_PAGE_SIZE,
+    });
+    events.push(...read.events);
+    if (!read.hasMore || read.nextCursor === null || read.nextCursor === undefined) {
+      return projectDurableSession(events).activeRequest;
+    }
+    after = read.nextCursor;
+  }
+  report({ type: 'journal_scan_truncated', sessionId });
+  return null;
 }
 
 async function reconcileOutcomes({ store, state, tenantId, publish, report, reconciled }) {
@@ -155,15 +190,17 @@ async function reconcileOutcomes({ store, state, tenantId, publish, report, reco
       report({ type: 'outcome_attempt_mismatch', sessionId: outcome.sessionId, requestId: outcome.requestId });
       continue;
     }
-    if (await hasPublishedOutcome(store, tenantId, sessionId, outcome.requestId, expected)) {
-      // The publish committed and only the confirming write was lost.
-      await state.markOutcomePublished(sessionId, outcome.requestId);
-      reconciled.alreadyPublished += 1;
-      report({ type: 'outcome_already_published', sessionId: outcome.sessionId, requestId: outcome.requestId });
-      continue;
-    }
+    let result;
     try {
-      await publish(tenantId, sessionId, 'session.stream', expected, outcome.requestId);
+      result = await publishTerminalOutcome({
+        store,
+        publish,
+        tenantId,
+        sessionId,
+        requestId: outcome.requestId,
+        attempt: outcome.attempt,
+        data: expected,
+      });
     } catch (error) {
       // Keep the record pending for the next start instead of dropping the outcome.
       report({
@@ -175,44 +212,13 @@ async function reconcileOutcomes({ store, state, tenantId, publish, report, reco
       continue;
     }
     await state.markOutcomePublished(sessionId, outcome.requestId);
-    reconciled.republishedOutcomes += 1;
-    report({ type: 'reconciled_outcome', sessionId: outcome.sessionId, requestId: outcome.requestId });
-  }
-}
-
-/**
- * Whether the terminal result for this Request is already in the log. Matching on
- * the outcome's own fields keeps this independent of the event identity the store
- * assigns.
- */
-export async function hasPublishedOutcome(store, tenantId, sessionId, requestId, expected) {
-  if (!expected) {
-    return false;
-  }
-  let after = 0;
-  for (let page = 0; page < 100; page += 1) {
-    const read = await store.readEvents(tenantId, sessionId, { after, limit: 500 });
-    const match = read.events.some((candidate) => candidate.requestId === requestId
-      && candidate.type === 'session.stream'
-      && isSameOutcome(candidate.data, expected));
-    if (match) {
-      return true;
+    if (result.published) {
+      reconciled.republishedOutcomes += 1;
+      report({ type: 'reconciled_outcome', sessionId: outcome.sessionId, requestId: outcome.requestId });
+    } else {
+      // The publish committed and only the confirming write was lost.
+      reconciled.alreadyPublished += 1;
+      report({ type: 'outcome_already_published', sessionId: outcome.sessionId, requestId: outcome.requestId });
     }
-    const last = read.events.at(-1);
-    if (!last || !read.hasMore) {
-      return false;
-    }
-    after = Number(last.sequence);
   }
-  throw new Error(`Event log for ${sessionId} is too large to reconcile in one pass`);
-}
-
-function isSameOutcome(published, expected) {
-  if (!published || typeof published !== 'object') {
-    return false;
-  }
-  return published.type === expected.type
-    && published.subtype === expected.subtype
-    && (published.error ?? null) === (expected.error ?? null)
-    && (published.content ?? '') === (expected.content ?? '');
 }

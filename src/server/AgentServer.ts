@@ -524,14 +524,28 @@ export class AgentServer {
         return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_READ: {
+        // The cursor is captured *before* the snapshot is loaded. Reading it
+        // afterwards reports events that were appended while the snapshot was
+        // loading, and a client resuming from that cursor would skip them: the
+        // returned messages cannot contain an event that has not been appended
+        // yet. A cursor taken first can only make the client replay events it
+        // already has, which it deduplicates by event id.
+        const lastEventSequence = this.store.getLatestEventSequence
+          ? await this.store.getLatestEventSequence(principal.tenantId, command.data.sessionId)
+          : undefined;
         const result = await this.sessionExecutor.read(context, command.data);
         return this.success(command.commandId, {
           ...result,
           session: toSessionDescriptor(result.session),
           // Everything a client needs to reattach without relying on its own
           // storage: what the Worker is doing, what is waiting on a human, and
-          // where the event log has reached.
-          recovery: await this.describeRecovery(principal.tenantId, command.data.sessionId, result),
+          // where the event log stood when the snapshot was taken.
+          recovery: await this.describeRecovery(
+            principal.tenantId,
+            command.data.sessionId,
+            result,
+            lastEventSequence,
+          ),
         });
       }
       case AgentCommandType.SESSION_LIST:
@@ -616,25 +630,22 @@ export class AgentServer {
    * inputs say what was accepted but not applied; the last event sequence is the
    * cursor to resume the stream from.
    *
-   * Read boundary: the state snapshot (`read`) is loaded by the executor before
-   * this method runs, and the event head is read afterwards, so the cursor is
-   * never behind events the returned messages already reflect. A client replaying
-   * from `lastEventSequence` can only re-see events appended between the two
-   * reads, which it can deduplicate by event id.
+   * Read boundary: `snapshotHead` is the event head captured *before* the state
+   * snapshot was loaded, so the cursor is never ahead of the returned messages.
+   * A client replaying from `lastEventSequence` may re-see events that were
+   * appended while the snapshot loaded, and must deduplicate them by event id;
+   * it can never miss one.
    */
   private async describeRecovery(
     tenantId: string,
     sessionId: SessionId,
     read: { readonly loaded: boolean; readonly pendingInputs: readonly PendingSessionInput[] },
+    snapshotHead?: number | null,
   ): Promise<JsonObject> {
     const route = this.options.runtimeStore
       ? await this.options.runtimeStore.getSessionRoute(tenantId, sessionId)
       : null;
-    // The head of the event log, not its first page: a client restoring from this
-    // cursor must not replay events its local state already contains.
-    const lastSequence = this.store.getLatestEventSequence
-      ? await this.store.getLatestEventSequence(tenantId, sessionId)
-      : undefined;
+    const lastSequence = snapshotHead;
     return {
       sessionLoaded: read.loaded,
       ...(route

@@ -2,18 +2,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { SessionId } from '../../src/types/identifiers.js';
 import { reconcilePendingWork } from '../../examples/production-stack/RepositoryReconcile.mjs';
 
-/** Minimal Worker Runtime surface the reconciler uses, plus a tiny event log. */
+/**
+ * Minimal Worker Runtime surface the reconciler uses, plus a tiny event log and a
+ * durable journal. There is deliberately no transcript projection: the durable
+ * journal is the authority, and a lost transcript write is the case the sweep
+ * exists for.
+ */
 function createWorkerStore({
   routes = new Map(),
   events = new Map(),
   sessions = [],
-  states = new Map(),
+  journals = new Map(),
 } = {}) {
   const enqueued = [];
+  const keyedEvents = new Map();
   return {
     enqueued,
     routes,
     events,
+    journals,
+    keyedEvents,
     getSessionRoute: async (_tenantId, sessionId) => routes.get(String(sessionId)) ?? null,
     enqueueSession: async (_tenantId, sessionId, options = {}) => {
       const route = {
@@ -34,10 +42,73 @@ function createWorkerStore({
       return { events: page, hasMore: all.length > after + page.length, nextCursor: null };
     },
     listSessions: async (_tenantId, _options = {}) => ({ sessions }),
+    appendEvent: async (_tenantId, sessionId, event, options = {}) => {
+      const key = options?.idempotencyKey;
+      if (key !== undefined) {
+        const existing = keyedEvents.get(`${String(sessionId)}:${key}`);
+        if (existing) return existing;
+      }
+      const stored = {
+        ...event,
+        eventId: key ?? `event-${keyedEvents.size + 1}`,
+        sequence: keyedEvents.size + 1,
+      };
+      if (key !== undefined) keyedEvents.set(`${String(sessionId)}:${key}`, stored);
+      return stored;
+    },
+    getEventByIdempotencyKey: async (_tenantId, sessionId, key) =>
+      keyedEvents.get(`${String(sessionId)}:${key}`) ?? null,
     forTenant: () => ({
-      loadState: async (sessionId) => states.get(String(sessionId)) ?? null,
+      // The reconciler must read the durable journal: the transcript projection
+      // can legitimately be missing the very input it has to recover.
+      loadState: async () => {
+        throw new Error('The reconciler must not read the transcript projection');
+      },
+      read: async (sessionId, { after, limit = 500 } = {}) => {
+        const all = journals.get(String(sessionId)) ?? [];
+        const remaining = after === undefined
+          ? all
+          : all.filter((event) => Number(event.sequence) > Number(after));
+        const page = remaining.slice(0, limit);
+        return {
+          events: page,
+          headSequence: all.length === 0 ? null : all.at(-1).sequence,
+          nextCursor: page.at(-1)?.sequence ?? null,
+          hasMore: remaining.length > page.length,
+        };
+      },
     }),
   };
+}
+
+/** A durable journal that accepted one request and never applied it. */
+function durableJournal(sessionId: string, { requestId, inputId, input, acceptedAt }) {
+  const occurredAt = (sequence: number) =>
+    new Date(1_700_000_000_000 + sequence * 1_000).toISOString();
+  const envelope = (sequence: number, type: string, data: unknown, extra = {}) => ({
+    schemaVersion: 4,
+    eventId: `event-${sequence}`,
+    sequence,
+    sessionId,
+    recordedAt: occurredAt(sequence),
+    occurredAt: occurredAt(sequence),
+    type,
+    data,
+    ...extra,
+  });
+  return [
+    envelope(1, 'session_created', { source: 'create' }, {
+      commandId: `command-create-${sessionId}`,
+    }),
+    envelope(2, 'request_accepted', {
+      inputId,
+      input,
+      priority: 'next',
+    }, {
+      requestId,
+      commandId: `command-accept-${requestId}`,
+    }),
+  ];
 }
 
 const tenantId = 'tenant-reconcile';
@@ -137,20 +208,19 @@ describe('startup reconciliation', () => {
     expect(state.queued).toEqual([{ sessionId, requestId: 'request-owned' }]);
   });
 
-  it('rebuilds a submission whose acceptance record was never written from the journal', async () => {
+  it('rebuilds a submission the transcript projection never recorded', async () => {
     const sessionId = SessionId('session-journal-rebuild');
+    // The durable journal accepted the request; no transcript projection exists
+    // for this Session at all.
+    const journal = durableJournal(sessionId, {
+      requestId: 'request-journal',
+      inputId: 'input-journal',
+      input: 'Fix the greeting',
+      acceptedAt: '2023-11-14T22:13:20.000Z',
+    });
     const store = createWorkerStore({
       sessions: [{ tenantId, sessionId, status: 'active' }],
-      states: new Map([[String(sessionId), {
-        sessionId,
-        pendingInputs: [{
-          inputId: 'input-journal',
-          content: 'Fix the greeting',
-          priority: 'next',
-          targetRequestId: 'request-journal',
-          acceptedAt: 123,
-        }],
-      }]]),
+      journals: new Map([[String(sessionId), journal]]),
     });
     const state = createState();
     const reports = [];
@@ -172,8 +242,11 @@ describe('startup reconciliation', () => {
       requestId: 'request-journal',
       inputId: 'input-journal',
       input: 'Fix the greeting',
-      recoveredFrom: 'session_journal',
+      recoveredFrom: 'durable_journal',
     });
+    // The projection timestamps acceptance from the journal, not from a local clock.
+    expect(route?.metadata?.bladeQueuedRequest?.acceptedAt)
+      .toBe(Date.parse(String(journal.at(-1)?.occurredAt)));
     expect(reports).toContainEqual(expect.objectContaining({
       type: 'reconciled_submission',
       sessionId,
@@ -185,22 +258,18 @@ describe('startup reconciliation', () => {
     const sessionId = SessionId('session-journal-owned');
     const running = createWorkerStore({
       sessions: [{ tenantId, sessionId, status: 'active' }],
-      states: new Map([[String(sessionId), {
-        sessionId,
-        pendingInputs: [{ inputId: 'input-1', content: 'Fix the greeting', priority: 'next',
-          targetRequestId: 'request-1', acceptedAt: 1 }],
-      }]]),
+      journals: new Map([[String(sessionId), durableJournal(sessionId, {
+        requestId: 'request-1', inputId: 'input-1', input: 'Fix the greeting', acceptedAt: null,
+      })]]),
       routes: new Map([[String(sessionId), {
         tenantId, sessionId, state: 'running', attempt: 1, leaseId: 'lease-1', metadata: {},
       }]]),
     });
     const idleMatching = createWorkerStore({
       sessions: [{ tenantId, sessionId, status: 'active' }],
-      states: new Map([[String(sessionId), {
-        sessionId,
-        pendingInputs: [{ inputId: 'input-2', content: 'Fix the greeting', priority: 'next',
-          targetRequestId: 'request-2', acceptedAt: 1 }],
-      }]]),
+      journals: new Map([[String(sessionId), durableJournal(sessionId, {
+        requestId: 'request-2', inputId: 'input-2', input: 'Fix the greeting', acceptedAt: null,
+      })]]),
       routes: new Map([[String(sessionId), settledRoute(sessionId, 'request-2')]]),
     });
 
@@ -226,8 +295,69 @@ describe('startup reconciliation', () => {
     const result = await reconcilePendingWork({ store, state, tenantId, publish });
 
     expect(result.republishedOutcomes).toBe(1);
-    expect(publish).toHaveBeenCalledWith(tenantId, sessionId, 'session.stream', outcome, 'request-2');
+    expect(publish).toHaveBeenCalledWith(
+      tenantId, sessionId, 'session.stream', outcome, 'request-2',
+      { idempotencyKey: 'terminal-outcome:session-outcome-pending:request-2:1' },
+    );
     expect(state.published).toEqual([{ sessionId, requestId: 'request-2' }]);
+  });
+
+  it('reports an outcome the Worker already published instead of publishing twice', async () => {
+    const sessionId = SessionId('session-outcome-already-published');
+    const outcome = { type: 'result', subtype: 'success', content: 'done' };
+    const store = createWorkerStore({
+      routes: new Map([[String(sessionId), settledRoute(sessionId, 'request-2')]]),
+    });
+    // The Worker's finalize committed the event and died before recording that.
+    await store.appendEvent(tenantId, sessionId, {
+      protocolVersion: 1, sessionId, requestId: 'request-2',
+      occurredAt: new Date().toISOString(), type: 'session.stream', data: outcome,
+    }, { idempotencyKey: 'terminal-outcome:session-outcome-already-published:request-2:1' });
+    const state = createState({
+      outcomes: [{ sessionId, requestId: 'request-2', attempt: 1, event: { data: outcome } }],
+    });
+    const publish = vi.fn(async (_tenantId, targetSessionId, _type, data, requestId, options) =>
+      store.appendEvent(tenantId, targetSessionId, {
+        protocolVersion: 1, sessionId: targetSessionId, requestId,
+        occurredAt: new Date().toISOString(), type: 'session.stream', data,
+      }, options));
+
+    const result = await reconcilePendingWork({ store, state, tenantId, publish });
+
+    expect(result.alreadyPublished).toBe(1);
+    expect(result.republishedOutcomes).toBe(0);
+    expect(state.published).toEqual([{ sessionId, requestId: 'request-2' }]);
+  });
+
+  it('keeps exactly one terminal event when the Worker and the reconciler race', async () => {
+    const sessionId = SessionId('session-outcome-race');
+    const requestId = 'request-9';
+    const attempt = 3;
+    const outcome = { type: 'result', subtype: 'success', content: 'done' };
+    const store = createWorkerStore({
+      routes: new Map([[String(sessionId), settledRoute(sessionId, requestId, { attempt })]]),
+    });
+    const state = createState({
+      outcomes: [{ sessionId, requestId, attempt, event: { data: outcome } }],
+    });
+    const append = (options) =>
+      store.appendEvent(tenantId, sessionId, {
+        protocolVersion: 1, sessionId, requestId,
+        occurredAt: new Date().toISOString(), type: 'session.stream', data: outcome,
+      }, options);
+    const publish = vi.fn(async (_tenantId, targetSessionId, _type, _data, _requestId, options) =>
+      append(options));
+
+    // The Worker's finalize and the reconciler publish without either observing
+    // the other first: the store's idempotency key is what makes that safe.
+    await Promise.all([
+      reconcilePendingWork({ store, state, tenantId, publish }),
+      append({ idempotencyKey: `terminal-outcome:${sessionId}:${requestId}:${attempt}` }),
+    ]);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(store.keyedEvents.size).toBe(1);
+    expect(state.published).toEqual([{ sessionId, requestId }]);
   });
 
   it('does not publish an outcome while the route is still active or leased', async () => {
@@ -310,28 +440,6 @@ describe('startup reconciliation', () => {
     expect(result.republishedOutcomes).toBe(0);
     expect(publish).not.toHaveBeenCalled();
     expect(reports).toContainEqual(expect.objectContaining({ type: 'outcome_attempt_mismatch' }));
-  });
-
-  it('does not publish a second copy when the result is already in the log', async () => {
-    const outcome = { type: 'result', subtype: 'success', content: 'done' };
-    const sessionId = SessionId('session-outcome-published');
-    const store = createWorkerStore({
-      routes: new Map([[String(sessionId), settledRoute(sessionId, 'request-3')]]),
-      events: new Map([[String(sessionId), [{
-        protocolVersion: 1, sessionId, requestId: 'request-3', sequence: 1,
-        occurredAt: new Date().toISOString(), type: 'session.stream', data: outcome,
-      }]]]),
-    });
-    const state = createState({
-      outcomes: [{ sessionId, requestId: 'request-3', attempt: 1, event: { data: outcome } }],
-    });
-    const publish = vi.fn(async () => undefined);
-
-    const result = await reconcilePendingWork({ store, state, tenantId, publish });
-
-    expect(result.alreadyPublished).toBe(1);
-    expect(result.republishedOutcomes).toBe(0);
-    expect(publish).not.toHaveBeenCalled();
   });
 
   it('keeps the record pending when republishing fails', async () => {

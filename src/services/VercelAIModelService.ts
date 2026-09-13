@@ -272,6 +272,44 @@ function streamPartError(part: unknown): Error {
   return error;
 }
 
+/** How long a failed attempt's iterator gets to close before the retry proceeds. */
+const STREAM_ATTEMPT_CLOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Close a stream iterator that will not be consumed.
+ *
+ * A failed attempt still holds the provider's reader: dropping the reference
+ * without closing it leaks the response stream and can keep a connection alive
+ * for the rest of the process. Cleanup is bounded and secondary failures are
+ * swallowed, because the original attempt error is what the caller must see.
+ */
+async function closeStreamParts(
+  parts: AsyncIterator<Record<string, unknown>>,
+  logger: InternalLogger,
+): Promise<void> {
+  if (!parts.return) {
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve(parts.return(undefined)).then(
+        () => undefined,
+        (error) => {
+          logger.debug('Failed to close a failed model stream attempt:', error);
+        },
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, STREAM_ATTEMPT_CLOSE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function errorStatusCode(value: unknown): number | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
@@ -1087,19 +1125,26 @@ export class VercelAIModelService implements ModelService {
       maxRetries: 0,
     });
     const parts = result.fullStream[Symbol.asyncIterator]() as AsyncIterator<Record<string, unknown>>;
-    for (;;) {
-      const first = await parts.next();
-      if (first.done) {
-        return { first, parts };
+    try {
+      for (;;) {
+        const first = await parts.next();
+        if (first.done) {
+          return { first, parts };
+        }
+        const type = (first.value as { type?: unknown })?.type;
+        if (type === 'error') {
+          throw streamPartError(first.value);
+        }
+        if (type === 'text-delta' || type === 'reasoning-delta' || type === 'tool-call' || type === 'finish') {
+          return { first, parts };
+        }
+        // Skip non-output parts until the first output, matching the main loop.
       }
-      const type = (first.value as { type?: unknown })?.type;
-      if (type === 'error') {
-        throw streamPartError(first.value);
-      }
-      if (type === 'text-delta' || type === 'reasoning-delta' || type === 'tool-call' || type === 'finish') {
-        return { first, parts };
-      }
-      // Skip non-output parts until the first output, matching the main loop.
+    } catch (error) {
+      // The caller only closes the attempt it receives, so a failure here has to
+      // close its own iterator before the retry starts a new one.
+      await closeStreamParts(parts, this.logger);
+      throw error;
     }
   }
 
