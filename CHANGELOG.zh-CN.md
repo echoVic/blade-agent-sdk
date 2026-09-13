@@ -2,6 +2,20 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.4] - 2026-09-13
+
+### 新功能
+
+- appendEvent 支持调用方提供的幂等键：Worker 与补齐流程并发发布同一个终态结果时，事件存储只保留一条，且无需扫描事件日志。
+
+### 修复
+
+- 未入队的已接受请求改为从 durable journal 投影恢复，而不再依赖 transcript 投影；transcript 写入失败的请求同样能被找回。
+- session.read 返回与快照对应的事件游标：游标在读取快照之前取得，重连客户端最多重复收到快照加载期间追加的事件（按 event id 去重），但不会再漏事件。
+- 发布 tag 指向的代码：手动发布先 checkout 指定 tag 并校验 HEAD 与之一致，在构建前写入版本号，并在构建产物未携带该版本时拒绝发布。
+- turn 作用域的 Skill 替换时不再删除 session 作用域的 system prompt 与 environment 基线：补丁重置只影响声明它的那一层。
+- 模型流式重试前先关闭失败 attempt 的 iterator，重试不再遗留上一个 provider reader；清理有超时上限，并保留原始失败原因。
+
 ## [7.4.3] - 2026-09-13
 
 ### 修复

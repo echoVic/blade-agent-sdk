@@ -2,6 +2,20 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.4] - 2026-09-13
+
+### Features
+
+- Make appendEvent idempotent under a caller-supplied key, so a Worker and a reconciler can publish the same terminal result concurrently and the store keeps exactly one event without scanning the log.
+
+### Fixes
+
+- Rebuild an accepted-but-unenqueued submission from the durable journal projection instead of the transcript projection, so a request whose transcript write failed is still recovered.
+- Return the event cursor that belongs to the session.read snapshot: it is captured before the snapshot is loaded, so a reconnecting client can replay events (and deduplicate by event id) but can never skip the ones appended while the snapshot loaded.
+- Publish the code the tag names: a manual release run checks out the requested tag, verifies HEAD matches it, stamps the version before the build, and refuses to publish a bundle that does not carry the released version.
+- Keep session-scoped system-prompt and environment baselines when a turn-scoped Skill replaces them: patch resets now only affect the scope that declared them.
+- Close the stream iterator of every failed model attempt before retrying, so a retry no longer leaves the previous provider reader open; cleanup is bounded and the original failure is preserved.
+
 ## [7.4.3] - 2026-09-13
 
 ### Fixes

@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Make appendEvent idempotent under a caller-supplied key, so a Worker and a reconciler can publish the same terminal result concurrently and the store keeps exactly one event without scanning the log.",
-  "zh-CN": "appendEvent 支持调用方提供的幂等键：Worker 与补齐流程并发发布同一个终态结果时，事件存储只保留一条，且无需扫描事件日志。"
-}

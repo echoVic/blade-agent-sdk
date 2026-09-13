@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Rebuild an accepted-but-unenqueued submission from the durable journal projection instead of the transcript projection, so a request whose transcript write failed is still recovered.",
-  "zh-CN": "未入队的已接受请求改为从 durable journal 投影恢复，而不再依赖 transcript 投影；transcript 写入失败的请求同样能被找回。"
-}

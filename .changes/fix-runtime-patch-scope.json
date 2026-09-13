@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Keep session-scoped system-prompt and environment baselines when a turn-scoped Skill replaces them: patch resets now only affect the scope that declared them.",
-  "zh-CN": "turn 作用域的 Skill 替换时不再删除 session 作用域的 system prompt 与 environment 基线：补丁重置只影响声明它的那一层。"
-}
