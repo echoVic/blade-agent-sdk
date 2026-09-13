@@ -24,6 +24,7 @@ import {
   type RequestId,
   SessionId,
 } from '../types/identifiers.js';
+import { hasHistoryGap, type SessionHistoryProgress } from '../session/historyProgress.js';
 import { getErrorName } from '../utils/errorUtils.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import {
@@ -537,11 +538,12 @@ export class AgentServer {
       case AgentCommandType.SESSION_READ: {
         // Resolved before the snapshot is loaded, so the cursor can never point
         // past events the snapshot was taken with.
+        const result = await this.sessionExecutor.read(context, command.data);
         const recoveryCursor = await this.resolveRecoveryCursor(
           principal.tenantId,
           command.data.sessionId,
+          result,
         );
-        const result = await this.sessionExecutor.read(context, command.data);
         return this.success(command.commandId, {
           ...result,
           session: toSessionDescriptor(result.session),
@@ -649,7 +651,23 @@ export class AgentServer {
   private async resolveRecoveryCursor(
     tenantId: string,
     sessionId: SessionId,
+    read: { readonly historyProgress?: SessionHistoryProgress },
   ): Promise<RecoveryCursor> {
+    // A recorded gap means the transcript is missing content the event log already
+    // streamed, so no boundary after it may be used. Replay what the log still
+    // holds, and say so when that is only part of the history.
+    if (hasHistoryGap(read.historyProgress)) {
+      const range = this.store.getEventStreamRange
+        ? await this.store.getEventStreamRange(tenantId, sessionId)
+        : null;
+      if (!range) {
+        return { cursor: 0, incomplete: true };
+      }
+      return {
+        cursor: range.firstSequence - 1,
+        incomplete: range.firstSequence > 1,
+      };
+    }
     if (!this.store.getEventStreamRange) {
       // A store without the retained-range capability cannot be given a safe
       // cursor: the head is not one, because the snapshot's messages may lag it.

@@ -22,6 +22,13 @@ export type {
   SessionRepositorySubagentRef,
 } from './SessionRepository.js';
 export { isSessionEventStore } from './SessionRepository.js';
+export { hasHistoryGap, mergeHistoryProgress, type SessionHistoryProgress } from './historyProgress.js';
+export {
+  repairSessionHistory,
+  type HistoryRepairOptions,
+  type HistoryRepairReason,
+  type HistoryRepairResult,
+} from './historyRepair.js';
 export {
   parseSessionStreamEvent,
   sessionStreamEventSchema,

@@ -308,6 +308,25 @@ export class ContextManager {
 
   }
 
+  /**
+   * Record that a message write failed, so the transcript now has a gap.
+   *
+   * The record is committed before the request continues: a client that reconnects
+   * must not be handed a cursor past content that never reached the transcript.
+   */
+  async recordHistoryWriteFailure(sessionId: SessionId, detail: string): Promise<void> {
+    try {
+      await this.eventStore.saveHistoryProgress?.(sessionId, {
+        state: 'failed',
+        updatedAt: Date.now(),
+        detail,
+      });
+    } catch (error) {
+      // The gap itself is real either way; a failed marker must not break the turn.
+      console.warn('[ContextManager] 记录历史写入缺口失败:', error);
+    }
+  }
+
   /** 保存消息到 repository，不依赖 currentSessionId。 */
   async saveMessage(
     sessionId: SessionId,

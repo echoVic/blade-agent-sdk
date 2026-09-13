@@ -18,6 +18,7 @@ import type {
   SessionStore,
   SessionSummary,
 } from './SessionStore.js';
+import type { SessionHistoryProgress } from './historyProgress.js';
 import type { PersistedPendingInput } from './transcript.js';
 
 export interface SessionRepositorySubagentInfo {
@@ -124,6 +125,22 @@ export interface SessionEventStore {
     parentMessageId?: MessageId | null,
   ): Promise<MessageId>;
   saveContext(sessionId: SessionId, contextData: ContextData): Promise<void>;
+  /**
+   * Record how far the message projection is complete. Committed with the
+   * projection, so a later request cannot advance past a recorded gap.
+   *
+   * Optional: a backend that cannot persist it makes the SDK fall back to a
+   * conservative recovery cursor rather than claiming the history is whole.
+   */
+  saveHistoryProgress?(
+    sessionId: SessionId,
+    progress: SessionHistoryProgress,
+  ): Promise<void>;
+  /**
+   * Close a recorded gap after the transcript was verified or rebuilt. Only the
+   * repair path calls this: ordinary progress writes never clear a gap.
+   */
+  clearHistoryGap?(sessionId: SessionId, repairedMessages: number): Promise<void>;
 }
 
 /** Compatibility port for backends that expose reads and appends together. */
@@ -269,4 +286,6 @@ export class NoopSessionRepository implements SessionPersistence {
       error: 'Session persistence is disabled',
     };
   }
+  async saveHistoryProgress(): Promise<void> {}
+  async clearHistoryGap(): Promise<void> {}
 }

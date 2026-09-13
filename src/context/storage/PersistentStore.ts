@@ -267,6 +267,13 @@ export class PersistentStore implements SessionPersistence {
     return messageId;
   }
 
+  /**
+   * The local JSONL backend has no server-side recovery cursor, so it records no
+   * projection progress; a reader of this transcript treats the progress as unknown
+   * and stays conservative rather than claiming the history is whole.
+   */
+  async saveHistoryProgress(_sessionId: SessionId, _progress: never): Promise<void> {}
+
   async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);

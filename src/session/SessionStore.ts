@@ -25,6 +25,7 @@ import {
   ToolUseId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
+import type { SessionHistoryProgress } from './historyProgress.js';
 import type {
   PersistedPendingInput,
   TranscriptEvent,
@@ -84,6 +85,12 @@ export interface SessionState extends SessionSnapshot {
   toolCalls: SessionToolCallState[];
   subagentRefs: SessionSubagentRef[];
   pendingInputs: PersistedPendingInput[];
+  /**
+   * How far the messages are known to be complete. Absent on transcripts written
+   * before the field existed, which is treated as "unknown": the recovery cursor
+   * then falls back conservatively instead of claiming the history is whole.
+   */
+  historyProgress?: SessionHistoryProgress;
 }
 
 export interface SessionStore {

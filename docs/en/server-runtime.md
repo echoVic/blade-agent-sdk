@@ -216,6 +216,21 @@ skipping the part that happened to fall outside the scan — a scan budget is no
 history that may be skipped. A trimmed log clamps the cursor into the retained
 range.
 
+Whether a cursor is trustworthy also depends on the **message projection's own
+progress**. The projection commits a `historyProgress` record together with each
+message: a failed message write records a `state: 'failed'` gap, and later
+successful requests never clear it — only the repair path can. While a gap exists
+the server uses no boundary after it and replays from the start of what the log
+retains; if the log was trimmed it also reports `recoveryIncomplete: true`, because
+falling back recovers only what is still retained and is not claimed to be lossless.
+
+`repairSessionHistory()` rebuilds the missing messages from the durable journal,
+which is the authority: a request's accepted input (by `inputId`), a completed tool
+attempt (by `toolCallId`), and the turn's assistant output (matched through the tool
+calls it requested). Repair only writes data — it never re-runs a model call or a
+tool — writes nothing on a second pass, and leaves the gap open with
+`insufficient-durable-data` when the journal itself was trimmed.
+
 That retained range comes from the store's `getEventStreamRange`, which is part of
 the recovery guarantee: a custom store without it is never handed the event head as
 a cursor. The server replays from `0` when the log is still readable from the

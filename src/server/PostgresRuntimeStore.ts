@@ -58,6 +58,7 @@ import {
   WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
+import { mergeHistoryProgress, type SessionHistoryProgress } from '../session/historyProgress.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
 import {
@@ -1475,6 +1476,33 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return row ? EventSequence(asNumber(row.next_sequence) - 1) : null;
   }
 
+  /**
+   * Record how far the message projection is complete, in the projection itself.
+   *
+   * The record is written in the same transaction as the messages it describes, so
+   * the cursor never has to infer progress from the event log. An open gap survives
+   * later successful writes unless the caller is the repair path.
+   */
+  async saveHistoryProgress(
+    tenantId: string,
+    sessionId: SessionId,
+    progress: SessionHistoryProgress,
+    options: { readonly clearGap?: boolean } = {},
+  ): Promise<void> {
+    await this.mutateSessionState(
+      tenantId,
+      sessionId,
+      'transcript.history_progress',
+      { state: progress.state, ...(progress.detail ? { detail: progress.detail } : {}) },
+      (state, now) => {
+        const next = { ...progress, updatedAt: progress.updatedAt || now };
+        state.historyProgress = options.clearGap
+          ? next
+          : mergeHistoryProgress(state.historyProgress, next);
+      },
+    );
+  }
+
   async loadSessionState(tenantId: string, sessionId: SessionId): Promise<SessionState | null> {
     const projection = await this.getProjection(tenantId, sessionId, SESSION_PROJECTION);
     return projection ? asSessionState(projection.state) : null;
@@ -1529,6 +1557,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ? asSessionState(projectionResult.rows[0].state)
         : initialSessionState(sessionId, now, subagentInfo);
       const result = mutate(state, now);
+      if (events.some((event) => event.type !== 'transcript.history_progress')) {
+        // Messages and their progress commit together: a reader never sees a
+        // message whose write is not reflected in the recorded progress.
+        state.historyProgress = mergeHistoryProgress(state.historyProgress, {
+          state: state.historyProgress?.state === 'failed' ? 'failed' : 'in_progress',
+          updatedAt: now,
+        });
+      }
       const stored = await this.appendStream(
         client,
         tenantId,
@@ -2703,6 +2739,21 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
 
   loadState(sessionId: SessionId): Promise<SessionState | null> {
     return this.runtime.loadSessionState(this.tenantId, sessionId);
+  }
+
+  saveHistoryProgress(
+    sessionId: SessionId,
+    progress: SessionHistoryProgress,
+  ): Promise<void> {
+    return this.runtime.saveHistoryProgress(this.tenantId, sessionId, progress);
+  }
+
+  clearHistoryGap(sessionId: SessionId, repairedMessages: number): Promise<void> {
+    return this.runtime.saveHistoryProgress(this.tenantId, sessionId, {
+      state: 'complete',
+      updatedAt: Date.now(),
+      repairedMessages,
+    }, { clearGap: true });
   }
 
   async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {

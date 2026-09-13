@@ -84,6 +84,17 @@ async function persistToJsonl<T>(
       throw error;
     }
     logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
+    // Execution may continue, but the history is no longer complete: record the
+    // gap so recovery never claims the transcript is whole.
+    const contextMgr = modelManager.getContextManager();
+    if (contextMgr && sessionId) {
+      await contextMgr
+        .recordHistoryWriteFailure(
+          sessionId,
+          error instanceof Error ? error.message : String(error),
+        )
+        .catch(() => undefined);
+    }
   }
   return undefined;
 }

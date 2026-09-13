@@ -202,6 +202,17 @@ attempt、fencing token 与 worker，同时给出本服务是否已加载该 Ses
 扫不到就退回**日志仍然保留的起点之前**，让客户端多放一些，而不是跳过没扫到的那一段——
 扫描预算不是可以跳过的历史。日志被裁剪时游标同样被夹在保留区间内。
 
+游标的可信度还取决于**消息投影自身的进度**。投影随每条消息一起提交
+`historyProgress`：消息写失败时会记录 `state: 'failed'` 的缺口，之后的成功请求也**不会**
+清除它（只有修复流程能清除）。存在缺口时，Server 不会使用缺口之后的任何边界，而是从日志
+仍保留的起点重放；若日志已被裁剪，则同时返回 `recoveryIncomplete: true`——回退只能恢复
+仍然保留的部分，不会被宣称成无损。
+
+修复入口 `repairSessionHistory()` 以 durable journal 为权威重建缺失消息：请求的已接受输入
+（按 `inputId`）、完成的工具调用（按 `toolCallId`）、该轮次的 assistant 输出（按它请求的
+工具调用匹配）。修复只写数据，不重跑模型或工具；重复执行不会产生重复消息；journal 本身
+已被裁剪、无法补齐时保持缺口并返回 `insufficient-durable-data`。
+
 事件日志的保留区间来自 Store 的 `getEventStreamRange`，这是恢复保证的一部分：自定义
 Store 若不实现该能力，Server 不会把事件头当作安全游标。此时若日志仍可从起点读取，就
 保守地从 0 开始重放；连起点都无法确定（日志已裁剪）时，`recovery` 会带

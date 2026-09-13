@@ -131,3 +131,13 @@ export type {
   SessionRunnerContext,
   SessionRunResult,
 } from './SessionRunner.js';
+export {
+  hasHistoryGap,
+  type SessionHistoryProgress,
+} from '../session/historyProgress.js';
+export {
+  repairSessionHistory,
+  type HistoryRepairOptions,
+  type HistoryRepairReason,
+  type HistoryRepairResult,
+} from '../session/historyRepair.js';

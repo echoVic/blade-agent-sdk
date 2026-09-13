@@ -24,6 +24,7 @@ import type {
 import type { CommandId, RequestId, SessionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
+import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import type { AgentServerSessionRecord, AgentServerStore } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
 import type { RuntimeTenantStore } from './RuntimeStore.js';
@@ -54,6 +55,12 @@ export interface SessionExecutorReadResult {
    * the Session". Reading never loads a Session as a side effect.
    */
   readonly loaded: boolean;
+  /**
+   * How far the message projection is known to be complete. `state: 'failed'`
+   * means the transcript has a gap, so a recovery cursor must not step over it.
+   * Absent means unknown, which is treated conservatively.
+   */
+  readonly historyProgress?: SessionHistoryProgress;
 }
 
 export type SessionExecutorEventPublisher = (
@@ -198,11 +205,17 @@ export class InProcessSessionExecutor implements SessionExecutor {
       const managed = this.activeSessions.get(
         sessionKey(context.principal.tenantId, data.sessionId),
       );
+      // The projection is the authority for progress: it commits the record
+      // together with the messages, whichever process wrote them.
+      const state = context.runtimeStore
+        ? await context.runtimeStore.loadState(data.sessionId)
+        : null;
       return {
         session: record,
         messages: managed?.session.messages ?? [],
         pendingInputs: managed?.session.getPendingInputs() ?? [],
         loaded: managed !== undefined,
+        ...(state?.historyProgress ? { historyProgress: state.historyProgress } : {}),
       };
     });
   }
