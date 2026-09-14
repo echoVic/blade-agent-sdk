@@ -2093,3 +2093,22 @@ export {
   PermissionDecision,
 };
 ```
+
+## 内部职责边界
+
+公开 `ISession` 由薄 `AgentSession` facade 实现，创建、恢复、fork 和一次性
+`prompt()` 保留在 `Session.ts`。内部状态与行为按以下边界拆分：
+
+| 模块 | 单一职责 |
+|------|----------|
+| `SessionState` | Session 私有可变状态、配置快照与窄辅助方法 |
+| `SessionLifecycle` | 初始化、关闭、handoff 与 execution lease |
+| `SessionRequestCoordinator` | 输入接收、steering、取消、队列和历史恢复 |
+| `SessionStreamRunner` | 单个请求的 Agent loop、终态提交与 stream cleanup |
+| `StreamBroadcaster` | `AgentEvent` 到 `SessionStreamEvent` 的唯一投影 |
+| `SessionDurability` | durable journal、request recorder 与恢复前置条件 |
+| `SessionRuntime` | 工具、hooks、MCP、subagent 和执行 pipeline 组装 |
+
+`SessionState` 仅在上述内部模块之间共享，不从公共入口导出。事件字段的重命名、
+thinking 过滤、tool 记录和 usage 聚合必须集中在 `StreamBroadcaster`，不能重新
+散落到 Session facade 或 framework adapter。

@@ -224,6 +224,79 @@ Worker 会按结果把路由结算为 `idle`、`completed` 或 `failed`；结果
 由于 `finalize` 是条件执行的，runner 必须在 `run()` 返回前自行完成资源清理，不能
 依赖 `finalize` 释放必须释放的句柄。
 
+### 自定义 SessionRunner
+
+`SessionRunner` 的契约由 `/advanced` 拥有。自定义实现应直接实现该接口；不要依赖
+`AgentWorker` 私有状态，也不要从 deprecated `/server` 入口导入类型：
+
+```ts
+import type {
+  SessionRunner,
+  SessionRunnerContext,
+  SessionRunResult,
+} from '@blade-ai/agent-sdk/advanced';
+
+export class RepositorySessionRunner implements SessionRunner {
+  // 省略时由 AgentWorker 维护 claim lease。
+  readonly managesLease = false;
+
+  async run(context: SessionRunnerContext): Promise<SessionRunResult> {
+    const { route } = context.claim;
+    await context.transition('running', {
+      ...route.metadata,
+      executor: 'repository',
+    });
+
+    try {
+      const result = await runRepositoryAgent({
+        sessionId: route.sessionId,
+        store: context.store.forTenant(route.tenantId),
+        signal: context.signal,
+        executionHost: context.executionHost,
+      });
+
+      // 必须在返回前释放文件、进程、socket 等资源。
+      await result.dispose();
+
+      return {
+        status: result.completed ? 'completed' : 'idle',
+        metadata: {
+          ...route.metadata,
+          checkpointId: result.checkpointId,
+        },
+        // 路由完成 fenced settlement 后才发布终态。
+        finalize: () => publishTerminalResult(route, result),
+      };
+    } catch (error) {
+      if (context.signal.aborted) {
+        await suspendRepositoryAgent(route.sessionId);
+        return { status: 'suspended', metadata: route.metadata };
+      }
+      return {
+        status: 'failed',
+        failure: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+        metadata: route.metadata,
+      };
+    }
+  }
+}
+```
+
+实现必须遵守以下边界：
+
+- `run()` 只处理 `context.claim` 指定的 tenant、Session 与 fencing token。
+- `transition()` 仅用于 `running` / `waiting_approval`；终态由 Worker 统一结算。
+- 无法证明恢复边界完整时返回 `failed`，不能猜测为 `idle`。
+- `context.signal` 中止时停止接收新副作用，并在返回前完成确定性清理。
+- `finalize` 只发布已结算结果，不承担资源释放、checkpoint 或必要持久化。
+- 自行维护 lease 时才设置 `managesLease = true`，并负责续租与 fencing 校验。
+
+`SdkSessionRunner` 是 SDK Session 的默认实现；需要复用其全部语义时直接实例化并
+注入 `AgentWorker`。领域执行器应实现 `SessionRunner`，而不是继承并覆写
+`SdkSessionRunner` 的内部流程。
+
 ## Effect outbox
 
 effect 有两种执行模式：

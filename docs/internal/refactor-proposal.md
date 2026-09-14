@@ -335,11 +335,22 @@ Phase 3 前继续作为 deprecated compatibility alias；PostgreSQL 与 OTel ada
 
 **目标：内部结构重构**
 
-- 拆分 `Session.ts`，引入 `StreamBroadcaster`
-- 目标：`Session.ts` 降至 800 行以下
-- `SessionRunner` 迁移至 `/advanced`，补充文档
-- 定义 `blade-tool-*` 社区命名约定
-- 前提：Phase 1+2 完成后的集成测试覆盖率需达到合理水平（建议 ≥60% 关键路径）
+**状态：已完成（2026-09-14）**
+
+- [x] 拆分 `Session.ts`，引入 `StreamBroadcaster`
+- [x] `Session.ts` 从 2,666 行降至 800 行以下
+- [x] `SessionRunner` 迁移至 `/advanced`，补充文档
+- [x] 定义 `blade-tool-*` 社区命名约定
+- [x] 建立 Session 关键路径覆盖率门禁（lines / branches / functions /
+  statements 均不低于 60%）
+
+`Session.ts` 现在只保留 create/resume/fork/prompt 工厂。公开 `ISession` facade、
+生命周期、输入协调、durable journal、stream runner、共享私有状态和事件投影分别
+位于独立模块，所有模块都由结构测试约束在 800 行以内。`SessionRunner` 的定义由
+`src/advanced/SessionRunner.ts` 持有，旧 server 路径仅保留兼容重导出。
+
+验收使用 `pnpm run test:coverage:session`；Phase 3 完成时 Session 关键路径覆盖率为
+84.37% lines、79.79% branches、88.96% functions、83.56% statements。
 
 ---
 

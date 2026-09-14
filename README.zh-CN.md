@@ -122,7 +122,7 @@ import {
 
 | | `local` | `server` |
 |---|---------|----------|
-| 本地文件与 Shell 工具 | 配置 `filesystem` capability 后可用 | 工具相同，但 server profile 不做环境、Skill 与子 Agent 发现 |
+| 本地文件与 Shell 工具 | 配置 `filesystem` capability 后可用 | 不隐式注册；显式数据 Skill 只引入 `Skill` loader |
 | `storagePath` | 由本地 JSONL 持久化支撑 | 直接抛 `ConfigError`：服务端 Session 需要 `sessionRepository` 与 `sessionEventStore` |
 | 默认持久化 | 设置 `storagePath` 时写本地 JSONL | 未注入 repository 时仅内存 |
 | 上下文与 Skill 发现 | 开启 | 关闭（`localDiscovery` 为 false） |
@@ -139,7 +139,7 @@ server profile。
 - 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
-- 工具：支持 async function 与 AsyncGenerator、Zod schema、按能力分组的内置工具、MCP 工具和类型化进度/副作用
+- 工具：支持 async function 与 AsyncGenerator、Zod schema、按能力分组的内置工具、MCP 工具、类型化进度/副作用与 `blade-tool-*` 包约定
 - 扩展：洋葱式模型/工具 middleware，以及可打包 middleware、hooks 与工具的声明式插件
 - 协作：前台/后台子 Agent、任务工具，以及项目级 Skills
 - 安全：有界模型、工具与 inline hook 执行、权限模式、策略回调、路径检查和可选 OS 沙箱集成

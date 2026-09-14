@@ -106,6 +106,7 @@
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:coverage:session": "vitest run src/session/__tests__ src/__tests__/createAgent.test.ts src/agent/__tests__/AgentResponse.test.ts --config vitest.session-coverage.config.ts --pool=threads --maxWorkers=1 --no-file-parallelism",
     "lint": "biome lint src",
     "lint:fix": "biome lint --write src",
     "type-check": "tsc --noEmit",
@@ -233,6 +234,7 @@
     "@types/picomatch": "^4.0.2",
     "@types/semver": "^7.7.1",
     "@types/write-file-atomic": "^4.0.3",
+    "@vitest/coverage-v8": "5.0.0",
     "@vscode/ripgrep": "^1.17.0",
     "esbuild": "0.28.2",
     "fs-native-extensions": "1.5.0",

@@ -1,18 +1,18 @@
 import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
-import { ExecutionLeaseId, type SessionId, type WorkerId } from '../types/identifiers.js';
-import type { JsonObject } from '../types/json.js';
-import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
-import { EffectDispatcher, type RuntimeEffectHandler } from './EffectDispatcher.js';
-import type { RuntimeStore } from './RuntimeStore.js';
 import type {
   ActiveRuntimeSessionState,
   SessionRunner,
   SessionRunnerContext,
   SessionRunResult,
-} from './SessionRunner.js';
-import type { RuntimeSessionClaim, RuntimeSessionRoute } from './WorkerRuntime.js';
+} from '../advanced/SessionRunner.js';
+import { ExecutionLeaseId, type SessionId, type WorkerId } from '../types/identifiers.js';
+import type { JsonObject } from '../types/json.js';
+import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
 import type { AgentWorkerTelemetry } from './AgentWorkerTelemetry.js';
+import { EffectDispatcher, type RuntimeEffectHandler } from './EffectDispatcher.js';
+import type { RuntimeStore } from './RuntimeStore.js';
+import type { RuntimeSessionClaim, RuntimeSessionRoute } from './WorkerRuntime.js';
 
 const DEFAULT_WORKER_TTL_MS = 15_000;
 const DEFAULT_SESSION_LEASE_TTL_MS = 30_000;
@@ -126,11 +126,7 @@ function activeSessionKey(route: RuntimeSessionRoute): string {
 
 function isFatalWorkerStateError(error: unknown): boolean {
   const code = getErrorCode(error);
-  return (
-    code === 'WORKER_INVALID'
-    || code === 'WORKER_NOT_FOUND'
-    || code === 'WORKER_UNAVAILABLE'
-  );
+  return code === 'WORKER_INVALID' || code === 'WORKER_NOT_FOUND' || code === 'WORKER_UNAVAILABLE';
 }
 
 /**
@@ -205,12 +201,8 @@ export class AgentWorker {
       this.lastHeartbeatAtMs === undefined
         ? undefined
         : Math.max(0, checkedAtMs - this.lastHeartbeatAtMs);
-    const heartbeatFresh =
-      heartbeatAgeMs !== undefined && heartbeatAgeMs < this.workerTtlMs;
-    const ready =
-      this.status === 'running'
-      && heartbeatFresh
-      && this.failure === undefined;
+    const heartbeatFresh = heartbeatAgeMs !== undefined && heartbeatAgeMs < this.workerTtlMs;
+    const ready = this.status === 'running' && heartbeatFresh && this.failure === undefined;
     const live = this.status !== 'failed';
     return {
       workerId: this.options.workerId,
@@ -400,14 +392,10 @@ export class AgentWorker {
           break;
         }
         if (this.status !== 'running') {
-          await this.options.store.handoffSession(
-            claim.route.tenantId,
-            claim.lease,
-            {
-              ...claim.route.metadata,
-              handoffReason: 'worker_draining_before_start',
-            },
-          );
+          await this.options.store.handoffSession(claim.route.tenantId, claim.lease, {
+            ...claim.route.metadata,
+            handoffReason: 'worker_draining_before_start',
+          });
           break;
         }
         claimed = true;
@@ -506,10 +494,10 @@ export class AgentWorker {
             );
       }
       if (
-        active.route.state === 'idle'
-        || active.route.state === 'completed'
-        || active.route.state === 'failed'
-        || active.route.state === 'suspended'
+        active.route.state === 'idle' ||
+        active.route.state === 'completed' ||
+        active.route.state === 'failed' ||
+        active.route.state === 'suspended'
       ) {
         this.reportError(error);
         return;
@@ -661,10 +649,7 @@ export class AgentWorker {
         return;
       }
       try {
-        await this.options.store.heartbeatWorker(
-          this.options.workerId,
-          this.workerTtlMs,
-        );
+        await this.options.store.heartbeatWorker(this.options.workerId, this.workerTtlMs);
         this.lastHeartbeatAtMs = Date.now();
       } catch (error) {
         if (isFatalWorkerStateError(error)) {

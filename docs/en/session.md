@@ -810,3 +810,24 @@ interface ISession extends AsyncDisposable {
   ): Promise<DurableEventSubscription>;
 }
 ```
+
+## Internal responsibility boundaries
+
+The public `ISession` is implemented by a thin `AgentSession` facade. Creation,
+resume, fork, and one-shot `prompt()` factories remain in `Session.ts`.
+Internals are split across explicit ownership boundaries:
+
+| Module | Single responsibility |
+|--------|-----------------------|
+| `SessionState` | Session-private mutable state, configuration snapshot, and narrow helpers |
+| `SessionLifecycle` | Initialization, close, handoff, and execution leases |
+| `SessionRequestCoordinator` | Input admission, steering, cancellation, queues, and history restore |
+| `SessionStreamRunner` | One request's Agent loop, terminal commit, and stream cleanup |
+| `StreamBroadcaster` | The only `AgentEvent` to `SessionStreamEvent` projection |
+| `SessionDurability` | Durable journal, request recorder, and recovery prerequisites |
+| `SessionRuntime` | Tool, hook, MCP, subagent, and execution-pipeline assembly |
+
+`SessionState` is shared only among these internal modules and is not exported
+from public entrypoints. Event renaming, thinking filtering, tool records, and
+usage aggregation belong in `StreamBroadcaster`, not in the Session facade or
+framework adapters.

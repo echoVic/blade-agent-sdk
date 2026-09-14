@@ -150,6 +150,37 @@ const tools = await getBuiltinTools({
 });
 ```
 
+## 社区工具包约定
+
+可复用的第三方工具包使用 `blade-tool-*` 命名：
+
+- 非 scoped 包：`blade-tool-github`
+- scoped 包：`@acme/blade-tool-jira`
+- 名称必须为小写 kebab-case，并描述能力或目标系统，不能使用含糊名称。
+
+包的根入口应导出一个命名工厂（例如 `createGithubTool`）或一个稳定的 `tools`
+数组。不要导入 SDK 的 `src/`、`dist/` chunk 或其他私有路径；工具作者只能依赖
+根入口公开的 `defineTool`、`createTool`、类型和常量。
+
+```json
+{
+  "name": "@acme/blade-tool-jira",
+  "peerDependencies": {
+    "@blade-ai/agent-sdk": "^7.4.0"
+  }
+}
+```
+
+发布前必须满足：
+
+- 每个工具显式声明准确的 `sideEffect` 和 `interruptBehavior`。
+- 参数使用 Zod 或完整 JSON Schema；执行结果必须是可序列化数据。
+- credential 由调用方注入，包内不得读取或内置隐式全局凭据。
+- 网络工具必须执行协议、重定向与私网地址校验；文件工具必须遵守
+  `ExecutionContext` 的 filesystem capability。
+- 非幂等副作用不得自动重试；中止后必须释放进程、连接和临时资源。
+- README 必须列出工具名、权限需求、环境变量、side effect 与最小使用示例。
+
 ## 内置工具列表
 
 SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：

@@ -1,4 +1,9 @@
 import type {
+  SessionRunner,
+  SessionRunnerContext,
+  SessionRunResult,
+} from '../advanced/SessionRunner.js';
+import type {
   ExecutionCheckpoint,
   ExecutionExecRequest,
   ExecutionExecResult,
@@ -7,7 +12,6 @@ import type {
 } from '../execution/ExecutionHost.js';
 import { ExecutionCheckpointId } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
-import type { SessionRunner, SessionRunnerContext, SessionRunResult } from './SessionRunner.js';
 
 export const EXECUTION_HOST_ROUTE_METADATA_KEY = 'bladeExecution' as const;
 export const EXECUTION_HOST_ROUTE_METADATA_VERSION = 1 as const;

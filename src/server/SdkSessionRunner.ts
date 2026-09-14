@@ -1,10 +1,14 @@
+import type {
+  SessionRunner,
+  SessionRunnerContext,
+  SessionRunResult,
+} from '../advanced/SessionRunner.js';
 import type { AgentServerEvent } from '../protocol/index.js';
 import { resumeSession } from '../session/Session.js';
 import type { SessionHandoffResult, SessionOptions, SessionStreamEvent } from '../session/types.js';
 import type { RequestId, SessionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
-import type { SessionRunner, SessionRunnerContext, SessionRunResult } from './SessionRunner.js';
 
 export interface SdkSessionRunnerOptionsContext {
   readonly tenantId: string;
@@ -122,13 +126,14 @@ export class SdkSessionRunner implements SessionRunner {
         return { status: 'suspended', metadata };
       }
       const publishTerminal = terminal
-        ? () => this.options.publish?.(
-            route.tenantId,
-            route.sessionId,
-            'session.stream',
-            terminal,
-            activeRequestId,
-          )
+        ? () =>
+            this.options.publish?.(
+              route.tenantId,
+              route.sessionId,
+              'session.stream',
+              terminal,
+              activeRequestId,
+            )
         : undefined;
       if (!terminal || terminal.subtype === 'error') {
         return {
@@ -136,13 +141,25 @@ export class SdkSessionRunner implements SessionRunner {
           failure: {
             message: terminal?.error ?? 'Session stream ended without a terminal result',
           },
-          ...(publishTerminal ? { finalize: async () => { await publishTerminal(); } } : {}),
+          ...(publishTerminal
+            ? {
+                finalize: async () => {
+                  await publishTerminal();
+                },
+              }
+            : {}),
           metadata,
         };
       }
       return {
         status: 'idle',
-        ...(publishTerminal ? { finalize: async () => { await publishTerminal(); } } : {}),
+        ...(publishTerminal
+          ? {
+              finalize: async () => {
+                await publishTerminal();
+              },
+            }
+          : {}),
         metadata,
       };
     } catch (error) {

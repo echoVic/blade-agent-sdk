@@ -196,6 +196,42 @@ async *execute(params) {
 
 Effects can update runtime policy, context, messages, or permissions. The Session stream projects them into corresponding `tool_*` events.
 
+## Community tool package convention
+
+Reusable third-party tool packages use the `blade-tool-*` naming convention:
+
+- Unscoped package: `blade-tool-github`
+- Scoped package: `@acme/blade-tool-jira`
+- Names must use lowercase kebab-case and identify the capability or target
+  system rather than a generic label.
+
+The package root should export a named factory such as `createGithubTool`, or a
+stable `tools` array. Do not import SDK `src/`, generated `dist/` chunks, or
+other private paths. Tool packages may depend only on public definitions,
+types, and constants from the root SDK entrypoint.
+
+```json
+{
+  "name": "@acme/blade-tool-jira",
+  "peerDependencies": {
+    "@blade-ai/agent-sdk": "^7.4.0"
+  }
+}
+```
+
+Before publishing, a tool package must:
+
+- Declare accurate `sideEffect` and `interruptBehavior` values for every tool.
+- Use Zod or complete JSON Schema parameters and return serializable data.
+- Accept credentials from the caller instead of reading or embedding implicit
+  global credentials.
+- Validate protocols, redirects, and private addresses for network access, and
+  honor `ExecutionContext` filesystem capabilities for file access.
+- Never retry non-idempotent effects automatically, and release processes,
+  connections, and temporary resources after cancellation.
+- Document tool names, permissions, environment variables, side effects, and a
+  minimal usage example in its README.
+
 ## Interruption
 
 `interruptBehavior` controls a tool when a `priority: 'now'` input arrives:

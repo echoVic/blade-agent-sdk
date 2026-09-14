@@ -73,7 +73,7 @@ export type {
   SessionRunner,
   SessionRunnerContext,
   SessionRunResult,
-} from '../server/SessionRunner.js';
+} from './SessionRunner.js';
 export {
   createSession as createServerSession,
   forkSession as forkServerSession,

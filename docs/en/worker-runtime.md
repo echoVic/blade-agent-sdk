@@ -240,6 +240,86 @@ Because `finalize` is conditional, runners must finish their own resource
 cleanup before `run()` resolves. Do not rely on `finalize` to release handles
 that must be released.
 
+### Custom SessionRunner
+
+The `SessionRunner` contract is owned by `/advanced`. Custom implementations
+should implement the interface directly and must not depend on `AgentWorker`
+private state or import types from the deprecated `/server` entrypoint:
+
+```ts
+import type {
+  SessionRunner,
+  SessionRunnerContext,
+  SessionRunResult,
+} from '@blade-ai/agent-sdk/advanced';
+
+export class RepositorySessionRunner implements SessionRunner {
+  // When omitted, AgentWorker renews the claim lease.
+  readonly managesLease = false;
+
+  async run(context: SessionRunnerContext): Promise<SessionRunResult> {
+    const { route } = context.claim;
+    await context.transition('running', {
+      ...route.metadata,
+      executor: 'repository',
+    });
+
+    try {
+      const result = await runRepositoryAgent({
+        sessionId: route.sessionId,
+        store: context.store.forTenant(route.tenantId),
+        signal: context.signal,
+        executionHost: context.executionHost,
+      });
+
+      // Release files, processes, and sockets before returning.
+      await result.dispose();
+
+      return {
+        status: result.completed ? 'completed' : 'idle',
+        metadata: {
+          ...route.metadata,
+          checkpointId: result.checkpointId,
+        },
+        // Publish terminal output only after the fenced route settlement.
+        finalize: () => publishTerminalResult(route, result),
+      };
+    } catch (error) {
+      if (context.signal.aborted) {
+        await suspendRepositoryAgent(route.sessionId);
+        return { status: 'suspended', metadata: route.metadata };
+      }
+      return {
+        status: 'failed',
+        failure: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+        metadata: route.metadata,
+      };
+    }
+  }
+}
+```
+
+Every implementation must preserve these boundaries:
+
+- `run()` handles only the tenant, Session, and fencing token in
+  `context.claim`.
+- `transition()` is only for `running` and `waiting_approval`; the Worker owns
+  terminal settlement.
+- Return `failed` when recovery safety cannot be proven; never guess `idle`.
+- Stop admitting side effects after `context.signal` aborts and finish
+  deterministic cleanup before returning.
+- Use `finalize` only to publish settled outcomes, never for required cleanup,
+  checkpoints, or persistence.
+- Set `managesLease = true` only when the runner owns renewal and fencing
+  validation.
+
+`SdkSessionRunner` is the default implementation for SDK Sessions. Instantiate
+it directly when all of its semantics are needed. Domain executors should
+implement `SessionRunner` instead of subclassing and overriding its internal
+flow.
+
 ## Effect outbox
 
 Effects support two execution modes:

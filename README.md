@@ -128,7 +128,7 @@ process runs and what it may touch:
 
 | | `local` | `server` |
 |---|---------|----------|
-| Local file and Shell tools | Available once a `filesystem` capability is configured | Same tools, but the server profile omits environment, Skill, and subagent discovery |
+| Local file and Shell tools | Available once a `filesystem` capability is configured | Not registered implicitly; explicit data Skills get only the `Skill` loader |
 | `storagePath` | Backed by local JSONL persistence | Throws `ConfigError`: server Sessions need `sessionRepository` and `sessionEventStore` |
 | Default persistence | Local JSONL when `storagePath` is set | In memory unless you inject a repository |
 | Context and Skill discovery | Enabled | Disabled (`localDiscovery` is off) |
@@ -145,7 +145,7 @@ runtime is a shared multi-tenant service and storage is injected explicitly.
 - Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
-- Tools: async-function and AsyncGenerator authoring, Zod schemas, capability-grouped built-ins, MCP tools, and typed progress/effects
+- Tools: async-function and AsyncGenerator authoring, Zod schemas, capability-grouped built-ins, MCP tools, typed progress/effects, and the `blade-tool-*` package convention
 - Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: bounded model, tool, and inline-hook execution, permission modes, policy callbacks, path checks, and optional OS sandbox integration

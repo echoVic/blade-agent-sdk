@@ -399,13 +399,15 @@ describe('Session runtime context', () => {
     await session.send('hello');
 
     const brokenSession = session as unknown as {
-      runtime: null;
-      initialized: boolean;
+      state: {
+        runtime: null;
+        initialized: boolean;
+      };
       stream: typeof session.stream;
       close: typeof session.close;
     };
-    brokenSession.runtime = null;
-    brokenSession.initialized = true;
+    brokenSession.state.runtime = null;
+    brokenSession.state.initialized = true;
 
     await expect(async () => {
       for await (const _event of brokenSession.stream()) {
