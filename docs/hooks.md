@@ -1,38 +1,47 @@
 # Hooks 生命周期钩子
 
-`SessionOptions.hooks` 提供应用内回调，可审计输入、修改工具参数或结果，并阻止当前操作。Session 不会自动扫描 `.blade/hooks/` 等目录；文件 Hook 的加载属于上层应用集成职责。
+SDK 有两套用途不同的 Hook，配置位置不能混用：
+
+| Hook | API 位置 | 用途 |
+|------|----------|------|
+| Inline hooks | `AgentOptions.advanced.hooks`；底层为 `SessionOptions.hooks` | 当前进程中的 TypeScript callback |
+| Shell hooks | CLI/宿主配置文件中的 `HookConfig` | 由宿主启动并隔离命令进程 |
+
+`createAgent()` 只接受 inline hooks，不接受 `HookConfig`。Session 也不会自动扫描
+`.blade/hooks/` 等目录；shell hook 配置的发现、加载和进程权限属于 CLI 或宿主集成职责。
 
 ## 快速开始
 
 ```ts
-import { createSession, HookEvent } from '@blade-ai/agent-sdk';
+import { createAgent, HookEvent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o',
-  hooks: {
-    [HookEvent.PreToolUse]: [
-      async (input) => {
-        console.log('[工具调用]', input.toolName, input.toolInput);
-        return { action: 'continue' };
-      },
-    ],
-    [HookEvent.PostToolUseFailure]: [
-      async (input) => {
-        console.error('[工具失败]', input.toolName, input.error);
-        return { action: 'continue' };
-      },
-    ],
+  apiKey: process.env.OPENAI_API_KEY!,
+  advanced: {
+    hooks: {
+      [HookEvent.PreToolUse]: [
+        async (input) => {
+          console.log('[工具调用]', input.toolName, input.toolInput);
+          return { action: 'continue' };
+        },
+      ],
+      [HookEvent.PostToolUseFailure]: [
+        async (input) => {
+          console.error('[工具失败]', input.toolName, input.error);
+          return { action: 'continue' };
+        },
+      ],
+    },
   },
 });
 ```
 
 ## Session 支持的事件
 
-`HookEvent` 常量包含 22 个事件，供 SDK 内部和文件 Hook 协议使用。`SessionOptions.hooks` 的公开类型 `SessionHookEvent` 只接受以下 8 个事件：
-
-需要直接引用 `SessionHookEvent` 类型时，从
-`@blade-ai/agent-sdk/session` 导入；根入口当前未重新导出该类型。
+`HookEvent` 常量包含 22 个事件，供 SDK 内部和 shell hook 协议使用。
+`AgentOptions.advanced.hooks` 与 `SessionOptions.hooks` 的公开类型
+`SessionHookEvent` 只接受以下 8 个事件。该类型可从根入口导入。
 
 | 事件 | 时机 | 常用输入 |
 |------|------|----------|
@@ -78,8 +87,9 @@ type HookCallback = (input: HookInput) => Promise<HookOutput>;
 ## 时限与取消
 
 每次 inline hook 事件共享一份总 wall-clock 预算，callback 按注册顺序执行。
-`SessionOptions.hookTimeoutMs` 默认是 `600000`（10 分钟）。`SessionEnd`
-使用更短的 `SessionOptions.sessionEndHookTimeoutMs`，默认是 `3000`。
+`AgentOptions.advanced.hookTimeoutMs` 默认是 `600000`（10 分钟）。`SessionEnd`
+使用更短的 `advanced.sessionEndHookTimeoutMs`，默认是 `3000`。底层
+`SessionOptions` 使用同名字段。
 
 SDK 会组合调用方 signal 与 deadline，并通过 `HookInput.abortSignal` 传给
 callback。到期后事件以 `HookTimeoutError`（code 为 `HOOK_TIMEOUT`）失败。
@@ -202,22 +212,27 @@ hooks: {
 |------|------|--------|
 | `PreToolUse` / `PostToolUse` | 拦截、审计、修改工具调用 | `HookOutput` |
 | `PermissionRequest` | 观察权限请求 | `HookOutput` |
-| `canUseTool` | 作出 allow / deny / ask 决策 | `PermissionResult` |
+| `advanced.permission` | 作出 allow / deny / ask 决策 | 字符串或 `PermissionResult` |
 
-权限决策应优先放在 `canUseTool`：
+权限决策放在 `advanced.permission`：
 
 ```ts
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
-  canUseTool: async (_toolName, _input, options) => {
-    if (options.toolKind === 'readonly') {
-      return { behavior: 'allow' };
+  apiKey,
+  advanced: {
+    permission: async (request) => {
+      if (request.kind === 'readonly') {
+        return 'allow';
+      }
+      return 'ask';
     }
-    return { behavior: 'ask', message: '需要用户确认写入或执行操作' };
   },
 });
 ```
+
+`SessionOptions.permissionHandler` 是底层运行时扩展点。`canUseTool` 只为旧
+Session 集成保留，已弃用，新代码不应继续使用。
 
 ## 回调顺序与错误
 

@@ -1,6 +1,9 @@
 # API 参考
 
-`@blade-ai/agent-sdk` 根包保持 session-first 体验，并采用服务端安全默认值。需要访问本机文件、进程或 Sandbox 的 Node.js 应用使用 `/node`；不应隐式访问宿主资源的服务端应用使用 `/server`。浏览器端应优先从 `/browser` 或 `/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `node` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+`@blade-ai/agent-sdk` 根包提供默认的 `createAgent()` 接触面，并采用服务端安全
+默认值；传入 `filesystem` 时自动选择 local profile。框架集成可继续使用
+`/node` 与 `/server` 的底层 Session API。浏览器端应优先从 `/browser` 或
+`/core` 导入类型、协议和常量；误调用 server-only API 时会抛出清晰错误。
 
 `/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
 OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
@@ -15,8 +18,8 @@ package export；通过 npm bin 调用。
 
 | 入口 | 运行环境 | 说明 |
 |------|---------|------|
-| `@blade-ai/agent-sdk` | Node.js server | 默认服务端入口；仅加载显式配置的工具、Agent、middleware 和 MCP |
-| `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的服务端入口，行为等价于 root |
+| `@blade-ai/agent-sdk` | Node.js | 默认 `createAgent`、工具定义和公共类型入口 |
+| `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的底层 Session 入口 |
 | `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
 | `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metric、trace 与 audit adapter |
 | `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
@@ -36,6 +39,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 函数 | 逻辑模块 | 说明 |
 |------|------|------|
+| `createAgent` | agent | 通过三层 `AgentOptions` 创建 Agent |
 | `createSession` | session | 创建新会话 |
 | `resumeSession` | session | 恢复会话 |
 | `forkSession` | session | 分叉会话 |
@@ -54,7 +58,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `createCompositePermissionHandler` | permissions | 组合多个权限处理器 |
 | `createModePermissionHandler` | permissions | 基于权限模式创建处理器 |
 | `createPathSafetyPermissionHandler` | permissions | 基于路径安全策略创建处理器 |
-| `createPermissionHandlerFromCanUseTool` | permissions | 从 canUseTool 回调创建处理器 |
+| `createPermissionHandlerFromCanUseTool` | permissions | 适配已弃用 canUseTool 回调的兼容处理器 |
 | `createRuleBasedPermissionHandler` | permissions | 基于规则创建处理器 |
 | `collectToolExecution` | root / core / tools | 消费工具执行并返回最终结果 |
 | `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
@@ -113,6 +117,19 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `PermissionDecision` | `ALLOW` / `DENY` / `ASK` |
 
 ## 类型
+
+### Agent
+
+| 类型 | 说明 |
+|------|------|
+| `Agent` | `createAgent()` 返回的会话能力接口 |
+| `AgentOptions` | 必需字段、常用字段和 `advanced` 三层配置 |
+| `AgentAdvancedOptions` | 基础设施、策略和低频配置 |
+| `AgentProfile` | `'local'` 或 `'server'` |
+| `AgentFilesystemOptions` | local filesystem roots 与 cwd |
+| `AgentPermission` / `AgentPermissionPreset` | 单一权限字段及其预设 |
+| `AgentPermissionRequest` / `AgentPermissionDecision` | 自定义权限回调契约 |
+| `InlineHooks` / `SessionHookEvent` | 进程内 callback hook 契约 |
 
 ### Session
 
@@ -283,6 +300,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
+| `ToolDefinitionInput` | `defineTool()` 接受的 async function 或 generator 定义 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |
@@ -404,7 +422,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `HookInput` | Hook 输入 |
 | `HookOutput` | Hook 输出 |
 
-`HookEvent` 包含 22 个文件 Hook 事件；`SessionOptions.hooks` 只接受
+`HookEvent` 包含 22 个 shell hook 协议事件；`AgentOptions.advanced.hooks`
+与 `SessionOptions.hooks` 只接受
 `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PermissionRequest`、
 `PreToolUse`、`PostToolUse`、`PostToolUseFailure` 和 `TaskCompleted` 这 8 个
 内联事件。

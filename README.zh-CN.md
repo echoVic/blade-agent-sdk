@@ -11,95 +11,99 @@
 
 本包仅提供 ESM，不支持 CommonJS `require()`。
 
-## 安装
+## 5 分钟快速开始
 
 ```bash
 npm install @blade-ai/agent-sdk
-# 或
-pnpm add @blade-ai/agent-sdk
 ```
 
-## 选择起点
+创建 `agent.mjs`：
 
-生成一个能读取你项目文件的本地 Node.js Agent，不需要 PostgreSQL 或 Docker。
-这也是默认 preset：
+```js
+import { createAgent } from '@blade-ai/agent-sdk';
+
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) throw new Error('缺少 OPENAI_API_KEY');
+
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  filesystem: {
+    roots: [process.cwd()],
+    cwd: process.cwd(),
+  },
+});
+
+await agent.send('读取 package.json，用三个要点总结这个项目');
+
+for await (const event of agent.stream()) {
+  if (event.type === 'content') {
+    process.stdout.write(event.delta);
+  }
+}
+
+await agent.close();
+```
+
+运行：
+
+```bash
+OPENAI_API_KEY=your-key node agent.mjs
+```
+
+`createAgent()` 默认使用 OpenAI。其他 Provider 可通过 `provider` 和 `baseUrl`
+配置。传入 `filesystem` 时会自动选择 local profile；未传入时使用 server
+profile。也可以通过 `profile: 'local' | 'server'` 显式选择。
+
+常用选项保留在顶层，基础设施和策略配置统一放入 `advanced`：
+
+```ts
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  temperature: 0.2,
+  systemPrompt: '回答务必简洁。',
+  advanced: {
+    permission: 'accept-edits',
+    tokenBudget: { maxTotalTokens: 100_000 },
+  },
+});
+```
+
+## 项目脚手架
+
+生成不依赖 PostgreSQL 或 Docker 的本地 Agent：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
 
-省略 `--preset` 时生成的就是这个 local starter。
-
-创建 Browser + AgentServer 应用、使用进程内 Session：
+生成 Browser + AgentServer 应用：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset web --verify
 ```
 
-创建完整生产拓扑：
+生成完整的 PostgreSQL、Worker、Docker、审批和恢复拓扑：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset production --verify
 ```
 
-三个 preset 使用同一套 Session 与协议语义。`local` 的首次结果预算为一分钟，
-`web` 为两分钟，`production` 为五分钟；预算均覆盖生成、依赖安装和实际 smoke。
-`production` 包含浏览器客户端、`AgentServer`、PostgreSQL、运行真实 SDK Session 的
-`AgentWorker`、需要浏览器审批写入的 Docker 仓库工具，以及运维入口。它的 smoke 会在
-写入检查点保存后杀掉 Worker，并验证新 Worker 能接续完成任务。省略 `--preset` 时生成
-`local` starter；省略 `--verify` 时只生成并安装，使用 `--skip-install` 时只生成文件。
+最长的安装后 smoke 预算为五分钟。省略 `--verify` 可跳过 smoke，
+`--skip-install` 只生成文件。
 
-## 快速开始
+## 底层 Session API
 
-下面这个示例会读取当前目录的文件。本地文件访问由 `filesystem` capability 授予，
-而只有 `/node` 入口会默认应用它：
+框架和运行时集成可以直接使用 `createSession()`：
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o-mini',
-  temperature: 0.2,
-  maxOutputTokens: 4096,
-  defaultContext: {
-    capabilities: {
-      filesystem: { roots: [process.cwd()], cwd: process.cwd() },
-    },
-  },
-});
-
-await session.send('分析下面这份报告并给出三个关键结论');
-
-for await (const event of session.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
-}
-
-await session.close();
+import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
+import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
 ```
-
-一次性请求可以使用 `prompt()`。需要访问本地文件时继续用 `/node`；
-只有当进程本身不应具备本地访问能力时才换成 `/server`：
-
-```ts
-import { prompt } from '@blade-ai/agent-sdk/node';
-
-const result = await prompt('解释这个 API 的能力边界', {
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o-mini',
-});
-
-console.log(result.result);
-console.log(result.toolCalls);
-console.log(result.usage);
-```
-
-### `/node` 与 `/server` 怎么选
 
 两个入口共用同一套 Session API、内置工具与协议，区别在于进程的运行位置和可触达范围：
 
@@ -115,13 +119,14 @@ console.log(result.usage);
 
 ## 核心能力
 
-- Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
+- Agent facade：使用必需、常用和 `advanced` 三层选项的 `createAgent()`
+- 底层 Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 可转向请求：持久化的 `now`、`next`、`later` 输入，支持取消和待处理输入查询
 - Durable 恢复：带 fencing 的执行租约、受控 worker handoff、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
 - 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
-- 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用
+- 工具：支持 async function 与 AsyncGenerator、Zod schema、按能力分组的内置工具、MCP 工具和类型化进度/副作用
 - 扩展：洋葱式模型/工具 middleware，以及可打包 middleware、hooks 与工具的声明式插件
 - 协作：前台/后台子 Agent、任务工具，以及项目级 Skills
 - 安全：有界模型、工具与 inline hook 执行、权限模式、策略回调、路径检查和可选 OS 沙箱集成
@@ -152,37 +157,57 @@ for await (const event of session.stream()) {
 
 ## 自定义工具
 
-工具执行只使用 `AsyncGenerator<ToolYield, ToolResult>`：
+常用路径使用 Zod schema 和普通 async function。返回值会自动转换成内部成功结果：
 
 ```ts
-import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import { defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: '查询城市天气',
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  parameters: {
-    type: 'object',
-    properties: {
-      city: { type: 'string' },
-    },
-    required: ['city'],
-  },
-  async *execute({ city }) {
-    yield { kind: 'progress', message: `正在查询 ${city} 的天气` };
-    return {
-      status: 'success',
-      model: `${city}：晴，25 C`,
-      display: { summary: `${city} 天气` },
-    };
+  parameters: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { weather: `${city}：晴，25 C` };
   },
 });
 ```
 
+需要产生类型化进度、消息或 effect 时，继续使用 `async *execute`。generator
+工具保留现有的 `ToolResult` 终态契约。
+
+## 权限与 Hooks
+
+新的 Agent 集成只使用一个权限字段：
+
+```ts
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  advanced: {
+    permission: async (request) =>
+      request.kind === 'readonly' ? 'allow' : 'ask',
+    hooks: {
+      PreToolUse: [
+        async (event) => {
+          console.log(event.toolName, event.toolInput);
+          return { action: 'continue' };
+        },
+      ],
+    },
+  },
+});
+```
+
+`advanced.hooks` 只包含进程内 TypeScript callback，对应 8 种 Session hook
+事件。Shell hooks 使用 CLI/宿主配置中的 `HookConfig`，不能传给
+`createAgent()`。底层集成仍可使用 `SessionOptions.permissionMode` 和
+`permissionHandler`；`canUseTool` 已弃用。
+
 ## 包入口
 
 ```ts
+import { createAgent, defineTool } from '@blade-ai/agent-sdk';
 import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
 import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
@@ -190,12 +215,12 @@ import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
-import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
-- 根入口与 `/server`：服务端 Agent；提供可注入 `SessionExecutor` 的 `AgentServer`，只加载显式传入的能力
+- 根入口：默认的 `createAgent` 与工具定义 API
+- `/server`：底层服务端 Session，以及可注入 `SessionExecutor` 的 `AgentServer`
 - `/server/postgres`：共享 PostgreSQL Runtime Store，统一承载 command、event、effect、projection、worker lease、路由、transcript 和 durable journal
 - `/server/otel`：OpenTelemetry metric、trace 与审计 adapter
 - `/server/testing`：不依赖测试框架的 Runtime Store conformance suite
@@ -231,29 +256,29 @@ pnpm add fs-native-extensions        # Node JSONL 跨进程锁
 ## 持久化与 Workspace
 
 未同时配置只读 `SessionRepository` 与只写 `SessionEventStore` 时，Session
-只保存在内存中。`/node` 入口会把 `storagePath` 转换为同时实现两者的本地
-JSONL `SessionPersistence`：
+只保存在内存中。local Agent 会把 `advanced.storagePath` 转换为同时实现两者的
+本地 JSONL `SessionPersistence`：
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createAgent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
-  storagePath: '/var/lib/my-agent',
-  defaultContext: {
-    capabilities: {
-      filesystem: {
-        roots: [process.cwd()],
-        cwd: process.cwd(),
-      },
-    },
+  apiKey,
+  profile: 'local',
+  filesystem: {
+    roots: [process.cwd()],
+    cwd: process.cwd(),
+  },
+  advanced: {
+    storagePath: '/var/lib/my-agent',
   },
 });
 ```
 
-根入口和 `/server` 不会把 `storagePath` 解释成本机访问权限；服务端应用必须显式
-注入 `sessionRepository` 和 `sessionEventStore`，或配置共享 `runtimeStore`。
+根入口的底层 `createSession()` 和 `/server` 不会把 `storagePath` 解释为本地
+持久化；服务端应用必须显式注入 `sessionRepository` 和 `sessionEventStore`，
+或配置共享 `runtimeStore`。
 HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
 审批和遥测见 [Server Runtime](./docs/server-runtime.md)。
 多实例持久化见 [Runtime Store](./docs/runtime-store.md)。

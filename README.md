@@ -11,100 +11,102 @@ A session-first TypeScript Agent SDK for both local Node.js processes and Node.j
 
 The package is ESM-only and does not support CommonJS `require()`.
 
-## Install
+## 5-Minute Quick Start
 
 ```bash
 npm install @blade-ai/agent-sdk
-# or
-pnpm add @blade-ai/agent-sdk
 ```
 
-## Choose a Starting Point
+Create `agent.mjs`:
 
-Create a local Node.js Agent that reads your project files, without PostgreSQL or
-Docker. This is the default preset:
+```js
+import { createAgent } from '@blade-ai/agent-sdk';
+
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) throw new Error('OPENAI_API_KEY is required');
+
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  filesystem: {
+    roots: [process.cwd()],
+    cwd: process.cwd(),
+  },
+});
+
+await agent.send('Read package.json and summarize this project in three bullets');
+
+for await (const event of agent.stream()) {
+  if (event.type === 'content') {
+    process.stdout.write(event.delta);
+  }
+}
+
+await agent.close();
+```
+
+Run it:
+
+```bash
+OPENAI_API_KEY=your-key node agent.mjs
+```
+
+`createAgent()` defaults to OpenAI. Set `provider` and `baseUrl` for another
+provider. A `filesystem` option automatically selects the local runtime
+profile; without it, the server profile is used. Select either behavior
+explicitly with `profile: 'local' | 'server'`.
+
+Common options stay at the top level. Infrastructure and policy options live
+under `advanced`:
+
+```ts
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  temperature: 0.2,
+  systemPrompt: 'Be concise.',
+  advanced: {
+    permission: 'accept-edits',
+    tokenBudget: { maxTotalTokens: 100_000 },
+  },
+});
+```
+
+## Project Starters
+
+Generate a local Agent without PostgreSQL or Docker:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
 
-Omit `--preset` and you get this same local starter.
-
-Create a Browser + AgentServer application with in-process Sessions:
+Generate a Browser + AgentServer application:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset web --verify
 ```
 
-Create the complete production topology:
+Generate the complete PostgreSQL, Worker, Docker, approval, and recovery
+topology:
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset production --verify
 ```
 
-All three presets use the same Session and protocol semantics. Their
-generation, installation, and real-smoke budgets are one minute for `local`,
-two minutes for `web`, and five minutes for `production`. The production
-preset includes the browser client, `AgentServer`, PostgreSQL, `AgentWorker`
-running a real SDK Session, Docker repository tools with a write-approval
-prompt, and operations endpoints. Its smoke kills the Worker after a saved
-edit and verifies that a successor finishes the task. Omitting `--preset`
-generates the `local` starter. Omit `--verify` to avoid running the smoke, or
-use `--skip-install` to write files only.
+The longest installed smoke has a five-minute budget. Omit `--verify` to skip
+it, or use `--skip-install` to write files only.
 
-## Quick Start
+## Low-Level Session APIs
 
-This example reads files from the current directory. The `filesystem`
-capability is what grants local file access, and only the `/node` entry applies
-it by default:
+Framework and runtime integrations can use `createSession()` directly:
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o-mini',
-  temperature: 0.2,
-  maxOutputTokens: 4096,
-  defaultContext: {
-    capabilities: {
-      filesystem: { roots: [process.cwd()], cwd: process.cwd() },
-    },
-  },
-});
-
-await session.send('Analyze this report and return three key findings');
-
-for await (const event of session.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
-}
-
-await session.close();
+import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
+import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
 ```
-
-For a one-shot request, use `prompt()`. Keep the `/node` import when the task
-must touch local files; switch to `/server` only when the process must not have
-local access:
-
-```ts
-import { prompt } from '@blade-ai/agent-sdk/node';
-
-const result = await prompt('Explain this API surface', {
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o-mini',
-});
-
-console.log(result.result);
-console.log(result.toolCalls);
-console.log(result.usage);
-```
-
-### Choosing between `/node` and `/server`
 
 Both entries share the Session API, the built-in tool set, and the protocol.
 They differ in where the process runs and what it may touch:
@@ -121,13 +123,14 @@ a shared multi-tenant service and you inject storage explicitly.
 
 ## Core Capabilities
 
-- Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
+- Agent facade: `createAgent()` with required, common, and `advanced` option layers
+- Low-level Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
 - Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
 - Durable recovery: lease-fenced execution ownership, controlled worker handoff, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
 - Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
-- Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
+- Tools: async-function and AsyncGenerator authoring, Zod schemas, capability-grouped built-ins, MCP tools, and typed progress/effects
 - Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: bounded model, tool, and inline-hook execution, permission modes, policy callbacks, path checks, and optional OS sandbox integration
@@ -158,37 +161,59 @@ Use `getPendingInputs()` and `cancelInput()` to manage accepted inputs.
 
 ## Custom Tools
 
-Tool execution uses `AsyncGenerator<ToolYield, ToolResult>` exclusively:
+Use a Zod schema with a regular async function for the common path. The return
+value is converted to a successful internal tool result:
 
 ```ts
-import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import { defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the weather for a city',
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  parameters: {
-    type: 'object',
-    properties: {
-      city: { type: 'string' },
-    },
-    required: ['city'],
-  },
-  async *execute({ city }) {
-    yield { kind: 'progress', message: `Loading weather for ${city}` };
-    return {
-      status: 'success',
-      model: `${city}: clear, 25 C`,
-      display: { summary: `Weather for ${city}` },
-    };
+  parameters: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { weather: `${city}: clear, 25 C` };
   },
 });
 ```
 
+Use `async *execute` when the tool needs to yield typed progress, messages, or
+effects. Generator tools keep the existing `ToolResult` terminal contract.
+
+## Permissions and Hooks
+
+New Agent integrations use one permission field:
+
+```ts
+const agent = await createAgent({
+  model: 'gpt-4o-mini',
+  apiKey,
+  advanced: {
+    permission: async (request) =>
+      request.kind === 'readonly' ? 'allow' : 'ask',
+    hooks: {
+      PreToolUse: [
+        async (event) => {
+          console.log(event.toolName, event.toolInput);
+          return { action: 'continue' };
+        },
+      ],
+    },
+  },
+});
+```
+
+`advanced.hooks` contains in-process TypeScript callbacks for the eight Session
+hook events. Shell hooks use `HookConfig` in CLI/host configuration and are not
+accepted by `createAgent()`. The low-level `SessionOptions.permissionMode` and
+`permissionHandler` APIs remain available for runtime integrations;
+`canUseTool` is deprecated.
+
 ## Package Entry Points
 
 ```ts
+import { createAgent, defineTool } from '@blade-ai/agent-sdk';
 import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
 import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
@@ -196,12 +221,12 @@ import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
-import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
-- Root and `/server`: server-side agents; expose `AgentServer` with an injectable `SessionExecutor` and load only explicitly supplied capabilities
+- Root: the default `createAgent` and tool-authoring API
+- `/server`: low-level server Sessions and `AgentServer` with an injectable `SessionExecutor`
 - `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, worker leases, routing, transcripts, and durable journals
 - `/server/otel`: OpenTelemetry metrics, traces, and audit adapter
 - `/server/testing`: framework-independent Runtime Store conformance suite
@@ -239,30 +264,31 @@ pnpm add fs-native-extensions        # cross-process Node JSONL locks
 ## Persistence and Workspace
 
 Sessions are ephemeral unless a read-side `SessionRepository` and write-side
-`SessionEventStore` are configured. The `/node` entry converts `storagePath`
-into one local JSONL `SessionPersistence` implementation:
+`SessionEventStore` are configured. A local Agent converts
+`advanced.storagePath` into one local JSONL `SessionPersistence`
+implementation:
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createAgent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
-  storagePath: '/var/lib/my-agent',
-  defaultContext: {
-    capabilities: {
-      filesystem: {
-        roots: [process.cwd()],
-        cwd: process.cwd(),
-      },
-    },
+  apiKey,
+  profile: 'local',
+  filesystem: {
+    roots: [process.cwd()],
+    cwd: process.cwd(),
+  },
+  advanced: {
+    storagePath: '/var/lib/my-agent',
   },
 });
 ```
 
-The root and `/server` entries never interpret `storagePath` as local access.
-Server applications must inject `sessionRepository` plus `sessionEventStore`,
-or configure one shared `runtimeStore`. See
+The low-level root `createSession()` and `/server` entry never interpret
+`storagePath` as local persistence. Server applications must inject
+`sessionRepository` plus `sessionEventStore`, or configure one shared
+`runtimeStore`. See
 [Server Runtime](./docs/en/server-runtime.md) for the HTTP/SSE server,
 browser client, multi-tenant storage, idempotency, approvals, and telemetry.
 For multi-instance storage, see [Runtime Store](./docs/en/runtime-store.md).

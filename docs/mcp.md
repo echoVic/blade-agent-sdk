@@ -240,16 +240,16 @@ interface McpToolCallResponse {
 
 ## MCP 工具授权
 
-`alwaysAllow` 当前不会跳过 Session 的权限检查。需要自动授权可信 MCP 工具时，请在 `canUseTool` 或 `permissionHandler` 中显式实现策略：
+`alwaysAllow` 当前不会跳过 Agent 的权限检查。需要自动授权可信 MCP 工具时，
+请在 `advanced.permission` 中显式实现策略：
 
 ```ts
-const session = await createSession({
-  // ...provider, model, mcpServers
-  canUseTool: async (toolName) => {
-    if (['read_file', 'list_directory'].includes(toolName)) {
-      return { behavior: 'allow' };
-    }
-    return { behavior: 'ask' };
+const agent = await createAgent({
+  // ...model, apiKey
+  advanced: {
+    mcpServers,
+    permission: async ({ toolName }) =>
+      ['read_file', 'list_directory'].includes(toolName) ? 'allow' : 'ask',
   },
 });
 ```

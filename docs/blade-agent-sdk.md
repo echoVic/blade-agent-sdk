@@ -1,6 +1,8 @@
 # 概览
 
-`@blade-ai/agent-sdk` 是一个 **Session-first** 的 AI Agent 开发框架。它将会话管理、工具执行、MCP 协议、权限控制、生命周期钩子、沙箱安全、Memory 系统和工具目录统一封装在 Session API 中，让你用最少的代码构建功能完整的 AI Agent 应用。
+`@blade-ai/agent-sdk` 是一个 TypeScript AI Agent 开发框架。面向应用开发者的
+`createAgent()` 提供分层配置；底层仍由 Session 统一承载会话管理、工具执行、
+MCP、权限、Hooks、沙箱、Memory 和工具目录。
 
 适合构建：CLI 助手、IDE 插件、自动化工作流、对话式开发工具、多 Agent 协作系统。
 
@@ -15,22 +17,22 @@ pnpm add @blade-ai/agent-sdk
 ## 最小示例：流式对话
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createAgent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o',
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
-await session.send('用三句话解释什么是 TypeScript');
+await agent.send('用三句话解释什么是 TypeScript');
 
-for await (const event of session.stream()) {
+for await (const event of agent.stream()) {
   if (event.type === 'content') {
     process.stdout.write(event.delta);
   }
 }
 
-await session.close();
+await agent.close();
 ```
 
 ## 最小示例：一次性调用
@@ -55,43 +57,29 @@ console.log(`耗时 ${result.duration}ms，使用了 ${result.toolCalls.length} 
 ## 带自定义工具的示例
 
 ```ts
-import { createSession, defineTool } from '@blade-ai/agent-sdk/server';
+import { createAgent, defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
 const weatherTool = defineTool({
   name: 'GetWeather',
   description: '查询指定城市的天气',
-  sideEffect: 'pure',
-  parameters: {
-    type: 'object',
-    properties: {
-      city: { type: 'string', description: '城市名称' },
-    },
-    required: ['city'],
-  },
-  async *execute(params) {
-    yield {
-      kind: 'progress',
-      message: `正在查询 ${params.city} 的天气`,
-    };
-    return {
-      status: 'success',
-      model: `${params.city}: 晴 25°C`,
-      display: { summary: `查询天气: ${params.city}` },
-    };
+  parameters: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { weather: `${city}: 晴 25°C` };
   },
 });
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o',
+  apiKey: process.env.OPENAI_API_KEY!,
   tools: [weatherTool],
 });
 
-await session.send('北京今天天气怎么样？');
-for await (const event of session.stream()) {
+await agent.send('北京今天天气怎么样？');
+for await (const event of agent.stream()) {
   if (event.type === 'content') process.stdout.write(event.delta);
 }
-await session.close();
+await agent.close();
 ```
 
 ## 核心概念
@@ -100,12 +88,12 @@ await session.close();
 
 SDK 内置多层上下文压缩策略（Microcompact → Soft → LLM 摘要 → 紧急截断），自动管理对话历史的 token 用量。当上下文接近模型上限时自动触发压缩，上下文溢出时自动恢复并重试，无需手动干预。详见 [Session API — 上下文自动压缩](./session#上下文自动压缩)。
 
-### Session-first 设计
+### Agent 接触面与 Session 内核
 
-SDK 的所有能力都围绕 **Session（会话）** 组织。Session 是唯一的入口：
+应用从 `createAgent()` 开始，返回对象复用稳定的 `ISession` 能力：
 
 ```
-createSession() → ISession
+createAgent() → Agent (ISession)
                     ├── send()     启动、转向或排队用户输入
                     ├── stream()   流式接收 Agent 输出
                     ├── cancelInput() / getPendingInputs()
@@ -116,6 +104,8 @@ createSession() → ISession
                     ├── mcpConnect() / mcpDisconnect() / mcpListTools()
                     └── getDefaultContext() / setDefaultContext()
 ```
+
+框架与运行时集成仍可从 `/node` 或 `/server` 使用 `createSession()`。
 
 ### send() + stream() 交互模型
 

@@ -242,6 +242,6 @@ while an abort observed after core completion preserves the committed result.
 | Model wrapping, retry, caching, or routing | Model middleware |
 | Tool stream wrapping, transforms, or short-circuiting | Tool middleware |
 | Observe Session lifecycle events | Hooks |
-| Make allow/deny/ask decisions | `canUseTool` / `permissionHandler` |
+| Make allow/deny/ask decisions | `AgentOptions.advanced.permission`; low-level `permissionHandler` |
 | Run recoverable external side effects | Tool with declared `sideEffect` |
 | Consume persisted execution events | `subscribeDurableEvents()` |

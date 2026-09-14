@@ -10,41 +10,30 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 
 ## defineTool
 
-最简单的工具定义方式，原样返回传入的定义；默认值（例如省略的 `sideEffect`）在 `toolFromDefinition()` 转成内部 `Tool` 时补齐。适合直接传给 `SessionOptions.tools`。
+最简单的工具定义方式。普通 async function 的返回值会自动包装为内部
+generator；默认值（例如省略的 `sideEffect`）在 `toolFromDefinition()` 转成
+内部 `Tool` 时补齐。适合直接传给 `AgentOptions.tools` 或 `SessionOptions.tools`。
 
 ```ts
-import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import { defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
 const searchTool = defineTool({
   name: 'SearchDocs',
   description: '搜索文档库',
-  parameters: {
-    type: 'object',
-    properties: {
-      query: { type: 'string', description: '搜索关键词' },
-      limit: { type: 'number', description: '返回数量' },
-    },
-    required: ['query'],
-  },
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  async *execute(params) {
+  parameters: z.object({
+    query: z.string().describe('搜索关键词'),
+    limit: z.number().optional().describe('返回数量'),
+  }),
+  async execute(params) {
     const results = await searchDocuments(params.query, params.limit ?? 10);
-    yield {
-      kind: 'progress',
-      message: '文档搜索完成',
-      data: { count: results.length },
-    };
-    return {
-      status: 'success',
-      model: JSON.stringify(results),
-      display: { summary: `找到 ${results.length} 条文档` },
-      // 可选：结构化数据（必须是 JSON 值），供调用方消费
-      data: { count: results.length },
-    };
+    return { results, count: results.length };
   },
 });
 ```
+
+直接返回的 JSON 值会成为成功结果的 `model` 和 `data`。需要发送进度、消息或
+effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
 
 ### 可以省略什么
 
@@ -61,14 +50,12 @@ const searchTool = defineTool({
 import { z } from 'zod';
 import { defineTool } from '@blade-ai/agent-sdk';
 
-const lookup = defineTool<{ id: string }>({
+const lookup = defineTool({
   name: 'Lookup',
   description: '按 ID 查询一条记录',
   parameters: z.object({ id: z.string() }),
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  async *execute({ id }) {
-    return { status: 'success', model: await lookupRecord(id) };
+  async execute({ id }) {
+    return await lookupRecord(id);
   },
 });
 ```
@@ -309,7 +296,10 @@ type ToolYield =
 type ToolExecution = AsyncGenerator<ToolYield, ToolResult, void>;
 ```
 
-不产生中间事件的工具也必须返回 `ToolExecution`，可使用 `completeToolExecution(result)`。需要只消费最终结果时使用 `collectToolExecution(execution)`。
+`createTool()` 和直接构造的 `ToolDefinition` 仍必须返回 `ToolExecution`；不产生
+中间事件时可使用 `completeToolExecution(result)`。`defineTool()` 的普通 async
+function 会自动完成这层包装。需要只消费最终结果时使用
+`collectToolExecution(execution)`。
 
 ::: warning data 必须是 JSON 值
 `data` 是供调用方消费的结构化结果，类型约束为 `JsonValue`。大型结果的
@@ -484,11 +474,12 @@ generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义�
 
 权限等待采用取消边界而不是固定超时，因为人工审批可以合理地长时间保持打开。
 输入校验和工具级权限检查通过 `ExecutionContext.signal` 接收信号，
-`permissionHandler` 与 `canUseTool` 通过 `request.signal` 接收信号，交互式
-处理器通过 `ConfirmationDetails.abortSignal` 接收信号。Pipeline 会将每个回调
-与该 Request 信号竞速；回调应在信号中止时停止工作。若回调忽略信号，Request
-仍会完成取消，但新的工具调用以及 Session close/handoff 会 fail-closed，直至
-该回调 Promise 结束。已持久化的权限请求会先以 `decision: 'cancel'` 完成解析。
+`AgentOptions.advanced.permission` 与底层 `permissionHandler` 通过
+`request.signal` 接收信号，交互式处理器通过
+`ConfirmationDetails.abortSignal` 接收信号。Pipeline 会将每个回调与该 Request
+信号竞速；回调应在信号中止时停止工作。若回调忽略信号，Request 仍会完成取消，
+但新的工具调用以及 Session close/handoff 会 fail-closed，直至该回调 Promise
+结束。已持久化的权限请求会先以 `decision: 'cancel'` 完成解析。
 
 并发槽位与同文件锁的等待也发生在工具时限开始之前，但都会监听当前 Request
 信号。取消会从 FIFO 队列中移除 waiter，不占用配额，也不打乱其他请求的顺序。

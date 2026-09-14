@@ -227,6 +227,6 @@ core 完成后才观察到 abort 则保留已提交结果。
 | 包装模型调用、重试、缓存、路由 | Model middleware |
 | 包装工具流、变换输入/结果、短路 | Tool middleware |
 | 观察 Session 生命周期事件 | Hooks |
-| 对工具作 allow/deny/ask 决策 | `canUseTool` / `permissionHandler` |
+| 对工具作 allow/deny/ask 决策 | `AgentOptions.advanced.permission`；底层为 `permissionHandler` |
 | 执行可恢复的外部副作用 | 声明了 `sideEffect` 的 Tool |
 | 消费已持久化的执行事件 | `subscribeDurableEvents()` |

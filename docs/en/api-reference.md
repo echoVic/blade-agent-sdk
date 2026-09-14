@@ -1,6 +1,8 @@
 # API Reference
 
-This page inventories the public package surface. Detailed behavior is documented on the feature pages.
+This page inventories the public package surface. The root entry exposes the
+default `createAgent()` facade; lower-level Session APIs remain available from
+`/node` and `/server`.
 
 `/server` currently targets Node.js server processes, not edge runtimes.
 PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
@@ -17,8 +19,8 @@ JavaScript package export.
 
 | Entry | Runtime | Contents |
 |-------|---------|----------|
-| `@blade-ai/agent-sdk` | Node.js server | Server-first Session API; only explicit tools, agents, middleware, and MCP servers are loaded |
-| `@blade-ai/agent-sdk/server` | Node.js server | Server entry without implicit local host access, equivalent to root |
+| `@blade-ai/agent-sdk` | Node.js | Default `createAgent`, tool authoring, and public type entry |
+| `@blade-ai/agent-sdk/server` | Node.js server | Low-level Session entry without implicit local host access |
 | `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
 | `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metrics, traces, and audit adapter |
 | `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
@@ -32,6 +34,19 @@ JavaScript package export.
 | `@blade-ai/agent-sdk/model` | Browser and Node.js | Provider-neutral model configuration, messages, services, retries, and usage |
 
 The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/node` resolve server APIs to stubs that throw an explicit error.
+
+## Agent
+
+Runtime:
+
+- `createAgent`
+
+Types:
+
+`Agent`, `AgentOptions`, `AgentAdvancedOptions`, `AgentProfile`,
+`AgentFilesystemOptions`, `AgentPermission`, `AgentPermissionPreset`,
+`AgentPermissionRequest`, `AgentPermissionDecision`, `InlineHooks`, and
+`SessionHookEvent`.
 
 ## Session
 
@@ -349,7 +364,7 @@ Authoring and execution:
 
 | Export | Purpose |
 |--------|---------|
-| `defineTool` | Define a JSON Schema tool |
+| `defineTool` | Define an async-function or generator tool with JSON Schema or Zod |
 | `createTool` | Create a Zod-backed tool |
 | `toolFromDefinition` | Convert a definition to `Tool` |
 | `collectToolExecution` | Drain a generator and return its terminal result |
@@ -361,7 +376,8 @@ Authoring and execution:
 Types:
 
 `ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
-`FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDescription`,
+`FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDefinition`,
+`ToolDefinitionInput`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
 `ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,
@@ -376,9 +392,9 @@ Constants:
 - `ToolSideEffect`: `PURE`, `IDEMPOTENT`, and `NON_IDEMPOTENT`
 - `ToolErrorType`: validation, permission, execution, interruption, timeout, and network errors
 
-Every `ToolDefinition` and `ToolConfig` requires a `sideEffect` declaration.
-The resolved value determines whether a started tool can be replayed during
-durable recovery.
+`ToolConfig` requires a `sideEffect` declaration. `ToolDefinition` defaults to
+`non_idempotent` when it is omitted. The resolved value determines whether a
+started tool can be replayed during durable recovery.
 
 ## Tool catalog
 
@@ -529,7 +545,9 @@ Types and constants:
 - `HookExitCode`
 - `HookType`
 
-`HookEvent` has 22 protocol events. `SessionOptions.hooks` only accepts the eight events in `SessionHookEvent`; see [Hooks](./hooks).
+`HookEvent` has 22 shell-hook protocol events.
+`AgentOptions.advanced.hooks` and `SessionOptions.hooks` only accept the eight
+events in `SessionHookEvent`; see [Hooks](./hooks).
 
 ## Middleware and plugins
 

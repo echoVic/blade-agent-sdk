@@ -8,46 +8,32 @@ The SDK exposes three tool authoring APIs:
 | `createTool()` | Zod | Full inference, runtime validation, and interruption policy |
 | `toolFromDefinition()` | JSON Schema or Zod | Convert a definition into the internal `Tool` interface |
 
-Every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
+Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
+`defineTool()` also accepts a regular async function and wraps its return value.
 
 ## defineTool
 
 ```ts
-import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import { defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
-const searchDocs = defineTool<
-  { query: string; limit?: number },
-  { count: number }
->({
+const searchDocs = defineTool({
   name: 'SearchDocs',
   description: 'Search the documentation index',
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  parameters: {
-    type: 'object',
-    properties: {
-      query: { type: 'string' },
-      limit: { type: 'number' },
-    },
-    required: ['query'],
-  },
-  async *execute(params, context) {
-    context.signal?.throwIfAborted();
+  parameters: z.object({
+    query: z.string(),
+    limit: z.number().optional(),
+  }),
+  async execute(params) {
     const results = await search(params.query, params.limit ?? 10);
-    yield {
-      kind: 'progress',
-      message: 'Search completed',
-      data: { count: results.length },
-    };
-    return {
-      status: 'success',
-      model: results,
-      display: { summary: `Found ${results.length} documents` },
-      data: { count: results.length },
-    };
+    return { results, count: results.length };
   },
 });
 ```
+
+The returned JSON value becomes both `model` and `data` on the internal success
+result. Use `async *execute` and return a complete `ToolResult` when the tool
+must emit progress, messages, or effects.
 
 ### What you can omit
 
@@ -66,14 +52,12 @@ Only `name`, `description`, `parameters`, and `execute` are required:
 import { z } from 'zod';
 import { defineTool } from '@blade-ai/agent-sdk';
 
-const lookup = defineTool<{ id: string }>({
+const lookup = defineTool({
   name: 'Lookup',
   description: 'Look up one record by id',
   parameters: z.object({ id: z.string() }),
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  async *execute({ id }) {
-    return { status: 'success', model: await lookupRecord(id) };
+  async execute({ id }) {
+    return await lookupRecord(id);
   },
 });
 ```
@@ -148,7 +132,11 @@ type ToolExecution<TData extends JsonValue = JsonValue> =
   AsyncGenerator<ToolYield, ToolResult<TData>, void>;
 ```
 
-Tools that have no intermediate events must still return a generator. Use `completeToolExecution(result)` to wrap a terminal result and `collectToolExecution(execution)` when a consumer only needs the return value.
+`createTool()` and directly constructed `ToolDefinition` values must still
+return a generator. Use `completeToolExecution(result)` to wrap a terminal
+result. `defineTool()` performs that wrapping for regular async functions.
+Use `collectToolExecution(execution)` when a consumer only needs the return
+value.
 
 ## ToolResult
 
@@ -246,8 +234,9 @@ custom tool code that ignores cancellation.
 
 Permission waits are cancellation-bounded instead of time-bounded because a
 human approval may legitimately remain open. Input validation and tool-level
-permission checks receive `ExecutionContext.signal`; `permissionHandler` and
-`canUseTool` receive `request.signal`; interactive handlers receive
+permission checks receive `ExecutionContext.signal`;
+`AgentOptions.advanced.permission` and the low-level `permissionHandler`
+receive `request.signal`; interactive handlers receive
 `ConfirmationDetails.abortSignal`. The pipeline races every callback against
 that request signal. A callback should stop work when it aborts. If it ignores
 the signal, the request still cancels, but new tool calls and Session

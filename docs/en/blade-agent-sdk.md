@@ -1,6 +1,9 @@
 # Overview
 
-`@blade-ai/agent-sdk` is a session-first TypeScript framework for AI agents. It combines model providers, multi-turn state, streaming tool execution, MCP, subagents, Skills, permissions, hooks, structured output, and observability behind one Session API.
+`@blade-ai/agent-sdk` is a TypeScript framework for AI agents. Application
+code starts with the layered `createAgent()` facade; the Session core still
+owns multi-turn state, streaming tools, MCP, permissions, hooks, and
+observability.
 
 Use it for CLI assistants, IDE integrations, automation services, and conversational developer tools.
 
@@ -20,22 +23,22 @@ pnpm add @blade-ai/agent-sdk
 ## Stream a response
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createAgent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o-mini',
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
-await session.send('Explain TypeScript in three sentences');
+await agent.send('Explain TypeScript in three sentences');
 
-for await (const event of session.stream()) {
+for await (const event of agent.stream()) {
   if (event.type === 'content') {
     process.stdout.write(event.delta);
   }
 }
 
-await session.close();
+await agent.close();
 ```
 
 ## Run a one-shot prompt
@@ -55,43 +58,33 @@ console.log(result.usage);
 ## Add a custom tool
 
 ```ts
-import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk/server';
+import { createAgent, defineTool } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the current weather for a city',
-  kind: ToolKind.ReadOnly,
-  sideEffect: 'pure',
-  parameters: {
-    type: 'object',
-    properties: {
-      city: { type: 'string' },
-    },
-    required: ['city'],
-  },
-  async *execute({ city }) {
-    yield { kind: 'progress', message: `Loading weather for ${city}` };
-    return {
-      status: 'success',
-      model: `${city}: clear, 25 C`,
-      display: { summary: `Weather for ${city}` },
-    };
+  parameters: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { weather: `${city}: clear, 25 C` };
   },
 });
 
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
+  apiKey,
   tools: [weather],
 });
 ```
 
-Tool execution always returns `AsyncGenerator<ToolYield, ToolResult>`. See [Tools](./tools) for progress, effects, cancellation, and result contracts.
+`defineTool()` wraps regular async returns as internal generators. See
+[Tools](./tools) for advanced progress, effects, cancellation, and result
+contracts.
 
-## Session-first API
+## Agent facade and Session core
 
 ```text
-createSession() -> ISession
+createAgent() -> Agent (ISession)
                     |- send()
                     |- stream()
                     |- getPendingInputs() / cancelInput()
@@ -103,6 +96,9 @@ createSession() -> ISession
 ```
 
 `send()` starts work when the Session is idle. During an active request, it can steer the request with `now` or `next`, or queue an independent `later` input.
+
+Framework and runtime integrations can continue to use `createSession()` from
+`/node` or `/server`.
 
 ```ts
 const active = await session.send('Refactor the parser');

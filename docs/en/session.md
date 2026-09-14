@@ -2,6 +2,10 @@
 
 Session is the primary SDK boundary. It owns conversation state, request execution, tools, persistence, MCP connections, hooks, and runtime context.
 
+Application code should start with `createAgent()` from the root entry. This
+page documents the low-level Session API for framework and runtime
+integrations.
+
 The root and `/server` entry points use the server profile: only explicitly
 supplied tools, agents, middleware, and MCP servers are loaded. `/node` uses the
 local Node.js profile and additionally enables built-in file, search, shell, and
@@ -627,8 +631,8 @@ const session = await createSession({
   allowedTools: ['Read', 'Glob', 'Grep', 'CustomTool'],
   disallowedTools: ['Bash'],
   permissionMode: PermissionMode.DEFAULT,
-  canUseTool: async (_name, _input, options) =>
-    options.toolKind === 'readonly'
+  permissionHandler: async (request) =>
+    request.toolKind === 'readonly'
       ? { behavior: 'allow' }
       : { behavior: 'ask' },
 });
@@ -636,9 +640,8 @@ const session = await createSession({
 
 Permission and confirmation callbacks are not covered by `toolTimeoutMs`;
 interactive approval may wait indefinitely. They are instead raced against the
-active Request signal. Observe `CanUseToolOptions.signal`,
-`PermissionHandlerRequest.signal`, or `ConfirmationDetails.abortSignal` and
-stop promptly when aborted. If a callback ignores cancellation, the Session
+active Request signal. Observe `PermissionHandlerRequest.signal` or
+`ConfirmationDetails.abortSignal` and stop promptly when aborted. If a callback ignores cancellation, the Session
 retains its runtime and durable execution lease, rejects new tool work, and
 makes `close()` or `suspendForHandoff()` retryable only after that callback
 settles.
@@ -738,7 +741,8 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |
 | `permissionMode` | `PermissionMode` | Built-in approval mode |
-| `permissionHandler` / `canUseTool` | callbacks | Custom permission policy |
+| `permissionHandler` | callback | Low-level custom permission policy |
+| `canUseTool` | callback | Deprecated compatibility callback |
 | `systemPrompt` | `string` | Session system prompt |
 | `maxTurns` | `number` | Agent turn limit |
 | `agents` | `Record<string, AgentDefinition>` | Session-local subagents |

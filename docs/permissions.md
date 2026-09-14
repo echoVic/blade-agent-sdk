@@ -1,33 +1,33 @@
 # 权限控制
 
-SDK 提供多层权限机制，控制 Agent 的工具执行行为。
+新的 Agent API 只暴露 `AgentOptions.advanced.permission`，用于控制工具执行是
+允许、拒绝还是需要应用确认。
 
-## PermissionMode
+## 权限预设
 
-4 种内置权限模式：
+`permission` 支持 4 个预设：
 
-| 模式 | 值 | 说明 |
-|------|------|------|
-| 默认 | `'default'` | 写入和执行类工具需要用户确认 |
-| 自动编辑 | `'autoEdit'` | 文件编辑自动通过，命令执行仍需确认 |
-| YOLO | `'yolo'` | 自动批准非破坏性操作；破坏性操作仍需显式确认 |
-| 计划模式 | `'plan'` | 只允许只读工具 |
+| 预设 | 说明 |
+|------|------|
+| `'default'` | 写入和执行类工具需要用户确认 |
+| `'accept-edits'` | 文件编辑自动通过，命令执行仍需确认 |
+| `'bypass-permissions'` | 自动批准非破坏性操作；破坏性操作仍需显式确认 |
+| `'plan'` | 只允许只读工具 |
 
 ```ts
-import { createSession, PermissionMode } from '@blade-ai/agent-sdk';
+import { createAgent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o',
-  permissionMode: PermissionMode.AUTO_EDIT,
+  apiKey: process.env.OPENAI_API_KEY!,
+  advanced: {
+    permission: 'accept-edits',
+  },
 });
-
-// 运行时切换
-session.setPermissionMode(PermissionMode.YOLO);
 ```
 
 ::: warning
-`yolo` 只让内置 mode handler 自动批准非破坏性操作；`isDestructive` 工具、
+`bypass-permissions` 只让内置 mode handler 自动批准非破坏性操作；`isDestructive` 工具、
 工具级 `ask`、自定义 handler 的 `ask` 和敏感路径确认仍可能要求用户确认。
 它也不会绕过工具自检或路径安全策略，仍只应在受控环境中使用。
 :::
@@ -38,36 +38,33 @@ filesystem roots 和 OS sandbox。
 
 ## 自定义权限回调
 
-通过 `canUseTool` 实现完全自定义的权限逻辑：
+`permission` 也可以是回调。简单策略直接返回 `'allow'`、`'deny'` 或
+`'ask'`：
 
 ```ts
-import type { CanUseTool } from '@blade-ai/agent-sdk';
-
-const canUseTool: CanUseTool = async (toolName, input, options) => {
-  // options.toolKind: 'readonly' | 'write' | 'execute'
-  // options.sideEffect: 'pure' | 'idempotent' | 'non_idempotent'
-  // options.affectedPaths: string[]
-  // options.signal: AbortSignal
-
-  if (toolName === 'Bash' && String(input.command).includes('rm -rf')) {
-    return { behavior: 'deny', message: '禁止执行危险的删除命令' };
-  }
-
-  if (options.toolKind === 'readonly') {
-    return { behavior: 'allow' };
-  }
-
-  return { behavior: 'ask' };
-};
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+const agent = await createAgent({
   model: 'gpt-4o',
-  canUseTool,
+  apiKey: process.env.OPENAI_API_KEY!,
+  advanced: {
+    permission: async (request) => {
+      if (
+        request.toolName === 'Bash'
+        && String(request.input.command ?? '').includes('rm -rf')
+      ) {
+        return {
+          behavior: 'deny',
+          message: '禁止执行危险的删除命令',
+        };
+      }
+      return request.kind === 'readonly' ? 'allow' : 'ask';
+    },
+  },
 });
 ```
 
-## PermissionResult
+回调接收当前 Request 的 `signal`、工具 `kind`、副作用元数据和
+`affectedPaths`。需要修改输入、更新权限规则或提供拒绝原因时，可返回完整的
+`PermissionResult`：
 
 ```ts
 type PermissionResult =
@@ -84,25 +81,19 @@ type PermissionResult =
   | { behavior: 'ask'; message?: string };
 ```
 
-## CanUseToolOptions
+## 底层 Session API
 
-```ts
-interface CanUseToolOptions {
-  signal: AbortSignal;
-  toolKind: 'readonly' | 'write' | 'execute';
-  sideEffect: 'pure' | 'idempotent' | 'non_idempotent';
-  affectedPaths: string[];
-}
-```
+`createSession()` 继续提供 `permissionMode` 和 `permissionHandler`，供框架与
+运行时集成使用。`canUseTool` 只为旧集成保留，已弃用；新代码不应同时维护三套入口。
 
-该信号归属于当前 Request。SDK 会将 `canUseTool`、`permissionHandler`、工具输入
-校验、工具级权限检查和交互式确认与此信号竞速；交互式处理器通过
+权限回调中的信号归属于当前 Request。SDK 会将权限回调、工具输入校验、工具级
+权限检查和交互式确认与此信号竞速；交互式处理器通过
 `ConfirmationDetails.abortSignal` 收到同一信号。这些等待没有固定墙钟超时。
 忽略取消的回调会被持续跟踪，并阻止新的工具执行以及 Session close/handoff，
 直至其 Promise 结束。
 
-`permissionHandler` 是完整的底层权限接口，`canUseTool` 是兼容旧集成的简化接口。
-如果同时配置两者，SDK 只使用 `permissionHandler`，不会再调用 `canUseTool`。
+低层 Session 的 4 个 `PermissionMode` 值分别是 `default`、`autoEdit`、`yolo`
+和 `plan`。`session.setPermissionMode()` 仍可在运行时切换这些底层模式。
 
 ## 权限与沙箱的关系
 

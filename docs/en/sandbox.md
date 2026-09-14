@@ -119,7 +119,7 @@ The current command wrapper only consumes `allowLocalBinding`:
 | Layer | Responsibility |
 |-------|----------------|
 | Input validation and path safety | Reject invalid input and out-of-scope filesystem paths. |
-| `permissionMode` / `canUseTool` | Decide allow, deny, or ask. |
+| `advanced.permission` (low-level `permissionHandler`) | Decide allow, deny, or ask. |
 | Sandbox | Restrict the OS capabilities of an approved Bash command. |
 
 `PermissionMode.YOLO` skips interactive confirmation but does not bypass validation or path safety. It also does not make an unavailable sandbox available.
@@ -144,7 +144,7 @@ if (!sandbox.getCapabilities().available) {
 Also:
 
 1. use `allowedTools` or `disallowedTools` to control whether `Bash` is exposed;
-2. use `canUseTool` for application policy;
+2. use `AgentOptions.advanced.permission` for application policy;
 3. do not treat ignored violations or Unix socket options as enforced isolation;
 4. isolate custom tools and MCP servers separately.
 

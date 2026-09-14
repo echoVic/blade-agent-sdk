@@ -120,7 +120,7 @@ interface NetworkSandboxSettings {
 | 层 | 负责内容 |
 |----|----------|
 | 工具自检与路径安全 | 拒绝无效输入和越界文件访问 |
-| `permissionMode` / `canUseTool` | 决定 allow、deny 或 ask |
+| `advanced.permission`（底层为 `permissionHandler`） | 决定 allow、deny 或 ask |
 | Sandbox | 限制已获批 Bash 命令的 OS 能力 |
 
 `PermissionMode.YOLO` 只跳过交互式确认，不会绕过工具自检或路径安全检查。它也不会让不可用的 Sandbox 自动变为可用。
@@ -145,7 +145,7 @@ if (!sandbox.getCapabilities().available) {
 同时：
 
 1. 通过 `allowedTools` 或 `disallowedTools` 控制是否暴露 `Bash`。
-2. 使用 `canUseTool` 拒绝业务层不允许的命令。
+2. 使用 `AgentOptions.advanced.permission` 拒绝业务层不允许的命令。
 3. 不把 `ignoreViolations` 或 Unix socket 配置当作已执行的隔离规则。
 4. 对自定义工具和 MCP Server 单独做进程、容器或远端权限隔离。
 

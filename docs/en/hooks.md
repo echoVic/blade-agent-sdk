@@ -1,38 +1,50 @@
 # Hooks
 
-`SessionOptions.hooks` registers in-process callbacks that observe prompts, modify tool input or output, and block the current operation. Session does not automatically scan `.blade/hooks/` or any other file-hook directory; applications must integrate file-based hooks separately.
+The SDK has two hook systems with intentionally separate configuration surfaces:
+
+| Hook | API location | Purpose |
+|------|--------------|---------|
+| Inline hooks | `AgentOptions.advanced.hooks`; low-level `SessionOptions.hooks` | In-process TypeScript callbacks |
+| Shell hooks | `HookConfig` in CLI or host configuration | Commands launched and isolated by the host |
+
+`createAgent()` accepts inline hooks only; it does not accept `HookConfig`.
+Session does not scan `.blade/hooks/` or any other file-hook directory.
+Shell-hook discovery, loading, and process permissions belong to the CLI or
+host integration.
 
 ## Quick start
 
 ```ts
-import { createSession, HookEvent } from '@blade-ai/agent-sdk';
+import { createAgent, HookEvent } from '@blade-ai/agent-sdk';
 
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
-  hooks: {
-    [HookEvent.PreToolUse]: [
-      async (input) => {
-        console.log('Tool call', input.toolName, input.toolInput);
-        return { action: 'continue' };
-      },
-    ],
-    [HookEvent.PostToolUseFailure]: [
-      async (input) => {
-        console.error('Tool failed', input.toolName, input.error);
-        return { action: 'continue' };
-      },
-    ],
+  apiKey,
+  advanced: {
+    hooks: {
+      [HookEvent.PreToolUse]: [
+        async (input) => {
+          console.log('Tool call', input.toolName, input.toolInput);
+          return { action: 'continue' };
+        },
+      ],
+      [HookEvent.PostToolUseFailure]: [
+        async (input) => {
+          console.error('Tool failed', input.toolName, input.error);
+          return { action: 'continue' };
+        },
+      ],
+    },
   },
 });
 ```
 
 ## Session hook events
 
-The exported `HookEvent` object contains 22 events used across the SDK and file-hook protocol. `SessionOptions.hooks` accepts these eight `SessionHookEvent` values:
-
-Import the `SessionHookEvent` type from `@blade-ai/agent-sdk/session`; the root
-entry point does not currently re-export it.
+The exported `HookEvent` object contains 22 events used across the SDK and
+shell-hook protocol. `AgentOptions.advanced.hooks` and `SessionOptions.hooks`
+accept these eight `SessionHookEvent` values. The type is exported from the
+root entry point.
 
 | Event | Timing |
 |-------|--------|
@@ -76,9 +88,10 @@ the Session.
 ## Deadlines and cancellation
 
 Each inline hook event has one wall-clock budget shared by its callbacks in
-registration order. `SessionOptions.hookTimeoutMs` defaults to `600000` (10
-minutes). `SessionEnd` uses the shorter
-`SessionOptions.sessionEndHookTimeoutMs`, which defaults to `3000`.
+registration order. `AgentOptions.advanced.hookTimeoutMs` defaults to `600000`
+(10 minutes). `SessionEnd` uses the shorter
+`advanced.sessionEndHookTimeoutMs`, which defaults to `3000`. Low-level
+`SessionOptions` uses the same field names.
 
 The SDK combines the caller signal with the deadline and exposes it as
 `HookInput.abortSignal`. A deadline rejects the event with `HookTimeoutError`
@@ -196,9 +209,24 @@ hooks: {
 |-----------|---------|--------|
 | `PreToolUse` / `PostToolUse` | Observe, block, or transform tool calls | `HookOutput` |
 | `PermissionRequest` | Observe permission requests | `HookOutput` |
-| `canUseTool` | Decide allow, deny, or ask | `PermissionResult` |
+| `advanced.permission` | Decide allow, deny, or ask | String or `PermissionResult` |
 
-Use `canUseTool` for authorization policy.
+Use `advanced.permission` for authorization policy:
+
+```ts
+const agent = await createAgent({
+  model,
+  apiKey,
+  advanced: {
+    permission: async (request) =>
+      request.kind === 'readonly' ? 'allow' : 'ask',
+  },
+});
+```
+
+`SessionOptions.permissionHandler` remains the low-level runtime extension
+point. `canUseTool` is deprecated and retained only for existing Session
+integrations.
 
 ## Ordering and errors
 

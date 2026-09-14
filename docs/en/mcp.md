@@ -101,7 +101,9 @@ The OAuth authorization-code flow accepts only
 OAuth state expires after five minutes and is consumed once. Remote redirect
 hosts are not supported.
 
-`alwaysAllow` is currently retained as MCP configuration metadata. The Session permission pipeline does not automatically authorize tools from this field. Implement trusted-tool policy with `canUseTool` or `permissionHandler`.
+`alwaysAllow` is retained as MCP configuration metadata. The Agent permission
+pipeline does not automatically authorize tools from this field. Implement
+trusted-tool policy with `advanced.permission`.
 
 ## Runtime management
 
@@ -192,18 +194,13 @@ interface McpToolCallResponse {
 ## Permission policy
 
 ```ts
-const session = await createSession({
-  provider,
+const agent = await createAgent({
   model,
-  mcpServers,
-  canUseTool: async (toolName) => {
-    if (['read_file', 'list_directory'].includes(toolName)) {
-      return { behavior: 'allow' };
-    }
-    return {
-      behavior: 'ask',
-      message: `Approve MCP tool ${toolName}?`,
-    };
+  apiKey,
+  advanced: {
+    mcpServers,
+    permission: async ({ toolName }) =>
+      ['read_file', 'list_directory'].includes(toolName) ? 'allow' : 'ask',
   },
 });
 ```

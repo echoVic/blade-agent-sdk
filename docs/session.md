@@ -2,6 +2,9 @@
 
 Session 是 SDK 的核心抽象，封装了与大语言模型的多轮对话、工具调用、权限控制、会话持久化等能力。
 
+应用代码优先使用根入口的 `createAgent()`；本页描述供框架和运行时集成使用的
+底层 Session API。
+
 根入口和 `/server` 使用服务端 profile：只加载显式传入的工具、Agent、
 middleware 和 MCP。`/node` 使用本地 Node.js profile：额外启用内置文件、
 搜索、Shell、任务工具，以及本地 Agent、Skill 和附件发现。
@@ -48,7 +51,7 @@ const options: SessionOptions = {
   tools: [myCustomTool],
 
   permissionMode: PermissionMode.AUTO_EDIT,
-  canUseTool: async (toolName, input, options) => {
+  permissionHandler: async ({ toolName, input }) => {
     if (toolName === 'Bash' && String(input.command).includes('rm')) {
       return { behavior: 'deny', message: '禁止执行 rm 命令' };
     }
@@ -1197,18 +1200,16 @@ const session = await createSession({
 session.setPermissionMode(PermissionMode.YOLO);
 ```
 
-### canUseTool 回调
+### permissionHandler 回调
 
-通过 `canUseTool` 实现细粒度的运行时权限决策：
+底层 Session 集成通过 `permissionHandler` 实现细粒度的运行时权限决策。
+普通应用应改用 `AgentOptions.advanced.permission`：
 
 ```ts
-import type { CanUseTool, PermissionResult } from '@blade-ai/agent-sdk';
+import type { PermissionHandler } from '@blade-ai/agent-sdk';
 
-const canUseTool: CanUseTool = async (
-  toolName: string,
-  input: Record<string, unknown>,
-  options: { signal: AbortSignal; toolKind: string; affectedPaths: string[] }
-): Promise<PermissionResult> => {
+const permissionHandler: PermissionHandler = async (request) => {
+  const { toolName, input, affectedPaths } = request;
   if (toolName === 'Bash') {
     const command = String(input.command || '');
     if (command.includes('rm -rf') || command.includes('sudo')) {
@@ -1219,7 +1220,7 @@ const canUseTool: CanUseTool = async (
     }
   }
 
-  if (options.affectedPaths.some(p => p.includes('node_modules'))) {
+  if (affectedPaths.some((path) => path.includes('node_modules'))) {
     return {
       behavior: 'deny',
       message: '不允许修改 node_modules',
@@ -1232,7 +1233,7 @@ const canUseTool: CanUseTool = async (
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
   model: 'gpt-4o',
-  canUseTool,
+  permissionHandler,
 });
 ```
 
@@ -1246,13 +1247,15 @@ type PermissionResult =
 ```
 
 ::: tip
-`canUseTool` 的优先级低于 Hook 系统中的 `PermissionRequest` 事件。如果 Hook 已做出决策（`abort` 或 `skip`），`canUseTool` 不会被调用。
+`permissionHandler` 的优先级低于 Hook 系统中的 `PermissionRequest` 事件。如果
+Hook 已做出决策（`abort` 或 `skip`），handler 不会被调用。`canUseTool` 只为旧
+Session 集成保留，已弃用。
 :::
 
 权限和确认回调不受 `toolTimeoutMs` 限制，因为交互式人工审批可以合理地无限期
 等待。SDK 会改为将它们与当前 Request 的取消信号竞速。回调必须监听
-`CanUseToolOptions.signal`、`PermissionHandlerRequest.signal` 或
-`ConfirmationDetails.abortSignal` 并在中止后尽快退出。若回调忽略取消，Session
+`PermissionHandlerRequest.signal` 或 `ConfirmationDetails.abortSignal` 并在
+中止后尽快退出。若回调忽略取消，Session
 会保留 Runtime 和 durable execution lease、拒绝新的工具执行，并让 `close()`
 或 `suspendForHandoff()` 保持可重试失败，直至该回调结束。
 
@@ -1796,8 +1799,8 @@ async function analyzeCodeManual() {
 | `webFetch`        | `WebFetchSecurityPolicy`                                 | —  | 安全默认值      | WebFetch 主机白名单、黑名单与私网访问策略                        |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
-| `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器（比 `canUseTool` 更低级）                       |
-| `canUseTool`      | `CanUseTool`                                            | —  | —           | 运行时权限决策回调                                         |
+| `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器                                           |
+| `canUseTool`      | `CanUseTool`                                            | —  | —           | 已弃用的兼容权限回调                                        |
 | `agents`          | `Record<string, AgentDefinition>`                       | —  | —           | 命名子代理定义                                           |
 | `subagent`        | `SubagentInfo`                                          | —  | —           | 子代理上下文信息（内部使用）                                    |
 | `hooks`           | `Partial<Record<SessionHookEvent, HookCallback[]>>`     | —  | —           | 生命周期 Hook 回调                                      |
