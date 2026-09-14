@@ -2,10 +2,23 @@
 // capabilities such as builtin tools, sandboxing, and JSONL stores.
 
 // --- Agent ---
+export type {
+  Agent,
+  AgentAdvancedOptions,
+  AgentFilesystemOptions,
+  AgentOptions,
+  AgentPermission,
+  AgentPermissionDecision,
+  AgentPermissionPreset,
+  AgentPermissionRequest,
+  AgentProfile,
+  InlineHooks,
+} from './agent/createAgent.js';
+export { createAgent } from './agent/createAgent.js';
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
+export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
 export { SubagentRegistry } from './agent/subagents/SubagentRegistry.js';
-export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export type {
   SubagentColor,
   SubagentConfig,
@@ -210,6 +223,7 @@ export type {
   SessionRepositoryStorageStats,
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
+  SessionHookEvent,
   SessionStreamEvent,
   SessionTool,
   StreamOptions,
@@ -224,6 +238,7 @@ export {
   prompt,
   resumeSession,
 } from './session/index.js';
+export type { WebFetchSecurityPolicy } from './tools/builtin/web/webFetch.js';
 // --- Tool authoring primitives ---
 export type {
   ToolCatalogEntry,
@@ -235,7 +250,6 @@ export type {
 } from './tools/catalog/index.js';
 export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
-export type { WebFetchSecurityPolicy } from './tools/builtin/web/webFetch.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,
@@ -246,6 +260,7 @@ export type {
   ToolBehavior,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionInput,
   ToolDescription,
   ToolDescriptionResolver,
   ToolDisplayContent,

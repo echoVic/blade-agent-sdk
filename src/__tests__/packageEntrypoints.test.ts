@@ -133,6 +133,7 @@ describe('package entrypoints', () => {
     expect(browser.CredentialLeaseId('credential-1')).toBe('credential-1');
     expect(browser.AgentClient).toBeTypeOf('function');
     expect(browser.AGENT_PROTOCOL_VERSION).toBe(1);
+    expect(() => browser.createAgent({} as never)).toThrow(/server-only.*createAgent/);
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
     expect(() => new serverOnly.JsonlDurableEventStore()).toThrow(
@@ -187,6 +188,9 @@ describe('package entrypoints', () => {
     const otel = await import('../server/otel.js');
     const postgres = await import('../server/postgres.js');
 
+    expect(root.createAgent).toBeTypeOf('function');
+    expect(server.createAgent).toBe(root.createAgent);
+    expect(node.createAgent).toBe(root.createAgent);
     expect(server.createSession).toBe(root.createSession);
     expect(node.createSession).not.toBe(server.createSession);
     expect(server.AgentServer).toBeTypeOf('function');

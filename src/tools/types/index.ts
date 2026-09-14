@@ -72,6 +72,7 @@ export type {
   Tool,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionInput,
   ToolDescription,
   ToolDescriptionResolver,
   ToolExposureConfig,

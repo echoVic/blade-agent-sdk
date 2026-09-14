@@ -7,6 +7,7 @@ export {
   RemoteAgentSession,
 } from './AgentClient.js';
 export {
+  createAgent,
   createSession,
   forkSession,
   prompt,

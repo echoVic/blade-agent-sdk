@@ -695,6 +695,49 @@ describe('createTool', () => {
       expect(() => tool.execute({ query: 42 })).toThrow(/query/);
     });
 
+    it('wraps an async defineTool callback as a generator-backed execution', async () => {
+      const definition = defineTool({
+        name: 'AsyncWeather',
+        description: 'Get weather for a city',
+        parameters: z.object({ city: z.string() }),
+        async execute({ city }) {
+          expectTypeOf(city).toEqualTypeOf<string>();
+          return {
+            status: 'success',
+            model: `${city}: clear`,
+          };
+        },
+      });
+      const tool = toolFromDefinition(definition);
+
+      await expect(
+        collectToolExecution(tool.execute({ city: 'Tokyo' })),
+      ).resolves.toMatchObject({
+        status: 'success',
+        model: 'Tokyo: clear',
+      });
+    });
+
+    it('wraps a plain async return value as a successful tool result', async () => {
+      const definition = defineTool({
+        name: 'SimpleWeather',
+        description: 'Get weather for a city',
+        parameters: z.object({ city: z.string() }),
+        async execute({ city }) {
+          return { weather: `${city}: clear` };
+        },
+      });
+      const tool = toolFromDefinition(definition);
+
+      await expect(
+        collectToolExecution(tool.execute({ city: 'Tokyo' })),
+      ).resolves.toEqual({
+        status: 'success',
+        model: { weather: 'Tokyo: clear' },
+        data: { weather: 'Tokyo: clear' },
+      });
+    });
+
     it('keeps a JSON Schema advisory and does not validate parameters against it', async () => {
       const tool = toolFromDefinition<{ message: string }>({
         name: 'JsonSchemaTool',

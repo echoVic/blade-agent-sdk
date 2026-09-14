@@ -4,6 +4,10 @@ function serverOnly(name: string): never {
   );
 }
 
+export function createAgent(..._args: unknown[]): never {
+  return serverOnly('createAgent');
+}
+
 export function createSession(..._args: unknown[]): never {
   return serverOnly('createSession');
 }

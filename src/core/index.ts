@@ -101,6 +101,7 @@ export type {
   ToolBehavior,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionInput,
   ToolDescription,
   ToolDescriptionResolver,
   ToolDisplayContent,

@@ -4,7 +4,7 @@ import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ExecutionContext } from './execution.js';
 import type { ToolBehavior, ToolKind, ToolSideEffect } from './kind.js';
-import type { ToolExecution, ToolValidationError } from './result.js';
+import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
   name: string;
@@ -73,6 +73,16 @@ export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = 
   exposure?: ToolExposureConfig;
   execute: (params: TParams, context: ExecutionContext) => ToolExecution<TData>;
 }
+
+export type ToolDefinitionInput<TParams = JsonObject, TData extends JsonValue = JsonValue> = Omit<
+  ToolDefinition<TParams, TData>,
+  'execute'
+> & {
+  execute: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => ToolExecution<TData> | Promise<TData | ToolResult<TData>>;
+};
 
 export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams = JsonObject> {
   name: string;

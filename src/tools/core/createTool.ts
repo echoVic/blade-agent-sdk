@@ -1,17 +1,18 @@
 import type { z } from 'zod';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { ExecutionContext } from '../types/execution.js';
-import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
 import type { ToolBehavior } from '../types/kind.js';
+import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
+import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
   Tool,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionInput,
   ToolDescription,
   ToolExposureMode,
   ToolInvocation,
 } from '../types/tool.js';
-import type { ToolExecution, ToolValidationError } from '../types/result.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
@@ -397,27 +398,70 @@ function isPathLikeKey(key: string): boolean {
  * const myTool = defineTool({
  *   name: 'MyTool',
  *   description: 'A simple tool',
- *   parameters: {
- *     type: 'object',
- *     properties: {
- *       message: { type: 'string', description: 'The message' }
- *     },
- *     required: ['message']
- *   },
- *   async *execute(params, context) {
- *     return {
- *       status: 'success',
- *       model: `Received: ${params.message}`,
- *     };
+ *   parameters: z.object({ message: z.string() }),
+ *   async execute({ message }) {
+ *     return { received: message };
  *   }
  * });
  * ```
  */
+export function defineTool<TSchema extends z.ZodSchema, TData extends JsonValue = JsonValue>(
+  definition: Omit<ToolDefinitionInput<z.infer<TSchema>, TData>, 'parameters'> & {
+    parameters: TSchema;
+  },
+): ToolDefinition<z.infer<TSchema>, TData>;
 export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
-  definition: ToolDefinition<TParams, TData>,
+  definition: ToolDefinitionInput<TParams, TData>,
+): ToolDefinition<TParams, TData>;
+export function defineTool<TParams, TData extends JsonValue>(
+  definition: ToolDefinitionInput<TParams, TData>,
 ): ToolDefinition<TParams, TData> {
   if (definition.sideEffect !== undefined && !isToolSideEffect(definition.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
-  return definition;
+  return {
+    ...definition,
+    execute: (params, context) => normalizeToolExecution(definition.execute(params, context)),
+  };
+}
+
+function normalizeToolExecution<TData extends JsonValue>(
+  execution: ReturnType<ToolDefinitionInput<unknown, TData>['execute']>,
+): ToolExecution<TData> {
+  return (async function* () {
+    if (isAsyncGenerator(execution)) {
+      return yield* execution;
+    }
+    const result = await execution;
+    if (isToolResult(result)) {
+      return result;
+    }
+    return {
+      status: 'success',
+      model: result,
+      data: result,
+    };
+  })();
+}
+
+function isToolResult<TData extends JsonValue>(
+  value: TData | ToolResult<TData>,
+): value is ToolResult<TData> {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && 'status' in value
+    && 'model' in value
+    && (value.status === 'success' || value.status === 'error')
+  );
+}
+
+function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is ToolExecution<TData> {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as { next?: unknown }).next === 'function'
+    && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
+  );
 }

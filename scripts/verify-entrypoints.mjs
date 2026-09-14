@@ -83,11 +83,13 @@ const browserRootOutput = run(process.execPath, [
   [
     "const m = await import('@blade-ai/agent-sdk');",
     'console.log(m.PermissionMode.DEFAULT, typeof m.AgentClient, m.AGENT_PROTOCOL_VERSION);',
+    'try { m.createAgent({}); } catch (error) { console.log(error.message); }',
     'try { m.createSession({}); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(browserRootOutput, 'default', 'browser root import');
 assertIncludes(browserRootOutput, 'function 1', 'browser AgentClient import');
+assertIncludes(browserRootOutput, 'server-only for createAgent', 'browser root Agent facade');
 assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root stub');
 
 const browserNodeOutput = run(process.execPath, [
@@ -211,10 +213,14 @@ const profileOutput = run(process.execPath, [
     "const root = await import('@blade-ai/agent-sdk');",
     "const server = await import('@blade-ai/agent-sdk/server');",
     "const node = await import('@blade-ai/agent-sdk/node');",
-    "console.log(root.createSession === server.createSession, node.createSession === server.createSession, 'getBuiltinTools' in root, 'getBuiltinTools' in node);",
+    "console.log(typeof root.createAgent, root.createAgent === server.createAgent, root.createAgent === node.createAgent, root.createSession === server.createSession, node.createSession === server.createSession, 'getBuiltinTools' in root, 'getBuiltinTools' in node);",
   ].join(' '),
 ]);
-assertIncludes(profileOutput, 'true false false true', 'runtime profile boundaries');
+assertIncludes(
+  profileOutput,
+  'function true true true false false true',
+  'runtime profile boundaries',
+);
 
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');

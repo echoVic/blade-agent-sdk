@@ -267,7 +267,10 @@ export interface SessionOptions {
   permissionMode?: PermissionMode;
   /** Full permission callback. Takes precedence when canUseTool is also provided. */
   permissionHandler?: PermissionHandler;
-  /** Legacy permission callback, used only when permissionHandler is absent. */
+  /**
+   * @deprecated Use `permissionHandler` for low-level Sessions or
+   * `AgentOptions.advanced.permission` with `createAgent()`.
+   */
   canUseTool?: CanUseTool;
   confirmationHandler?: ConfirmationHandler;
   /** Creates a Session-bound confirmation handler after the Session ID exists. */
