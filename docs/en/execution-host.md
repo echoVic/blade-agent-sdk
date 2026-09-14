@@ -6,12 +6,12 @@ environment. Server code depends only on `provision`, `exec`, `checkpoint`,
 or remote workers.
 
 ```ts
-import type { ExecutionHost } from '@blade-ai/agent-sdk/server';
 import {
   DockerExecutionHost,
   EphemeralCredentialBroker,
+  type ExecutionHost,
   ExecutionId,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 ```
 
 `DockerExecutionHost` is the Node.js reference implementation. Every

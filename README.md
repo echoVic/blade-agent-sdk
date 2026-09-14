@@ -34,12 +34,12 @@ const agent = await createAgent({
   },
 });
 
-await agent.send('Read package.json and summarize this project in three bullets');
+const response = await agent.send(
+  'Read package.json and summarize this project in three bullets',
+);
 
-for await (const event of agent.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
+for await (const chunk of response.textStream()) {
+  process.stdout.write(chunk);
 }
 
 await agent.close();
@@ -68,9 +68,22 @@ const agent = await createAgent({
   advanced: {
     permission: 'accept-edits',
     tokenBudget: { maxTotalTokens: 100_000 },
+    skills: [
+      {
+        name: 'review',
+        description: 'Review code for correctness and risk',
+        content: 'Report findings by severity with file and line references.',
+        allowedTools: ['Read', 'Glob', 'Grep'],
+      },
+    ],
   },
 });
 ```
+
+Each `send()` returns one `AgentResponse`. Use `text()` for the complete text,
+`textStream()` for text deltas, `on(type, listener)` for selected events, or
+`stream()` for all typed events. Every view shares one underlying execution and
+can replay events already observed by another view.
 
 ## Project Starters
 
@@ -104,22 +117,24 @@ it, or use `--skip-install` to write files only.
 Framework and runtime integrations can use `createSession()` directly:
 
 ```ts
-import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
-import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
+import {
+  createSession as createNodeSession,
+  createServerSession,
+} from '@blade-ai/agent-sdk/advanced';
 ```
 
-Both entries share the Session API, the built-in tool set, and the protocol.
-They differ in where the process runs and what it may touch:
+Both profiles share the Session API and protocol. They differ in where the
+process runs and what it may touch:
 
-| | `/node` | `/server` |
-|---|---------|-----------|
+| | `local` | `server` |
+|---|---------|----------|
 | Local file and Shell tools | Available once a `filesystem` capability is configured | Same tools, but the server profile omits environment, Skill, and subagent discovery |
 | `storagePath` | Backed by local JSONL persistence | Throws `ConfigError`: server Sessions need `sessionRepository` and `sessionEventStore` |
 | Default persistence | Local JSONL when `storagePath` is set | In memory unless you inject a repository |
 | Context and Skill discovery | Enabled | Disabled (`localDiscovery` is off) |
 
-Start with `/node` for a local agent or CLI. Use `/server` when the runtime is
-a shared multi-tenant service and you inject storage explicitly.
+Use the local profile for a local agent or CLI. Use the server profile when the
+runtime is a shared multi-tenant service and storage is injected explicitly.
 
 ## Core Capabilities
 
@@ -214,30 +229,31 @@ accepted by `createAgent()`. The low-level `SessionOptions.permissionMode` and
 
 ```ts
 import { createAgent, defineTool } from '@blade-ai/agent-sdk';
-import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
-import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
-import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
+import {
+  createSession,
+  createServerSession,
+  DockerExecutionHost,
+  type SessionRunner,
+} from '@blade-ai/agent-sdk/advanced';
+import {
+  AgentServer,
+  AgentWorker,
+} from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
-import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
-import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
-import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
-- Root: the default `createAgent` and tool-authoring API
-- `/server`: low-level server Sessions and `AgentServer` with an injectable `SessionExecutor`
-- `/server/postgres`: shared PostgreSQL Runtime Store for commands, events, effects, projections, worker leases, routing, transcripts, and durable journals
-- `/server/otel`: OpenTelemetry metrics, traces, and audit adapter
-- `/server/testing`: framework-independent Runtime Store conformance suite
-- `/node`: Node.js runtimes with local host access; enables file, search, shell, and task tools plus local agent/Skill discovery, and exports Node host adapters
-- `/browser`: browser-safe `AgentClient`, protocol view, and explicit server-only execution stubs
-- `/protocol`: browser-safe versioned command/event contracts and strict parsers
-- `/core`: browser-safe contracts, constants, and types
-- `/tools`: browser-safe tool authoring primitives
-- `/middleware`: browser-safe middleware and plugin contracts
-- `/model`: browser-safe provider-neutral model contracts, messages, configuration, and usage
-- `/session`: lower-level server Session API
+- Root: `createAgent`, `defineTool`, middleware, model contracts, constants, and public types
+- `/browser`: browser-safe `AgentClient`, protocol contracts, and event parsers
+- `/server/infra`: `AgentServer`, `AgentWorker`, Runtime Store contracts, and conformance suites
+- `/advanced`: low-level local/server Sessions, `SessionRunner`, execution hosts, and Node adapters
+
+The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
+`/tools`, `/protocol`, and `/server/testing` paths remain deprecated
+compatibility aliases until Phase 3. Optional PostgreSQL and OpenTelemetry
+adapters retain `/server/postgres` and `/server/otel` so importing
+`/server/infra` does not require their peer dependencies.
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
@@ -255,8 +271,8 @@ PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node enhanc
 are opt-in peers:
 
 ```bash
-pnpm add pg                         # /server/postgres
-pnpm add @opentelemetry/api         # /server/otel
+pnpm add pg                         # PostgresRuntimeStore from /server/postgres
+pnpm add @opentelemetry/api         # telemetry adapters from /server/otel
 pnpm add @ai-sdk/anthropic          # provider: anthropic
 pnpm add fs-native-extensions        # cross-process Node JSONL locks
 ```
@@ -285,8 +301,8 @@ const agent = await createAgent({
 });
 ```
 
-The low-level root `createSession()` and `/server` entry never interpret
-`storagePath` as local persistence. Server applications must inject
+The low-level `createServerSession()` never interprets `storagePath` as local
+persistence. Server applications must inject
 `sessionRepository` plus `sessionEventStore`, or configure one shared
 `runtimeStore`. See
 [Server Runtime](./docs/en/server-runtime.md) for the HTTP/SSE server,

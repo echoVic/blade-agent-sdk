@@ -24,7 +24,7 @@ module.
 
 ## Model boundary
 
-The model layer is exported from `@blade-ai/agent-sdk/model`. It does not depend
+The model layer is exported from `@blade-ai/agent-sdk`. It does not depend
 on Session, local Node.js capabilities, or a concrete provider SDK.
 
 ```ts
@@ -36,7 +36,7 @@ import type {
   ModelToolDefinition,
   ModelUsage,
   ProviderConnectionConfig,
-} from '@blade-ai/agent-sdk/model';
+} from '@blade-ai/agent-sdk';
 ```
 
 Configuration types have distinct responsibilities:
@@ -160,11 +160,13 @@ model-facing function declarations use `ModelToolDefinition`.
 - Source modules import owner files directly to avoid root-barrel cycles.
 - Barrels use explicit exports to describe public contracts instead of broad
   `export *` aggregation of domain types.
-- `/model`, `/protocol`, `/tools`, `/middleware`, and `/core` remain
-  browser-safe.
-- Filesystem, shell, process, and local host adapters are exported only by
-  `/node`.
-- `/server` never acquires implicit host capabilities.
+- The root entry assembles application APIs and public types; `/browser`
+  remains browser-safe.
+- Filesystem, shell, process, low-level Session, and integration APIs are
+  exported by `/advanced`.
+- `AgentServer`, Workers, Runtime Stores, and telemetry adapters are exported
+  by `/server/infra`.
+- Legacy subpaths are deprecated compatibility aliases and receive no new API.
 - Compile-time assertion helpers are internal and are not part of the npm API.
 
 ## Change checklist

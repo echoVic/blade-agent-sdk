@@ -15,7 +15,7 @@ import {
   createSession,
   PermissionMode,
   getSandboxService,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 
 const sandbox = getSandboxService();
 sandbox.configure({
@@ -35,7 +35,7 @@ const session = await createSession({
 });
 ```
 
-Sandbox 与内置 `Bash` 属于本地 Node.js 宿主能力，因此从 `/node` 入口导入。
+Sandbox 与内置 `Bash` 属于本地 Node.js 宿主能力，因此从 `/advanced` 导入。
 
 ## SandboxSettings
 
@@ -64,7 +64,7 @@ interface SandboxSettings {
 ## 能力检测
 
 ```ts
-import { getSandboxService } from '@blade-ai/agent-sdk/node';
+import { getSandboxService } from '@blade-ai/agent-sdk/advanced';
 
 const capabilities = getSandboxService().getCapabilities();
 

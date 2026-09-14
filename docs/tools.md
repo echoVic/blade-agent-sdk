@@ -129,7 +129,7 @@ function getBuiltinTools(opts?: {
 }): Promise<Tool[]>
 ```
 
-`getBuiltinTools()` 仅从 `/node` 导出；`/node` Session 会自动注册 Coding
+`getBuiltinTools()` 从 `/advanced` 导出；其 local Session 会自动注册 Coding
 Agent 工具集合。`MemoryRead` 和 `MemoryWrite` 默认不会注册，只有在显式传入
 `memoryManager` 时才会加入集合。
 直接调用返回工具的 `execute()` 会绕过 `ExecutionPipeline`。已有文件的
@@ -142,7 +142,7 @@ import {
   MemoryManager,
   SubagentRegistry,
   getBuiltinTools,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 
 const tools = await getBuiltinTools({
   memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),

@@ -5,9 +5,9 @@ Session 是 SDK 的核心抽象，封装了与大语言模型的多轮对话、�
 应用代码优先使用根入口的 `createAgent()`；本页描述供框架和运行时集成使用的
 底层 Session API。
 
-根入口和 `/server` 使用服务端 profile：只加载显式传入的工具、Agent、
-middleware 和 MCP。`/node` 使用本地 Node.js profile：额外启用内置文件、
-搜索、Shell、任务工具，以及本地 Agent、Skill 和附件发现。
+`/advanced` 同时提供两种低层工厂：`createSession()` 使用 local profile，
+额外启用内置文件、搜索、Shell、任务工具以及本地 Agent、Skill 和附件发现；
+`createServerSession()` 使用 server profile，只加载显式传入的能力。
 
 ## 创建会话
 
@@ -20,7 +20,7 @@ function createSession(options: SessionOptions): Promise<ISession>
 ### 最小示例
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
@@ -31,8 +31,8 @@ const session = await createSession({
 ### 完整配置示例
 
 ```ts
-import { createSession, PermissionMode } from '@blade-ai/agent-sdk/node';
-import type { SessionOptions, ToolDefinition } from '@blade-ai/agent-sdk/node';
+import { createSession, PermissionMode } from '@blade-ai/agent-sdk/advanced';
+import type { SessionOptions, ToolDefinition } from '@blade-ai/agent-sdk/advanced';
 
 const options: SessionOptions = {
   provider: {
@@ -374,7 +374,7 @@ type SessionStreamEvent =
 ### 常用 Stream 事件处理示例
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
@@ -530,7 +530,7 @@ interface TokenUsage {
 ### 基本用法
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/node';
+import { prompt } from '@blade-ai/agent-sdk/advanced';
 
 const result = await prompt('列出当前目录下所有 TypeScript 文件', {
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
@@ -682,7 +682,7 @@ Turn、模型、权限及工具生命周期做可恢复协调时，应配置 `du
 import {
   createSession,
 } from '@blade-ai/agent-sdk';
-import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({
@@ -1185,7 +1185,7 @@ type PermissionMode = 'default' | 'autoEdit' | 'yolo' | 'plan';
 ### 在创建会话时设置
 
 ```ts
-import { createSession, PermissionMode } from '@blade-ai/agent-sdk/node';
+import { createSession, PermissionMode } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
@@ -1520,7 +1520,7 @@ import {
   WorkerId,
   createSession,
 } from '@blade-ai/agent-sdk';
-import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({

@@ -3,7 +3,7 @@
 ## Multi-turn conversation
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({ provider, model });
 
@@ -209,8 +209,8 @@ import {
   createMemoryWriteTool,
   FileSystemMemoryStore,
   MemoryManager,
-} from '@blade-ai/agent-sdk/node';
-import { createSession } from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/advanced';
+import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
 
 const manager = new MemoryManager(
   new FileSystemMemoryStore('/var/lib/my-agent/memory'),
@@ -276,8 +276,8 @@ const session = await createSession({
 import {
   createSdkMcpServer,
   tool,
-} from '@blade-ai/agent-sdk/node';
-import { createSession } from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/advanced';
+import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
 import { z } from 'zod';
 
 const analyzeDependencies = tool(

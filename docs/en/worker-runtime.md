@@ -14,12 +14,10 @@ execution loop. A `SessionRunner` executes one already-fenced Session:
 ```ts
 import {
   AgentWorker,
-  SdkSessionRunner,
-} from '@blade-ai/agent-sdk/server';
-import {
-  PostgresRuntimeStore,
-} from '@blade-ai/agent-sdk/server/postgres';
-import { WorkerId } from '@blade-ai/agent-sdk/core';
+} from '@blade-ai/agent-sdk/server/infra';
+import { SdkSessionRunner } from '@blade-ai/agent-sdk/advanced';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
+import { WorkerId } from '@blade-ai/agent-sdk';
 
 const store = new PostgresRuntimeStore({
   connectionString: process.env.DATABASE_URL!,
@@ -115,9 +113,7 @@ import {
   SessionId,
   WorkerId,
 } from '@blade-ai/agent-sdk';
-import {
-  PostgresRuntimeStore,
-} from '@blade-ai/agent-sdk/server/postgres';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 
 const store = new PostgresRuntimeStore({
   connectionString: process.env.DATABASE_URL!,
@@ -225,8 +221,8 @@ by another worker fail closed.
 
 ### Runner results and finalization
 
-`SessionRunner.run()` returns a `SessionRunResult`, which is exported from the
-`/server` entry together with `SessionRunner` and `SessionRunnerContext`:
+`SessionRunner.run()` returns a `SessionRunResult`, which is exported from
+`/advanced` together with `SessionRunner` and `SessionRunnerContext`:
 
 ```ts
 type SessionRunResult =
@@ -254,7 +250,7 @@ Effects support two execution modes:
   effect enters `executing`, it is never retried automatically.
 
 ```ts
-import { EffectDispatcher } from '@blade-ai/agent-sdk/server';
+import { EffectDispatcher } from '@blade-ai/agent-sdk/advanced';
 
 await store.commitRuntimeTransaction({
   tenantId,
@@ -339,7 +335,7 @@ authorization and is scoped to the tenant returned by that callback:
 ```ts
 import {
   AgentRuntimeOperations,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 
 const operations = new AgentRuntimeOperations({
   store,

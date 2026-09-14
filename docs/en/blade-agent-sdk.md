@@ -30,12 +30,10 @@ const agent = await createAgent({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-await agent.send('Explain TypeScript in three sentences');
+const response = await agent.send('Explain TypeScript in three sentences');
 
-for await (const event of agent.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
+for await (const chunk of response.textStream()) {
+  process.stdout.write(chunk);
 }
 
 await agent.close();
@@ -44,7 +42,7 @@ await agent.close();
 ## Run a one-shot prompt
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/server';
+import { promptServer as prompt } from '@blade-ai/agent-sdk/advanced';
 
 const result = await prompt('Summarize this API', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -84,21 +82,23 @@ contracts.
 ## Agent facade and Session core
 
 ```text
-createAgent() -> Agent (ISession)
-                    |- send()
-                    |- stream()
-                    |- getPendingInputs() / cancelInput()
-                    |- abort() / close()
-                    |- fork()
-                    |- setModel() / setPermissionMode()
-                    |- mcpConnect() / mcpDisconnect()
-                    `- getLastTrace() / getTraces()
+createAgent() -> Agent
+                  |- send() -> AgentResponse
+                  |            |- text()
+                  |            |- textStream()
+                  |            |- on()
+                  |            `- stream()
+                  |- abort() / close()
+                  |- fork()
+                  `- model / MCP / trace controls
 ```
 
-`send()` starts work when the Session is idle. During an active request, it can steer the request with `now` or `next`, or queue an independent `later` input.
+Each high-level `send()` returns one replayable response backed by a single
+Session stream. Use a low-level Session for steering with `now` or `next`, or
+for queuing an independent `later` input.
 
-Framework and runtime integrations can continue to use `createSession()` from
-`/node` or `/server`.
+Framework and runtime integrations can use local `createSession()` or explicit
+`createServerSession()` from `/advanced`.
 
 ```ts
 const active = await session.send('Refactor the parser');

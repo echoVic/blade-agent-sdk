@@ -1,7 +1,7 @@
 # Providers and Logging
 
 Provider-neutral message, configuration, service, retry, and usage contracts
-are available from `@blade-ai/agent-sdk/model`. This browser-safe entry point
+are available from `@blade-ai/agent-sdk`. This browser-safe entry point
 does not load a concrete provider SDK.
 
 ## Supported providers

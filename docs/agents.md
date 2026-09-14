@@ -2,7 +2,7 @@
 
 Session 支持配置子 Agent，用于任务分解和并行执行。
 
-内置 `Task` 工具与本地 Agent 发现只在 `/node` 本地运行时中默认启用。
+内置 `Task` 工具与本地 Agent 发现只在 `/advanced` 的 local Session 中默认启用。
 服务端 profile 不做隐式发现；服务端应用应把分析能力建模为显式工具或插件。
 
 ## 内置子 Agent
@@ -28,7 +28,7 @@ Explore 和 Plan 子 Agent 会在内部省略环境上下文，以节省 token�
 - `verification` 这类代码审查 agent 属于应用层决策，需要消费者自己注册
 
 ```ts
-import { createSession, type AgentDefinition } from '@blade-ai/agent-sdk/node';
+import { createSession, type AgentDefinition } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },

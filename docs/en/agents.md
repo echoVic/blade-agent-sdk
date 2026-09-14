@@ -3,7 +3,7 @@
 A Session has its own `SubagentRegistry`. Subagents can isolate context, restrict tools, select a model, and run work in the foreground or background.
 
 The built-in `Task` tool and local agent discovery are enabled by default only
-through the `/node` local runtime profile. Server applications should expose
+through the `/advanced` local Session profile. Server applications should expose
 required capabilities as explicit tools or plugins.
 
 ## Built-in agents
@@ -19,7 +19,7 @@ Explore and Plan omit environment context internally to save tokens. That intern
 ## Define a Session-local agent
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider,

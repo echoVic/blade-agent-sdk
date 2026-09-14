@@ -8,12 +8,11 @@ SSE event stream。浏览器通过 `AgentClient` 调用，不直接加载模型 
 
 | 入口 | 职责 |
 |------|------|
-| `@blade-ai/agent-sdk/server` | `AgentServer`、控制面 Store、租户准入和遥测 |
-| `@blade-ai/agent-sdk/browser` | `AgentClient`、`RemoteAgentSession` 和协议类型 |
-| `@blade-ai/agent-sdk/protocol` | browser-safe command/event schema、解析器和错误 |
-| `@blade-ai/agent-sdk/node` | 本机 JSONL repository、文件、Shell、Sandbox 等 Node adapter |
+| `@blade-ai/agent-sdk/server/infra` | `AgentServer`、Worker、Store、租户准入和遥测 |
+| `@blade-ai/agent-sdk/browser` | `AgentClient`、协议 schema、解析器和错误 |
+| `@blade-ai/agent-sdk/advanced` | 底层 Session、本机 JSONL、文件、Shell 与 Sandbox adapter |
 
-`/server` 不会根据 `storagePath` 隐式访问本机文件。需要恢复 Session 时，宿主必须
+server profile 不会根据 `storagePath` 隐式访问本机文件。需要恢复 Session 时，宿主必须
 显式传入 `sessionRepository` 和 `sessionEventStore`，或提供一个
 `runtimeStore`；`requirePersistentSessions: true` 会使不完整配置 fail-closed。
 
@@ -26,11 +25,11 @@ OpenTelemetry adapter 是按需 peer；使用时先安装
 import {
   AgentServer,
   type AgentPrincipal,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 import {
   OpenTelemetryAgentServerTelemetry,
 } from '@blade-ai/agent-sdk/server/otel';
-import { JsonlSessionRepository } from '@blade-ai/agent-sdk/node';
+import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
 
@@ -96,7 +95,7 @@ import {
   AgentServer,
   InProcessSessionExecutor,
   InMemoryAgentServerStore,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 
 const store = new InMemoryAgentServerStore();
 const executor = new InProcessSessionExecutor({

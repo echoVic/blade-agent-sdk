@@ -1,6 +1,34 @@
 # Skills
 
-Skills are reusable instruction packages stored in a directory with a `SKILL.md` file and optional assets.
+Skills are reusable instruction packages. Applications can provide them as
+data through `advanced.skills`, while the local profile can also discover
+`SKILL.md` files.
+
+## Data-defined Skills
+
+A data-defined Skill belongs to one Agent. It is not written to disk or shared
+with other Agents in the process:
+
+```ts
+const agent = await createAgent({
+  model,
+  apiKey,
+  advanced: {
+    skills: [
+      {
+        name: 'code-review',
+        description: 'Review code for correctness, risk, and missing tests',
+        content: 'Report findings by severity with file and line references.',
+        allowedTools: ['Read', 'Glob', 'Grep'],
+      },
+    ],
+  },
+});
+```
+
+Explicit Skills take precedence over user, project, bundled, plugin, and MCP
+sources, but not managed sources. Data Skills have no file assets and deny
+inline shell commands and shell hooks by default.
 
 ## Project layout
 
@@ -16,18 +44,15 @@ When a Session has a filesystem `cwd`, project Skills are discovered under:
     templates/
 ```
 
-The public `SessionOptions` API does not currently expose user-level directories or additional Skill sources. Applications that need those sources must integrate discovery explicitly.
+The local Session profile discovers this directory automatically. The server
+profile performs no implicit filesystem discovery but still loads
+`advanced.skills`.
 
 ::: warning Multiple workspaces
-The Skill registry caches discovery per configuration. The cache identity is the
-full configuration: `cwd`, user and project directories, every additional source
-and its `trustLevel`, `shellPolicy`, and `hookPolicy`. Two callers with the same
-configuration share one registry, so they see a stable view of the same
-discovery; two callers with different execution policies for the same directory
-receive separate registries, and the first caller's policy never applies to the
-second caller's executions. Do not assume separate Skill directories for
-Sessions with different `cwd` values in one process; use process isolation when
-that boundary is required.
+Each Session owns a private Skill registry, so data Skills and discovery results
+do not leak across Sessions. Direct `getSkillRegistry()` calls still cache by
+the complete configuration: `cwd`, directories, data Skills, and every source's
+trust and execution policy.
 :::
 
 ## Patch scope and temporary Skills
@@ -119,9 +144,9 @@ The Skill receives an asset manifest so its instructions can refer to these file
 
 ## Activation
 
-1. Session discovers project Skill metadata.
+1. Session registers data Skills and discovers local Skill metadata.
 2. The built-in `Skill` tool exposes eligible entries to the model.
-3. Full instructions are loaded only when selected.
+3. Data content or full file instructions are loaded only when selected.
 4. Runtime effects are applied at the declared scope.
 5. The Agent follows the instructions and uses allowed assets.
 

@@ -22,7 +22,7 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 
 ## Model 边界
 
-模型层从 `@blade-ai/agent-sdk/model` 导出，且不依赖 Session、Node 本地能力或
+模型层从 `@blade-ai/agent-sdk` 导出，且不依赖 Session、Node 本地能力或
 具体 Provider SDK。
 
 ```ts
@@ -34,7 +34,7 @@ import type {
   ModelToolDefinition,
   ModelUsage,
   ProviderConnectionConfig,
-} from '@blade-ai/agent-sdk/model';
+} from '@blade-ai/agent-sdk';
 ```
 
 配置类型按职责区分：
@@ -151,10 +151,10 @@ Catalog 和 Registry 不通过 `as unknown as Tool` 擦除工具参数类型。�
 
 - 源码内部优先直接导入所有者文件，避免通过根 barrel 形成循环依赖。
 - barrel 使用显式导出表达公开契约，不使用大范围 `export *` 聚合业务类型。
-- `/model`、`/protocol`、`/tools`、`/middleware` 和 `/core` 必须保持
-  browser-safe。
-- 本地文件系统、Shell、进程和本机 adapter 只从 `/node` 导出。
-- `/server` 不隐式获得宿主机能力。
+- 根入口汇总应用侧 API 与公共类型；`/browser` 保持 browser-safe。
+- 本地文件系统、Shell、进程、底层 Session 和集成扩展从 `/advanced` 导出。
+- `AgentServer`、Worker、Runtime Store 和遥测 adapter 从 `/server/infra` 导出。
+- 旧 subpath 仅作为 deprecated compatibility alias，不承载新的公开契约。
 - 类型级测试辅助仅供源码内部使用，不属于 npm 公共 API。
 
 ## 变更检查

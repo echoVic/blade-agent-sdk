@@ -5,12 +5,12 @@
 虚拟机或远程 worker 的具体实现。
 
 ```ts
-import type { ExecutionHost } from '@blade-ai/agent-sdk/server';
 import {
   DockerExecutionHost,
   EphemeralCredentialBroker,
+  type ExecutionHost,
   ExecutionId,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 ```
 
 `DockerExecutionHost` 是 Node.js 参考实现。每次 provision 都创建独立临时目录、

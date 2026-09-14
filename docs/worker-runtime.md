@@ -13,12 +13,10 @@ fencing 的 Session：
 ```ts
 import {
   AgentWorker,
-  SdkSessionRunner,
-} from '@blade-ai/agent-sdk/server';
-import {
-  PostgresRuntimeStore,
-} from '@blade-ai/agent-sdk/server/postgres';
-import { WorkerId } from '@blade-ai/agent-sdk/core';
+} from '@blade-ai/agent-sdk/server/infra';
+import { SdkSessionRunner } from '@blade-ai/agent-sdk/advanced';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
+import { WorkerId } from '@blade-ai/agent-sdk';
 
 const store = new PostgresRuntimeStore({
   connectionString: process.env.DATABASE_URL!,
@@ -106,9 +104,7 @@ import {
   SessionId,
   WorkerId,
 } from '@blade-ai/agent-sdk';
-import {
-  PostgresRuntimeStore,
-} from '@blade-ai/agent-sdk/server/postgres';
+import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 
 const store = new PostgresRuntimeStore({
   connectionString: process.env.DATABASE_URL!,
@@ -211,7 +207,7 @@ const session = await resumeSession({
 
 ### Runner 返回结果与 finalize
 
-`SessionRunner.run()` 返回 `SessionRunResult`；`/server` 入口同时导出
+`SessionRunner.run()` 返回 `SessionRunResult`；`/advanced` 同时导出
 `SessionRunner`、`SessionRunnerContext` 与 `SessionRunResult`：
 
 ```ts
@@ -237,7 +233,7 @@ effect 有两种执行模式：
   重试。
 
 ```ts
-import { EffectDispatcher } from '@blade-ai/agent-sdk/server';
+import { EffectDispatcher } from '@blade-ai/agent-sdk/advanced';
 
 await store.commitRuntimeTransaction({
   tenantId,
@@ -316,7 +312,7 @@ tenant：
 ```ts
 import {
   AgentRuntimeOperations,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 
 const operations = new AgentRuntimeOperations({
   store,

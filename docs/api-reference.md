@@ -1,13 +1,13 @@
 # API 参考
 
 `@blade-ai/agent-sdk` 根包提供默认的 `createAgent()` 接触面，并采用服务端安全
-默认值；传入 `filesystem` 时自动选择 local profile。框架集成可继续使用
-`/node` 与 `/server` 的底层 Session API。浏览器端应优先从 `/browser` 或
-`/core` 导入类型、协议和常量；误调用 server-only API 时会抛出清晰错误。
+默认值；传入 `filesystem` 时自动选择 local profile。框架集成从 `/advanced`
+使用底层 Session API。浏览器端从 `/browser` 导入客户端、协议和常量；
+服务端部署组件统一从 `/server/infra` 导入。
 
-`/server` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
+`/server/infra` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
 OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
-`/server` 不再静态加载对应 adapter。部分依赖仍可能由基础依赖间接安装。
+部分依赖仍可能由基础依赖间接安装。
 
 包还提供 `create-blade-agent` 可执行文件。它通过
 `--preset <local|web|production>` 选择生成项目的拓扑，`--verify` 负责安装后
@@ -19,18 +19,14 @@ package export；通过 npm bin 调用。
 | 入口 | 运行环境 | 说明 |
 |------|---------|------|
 | `@blade-ai/agent-sdk` | Node.js | 默认 `createAgent`、工具定义和公共类型入口 |
-| `@blade-ai/agent-sdk/server` | Node.js server | 无隐式本机访问的底层 Session 入口 |
-| `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
-| `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metric、trace 与 audit adapter |
-| `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
-| `@blade-ai/agent-sdk/node` | Node.js local process | 具备本机访问能力的入口；默认启用本地工具和工作区发现，并导出 Node 宿主适配器 |
-| `@blade-ai/agent-sdk/session` | Node.js server | 底层 Session API 子入口，采用 server profile |
-| `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
-| `@blade-ai/agent-sdk/browser` | Browser | `AgentClient`、协议类型、Browser-safe 常量和 server-only stub |
-| `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | 版本化 command/event schema、解析器和协议错误 |
-| `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
-| `@blade-ai/agent-sdk/middleware` | Browser-safe / Node | 洋葱组合器、模型/工具 middleware 与插件定义 |
-| `@blade-ai/agent-sdk/model` | Browser-safe / Node | Provider 无关的模型配置、消息、服务、重试与用量契约 |
+| `@blade-ai/agent-sdk/browser` | Browser-safe / Node | `AgentClient`、协议 schema、解析器、事件和常量 |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker、Runtime Store 契约与 conformance suite |
+| `@blade-ai/agent-sdk/advanced` | Node.js | local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter |
+
+旧 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
+`/tools`、`/protocol` 和 `/server/testing` 属于 deprecated compatibility
+alias。可选 PostgreSQL 与 OTel adapter 保留 `/server/postgres` 和
+`/server/otel`，避免 canonical 入口强制加载 peer dependency。
 
 ## 函数
 
@@ -47,11 +43,11 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `defineTool` | tools | 定义工具（简单模式） |
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
-| `getBuiltinTools` | node | 获取内置 Node 本地工具 |
-| `createMemoryReadTool` | node | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | node | 创建 opt-in MemoryWrite 工具 |
-| `tool` | node | 定义 MCP 工具 |
-| `createSdkMcpServer` | node | 创建进程内 MCP Server |
+| `getBuiltinTools` | advanced | 获取内置 Node 本地工具 |
+| `createMemoryReadTool` | advanced | 创建 opt-in MemoryRead 工具 |
+| `createMemoryWriteTool` | advanced | 创建 opt-in MemoryWrite 工具 |
+| `tool` | advanced | 定义 MCP 工具 |
+| `createSdkMcpServer` | advanced | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
 | `mergeContext` | runtime | 合并上下文 |
 | `hasFilesystemCapability` | runtime | 检查文件系统能力 |
@@ -74,8 +70,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 名称 | 来源 | 说明 |
 |------|------|------|
 | `ToolCatalog` | tools/catalog | 工具目录，管理来源追踪、信任分级和策略过滤 |
-| `FileSystemMemoryStore` | node | 文件系统 memory 适配器 |
-| `MemoryManager` | node | memory 编排层 |
+| `FileSystemMemoryStore` | advanced | 文件系统 memory 适配器 |
+| `MemoryManager` | advanced | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `AgentSessionRepository` | subagents | 子 Agent 会话的存储能力接口，可注入数据库实现以获得跨机恢复 |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
@@ -83,23 +79,23 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
 | `isDurableExecutionLeaseStore` | durable events | 检查 Store 是否实现完整 execution lease 协议 |
 | `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
-| `JsonlDurableEventStore` | node | 支持同机多进程锁的 Node.js durable event JSONL adapter |
+| `JsonlDurableEventStore` | advanced | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
-| `AgentServer` | server | 多租户 command 调度、Session 管理和 Fetch-compatible HTTP/SSE transport |
-| `InProcessSessionExecutor` | server | `SessionExecutor` 的进程内参考实现，负责 Session 生命周期与 stream pump |
-| `SdkSessionRunner` | server | 在 worker fencing 下恢复并执行 durable SDK Session |
-| `ExecutionHostSessionRunner` | server | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
-| `AgentWorker` | server | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
-| `AgentRuntimeOperations` | server | 受鉴权的 runtime health、queue metrics 与 uncertain effect reconciliation |
-| `EffectDispatcher` | server | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
+| `AgentServer` | server/infra | 多租户 command 调度、Session 管理和 Fetch-compatible HTTP/SSE transport |
+| `InProcessSessionExecutor` | server/infra | `SessionExecutor` 的进程内参考实现，负责 Session 生命周期与 stream pump |
+| `SdkSessionRunner` | advanced | 在 worker fencing 下恢复并执行 durable SDK Session |
+| `ExecutionHostSessionRunner` | advanced | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
+| `AgentWorker` | server/infra | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
+| `AgentRuntimeOperations` | server/infra | 受鉴权的 runtime health、queue metrics 与 uncertain effect reconciliation |
+| `EffectDispatcher` | advanced | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
-| `InMemoryAgentServerStore` | server | 单进程控制面参考 Store；不用于多实例生产部署 |
+| `InMemoryAgentServerStore` | server/infra | 单进程控制面参考 Store；不用于多实例生产部署 |
 | `PostgresRuntimeStore` | server/postgres | 共享 command、event、outbox、projection 和 Session persistence |
-| `RuntimeStoreError` | server | Runtime transaction 的稳定错误类型 |
-| `TenantAdmissionController` | server | 每 tenant 并发、队列和固定窗口限流 |
+| `RuntimeStoreError` | server/infra | Runtime transaction 的稳定错误类型 |
+| `TenantAdmissionController` | server/infra | 每 tenant 并发、队列和固定窗口限流 |
 | `OpenTelemetryAgentServerTelemetry` | server/otel | 默认不采集 payload 的 metric、trace 与 audit adapter |
 | `OpenTelemetryAgentWorkerTelemetry` | server/otel | 默认不采集 payload 的 Worker readiness、吞吐、恢复和 effect metric adapter |
-| `JsonlSessionRepository` | node | Node.js transcript repository |
+| `JsonlSessionRepository` | advanced | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
@@ -122,7 +118,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
-| `Agent` | `createAgent()` 返回的会话能力接口 |
+| `Agent` | `createAgent()` 返回的高层 Agent 接口 |
+| `AgentResponse` | 单次 `send()` 的共享响应，提供 `text()` / `textStream()` / `on()` / `stream()` |
+| `AgentResponseEvent` / `AgentResponseEventType` / `AgentResponseListener` | 按事件类型收窄的回调类型 |
+| `AgentResponseSubmission` | Response 对应的 started input submission |
 | `AgentOptions` | 必需字段、常用字段和 `advanced` 三层配置 |
 | `AgentAdvancedOptions` | 基础设施、策略和低频配置 |
 | `AgentProfile` | `'local'` 或 `'server'` |
@@ -130,6 +129,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `AgentPermission` / `AgentPermissionPreset` | 单一权限字段及其预设 |
 | `AgentPermissionRequest` / `AgentPermissionDecision` | 自定义权限回调契约 |
 | `InlineHooks` / `SessionHookEvent` | 进程内 callback hook 契约 |
+| `SkillDefinition` | `advanced.skills` 接受的 Session 私有数据 Skill |
+| `SkillActivationContext` / `SkillMetadata` / `SkillRegistryConfig` | Skill 发现、过滤与 registry 配置类型 |
 
 ### Session
 
@@ -221,7 +222,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `EphemeralCredentialBroker` | TTL 校验、失败回滚和自动撤销的参考 broker |
 | `ExecutionHostError` / `ExecutionHostErrorCode` | 稳定的执行边界错误 |
 | `ExecutionId` / `ExecutionCheckpointId` / `CredentialLeaseId` | 执行、checkpoint 和凭据 lease 的 branded ID |
-| `DockerExecutionHost` / `DockerExecutionHostOptions` | `/node` 导出的 Docker 参考实现 |
+| `DockerExecutionHost` / `DockerExecutionHostOptions` | `/advanced` 导出的 Docker 参考实现 |
 
 ### Durable Events
 
@@ -385,7 +386,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `resolveModelIdentity` | 从规范化配置解析模型身份 |
 | `normalizeModelUsage` | 把 Provider usage 转成 Agent/Session 用量 |
 
-上述 Provider 无关契约可从 `@blade-ai/agent-sdk/model` 单独导入。类型所有权和
+上述 Provider 无关契约可从 `@blade-ai/agent-sdk` 单独导入。类型所有权和
 边界转换规则见[类型架构](./type-architecture)。
 
 ### MCP

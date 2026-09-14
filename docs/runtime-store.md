@@ -11,7 +11,7 @@ pnpm add @blade-ai/agent-sdk pg
 ```
 
 ```ts
-import { AgentServer } from '@blade-ai/agent-sdk/server';
+import { AgentServer } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 
 const runtimeStore = new PostgresRuntimeStore({
@@ -182,7 +182,7 @@ HTTP `501`。
 ```ts
 import {
   assertRuntimeStoreConformance,
-} from '@blade-ai/agent-sdk/server/testing';
+} from '@blade-ai/agent-sdk/server/infra';
 
 await assertRuntimeStoreConformance(runtimeStore, {
   tenantId: 'conformance-a',

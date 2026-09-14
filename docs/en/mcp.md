@@ -12,7 +12,7 @@ collisions fail during registration.
 Configure servers in `SessionOptions.mcpServers`:
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
+import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider,
@@ -140,8 +140,8 @@ interface McpToolInfo {
 import {
   createSdkMcpServer,
   tool,
-} from '@blade-ai/agent-sdk/node';
-import { createSession } from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/advanced';
+import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
 import { z } from 'zod';
 
 const getWeather = tool(

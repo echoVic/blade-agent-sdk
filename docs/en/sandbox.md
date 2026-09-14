@@ -15,7 +15,7 @@ import {
   createSession,
   getSandboxService,
   PermissionMode,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 
 const sandbox = getSandboxService();
 sandbox.configure({

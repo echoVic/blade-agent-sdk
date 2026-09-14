@@ -390,8 +390,8 @@ behavior is unchanged.
 
 ## Built-in tools
 
-`getBuiltinTools()` is exported by the `/node` entry point. The `/node`
-Session facade registers this local host tool set automatically; memory tools
+`getBuiltinTools()` is exported by `/advanced`. Its local Session facade
+registers this local host tool set automatically; memory tools
 are only included when a `MemoryManager` is supplied explicitly.
 Calling a returned tool's `execute()` method directly bypasses the
 `ExecutionPipeline`. Existing-file `Write` and `Edit` calls still require

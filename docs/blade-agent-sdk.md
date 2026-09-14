@@ -24,12 +24,10 @@ const agent = await createAgent({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-await agent.send('用三句话解释什么是 TypeScript');
+const response = await agent.send('用三句话解释什么是 TypeScript');
 
-for await (const event of agent.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
+for await (const chunk of response.textStream()) {
+  process.stdout.write(chunk);
 }
 
 await agent.close();
@@ -38,7 +36,7 @@ await agent.close();
 ## 最小示例：一次性调用
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/node';
+import { prompt } from '@blade-ai/agent-sdk/advanced';
 
 const result = await prompt('列出当前目录下的所有 TypeScript 文件', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -75,10 +73,8 @@ const agent = await createAgent({
   tools: [weatherTool],
 });
 
-await agent.send('北京今天天气怎么样？');
-for await (const event of agent.stream()) {
-  if (event.type === 'content') process.stdout.write(event.delta);
-}
+const response = await agent.send('北京今天天气怎么样？');
+console.log(await response.text());
 await agent.close();
 ```
 
@@ -90,26 +86,27 @@ SDK 内置多层上下文压缩策略（Microcompact → Soft → LLM 摘要 →
 
 ### Agent 接触面与 Session 内核
 
-应用从 `createAgent()` 开始，返回对象复用稳定的 `ISession` 能力：
+应用从 `createAgent()` 开始。每次 `send()` 返回一个只执行一次、可重放消费的
+`AgentResponse`：
 
 ```
-createAgent() → Agent (ISession)
-                    ├── send()     启动、转向或排队用户输入
-                    ├── stream()   流式接收 Agent 输出
-                    ├── cancelInput() / getPendingInputs()
-                    ├── close()    关闭会话
-                    ├── abort()    中断当前执行
-                    ├── fork()     分叉会话
-                    ├── setModel() / setPermissionMode() / setMaxTurns()
-                    ├── mcpConnect() / mcpDisconnect() / mcpListTools()
-                    └── getDefaultContext() / setDefaultContext()
+createAgent() → Agent
+                  ├── send() → AgentResponse
+                  │              ├── text()
+                  │              ├── textStream()
+                  │              ├── on()
+                  │              └── stream()
+                  ├── close() / abort()
+                  ├── fork()
+                  └── model / MCP / trace 管理
 ```
 
-框架与运行时集成仍可从 `/node` 或 `/server` 使用 `createSession()`。
+框架与运行时集成可从 `/advanced` 使用 local `createSession()` 或显式的
+`createServerSession()`。
 
-### send() + stream() 交互模型
+### 底层 Session 的 send() + stream() 模型
 
-每一轮交互遵循固定模式：
+需要 steering、排队或原始生命周期控制时使用 Session：
 
 1. 调用 `send(message)` 提交用户消息，并取得 `InputSubmission`
 2. 调用 `stream()` 获取异步迭代器，消费所有流式事件

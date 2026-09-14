@@ -15,8 +15,8 @@ Turn，必须先通过 Recovery Coordinator 原子 rollover；待决权限、未
 
 ## 安装与导入
 
-协议类型和解析器可从根入口或浏览器安全的 `/core` 导入。Node.js JSONL
-adapter 从 `/node` 导入：
+协议类型和解析器可从根入口或浏览器安全的 `/browser` 导入。Node.js JSONL
+adapter 从 `/advanced` 导入：
 
 ```ts
 import {
@@ -36,7 +36,7 @@ import {
   ToolAttemptId,
   TurnId,
 } from '@blade-ai/agent-sdk';
-import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 ```
 
 ## Event envelope

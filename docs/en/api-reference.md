@@ -1,13 +1,15 @@
 # API Reference
 
 This page inventories the public package surface. The root entry exposes the
-default `createAgent()` facade; lower-level Session APIs remain available from
-`/node` and `/server`.
+default `createAgent()` facade. Lower-level Session APIs live under
+`/advanced`, browser contracts under `/browser`, and deployment runtime
+components under `/server/infra`.
 
-`/server` currently targets Node.js server processes, not edge runtimes.
+`/server/infra` targets Node.js server processes, not edge runtimes.
 PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
-enhancements are optional peers, and `/server` no longer statically loads their adapters.
-Some packages can still be present transitively through base dependencies.
+enhancements are optional peers. PostgreSQL and OTel use dedicated adapter
+subpaths so canonical entrypoints do not load absent peers. Some packages can
+still be present transitively through base dependencies.
 
 The package also ships the `create-blade-agent` executable. Its
 `--preset <local|web|production>` option selects the generated project
@@ -20,33 +22,32 @@ JavaScript package export.
 | Entry | Runtime | Contents |
 |-------|---------|----------|
 | `@blade-ai/agent-sdk` | Node.js | Default `createAgent`, tool authoring, and public type entry |
-| `@blade-ai/agent-sdk/server` | Node.js server | Low-level Session entry without implicit local host access |
-| `@blade-ai/agent-sdk/server/postgres` | Node.js server | PostgreSQL Runtime Store adapter |
-| `@blade-ai/agent-sdk/server/otel` | Node.js server | OpenTelemetry metrics, traces, and audit adapter |
-| `@blade-ai/agent-sdk/server/testing` | Node.js test | Runtime Store conformance suite |
-| `@blade-ai/agent-sdk/node` | Local Node.js process | Entry with local tools, workspace discovery, and Node host adapters enabled |
-| `@blade-ai/agent-sdk/session` | Node.js server | Lower-level Session functions and types using the server profile |
-| `@blade-ai/agent-sdk/core` | Browser and Node.js | Browser-safe contracts, constants, and types |
-| `@blade-ai/agent-sdk/browser` | Browser | `AgentClient`, protocol types, core contracts, and stubs for server-only functions |
-| `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Versioned command/event schemas, parsers, and protocol errors |
-| `@blade-ai/agent-sdk/tools` | Browser and Node.js | Tool authoring, catalog, and execution contracts |
-| `@blade-ai/agent-sdk/middleware` | Browser and Node.js | Onion composition, model/tool middleware, and plugin definitions |
-| `@blade-ai/agent-sdk/model` | Browser and Node.js | Provider-neutral model configuration, messages, services, retries, and usage |
+| `@blade-ai/agent-sdk/browser` | Browser and Node.js | `AgentClient`, protocol schemas, parsers, events, and constants |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, Runtime Store contracts, and conformance suites |
+| `@blade-ai/agent-sdk/advanced` | Node.js | Local/server Sessions, `SessionRunner`, execution hosts, and Node adapters |
 
-The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/node` resolve server APIs to stubs that throw an explicit error.
+The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
+`/tools`, `/protocol`, and `/server/testing` paths are deprecated compatibility
+aliases. Optional PostgreSQL and OTel adapters retain `/server/postgres` and
+`/server/otel` so canonical imports do not force-load peer dependencies.
+The package is ESM-only. Browser calls to server-only APIs resolve to explicit
+stubs.
 
 ## Agent
 
 Runtime:
 
 - `createAgent`
+- `AgentResponse`
 
 Types:
 
 `Agent`, `AgentOptions`, `AgentAdvancedOptions`, `AgentProfile`,
 `AgentFilesystemOptions`, `AgentPermission`, `AgentPermissionPreset`,
-`AgentPermissionRequest`, `AgentPermissionDecision`, `InlineHooks`, and
-`SessionHookEvent`.
+`AgentPermissionRequest`, `AgentPermissionDecision`, `AgentResponseEvent`,
+`AgentResponseEventType`, `AgentResponseListener`, `AgentResponseSubmission`,
+`InlineHooks`, `SessionHookEvent`, `SkillActivationContext`,
+`SkillDefinition`, `SkillMetadata`, and `SkillRegistryConfig`.
 
 ## Session
 
@@ -125,7 +126,7 @@ Runtime:
 - `InMemoryAgentServerStore`
 - `RuntimeStoreError`
 - `TenantAdmissionController`
-- `JsonlSessionRepository` (`/node` only)
+- `JsonlSessionRepository` (`/advanced`)
 - `AgentProtocolError`
 - `AGENT_PROTOCOL_VERSION`
 - `AgentCommandType`
@@ -196,7 +197,7 @@ Types:
 - `AgentInitializationData`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
-- `assertRuntimeStoreConformance` (`/server/testing`)
+- `assertRuntimeStoreConformance` (`/server/infra`)
 
 `PostgresRuntimeStore` is exported by `/server/postgres`.
 `OpenTelemetryAgentServerTelemetry` and
@@ -212,7 +213,7 @@ Runtime:
 
 - `EphemeralCredentialBroker`
 - `ExecutionHostError`
-- `DockerExecutionHost` (`/node` only)
+- `DockerExecutionHost` (`/advanced`)
 - `ExecutionId`
 - `ExecutionCheckpointId`
 - `CredentialLeaseId`
@@ -238,7 +239,7 @@ Types:
 - `CredentialIssueContext`
 - `IssuedCredential`
 - `ExecutionHostErrorCode`
-- `DockerExecutionHostOptions` (`/node` only)
+- `DockerExecutionHostOptions` (`/advanced`)
 
 ## Durable Events
 
@@ -249,7 +250,7 @@ Runtime:
 - `executionFence`
 - `isDurableExecutionLeaseStore`
 - `DURABLE_EXECUTION_LEASE_FORMAT`
-- `JsonlDurableEventStore` (`/node` only)
+- `JsonlDurableEventStore` (`/advanced`)
 - `DurableEventSubscription`
 - `durableEventCursor`
 - `parseDurableEventCursor`
@@ -275,7 +276,7 @@ Types and errors:
 - `DurableExecutionFence`
 - `DurableExecutionLeaseErrorCode`
 - `DurableEventStore`
-- `JsonlDurableEventStoreOptions` (`/node` only)
+- `JsonlDurableEventStoreOptions` (`/advanced`)
 - `DurableEventCursor`
 - `DurableEventSubscriptionOptions`
 - `DurableEventSubscriptionMessage`
@@ -355,8 +356,8 @@ Types and errors:
 - `DurableTurnProjection`
 - `DurableTurnStatus`
 
-The JSONL adapter is Node-only. Event contracts, constants, errors, and parsers
-are browser-safe through `/core`.
+The JSONL adapter is Node-only and exported from `/advanced`. Event contracts,
+constants, errors, and parsers are browser-safe through `/browser`.
 
 ## Tools
 
@@ -369,9 +370,9 @@ Authoring and execution:
 | `toolFromDefinition` | Convert a definition to `Tool` |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
-| `getBuiltinTools` | Build the `/node` local tool set |
-| `createMemoryReadTool` | Create an opt-in memory reader (`/node`) |
-| `createMemoryWriteTool` | Create an opt-in memory writer (`/node`) |
+| `getBuiltinTools` | Build the `/advanced` local tool set |
+| `createMemoryReadTool` | Create an opt-in memory reader (`/advanced`) |
+| `createMemoryWriteTool` | Create an opt-in memory writer (`/advanced`) |
 
 Types:
 
@@ -430,14 +431,14 @@ Types:
 - `SdkMcpServerHandle`
 - `SdkTool`
 
-There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from `/node`.
+There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from `/advanced`.
 
 ## Memory
 
 Runtime:
 
-- `FileSystemMemoryStore` (`/node`)
-- `MemoryManager` (`/node`)
+- `FileSystemMemoryStore` (`/advanced`)
+- `MemoryManager` (`/advanced`)
 
 Types:
 

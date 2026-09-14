@@ -34,12 +34,10 @@ const agent = await createAgent({
   },
 });
 
-await agent.send('读取 package.json，用三个要点总结这个项目');
+const response = await agent.send('读取 package.json，用三个要点总结这个项目');
 
-for await (const event of agent.stream()) {
-  if (event.type === 'content') {
-    process.stdout.write(event.delta);
-  }
+for await (const chunk of response.textStream()) {
+  process.stdout.write(chunk);
 }
 
 await agent.close();
@@ -66,9 +64,22 @@ const agent = await createAgent({
   advanced: {
     permission: 'accept-edits',
     tokenBudget: { maxTotalTokens: 100_000 },
+    skills: [
+      {
+        name: 'review',
+        description: '审查代码正确性和风险',
+        content: '按严重程度输出问题，并提供文件和行号。',
+        allowedTools: ['Read', 'Glob', 'Grep'],
+      },
+    ],
   },
 });
 ```
+
+每次 `send()` 返回一个 `AgentResponse`。使用 `text()` 获取完整文本，
+`textStream()` 消费文本增量，`on(type, listener)` 监听指定事件，
+`stream()` 消费全部类型化事件。所有视图共享同一次底层执行，并可重放其他视图
+已经消费的事件。
 
 ## 项目脚手架
 
@@ -101,21 +112,23 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
 框架和运行时集成可以直接使用 `createSession()`：
 
 ```ts
-import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
-import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
+import {
+  createSession as createNodeSession,
+  createServerSession,
+} from '@blade-ai/agent-sdk/advanced';
 ```
 
-两个入口共用同一套 Session API、内置工具与协议，区别在于进程的运行位置和可触达范围：
+两个 profile 共用同一套 Session API 与协议，区别在于进程的运行位置和可触达范围：
 
-| | `/node` | `/server` |
-|---|---------|-----------|
+| | `local` | `server` |
+|---|---------|----------|
 | 本地文件与 Shell 工具 | 配置 `filesystem` capability 后可用 | 工具相同，但 server profile 不做环境、Skill 与子 Agent 发现 |
 | `storagePath` | 由本地 JSONL 持久化支撑 | 直接抛 `ConfigError`：服务端 Session 需要 `sessionRepository` 与 `sessionEventStore` |
 | 默认持久化 | 设置 `storagePath` 时写本地 JSONL | 未注入 repository 时仅内存 |
 | 上下文与 Skill 发现 | 开启 | 关闭（`localDiscovery` 为 false） |
 
-本地 Agent 或 CLI 从 `/node` 开始；只有在构建共享的多租户服务、并显式注入存储时才用
-`/server`。
+本地 Agent 或 CLI 使用 local profile；构建共享的多租户服务并显式注入存储时使用
+server profile。
 
 ## 核心能力
 
@@ -208,30 +221,31 @@ const agent = await createAgent({
 
 ```ts
 import { createAgent, defineTool } from '@blade-ai/agent-sdk';
-import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';
-import { createSession as createNodeSession } from '@blade-ai/agent-sdk/node';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
-import { AGENT_PROTOCOL_VERSION } from '@blade-ai/agent-sdk/protocol';
+import {
+  createSession,
+  createServerSession,
+  DockerExecutionHost,
+  type SessionRunner,
+} from '@blade-ai/agent-sdk/advanced';
+import {
+  AgentServer,
+  AgentWorker,
+} from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
-import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
-import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
-import type { ModelMessage, ModelService } from '@blade-ai/agent-sdk/model';
 ```
 
-- 根入口：默认的 `createAgent` 与工具定义 API
-- `/server`：底层服务端 Session，以及可注入 `SessionExecutor` 的 `AgentServer`
-- `/server/postgres`：共享 PostgreSQL Runtime Store，统一承载 command、event、effect、projection、worker lease、路由、transcript 和 durable journal
-- `/server/otel`：OpenTelemetry metric、trace 与审计 adapter
-- `/server/testing`：不依赖测试框架的 Runtime Store conformance suite
-- `/node`：具备本机访问能力的 Node.js 运行时；默认加载文件、搜索、Shell、任务工具和本地 Agent/Skill 发现，并导出 Node 宿主适配器
-- `/browser`：browser-safe `AgentClient`、协议视图和明确的 server-only stub
-- `/protocol`：browser-safe 版本化 command/event 契约与 strict parser
-- `/core`：浏览器安全的协议、常量和类型
-- `/tools`：浏览器安全的工具定义原语
-- `/middleware`：浏览器安全的 middleware 与插件契约
-- `/model`：浏览器安全、Provider 无关的模型契约、消息、配置和用量类型
-- `/session`：底层服务端 Session API
+- 根入口：`createAgent`、`defineTool`、middleware、模型契约、常量和公共类型
+- `/browser`：browser-safe `AgentClient`、协议契约和事件解析器
+- `/server/infra`：`AgentServer`、`AgentWorker`、Runtime Store 契约和 conformance suite
+- `/advanced`：底层 local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter
+
+原 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
+`/tools`、`/protocol` 和 `/server/testing` 路径作为 deprecated compatibility
+alias 保留到 Phase 3。PostgreSQL 与 OpenTelemetry 可选 adapter 继续使用
+`/server/postgres` 和 `/server/otel`，避免导入 `/server/infra` 时强制安装其
+peer dependency。
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
 
@@ -247,8 +261,8 @@ pnpm example:production
 PostgreSQL、OpenTelemetry、非内置 Provider adapter 和本机原生增强是按需 peer：
 
 ```bash
-pnpm add pg                         # /server/postgres
-pnpm add @opentelemetry/api         # /server/otel
+pnpm add pg                         # /server/postgres 的 PostgresRuntimeStore
+pnpm add @opentelemetry/api         # /server/otel 的 telemetry adapter
 pnpm add @ai-sdk/anthropic          # provider: anthropic
 pnpm add fs-native-extensions        # Node JSONL 跨进程锁
 ```
@@ -276,8 +290,8 @@ const agent = await createAgent({
 });
 ```
 
-根入口的底层 `createSession()` 和 `/server` 不会把 `storagePath` 解释为本地
-持久化；服务端应用必须显式注入 `sessionRepository` 和 `sessionEventStore`，
+底层 `createServerSession()` 不会把 `storagePath` 解释为本地持久化；
+服务端应用必须显式注入 `sessionRepository` 和 `sessionEventStore`，
 或配置共享 `runtimeStore`。
 HTTP/SSE 服务端、浏览器客户端、多租户存储、幂等、
 审批和遥测见 [Server Runtime](./docs/server-runtime.md)。

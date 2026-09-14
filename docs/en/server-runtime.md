@@ -8,12 +8,11 @@ model providers, tool executors, or local host capabilities.
 
 | Entry | Responsibility |
 |-------|----------------|
-| `@blade-ai/agent-sdk/server` | `AgentServer`, control-plane Store, tenant admission, and telemetry |
-| `@blade-ai/agent-sdk/browser` | `AgentClient`, `RemoteAgentSession`, and protocol types |
-| `@blade-ai/agent-sdk/protocol` | Browser-safe command/event schemas, parsers, and errors |
-| `@blade-ai/agent-sdk/node` | Local JSONL repository and Node adapters such as files, shell, and sandbox |
+| `@blade-ai/agent-sdk/server/infra` | `AgentServer`, Workers, Stores, tenant admission, and telemetry |
+| `@blade-ai/agent-sdk/browser` | `AgentClient`, protocol schemas, parsers, and errors |
+| `@blade-ai/agent-sdk/advanced` | Low-level Sessions, local JSONL, file, shell, and sandbox adapters |
 
-`/server` never interprets `storagePath` as permission to access local files.
+The server profile never interprets `storagePath` as permission to access local files.
 A resumable Session requires an explicitly supplied `sessionRepository` and
 `sessionEventStore`, or one `runtimeStore`. Set
 `requirePersistentSessions: true` to fail closed on incomplete configuration.
@@ -27,11 +26,11 @@ The OpenTelemetry adapter is an opt-in peer. Install
 import {
   AgentServer,
   type AgentPrincipal,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 import {
   OpenTelemetryAgentServerTelemetry,
 } from '@blade-ai/agent-sdk/server/otel';
-import { JsonlSessionRepository } from '@blade-ai/agent-sdk/node';
+import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
 
@@ -98,7 +97,7 @@ import {
   AgentServer,
   InProcessSessionExecutor,
   InMemoryAgentServerStore,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 
 const store = new InMemoryAgentServerStore();
 const executor = new InProcessSessionExecutor({

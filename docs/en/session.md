@@ -6,15 +6,15 @@ Application code should start with `createAgent()` from the root entry. This
 page documents the low-level Session API for framework and runtime
 integrations.
 
-The root and `/server` entry points use the server profile: only explicitly
-supplied tools, agents, middleware, and MCP servers are loaded. `/node` uses the
-local Node.js profile and additionally enables built-in file, search, shell, and
-task tools plus local agent, Skill, and attachment discovery.
+`/advanced` exposes both low-level factories. `createSession()` uses the local
+profile with built-in file, search, shell, and task tools plus local agent,
+Skill, and attachment discovery. `createServerSession()` uses the server
+profile and loads only explicitly supplied capabilities.
 
 ## Create a Session
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk/node';
+import { createSession } from '@blade-ai/agent-sdk/advanced';
 
 const session = await createSession({
   provider: {
@@ -282,7 +282,7 @@ import {
   WorkerId,
   createSession,
 } from '@blade-ai/agent-sdk';
-import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({
@@ -369,7 +369,7 @@ try {
 ## One-shot prompts
 
 ```ts
-import { prompt } from '@blade-ai/agent-sdk/node';
+import { prompt } from '@blade-ai/agent-sdk/advanced';
 
 const result = await prompt('Summarize the repository', {
   provider,
@@ -434,7 +434,7 @@ with `persistSession: false`:
 import {
   createSession,
 } from '@blade-ai/agent-sdk';
-import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/node';
+import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
 const session = await createSession({

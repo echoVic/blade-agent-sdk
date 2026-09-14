@@ -314,10 +314,22 @@ DeepSeek 官方 API 的真实端到端调用。Phase 1 smoke 在无脚本级重�
 
 **目标：改善流式体验 + 精简入口**
 
-- Response 对象增加 `.text()` / `.textStream()` / `.on()` 方法
-- 入口点从 11 个精简到 4 个，修复所有 import 路径
-- 运行 `pnpm run verify:entrypoints` 确认构建产物正确
-- Skills 支持通过 `advanced.skills` 传入数据形式
+**状态：已完成（2026-09-14）**
+
+- [x] Response 对象增加 `.text()` / `.textStream()` / `.on()` 方法
+- [x] 入口点从 11 个精简到 4 个，修复所有 import 路径
+- [x] 运行 `pnpm run verify:entrypoints` 确认构建产物正确
+- [x] Skills 支持通过 `advanced.skills` 传入数据形式
+
+正式入口为根入口、`/browser`、`/server/infra` 和 `/advanced`。旧入口在
+Phase 3 前继续作为 deprecated compatibility alias；PostgreSQL 与 OTel adapter
+保留独立 subpath，以免 canonical 入口强制加载可选 peer dependency。
+
+验收覆盖 Response 单次执行与多视图重放、Session 间 Skill 隔离、数据 Skill
+实际激活、browser stub、旧入口等价性、构建产物、无可选 peer 的最小安装，
+以及 DeepSeek 官方 API 的真实端到端调用。Phase 2 live test 在无框架重试
+条件下连续 3 次通过；每次均验证模型调用数据 `Skill`，并由 `.on()`、`.text()`、
+`.textStream()` 和 `.stream()` 重放同一次执行。
 
 ### Phase 3（三周后，约 11–15 天）
 

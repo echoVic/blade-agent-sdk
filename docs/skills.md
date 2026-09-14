@@ -1,6 +1,32 @@
 # Skills 系统
 
-Skills 是可复用的指令模板，以 `SKILL.md` 文件形式存在，支持 YAML 前置元数据和内联命令。
+Skills 是可复用的指令模板。应用可以通过 `advanced.skills` 直接传入数据，也可以
+由 local profile 从 `SKILL.md` 发现。
+
+## 数据形式
+
+数据 Skill 属于当前 Agent，不写入文件，也不会与同一进程中的其他 Agent 共享：
+
+```ts
+const agent = await createAgent({
+  model,
+  apiKey,
+  advanced: {
+    skills: [
+      {
+        name: 'code-review',
+        description: '审查代码正确性、风险和测试缺口',
+        content: '按严重程度输出问题，并提供文件和行号。',
+        allowedTools: ['Read', 'Glob', 'Grep'],
+      },
+    ],
+  },
+});
+```
+
+显式传入的 Skill 优先级高于 user/project/bundled/plugin/MCP 来源，但低于
+managed 来源。数据 Skill 不含文件资产，且默认禁止执行内联 shell 命令和
+注册 shell hooks。
 
 ## 目录结构
 
@@ -12,16 +38,13 @@ Skills 是可复用的指令模板，以 `SKILL.md` 文件形式存在，支持 
       deploy.sh
 ```
 
-Session 默认只在 filesystem context 的 `cwd` 下扫描 `skills/`。当前公开
-`SessionOptions` 不提供用户级目录或额外来源配置；需要这些来源时，应由上层
-应用完成发现并把能力显式接入。
+local Session 默认在 filesystem context 的 `cwd` 下扫描 `skills/`。server
+profile 不做隐式文件发现，但仍会加载 `advanced.skills`。
 
 ::: warning 多 workspace 进程
-Skill registry 按配置缓存发现结果，缓存身份是完整配置：`cwd`、用户目录与项目
-目录、每个附加 source 及其 `trustLevel`、`shellPolicy`、`hookPolicy`。配置相同的
-调用方共享同一个 registry，看到同一份稳定视图；同一目录但执行策略不同则拿到各自
-独立的 registry，先调用方的策略不会作用于后调用方。同一进程承载多个不同 `cwd`
-时，不应假设每个 Session 都有独立的 Skill 目录；需要隔离时请使用独立进程。
+每个 Session 使用私有 Skill registry，因此数据 Skill 和发现结果不会跨 Session
+泄漏。独立调用 `getSkillRegistry()` 时仍按完整配置缓存：`cwd`、目录、数据
+Skills 以及每个 source 的信任与执行策略共同构成缓存身份。
 :::
 
 ## 补丁作用域与临时 Skill
@@ -100,7 +123,7 @@ when_to_use: "当用户要求部署到 staging 或测试环境时触发"
 ## 工作机制
 
 1. 内置 `Skill` 工具让 LLM 可以发现和调用 Skills
-2. LLM 读取 SKILL.md 内容，按照其中的指令执行
+2. LLM 按需加载数据正文或 `SKILL.md` 内容并执行
 3. 内联命令 `` !`command` `` 会被 SDK 自动执行
 4. `scripts/` 目录中的脚本会被列为可用资源
 5. Skill 激活后，`allowed-tools` 和 `model` 等运行时效果自动生效

@@ -1,7 +1,7 @@
 # Provider 配置
 
 Provider 无关的消息、配置、服务、重试和用量契约可从
-`@blade-ai/agent-sdk/model` 导入。该入口是 browser-safe 的，不加载具体
+`@blade-ai/agent-sdk` 导入。该入口是 browser-safe 的，不加载具体
 Provider SDK。
 
 ## 支持的 Provider
