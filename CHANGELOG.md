@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.11] - 2026-09-14
+
+### Features
+
+- Add replayable Agent responses, Session-scoped data Skills, and four canonical package entrypoints.
+
 ## [7.4.10] - 2026-09-14
 
 ### Features
