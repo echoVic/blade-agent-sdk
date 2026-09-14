@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add the layered createAgent API, unified permission configuration, and async Zod tool authoring.",
-  "zh-CN": "新增分层 createAgent API、统一权限配置，以及基于 Zod 的 async 工具定义。"
-}

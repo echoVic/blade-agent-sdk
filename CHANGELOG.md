@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.10] - 2026-09-14
+
+### Features
+
+- Add the layered createAgent API, unified permission configuration, and async Zod tool authoring.
+
 ## [7.4.9] - 2026-09-13
 
 ### Features
