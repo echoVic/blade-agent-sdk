@@ -30,7 +30,7 @@ import type { BladeConfig } from '../config.js';
 import { LoopRunner } from '../LoopRunner.js';
 import type { ModelManager } from '../ModelManager.js';
 import { ConversationState } from '../state/ConversationState.js';
-import type { AgentOptions, ChatContext, UserMessageContent } from '../types.js';
+import type { AgentExecutionContext, AgentRuntimeOptions, UserMessageContent } from '../types.js';
 
 // ===== Mock Factories =====
 
@@ -153,7 +153,7 @@ function createMockPipeline(): ExecutionPipeline {
   } as unknown as ExecutionPipeline;
 }
 
-function createContext(overrides: Partial<ChatContext> = {}): ChatContext {
+function createContext(overrides: Partial<AgentExecutionContext> = {}): AgentExecutionContext {
   return {
     messages: [],
     userId: 'test-user',
@@ -167,7 +167,7 @@ const baseConfig: BladeConfig = {
   maxTurns: 10,
 } as unknown as BladeConfig;
 
-const baseOptions: AgentOptions = {};
+const baseOptions: AgentRuntimeOptions = {};
 
 // ===== Tests =====
 
@@ -530,11 +530,7 @@ describe('LoopRunner', () => {
       // After the loop, context.messages should not contain the root system prompt
       // (it's managed by ConversationState), but may contain non-root system messages
       // with valid provenance (e.g., catalog, tool_injection).
-      const hasRootPrompt = context.messages.some(
-        (m) =>
-          m.role === 'system' &&
-          !m.provenance,
-      );
+      const hasRootPrompt = context.messages.some((m) => m.role === 'system' && !m.provenance);
       expect(hasRootPrompt).toBe(false);
     });
 
@@ -737,7 +733,7 @@ describe('LoopRunner', () => {
       const loopState = (
         runner as unknown as {
           createLoopState: (
-            context: ChatContext,
+            context: AgentExecutionContext,
             conversationState: ConversationState,
             permissionMode: PermissionMode,
           ) => { getTools(): Array<{ name: string }> };

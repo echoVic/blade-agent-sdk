@@ -9,8 +9,8 @@ owner directly, while package entry points only assemble public contracts.
 | Domain | Owner | Representative types |
 |--------|-------|----------------------|
 | Model | `src/model/` | `ModelMessage`, `ConversationMessage`, `ModelService`, `ModelUsage` |
-| Agent | `src/agent/` | `AgentEvent`, `AgentConfig`, loop state |
-| Tool | `src/tools/types/` | `Tool`, `ToolDefinition`, `ToolResult`, `ToolBehavior` |
+| Agent | `src/agent/` | Public `AgentOptions` / `AgentResponse` / `UserMessageContent`; internal `AgentRuntimeOptions` / `AgentExecutionContext` |
+| Tool | `src/tools/types/` | `Tool`, `ToolDefinition`, authoring inputs, `ToolResult`, `ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`, `SessionStreamEvent`, `PromptResult` |
 | Transcript | `src/session/transcript.ts` | `TranscriptEvent`, `TranscriptMessage`, `TranscriptPart` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`, `DurableSessionProjection` |
@@ -21,6 +21,22 @@ owner directly, while package entry points only assemble public contracts.
 `src/types/` contains only genuinely cross-domain primitives. Business
 configuration, messages, and events must not move into a generic `common.ts`
 module.
+
+## Agent configuration and execution context
+
+The public Agent facade and internal Agent loop have distinct owners:
+
+- `src/agent/createAgent.ts::AgentOptions` is the only public Agent
+  configuration exported at root.
+- `src/agent/types.ts::AgentRuntimeOptions` is used only by Agent and
+  LoopRunner internals.
+- `SessionOptions` is the low-level `/advanced` Session contract, not a
+  duplicate of `AgentOptions`.
+
+Internal `AgentExecutionContext` composes narrow conversation-state,
+execution-control, and runtime-service contracts. The runtime object remains
+flat to avoid wrappers on model and tool hot paths. None of these internal
+types are exported from package entrypoints.
 
 ## Model boundary
 
@@ -140,8 +156,17 @@ differ.
 
 ## Tool generics
 
-At runtime, heterogeneous tools accept `unknown`. Each Tool validates input
-with Zod. `TParams` describes only the validated invocation:
+Zod and JSON Schema authoring are explicit, separate paths:
+
+- `ZodToolDefinitionInput<TSchema>` infers callback parameters from the schema
+  and validates before execution.
+- `JsonSchemaToolDefinitionInput<TParams>` accepts an explicitly declared
+  parameter type; its schema remains a model-facing declaration rather than
+  pretending to provide compile-time inference.
+
+Heterogeneous collections use the Tool-owned `ErasedToolDefinition` boundary;
+Session does not spell `ToolDefinition<never>` directly. Compiled runtime
+Tools accept `unknown` and validate while building an invocation:
 
 ```ts
 interface Tool<TParams = unknown> {

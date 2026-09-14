@@ -41,4 +41,40 @@ describe('parseSessionStreamEvent', () => {
       parseSessionStreamEvent(toolMessageEvent({ metadata: { source: 'tool' } })),
     ).toThrow();
   });
+
+  it('accepts sandbox capabilities in tool context patches', () => {
+    const event = {
+      type: 'tool_context_patch',
+      sessionId: 'session-1',
+      id: 'tool-1',
+      name: 'ConfigureSandbox',
+      patch: {
+        scope: 'turn',
+        context: {
+          capabilities: {
+            sandbox: {
+              enabled: true,
+              autoAllowBashIfSandboxed: true,
+              excludedCommands: ['ssh'],
+              allowUnsandboxedCommands: false,
+              network: {
+                allowLocalBinding: false,
+                allowUnixSockets: ['/tmp/agent.sock'],
+                allowAllUnixSockets: false,
+                httpProxyPort: 8080,
+                socksProxyPort: 1080,
+              },
+              ignoreViolations: {
+                file: ['/tmp/cache'],
+                network: ['registry.example.com'],
+              },
+              enableWeakerNestedSandbox: true,
+            },
+          },
+        },
+      },
+    };
+
+    expect(parseSessionStreamEvent(event)).toEqual(event);
+  });
 });

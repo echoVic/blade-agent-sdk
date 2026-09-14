@@ -4,7 +4,6 @@
 
 import type { OutputFormat } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelContent } from '../model/message.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
@@ -19,12 +18,9 @@ import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
+import type { UserMessageContent } from './UserMessageContent.js';
 
-/**
- * 用户消息内容类型
- * 支持纯文本或多模态内容（文本 + 图片）
- */
-export type UserMessageContent = string | ModelContent[];
+export type { UserMessageContent } from './UserMessageContent.js';
 
 export interface InputApplicationLifecycle {
   onInputApplying(input: Pick<AgentSteeringInput, 'inputId' | 'priority'>): Promise<void>;
@@ -82,39 +78,47 @@ interface SubagentInfoForContext {
   isSidechain: boolean;
 }
 
-/**
- * 聊天上下文接口
- *
- * 职责：保存会话相关的数据和状态
- * - 消息历史、会话标识、用户标识等数据
- * - 会话级别的 UI 交互处理器（如 confirmationHandler）
- *
- * 不包含：循环过程中的事件回调（这些应该放在 LoopOptions）
- */
-export interface ChatContext {
+/** Mutable conversation data owned by one Agent execution. */
+export interface AgentConversationState {
   messages: ConversationMessage[];
   userId: string;
   sessionId: SessionId;
   snapshot?: ContextSnapshot;
+}
+
+/** Cancellation, permission, and fencing controls for one Agent execution. */
+export interface AgentExecutionControl {
   signal?: AbortSignal;
-  confirmationHandler?: ConfirmationHandler; // 会话级别的确认处理器
-  permissionMode?: PermissionMode; // 当前权限模式（用于 Plan 模式判断）
-  systemPrompt?: string; // 动态传入的系统提示词（无状态设计）
-  subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
-  omitEnvironment?: boolean;
-  backgroundAgentManager?: IBackgroundAgentManager;
+  confirmationHandler?: ConfirmationHandler;
+  permissionMode?: PermissionMode;
   executionFence?: DurableExecutionFence;
-  /** @internal Validates execution ownership immediately before a model or tool side effect. */
+  /** Validates execution ownership immediately before a model or tool side effect. */
   assertExecutionLease?: () => Promise<void>;
-  /** @internal Serializes a short persistence operation against lease takeover. */
+  /** Serializes a short persistence operation against lease takeover. */
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
+
+/** Optional runtime services that are not part of conversation data or control. */
+export interface AgentExecutionServices {
+  systemPrompt?: string;
+  subagentInfo?: SubagentInfoForContext;
+  omitEnvironment?: boolean;
+  backgroundAgentManager?: IBackgroundAgentManager;
+}
+
+/**
+ * Internal execution context. The runtime object stays flat while ownership is
+ * expressed by the three narrow contracts above.
+ */
+export type AgentExecutionContext = AgentConversationState &
+  AgentExecutionControl &
+  AgentExecutionServices;
 
 /**
  * Agent 创建选项 - 仅包含运行时参数
  * Agent 的配置来自 Store (通过 getConfig() 获取 BladeConfig)
  */
-export interface AgentOptions {
+export interface AgentRuntimeOptions {
   // 运行时参数
   systemPrompt?: string; // 完全替换系统提示
   appendSystemPrompt?: string; // 追加系统提示

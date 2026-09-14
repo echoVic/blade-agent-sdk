@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PlanExecutor } from '../PlanExecutor.js';
 import type { AgentEvent } from '../AgentEvent.js';
-import type { LoopResult, ChatContext, UserMessageContent } from '../types.js';
+import { PlanExecutor } from '../PlanExecutor.js';
+import type { AgentExecutionContext, LoopResult, UserMessageContent } from '../types.js';
 
 // ===== Helpers =====
 
-function createContext(overrides: Partial<ChatContext> = {}): ChatContext {
+function createContext(overrides: Partial<AgentExecutionContext> = {}): AgentExecutionContext {
   return {
     messages: [],
     userId: 'test-user',
     sessionId: 'test-session',
     permissionMode: 'plan',
     ...overrides,
-  } as ChatContext;
+  } as AgentExecutionContext;
 }
 
 function successResult(msg = 'done'): LoopResult {
@@ -43,7 +43,7 @@ describe('PlanExecutor', () => {
       const result = pe.injectPlanReminder(message);
       expect(Array.isArray(result)).toBe(true);
       const parts = result as Array<{ type: string; text?: string }>;
-      const textPart = parts.find(p => p.type === 'text');
+      const textPart = parts.find((p) => p.type === 'text');
       expect(textPart?.text).toContain('check this');
     });
 
@@ -73,7 +73,12 @@ describe('PlanExecutor', () => {
       expect(executeLoop).toHaveBeenCalledTimes(1);
 
       // First arg should be the reminder-injected message
-      const calls = executeLoop.mock.calls as unknown as [UserMessageContent, ChatContext, unknown, string][];
+      const calls = executeLoop.mock.calls as unknown as [
+        UserMessageContent,
+        AgentExecutionContext,
+        unknown,
+        string,
+      ][];
       const injectedMessage = calls[0][0];
       expect(typeof injectedMessage).toBe('string');
       expect(injectedMessage as string).toContain('do something');
@@ -111,18 +116,23 @@ describe('PlanExecutor', () => {
 
       type StreamExecutor = (
         msg: UserMessageContent,
-        ctx: ChatContext,
+        ctx: AgentExecutionContext,
         opts?: unknown,
-        systemPrompt?: string
+        systemPrompt?: string,
       ) => AsyncGenerator<AgentEvent, LoopResult>;
-      const executeStream = vi.fn((..._args: unknown[]) => mockStreamExecutor()) as unknown as StreamExecutor;
+      const executeStream = vi.fn((..._args: unknown[]) =>
+        mockStreamExecutor(),
+      ) as unknown as StreamExecutor;
       const stream = pe.runPlanLoopStream('test', context, undefined, executeStream);
 
       const events: unknown[] = [];
       let result: LoopResult | undefined;
       while (true) {
         const { value, done } = await stream.next();
-        if (done) { result = value; break; }
+        if (done) {
+          result = value;
+          break;
+        }
         events.push(value);
       }
 

@@ -38,6 +38,7 @@ import type {
   ExecutionContext,
   InputSubmission,
   ISession,
+  ModelContent,
   ModelIdentity,
   ModelMessage,
   ModelServiceConfig,
@@ -69,6 +70,7 @@ import type {
   ToolScheduledLifecycle,
   ToolSettledLifecycle,
   ToolYield,
+  UserMessageContent,
 } from '../index.js';
 import * as root from '../index.js';
 import {
@@ -417,5 +419,6 @@ describe('root exports', () => {
       | 'tool_result'
       | 'tool_completed'
     >();
+    expectTypeOf<UserMessageContent>().toEqualTypeOf<string | ModelContent[]>();
   });
 });

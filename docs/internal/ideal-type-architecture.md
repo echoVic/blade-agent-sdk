@@ -1,1157 +1,551 @@
-# Blade Agent SDK 理想类型架构设计
+# Blade Agent SDK 类型所有权架构 RFC
 
-> 从零开始，不考虑兼容性，只考虑最合理的设计。
-
----
-
-## 第一部分：核心设计原则
-
-### 原则 1：类型即文档
-
-每个类型的名字和结构应该让开发者一眼就能理解它的职责、生命周期和使用场景。
-
-### 原则 2：严格的层次边界
-
-```
-Protocol (wire)          ← 序列化边界，永不变
-    ↓
-Domain (core concepts)   ← 领域概念，稳定
-    ↓
-API (user-facing)        ← 用户接口，版本化
-    ↓
-Internal (implementation) ← 内部实现，自由变化
-```
-
-### 原则 3：类型安全优先
-
-- 能用泛型自动推导的，就不要手写类型
-- 能在编译期检查的，就不要推迟到运行时
-- 能用 branded types 防止混淆的，就不要用 string
-
-### 原则 4：配置即代码
-
-配置类型应该读起来像配置文件，而不是像代码。
+> 状态：已实施（2026-09-14；公开 API 兼容性清理由 v8 承担）
+> 基线：v7.4.11 + Session Phase 3
+> 目标版本：v8
+> 本文是类型所有权、依赖方向和迁移门禁的单一事实源。
 
 ---
 
-## 第二部分：完整类型架构
+## 1. 决策摘要
 
-### 目录结构
+Blade Agent SDK 不建立集中式“新类型系统”，也不把现有类型批量搬入
+`src/types/`。类型继续与拥有其语义和运行时验证的模块共置，通过公开 barrel
+形成稳定 contract。
 
+类型按所有权分为五类：
+
+1. **Wire contract**：可序列化 DTO、版本、schema 和 codec。
+2. **Public API contract**：普通应用使用的 Agent、Response、Tool authoring API。
+3. **Advanced SPI contract**：部署者和框架集成者实现的稳定扩展端口。
+4. **Domain value contract**：跨模块共享、无运行时依赖的 ID、JSON 和值对象。
+5. **Internal runtime type**：状态机、执行上下文和具体实现依赖，不从包入口导出。
+
+依赖方向为：
+
+```text
+Domain values
+  ↑             ↑
+Public API    Wire contract
+  ↑             ↑
+Advanced SPI ───┘
+  ↑
+Internal runtime
 ```
+
+Wire contract 是正交的序列化边界，不是领域模型的“上层”。Internal runtime
+可以依赖公开 contract；公开 contract 不得反向依赖具体 runtime class。
+当前跨 owner 复用的 wire-safe 公开 contract 只有
+`agent/UserMessageContent.ts::UserMessageContent` 和
+`session/types.ts::SessionStreamEvent`。它们由原 owner 与 protocol 共同治理：
+任何 union member、字段或枚举值变化都按 protocol schema 变更处理，不能只作为
+普通 SDK 类型变更发布。protocol 只在 schema parity 测试覆盖下复用它们。
+
+当前只实现 protocol v1。`SessionStreamEvent` union 和
+`sessionStreamEventSchema` 视为 v1 冻结快照，client/server 的
+`protocolVersion` 不一致时直接拒绝，不宣称已经支持多版本协商。
+
+引入 v2 必须先提交独立 protocol RFC，并在 protocol owner 中创建版本化
+`AgentWireStreamEventV1/V2` 与穷举 `toWireEventV1/V2` adapter。每个 adapter
+必须对当前全部 Session event 明确执行 map、版本化降级或 unsupported error，
+禁止 default 忽略和强制断言。v1 schema/adapter 在迁移窗口继续保留；bootstrap
+协商格式、支持版本集合、选择规则和无交集错误也由该 RFC 定义。
+
+允许依赖矩阵：
+
+| Owner | 可依赖 |
+|-------|--------|
+| Domain values | 仅标准库与同层值类型 |
+| Wire contract | Domain values、wire-local schema/codec、显式标记为 wire-safe 的公开值 contract |
+| Public API | Domain values、公开的 module-local contract |
+| Advanced SPI | Domain values、Public API、必要的 Wire contract、稳定的 Server Infra port（仅 type-only） |
+| Internal runtime | 上述所有 contract 与具体 adapter |
+
+箭头表示“下方实现依赖上方 contract”。Wire 与 Public API 之间不直接复用配置
+对象，只允许复用已经明确声明为 wire-safe 的值类型。
+
+---
+
+## 2. 不变量
+
+### 2.1 Wire 安全
+
+- Wire payload 只能包含 JSON value、版本化标识和经过 codec 验证的 DTO。
+- Wire command 不携带 API key、Provider 实例、函数、middleware、Store 或
+  execution handle。
+- `session.create` 只接受客户端 metadata。Provider、credential、tool 和 Store
+  由认证后的服务端 `resolveSessionOptions` 解析。
+- 每个 wire 版本一旦发布即 immutable。当前 strict schema 拒绝未知字段，因此
+  新增字段必须发布新 protocol version，不能原地扩展 v1。当前实现只接受精确 v1；
+  多版本并存和协商必须先满足上一节要求。
+- TypeScript 类型和 Zod schema 必须成对维护。Parity 通过
+  `z.ZodType<Contract, z.ZodTypeDef, unknown>` 编译约束、合法 fixture 和未知字段
+  拒绝测试共同验证，不声称在运行时反射 TypeScript 类型。
+
+### 2.2 Durable 所有权
+
+- transcript projection、transcript event、durable journal、subagent repository、
+  runtime store 和 execution lease 保持独立端口。
+- 不引入同时代表上述能力的单一 `DurableStore`。
+- 只有启用 durable execution lease 的 Session 才进入 fenced mode。
+- fence assertion 不是原子提交保证。fenced mode 中，模型请求和所有
+  `sideEffect !== 'pure'` 的工具在副作用开始前 assertion，并先持久化 started
+  boundary；旧 executor 的终态提交仍必须再次验证 fence。`ToolKind` 只参与权限，
+  不决定持久化或重放策略。
+- 每个模型请求使用稳定 `ModelAttemptId`，每个工具执行使用稳定
+  `ToolAttemptId`，每个 outbox effect 使用稳定 `effectId`。started/claim 与
+  operation ID 的绑定必须在同一 Store 事务或 expected-head CAS 中唯一提交。
+- 短事务型 durable append 通过 `runWithExecutionLease` 与 takeover 互斥。模型调用
+  无法与本地 lease 原子化；crash 或 takeover 后未确认的 model outcome 必须进入
+  reconciliation。
+- 远程系统不能与本地 lease 原子提交。类型层必须保留稳定 `effectId`、
+  `idempotencyKey`、`leaseId` 和 `fencingToken`，但本 RFC 不定义 effect claim、
+  retry 或 reconciliation 状态转换。
+- 非 fenced Session 保持现有进程内语义。纯读且不产生外部可观察状态的操作不要求
+  lease。
+- 类型重构不能改变 event schema、side-effect 字符串或恢复决策语义。
+
+本 RFC 不重新定义 reconciliation 状态机。model/tool Request 的允许源状态、
+command payload、expected-head CAS、幂等重放和终态冲突规则以
+`src/session/events/schemas.ts`、`DurableSessionProjector`、
+`DurableSessionRecoveryCoordinator` 及
+`docs/durable-events.md` 为唯一事实源；runtime effect 的 claim/reconcile 规则以
+`WorkerRuntimeStore`、`PostgresWorkerRuntime` 及 `docs/worker-runtime.md`
+为唯一事实源。
+任何状态机变化必须进入独立 durable RFC，不能夹带在类型所有权重构中。
+
+### 2.3 事件边界
+
+- `AgentEvent` 是 Agent loop 的内部事件。
+- `SessionStreamEvent` 是公开 SDK 事件。
+- `AgentServerEvent` 是带 sequence、eventId 和 protocolVersion 的 wire envelope。
+- 三者不互为类型别名。
+- `AgentEvent` 到 `SessionStreamEvent` 只允许通过 `StreamBroadcaster` 的穷举映射。
+- 禁止 `event as SessionStreamEvent` 和默认透传分支。
+
+### 2.4 配置所有权
+
+- 根入口只有一个公开配置名：`AgentOptions`。
+- Agent loop 的内部运行参数命名为 `AgentRuntimeOptions`。
+- `/advanced` 的 `SessionOptions` 是低层 Session contract，不与 `AgentOptions`
+  合并；两者服务不同调用者。
+- `AgentOptions.advanced` 负责把高级能力映射到 `SessionOptions`。
+- server profile 不隐式读取 `process.env` 或本机 credential。
+
+### 2.5 Tool 所有权
+
+- `defineTool()` 是用户 authoring API。
+- `Tool` 是编译后的 runtime contract。
+- Zod 路径必须从 schema 推导 callback 参数。
+- JSON Schema 路径继续支持显式参数类型，但不伪装成编译期 schema 推导。
+- `ToolResult` 保持 `status: 'success' | 'error'` discriminated union。
+- `ToolKind` 只描述 readonly/write/execute 权限类别；network、subagent 等能力不能
+  塞进同一枚举。
+- `ToolSideEffect` 的持久化值保持 `pure`、`idempotent`、`non_idempotent`。
+- 内置工具继续使用完整 `Tool` contract，不强制改写为轻量 `defineTool()`。
+
+---
+
+## 3. 模块所有权
+
+### 3.1 通用值类型
+
+`src/types/` 只保留真正跨域、无具体 runtime 实现依赖的基础 contract：
+
+```text
 src/types/
-├── ids.ts                    # 品牌类型：SessionId, AgentId, ToolId, ...
-├── protocol/                 # 序列化边界（browser-safe）
-│   ├── wire.ts              # AgentCommand, AgentEvent
-│   ├── codec.ts             # 序列化/反序列化
-│   └── version.ts           # 协议版本
-├── domain/                   # 领域模型
-│   ├── message.ts           # Message, Role, Content
-│   ├── tool.ts              # Tool, ToolKind, ToolSideEffect
-│   ├── model.ts             # ModelIdentity, ModelCapabilities
-│   ├── permission.ts        # Permission, PermissionDecision
-│   └── runtime.ts           # RuntimeContext, Capability
-├── config/                   # 配置类型（用户填写）
-│   ├── agent.ts             # AgentConfig（分层）
-│   ├── tool.ts              # ToolConfig
-│   ├── model.ts             # ModelConfig
-│   └── permission.ts        # PermissionConfig
-├── api/                      # 公开 API
-│   ├── agent.ts             # Agent 接口
-│   ├── response.ts          # AgentResponse
-│   ├── tool-builder.ts      # defineTool() 的类型
-│   └── events.ts            # SessionStreamEvent（公开事件）
-└── internal/                 # 内部类型（不导出）
-    ├── session.ts           # SessionState（内部状态机）
-    ├── loop.ts              # LoopState, TurnState
-    ├── events.ts            # InternalEvent（完整事件）
-    └── context.ts           # InternalContext（完整上下文）
+├── identifiers.ts   # branded IDs
+├── json.ts          # JsonValue / JsonObject
+├── constants.ts     # 跨模块稳定常量
+├── permissions.ts   # permission value 与策略端口
+└── logging.ts       # 无具体 logger 实现的结构化日志端口
 ```
 
----
+禁止把仅由单个功能域拥有的类型搬进 `src/types/`，避免形成新的 god folder。
 
-## 第三部分：具体类型定义
+### 3.2 Agent public API
 
-### 3.1 ID 类型（`types/ids.ts`）
+所有权：
 
-```ts
-// 品牌类型，防止 ID 混用
-declare const SessionIdBrand: unique symbol;
-export type SessionId = string & { readonly [SessionIdBrand]: true };
-
-declare const AgentIdBrand: unique symbol;
-export type AgentId = string & { readonly [AgentIdBrand]: true };
-
-declare const ToolIdBrand: unique symbol;
-export type ToolId = string & { readonly [ToolIdBrand]: true };
-
-declare const MessageIdBrand: unique symbol;
-export type MessageId = string & { readonly [MessageIdBrand]: true };
-
-// 工厂函数
-export const SessionId = (id: string): SessionId => id as SessionId;
-export const AgentId = (id: string): AgentId => id as AgentId;
-export const ToolId = (id: string): ToolId => id as ToolId;
-export const MessageId = (id: string): MessageId => id as MessageId;
+```text
+src/agent/createAgent.ts   # AgentOptions, Agent, createAgent
+src/agent/AgentResponse.ts # AgentResponse 及 listener/event helper
+src/agent/UserMessageContent.ts # wire-safe 用户输入
 ```
 
----
-
-### 3.2 领域模型（`types/domain/`）
-
-#### `domain/message.ts`
+公开 contract：
 
 ```ts
-export enum Role {
-  User = 'user',
-  Assistant = 'assistant',
-  System = 'system',
-  Tool = 'tool',
-}
-
-export type TextContent = {
-  type: 'text';
-  text: string;
-};
-
-export type ImageContent = {
-  type: 'image';
-  url: string;
-  detail?: 'low' | 'high';
-};
-
-export type Content = TextContent | ImageContent;
-
-export type Message = {
-  id: MessageId;
-  role: Role;
-  content: Content[];
-  timestamp: number;
-};
-```
-
-#### `domain/tool.ts`
-
-```ts
-export enum ToolKind {
-  ReadOnly = 'read-only',
-  Write = 'write',
-  Execute = 'execute',
-  Network = 'network',
-  Subagent = 'subagent',
-}
-
-export enum ToolSideEffect {
-  Pure = 'pure',             // 可以安全重放
-  Idempotent = 'idempotent', // 可以重放但有外部效果
-  NonIdempotent = 'non-idempotent', // 不可重放
-}
-
-// 运行时 Tool（内部使用）
-export type RuntimeTool = {
-  id: ToolId;
-  name: string;
-  description: string;
-  kind: ToolKind;
-  sideEffect: ToolSideEffect;
-  jsonSchema: JSONSchema7;
-  execute: (params: unknown, context: ToolContext) => ToolExecution;
-};
-```
-
-#### `domain/permission.ts`
-
-```ts
-export enum PermissionDecision {
-  Allow = 'allow',
-  Deny = 'deny',
-  Ask = 'ask',
-}
-
-export type PermissionRequest = {
-  kind: ToolKind;
-  toolName: string;
-  params: unknown;
-  affectedPaths?: string[];
-};
-
-export type PermissionResult = {
-  decision: PermissionDecision;
-  reason?: string;
-};
-```
-
----
-
-### 3.3 配置类型（`types/config/`）
-
-#### `config/agent.ts` - 这是核心
-
-```ts
-import type { z } from 'zod';
-
-// ── 第一层：必需配置（2-3 个字段）──────────────────────
-
-export type AgentCoreConfig = {
-  /**
-   * 模型标识符，如 'gpt-4o', 'claude-sonnet-3.5'
-   */
+export interface AgentOptions {
   model: string;
-  
-  /**
-   * API key（如果不通过环境变量提供）
-   */
-  apiKey?: string;
-};
-
-// ── 第二层：常用配置（≤10 个字段）──────────────────────
-
-export type AgentBehaviorConfig = {
-  /**
-   * 系统提示词
-   */
+  apiKey: string;
+  profile?: 'local' | 'server';
+  provider?: ProviderType;
+  baseUrl?: string;
+  tools?: readonly SessionTool[];
   systemPrompt?: string;
-  
-  /**
-   * 采样温度 (0-2)
-   */
   temperature?: number;
-  
-  /**
-   * 最大轮次，-1 表示无限制
-   */
+  maxOutputTokens?: number;
   maxTurns?: number;
-  
-  /**
-   * 工具列表
-   */
-  tools?: ToolBuilder[];
-  
-  /**
-   * 文件系统访问权限（自动启用 node profile）
-   */
-  filesystem?: {
-    roots: string[];
-    cwd?: string;
-  };
-};
-
-// ── 第三层：高级配置（其余全部）──────────────────────────
-
-export type AgentAdvancedConfig = {
-  /**
-   * 权限配置（统一入口）
-   */
-  permission?: PermissionConfig;
-  
-  /**
-   * Token 预算
-   */
-  tokenBudget?: {
-    maxPromptTokens?: number;
-    maxCompletionTokens?: number;
-    maxTotalTokens?: number;
-  };
-  
-  /**
-   * 中间件
-   */
-  middleware?: {
-    model?: ModelMiddleware[];
-    tool?: ToolMiddleware[];
-  };
-  
-  /**
-   * 钩子（TypeScript callbacks）
-   */
-  hooks?: {
-    beforeToolUse?: HookFn<'beforeToolUse'>[];
-    afterToolUse?: HookFn<'afterToolUse'>[];
-    onError?: HookFn<'onError'>[];
-    // ... 其他 inline hooks
-  };
-  
-  /**
-   * 持久化存储（生产环境）
-   */
-  persistence?: {
-    store: DurableStore;
-    sessionId?: SessionId;
-  };
-  
-  /**
-   * 可观测性
-   */
-  observability?: {
-    tracing?: TracingConfig;
-    metrics?: MetricsConfig;
-  };
-};
-
-// ── 完整配置类型 ───────────────────────────────────────
-
-export type AgentConfig = 
-  & AgentCoreConfig 
-  & AgentBehaviorConfig 
-  & {
-      advanced?: AgentAdvancedConfig;
-    };
-```
-
-#### `config/permission.ts`
-
-```ts
-/**
- * 权限配置（统一入口，替代原来的 3 个字段）
- */
-export type PermissionConfig = 
-  | PermissionPreset
-  | PermissionHandler;
-
-/**
- * 预设权限模式
- */
-export enum PermissionPreset {
-  /**
-   * 默认：读自动允许，写需确认
-   */
-  Default = 'default',
-  
-  /**
-   * 接受编辑：文件读写自动允许，执行需确认
-   */
-  AcceptEdits = 'accept-edits',
-  
-  /**
-   * 绕过所有权限检查（测试用）
-   */
-  Bypass = 'bypass',
+  filesystem?: AgentFilesystemOptions;
+  advanced?: AgentAdvancedOptions;
 }
 
-/**
- * 自定义权限处理器
- */
-export type PermissionHandler = (
-  request: PermissionRequest
-) => Promise<PermissionDecision> | PermissionDecision;
+export interface Agent extends Omit<ISession, 'send' | 'stream'> {
+  send(message: UserMessageContent, options?: SendOptions): Promise<AgentResponse>;
+}
 ```
 
----
+这里存在两个独立入口：
 
-### 3.4 工具定义（`types/api/tool-builder.ts`）
+- `createAgent({ profile: 'server' })`：在当前服务端进程直接执行 Agent，
+  `apiKey` 是该进程持有的 Provider credential。
+- `AgentClient → AgentServer`：浏览器只发送 protocol DTO；AgentServer 在认证后
+  通过 `resolveSessionOptions` 注入 Provider credential。
+
+两条链路不互相调用，wire payload 永远不包含 credential。
+
+映射规则由 `createAgent()` 单点实现：
+
+1. `advanced` 先提供低层 Session 字段。
+2. 根级 `model`、tools、prompt、temperature、token 和 turn 字段覆盖同名低层值；
+   `Omit<SessionOptions, RootAgentOption>` 在类型层禁止冲突。
+3. `advanced.connection` 先提供 Provider 附加字段，根级 `provider`、`apiKey` 和
+   `baseUrl` 后写并具有更高优先级。
+4. `filesystem` 在未显式指定 profile 时选择 local profile；其 roots/cwd 覆盖
+   `advanced.defaultContext.capabilities.filesystem`，其他 capability 保留。
+5. `advanced.hooks` 直接成为 Session inline hooks；不存在第二个根级 hooks 字段。
+6. `advanced.permission` 最后编译为低层 permission handler/mode，并覆盖所有通过
+   非类型调用混入的 legacy permission 字段。
+7. 显式 `profile` 优先于自动 profile 推断。
+
+内部 Agent 参数不得继续使用同名 `AgentOptions`：
 
 ```ts
-import type { z } from 'zod';
+export interface AgentRuntimeOptions {
+  systemPrompt?: string;
+  appendSystemPrompt?: string;
+  permissions?: Partial<PermissionsConfig>;
+  permissionMode?: PermissionMode;
+  maxTurns?: number;
+  toolWhitelist?: string[];
+  toolSourcePolicy?: ToolCatalogSourcePolicy;
+  modelId?: string;
+  permissionHandler?: PermissionHandler;
+  // 其余字段保持当前 runtime 语义
+}
+```
 
-/**
- * 工具构建器（用户定义工具时使用）
- * 
- * 泛型参数 TSchema 自动推导参数类型，保证类型安全
- */
-export type ToolBuilder<TSchema extends z.ZodObject<any> = z.ZodObject<any>> = {
-  /**
-   * 工具名称（唯一标识）
-   */
-  name: string;
-  
-  /**
-   * 工具描述（给模型看）
-   */
-  description: string;
-  
-  /**
-   * 参数 schema（Zod）
-   */
+`AgentRuntimeOptions` 是内部实现类型，不从 root、browser 或 advanced 导出。
+
+### 3.3 Agent 执行上下文
+
+旧 `ChatContext` 改为按能力组合的内部类型。运行时对象保持扁平，避免为了类型美观
+增加热路径对象分配：
+
+```ts
+export interface AgentConversationState {
+  messages: ConversationMessage[];
+  userId: string;
+  sessionId: SessionId;
+  snapshot?: ContextSnapshot;
+}
+
+export interface AgentExecutionControl {
+  signal?: AbortSignal;
+  confirmationHandler?: ConfirmationHandler;
+  permissionMode?: PermissionMode;
+  executionFence?: DurableExecutionFence;
+  assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+export interface AgentExecutionServices {
+  backgroundAgentManager?: IBackgroundAgentManager;
+  systemPrompt?: string;
+  subagentInfo?: SubagentInfoForContext;
+  omitEnvironment?: boolean;
+}
+
+export type AgentExecutionContext =
+  & AgentConversationState
+  & AgentExecutionControl
+  & AgentExecutionServices;
+```
+
+这些类型只属于 Agent runtime。Tool 通过自己的 `ExecutionContext` 获取能力，
+不能直接依赖完整 Agent context。
+
+### 3.4 Tool authoring 与 runtime
+
+所有权：
+
+```text
+src/tools/types/tool.ts      # authoring/runtime tool contracts
+src/tools/types/result.ts    # result/yield contracts
+src/tools/types/execution.ts # runtime execution capability
+src/tools/core/createTool.ts # compiler/adapter
+```
+
+authoring 输入明确区分：
+
+```ts
+export type ZodToolDefinitionInput<
+  TSchema extends z.ZodSchema,
+  TData extends JsonValue = JsonValue,
+> = Omit<ToolDefinitionInput<z.infer<TSchema>, TData>, 'parameters'> & {
   parameters: TSchema;
-  
-  /**
-   * 工具类型
-   */
-  kind?: ToolKind;
-  
-  /**
-   * 副作用类型
-   */
-  sideEffect?: ToolSideEffect;
-  
-  /**
-   * 执行函数
-   * 
-   * 支持两种形式：
-   * 1. async function - 直接返回结果
-   * 2. async generator - 可以 yield 进度
-   */
-  execute: ToolExecutor<z.infer<TSchema>>;
 };
 
-/**
- * 工具执行器（两种形式）
- */
-export type ToolExecutor<TParams> =
-  | SimpleExecutor<TParams>
-  | StreamingExecutor<TParams>;
-
-/**
- * 简单执行器：async function，返回结果
- */
-export type SimpleExecutor<TParams> = (
-  params: TParams,
-  context: ToolContext
-) => Promise<ToolResult>;
-
-/**
- * 流式执行器：async generator，可以 yield 进度
- */
-export type StreamingExecutor<TParams> = (
-  params: TParams,
-  context: ToolContext
-) => AsyncGenerator<ToolProgress, ToolResult>;
-
-/**
- * 工具上下文（执行时可用的能力）
- */
-export type ToolContext = {
-  /**
-   * 取消信号
-   */
-  signal: AbortSignal;
-  
-  /**
-   * 会话 ID
-   */
-  sessionId: SessionId;
-  
-  /**
-   * 确认对话框
-   */
-  confirm: (message: string) => Promise<boolean>;
-  
-  /**
-   * 进度回调（简单执行器也可以用）
-   */
-  progress: (message: string) => Promise<void>;
-};
-
-/**
- * 工具结果
- */
-export type ToolResult = {
-  /**
-   * 返回给模型的内容
-   */
-  content: string | Content[];
-  
-  /**
-   * 可选：显示给用户的内容
-   */
-  display?: {
-    summary?: string;
-    details?: string;
-  };
-  
-  /**
-   * 可选：错误信息
-   */
-  error?: {
-    message: string;
-    code?: string;
-  };
-};
-
-/**
- * 工具进度
- */
-export type ToolProgress = {
-  message: string;
-  percent?: number;
+export type JsonSchemaToolDefinitionInput<
+  TParams = JsonObject,
+  TData extends JsonValue = JsonValue,
+> = Omit<ToolDefinitionInput<TParams, TData>, 'parameters'> & {
+  parameters: JSONSchema7;
 };
 ```
 
-#### 使用示例
+`defineTool()` 为两条路径提供独立 overload。异构 Session 工具集合通过一个明确命名
+的 erased contract 表达，而不是在 `SessionOptions` 里直接写
+`ToolDefinition<never>`。
 
 ```ts
-import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
-
-// 示例 1：简单工具（async function）
-const weather = defineTool({
-  name: 'get_weather',
-  description: 'Get weather for a city',
-  parameters: z.object({
-    city: z.string(),
-    unit: z.enum(['celsius', 'fahrenheit']).optional(),
-  }),
-  async execute(params, ctx) {
-    // params 的类型自动推导为 { city: string; unit?: 'celsius' | 'fahrenheit' }
-    const data = await fetchWeather(params.city, params.unit);
-    return { content: `Weather: ${data}` };
-  },
-});
-
-// 示例 2：流式工具（async generator）
-const analyze = defineTool({
-  name: 'analyze_codebase',
-  description: 'Analyze a codebase',
-  parameters: z.object({
-    path: z.string(),
-  }),
-  async *execute(params, ctx) {
-    yield { message: 'Scanning files...', percent: 20 };
-    const files = await scanFiles(params.path);
-    
-    yield { message: 'Analyzing...', percent: 60 };
-    const result = await analyze(files);
-    
-    yield { message: 'Done', percent: 100 };
-    
-    return {
-      content: `Found ${result.issues} issues`,
-      display: { summary: result.summary },
-    };
-  },
-});
+type ErasedToolDefinition = ToolDefinition<never, JsonValue>;
+type SessionTool = ErasedToolDefinition | Tool;
 ```
 
----
+完整转换链为：
 
-### 3.5 公开 API（`types/api/`）
+```text
+ZodToolDefinitionInput / JsonSchemaToolDefinitionInput
+  → defineTool()
+  → typed ToolDefinition
+  → SessionTool boundary erases heterogeneous params
+  → toolFromDefinition()
+  → runtime Tool
+  → ToolRegistry / ToolCatalog
+```
 
-#### `api/agent.ts`
+`AgentOptions.tools` 和 `SessionOptions.tools` 接受 authoring definition 或已经编译的
+`Tool`。Zod 路径由 SDK 承担运行时验证；JSON Schema 路径的 `TParams` 是调用方声明
+的信任边界，当前只向模型描述 schema，不提供运行时验证保证。需要运行时保证时必须
+改用 Zod，或手工构造包含 `validateInput` 的完整 runtime `Tool`；当前
+`ToolConfig` 自身要求 Zod schema。
+
+### 3.5 Session contract
+
+`SessionOptions`、`ISession`、`SessionStreamEvent` 继续由 `src/session/types.ts`
+拥有。它们是 `/advanced` 使用的低层 contract，不复制到 `src/types/api/`。
+
+Session 内部状态机继续由以下模块拥有：
+
+```text
+AgentSession.ts
+SessionState.ts
+SessionLifecycle.ts
+SessionRequestCoordinator.ts
+SessionStreamRunner.ts
+SessionDurability.ts
+StreamBroadcaster.ts
+```
+
+这些内部实现类不从任何 package entrypoint 导出。
+
+### 3.6 Protocol contract
+
+所有权：
+
+```text
+src/protocol/types.ts
+src/protocol/schemas.ts
+src/protocol/index.ts
+```
+
+wire create command 保持：
 
 ```ts
-/**
- * Agent 接口（用户交互的主要入口）
- */
-export interface Agent {
-  /**
-   * 会话 ID
-   */
-  readonly sessionId: SessionId;
-  
-  /**
-   * 发送消息
-   */
-  send(message: string | Content[]): Promise<AgentResponse>;
-  
-  /**
-   * 关闭会话
-   */
-  close(): Promise<void>;
-  
-  /**
-   * 中止当前请求
-   */
-  abort(): Promise<void>;
-}
+type CreateSessionCommand = AgentCommandBase<
+  'session.create',
+  { readonly metadata?: JsonObject }
+>;
 ```
 
-#### `api/response.ts`
+浏览器入口导出 protocol types、schema/parser 和 `AgentClient`，不导出任何要求
+Node runtime 的实现。
 
-```ts
-/**
- * Agent 响应（高层 API）
- */
-export interface AgentResponse {
-  /**
-   * 请求 ID
-   */
-  readonly requestId: RequestId;
-  
-  /**
-   * 获取完整文本（最常用）
-   */
-  text(): Promise<string>;
-  
-  /**
-   * 流式获取文本
-   */
-  textStream(): AsyncIterable<string>;
-  
-  /**
-   * 监听特定事件
-   */
-  on<T extends SessionEventType>(
-    type: T,
-    handler: EventHandler<T>
-  ): this;
-  
-  /**
-   * 获取完整响应（包含工具调用、token 使用等）
-   */
-  result(): Promise<ResponseResult>;
-  
-  /**
-   * 底层：完整事件流（高级用户使用）
-   */
-  stream(): AsyncIterable<SessionStreamEvent>;
-}
+### 3.7 Advanced SPI
 
-/**
- * 公开事件类型（17 种，用户可见）
- */
-export type SessionStreamEvent =
-  | { type: 'turn.start'; turn: number }
-  | { type: 'turn.end'; turn: number }
-  | { type: 'content'; delta: string }
-  | { type: 'thinking'; delta: string }
-  | { type: 'tool.use'; id: ToolUseId; name: string; input: unknown }
-  | { type: 'tool.progress'; id: ToolUseId; progress: ToolProgress }
-  | { type: 'tool.result'; id: ToolUseId; result: ToolResult }
-  | { type: 'usage'; promptTokens: number; completionTokens: number }
-  | { type: 'error'; message: string; code?: string }
-  // ... 其他事件
+`/advanced` 只承载集成者可实现或组合的稳定端口与 Node adapters：
 
-/**
- * 事件类型联合（用于 .on() 的类型推导）
- */
-export type SessionEventType = SessionStreamEvent['type'];
+- `SessionRunner`
+- `EffectDispatcher`
+- `AgentRuntimeDeps`
+- `ExecutionHost`
+- local/server Session factories
+- Node storage、sandbox、Skill 和 MCP adapters
 
-/**
- * 事件处理器（类型安全）
- */
-export type EventHandler<T extends SessionEventType> = (
-  event: Extract<SessionStreamEvent, { type: T }>
-) => void | Promise<void>;
+`RuntimeStore`、`AgentServer` 和 `AgentWorker` 由 `/server/infra` 拥有。
+`SessionRunnerContext.store` 对 `RuntimeStore`、route 和 claim contract 的依赖是
+`/advanced` 与 `/server/infra` 之间唯一允许的 type-only bridge；不得由此引入
+server runtime value 或形成运行时循环依赖。
 
-/**
- * 完整响应结果
- */
-export type ResponseResult = {
-  content: string;
-  toolCalls: ToolCallRecord[];
-  usage: TokenUsage;
-  duration: number;
-};
-```
+标记为 internal 且允许自由变化的类型不得从 `/advanced` 或 `/server/infra`
+导出。一旦类型进入任一 package entrypoint，就按公开 contract 进行 semver 管理。
 
 ---
 
-### 3.6 内部类型（`types/internal/`）
+## 4. 明确拒绝的设计
 
-#### `internal/session.ts`
+以下方案不进入实现：
 
-```ts
-/**
- * 会话状态（内部状态机）
- * 
- * 只在 Session 类内部使用，不导出
- */
-export enum SessionState {
-  Idle = 'idle',
-  Running = 'running',
-  Waiting = 'waiting',
-  Closed = 'closed',
-  Error = 'error',
-}
+1. **Wire command 携带 `AgentConfig`**
+   原因：包含 credential 和不可序列化 runtime value，破坏认证与部署边界。
 
-/**
- * 内部会话数据
- */
-export type InternalSessionData = {
-  sessionId: SessionId;
-  state: SessionState;
-  messages: Message[];
-  context: InternalContext;
-  currentTurn: number;
-  tokenUsage: TokenUsage;
-};
-```
+2. **单一 `DurableStore`**
+   原因：混淆 transcript、journal、runtime transaction 和 lease ownership。
 
-#### `internal/context.ts`
+3. **事件通过强制断言默认透传**
+   原因：新增内部事件会静默扩大公共协议。
 
-```ts
-/**
- * 内部上下文（包含所有运行时依赖）
- * 
- * 与公开的 ToolContext 不同，这是完整的内部上下文
- */
-export type InternalContext = {
-  // 只读数据
-  data: {
-    readonly sessionId: SessionId;
-    readonly userId: string;
-    readonly snapshot: ContextSnapshot;
-  };
-  
-  // 运行时能力
-  runtime: {
-    signal: AbortSignal;
-    confirm: (message: string) => Promise<boolean>;
-    checkPermission: (req: PermissionRequest) => Promise<PermissionDecision>;
-  };
-  
-  // 子系统（内部）
-  internal: {
-    backgroundAgents: BackgroundAgentManager;
-    executionLease: DurableExecutionLease;
-    toolCatalog: ToolCatalog;
-  };
-};
-```
+4. **所有内置工具改写为 `defineTool()`**
+   原因：内置工具依赖动态 behavior、permission matcher、interrupt、exposure 和
+   durable lifecycle，轻量 authoring API 无法表达完整 contract。
 
-#### `internal/events.ts`
+同时拒绝：
 
-```ts
-/**
- * 内部事件（32 种，包含所有内部细节）
- */
-export type InternalEvent =
-  | { type: 'agent.start'; sessionId: SessionId }
-  | { type: 'agent.end'; sessionId: SessionId }
-  | { type: 'turn.start'; turn: number }
-  | { type: 'turn.end'; turn: number }
-  | { type: 'content.delta'; delta: string }  // 内部用 delta
-  | { type: 'thinking.delta'; delta: string }
-  | { type: 'tool.scheduled'; id: ToolUseId; name: string }
-  | { type: 'tool.started'; id: ToolUseId }
-  | { type: 'tool.progress'; id: ToolUseId; progress: ToolProgress }
-  | { type: 'tool.completed'; id: ToolUseId; result: ToolResult }
-  | { type: 'budget.warning'; remaining: number }
-  | { type: 'compaction.start' }
-  | { type: 'compaction.end'; removed: number }
-  // ... 其他内部事件
-
-/**
- * 事件转换器（内部事件 → 公开事件）
- */
-export function toPublicEvent(
-  event: InternalEvent
-): SessionStreamEvent | null {
-  switch (event.type) {
-    case 'content.delta':
-      return { type: 'content', delta: event.delta };
-    case 'tool.completed':
-      return { type: 'tool.result', id: event.id, result: event.result };
-    case 'budget.warning':
-    case 'compaction.start':
-      return null;  // 内部事件，不暴露
-    default:
-      return event as SessionStreamEvent;  // 大部分直接透传
-  }
-}
-```
+- 创建与当前类型并行的 `src/types/api`、`src/types/domain` 大树。
+- 为目录整齐度跨 ownership 边界搬运类型。
+- 用 aggregate coverage 代替关键状态机和类型 contract 测试。
+- 在同一 patch 中同时重命名 wire event 字符串和重构内部类型。
 
 ---
 
-### 3.7 协议类型（`types/protocol/`）
+## 5. 实施切片
 
-#### `protocol/wire.ts`
+### Slice 1：Agent 配置所有权
 
-```ts
-/**
- * 协议版本（语义化版本）
- */
-export const PROTOCOL_VERSION = '2.0.0' as const;
+- 将内部 `agent/types.ts::AgentOptions` 重命名为 `AgentRuntimeOptions`。
+- 根入口只导出 `createAgent.ts::AgentOptions`。
+- 增加类型所有权测试，禁止内部配置从 package entrypoint 泄漏。
 
-/**
- * Agent 命令（客户端 → 服务器）
- */
-export type AgentCommand =
-  | { type: 'session.create'; config: AgentConfig }
-  | { type: 'session.send'; sessionId: SessionId; message: string }
-  | { type: 'session.abort'; sessionId: SessionId }
-  | { type: 'session.close'; sessionId: SessionId };
+验收：
 
-/**
- * Agent 事件（服务器 → 客户端）
- */
-export type AgentWireEvent =
-  | { type: 'session.created'; sessionId: SessionId }
-  | { type: 'session.event'; sessionId: SessionId; event: SessionStreamEvent }
-  | { type: 'session.error'; sessionId: SessionId; error: WireError }
-  | { type: 'session.closed'; sessionId: SessionId };
-
-/**
- * 错误表示（序列化安全）
- */
-export type WireError = {
-  message: string;
-  code?: string;
-  details?: Record<string, unknown>;
-};
+```text
+public AgentOptions count: 1
+internal AgentRuntimeOptions exported from package: 0
+runtime behavior changes: 0
 ```
 
----
+### Slice 2：内部执行上下文
 
-## 第四部分：类型导出策略
+- 将 `ChatContext` 拆为三个窄接口及 `AgentExecutionContext` 交集。
+- 迁移 Agent、LoopRunner、PlanExecutor、Session stream 和 subagent 内部引用。
+- 不改变运行时对象形状和序列化格式。
 
-### 4.1 主入口（`@blade-ai/agent-sdk`）
+验收：
 
-```ts
-// src/index.ts
-
-// ── 创建 API ──────────────────────────────────
-export { createAgent } from './agent/Agent.js';
-export { defineTool } from './tools/builder.js';
-
-// ── 配置类型 ──────────────────────────────────
-export type {
-  AgentConfig,
-  AgentCoreConfig,
-  AgentBehaviorConfig,
-  AgentAdvancedConfig,
-} from './types/config/agent.js';
-
-export type {
-  PermissionConfig,
-  PermissionPreset,
-  PermissionHandler,
-} from './types/config/permission.js';
-
-// ── API 类型 ──────────────────────────────────
-export type {
-  Agent,
-} from './types/api/agent.js';
-
-export type {
-  AgentResponse,
-  ResponseResult,
-  SessionStreamEvent,
-  SessionEventType,
-} from './types/api/response.js';
-
-export type {
-  ToolBuilder,
-  ToolExecutor,
-  ToolContext,
-  ToolResult,
-  ToolProgress,
-} from './types/api/tool-builder.js';
-
-// ── 领域类型 ──────────────────────────────────
-export type {
-  Message,
-  Content,
-  Role,
-} from './types/domain/message.js';
-
-export type {
-  ToolKind,
-  ToolSideEffect,
-} from './types/domain/tool.js';
-
-export {
-  SessionId,
-  AgentId,
-  ToolId,
-  MessageId,
-} from './types/ids.js';
-
-// ── 错误类型 ──────────────────────────────────
-export {
-  SdkError,
-  ConfigError,
-  PermissionDeniedError,
-  ToolExecutionError,
-} from './errors/index.js';
+```text
+ChatContext references: 0
+AgentExecutionContext package exports: 0
+Session/durable tests: unchanged
 ```
 
-### 4.2 浏览器入口（`@blade-ai/agent-sdk/browser`）
+### Slice 3：Tool authoring contract
 
-```ts
-// src/browser/index.ts
+- 新增 `ZodToolDefinitionInput` 和 `JsonSchemaToolDefinitionInput`。
+- `defineTool()` overload 分别使用对应输入。
+- 引入 `ErasedToolDefinition`，让异构集合的类型擦除发生在 Tool 模块。
+- 保留完整 `Tool` runtime contract 和 discriminated `ToolResult`。
 
-// ── 浏览器客户端 ──────────────────────────────
-export { AgentClient } from './client.js';
+验收：
 
-// ── 协议类型 ──────────────────────────────────
-export type {
-  AgentCommand,
-  AgentWireEvent,
-  WireError,
-} from '../types/protocol/wire.js';
+- Zod schema 自动推导 callback 参数。
+- JSON Schema 继续支持显式泛型。
+- 错误参数在 Zod runtime validation 前不能进入 tool body。
+- JSON Schema runtime test 明确验证当前 advisory 语义：参数不被 SDK schema
+  validator 拦截并原样进入 callback；它不宣称提供运行时类型保证。
+- 所有 builtin tool 与 durable tool tests 保持通过。
 
-export { PROTOCOL_VERSION } from '../types/protocol/wire.js';
+### Slice 4：Wire 与导出边界
 
-// ── 配置类型（浏览器需要发送给服务器）──────
-export type {
-  AgentConfig,
-} from '../types/config/agent.js';
+- 增加 source/entrypoint contract test。
+- 禁止 protocol types 导入 Agent config、Session options、Store 或 concrete runtime。
+- 在 `src/protocol/__tests__/ownership.test.ts` 维护 internal symbol denylist，并对
+  `package.json.exports` 对应的全部 source entrypoint 执行检查；兼容 subpath 也在
+  范围内。
+- 保持四个 canonical entrypoint：
+  - `@blade-ai/agent-sdk`
+  - `@blade-ai/agent-sdk/browser`
+  - `@blade-ai/agent-sdk/advanced`
+  - `@blade-ai/agent-sdk/server/infra`
 
-// ── 事件类型（浏览器需要订阅）──────────────
-export type {
-  SessionStreamEvent,
-  SessionEventType,
-} from '../types/api/response.js';
-```
+验收：
 
-### 4.3 高级入口（`@blade-ai/agent-sdk/advanced`）
-
-```ts
-// src/advanced/index.ts
-
-// ── 扩展点 ────────────────────────────────────
-export type {
-  SessionRunner,
-  SessionRunContext,
-  SessionRunResult,
-} from '../server/SessionRunner.js';
-
-export type {
-  AgentRuntimeDeps,
-} from '../agent/Agent.js';
-
-export type {
-  ToolCatalog,
-  ToolCatalogEntry,
-} from '../tools/catalog/index.js';
-
-// ── 内部类型（供扩展使用）────────────────────
-export type {
-  RuntimeTool,
-} from '../types/domain/tool.js';
-
-export type {
-  InternalContext,
-} from '../types/internal/context.js';
-
-// ── 中间件 ────────────────────────────────────
-export type {
-  ModelMiddleware,
-  ToolMiddleware,
-  Middleware,
-} from '../middleware/index.js';
-```
+- `session.create` schema 拒绝 `config`、`apiKey` 和其他未知字段。
+- browser source 不包含 Node/server runtime import。
+- `verify:entrypoints` 与 `verify:install` 通过。
 
 ---
 
-## 第五部分：拆分实施路径
+## 6. 迁移规则
 
-### Phase 1: 建立新类型系统（10-12 天）
-
-**目标：** 定义所有新类型，不改任何实现
-
-**工作内容：**
-
-1. **Day 1-2: 基础类型**
-   - 创建 `src/types/` 目录结构
-   - 实现 `ids.ts`（品牌类型）
-   - 实现 `domain/message.ts`, `domain/tool.ts`, `domain/permission.ts`
-
-2. **Day 3-4: 配置类型**
-   - 实现 `config/agent.ts`（分层配置）
-   - 实现 `config/permission.ts`（统一权限）
-   - 实现 `config/tool.ts`, `config/model.ts`
-
-3. **Day 5-6: API 类型**
-   - 实现 `api/agent.ts`
-   - 实现 `api/response.ts`（事件类型）
-   - 实现 `api/tool-builder.ts`（ToolBuilder 与泛型推导）
-
-4. **Day 7-8: 内部类型**
-   - 实现 `internal/session.ts`
-   - 实现 `internal/context.ts`
-   - 实现 `internal/events.ts`（含 `toPublicEvent` 转换器）
-
-5. **Day 9-10: 协议类型**
-   - 实现 `protocol/wire.ts`
-   - 实现 `protocol/codec.ts`（序列化/反序列化）
-   - 实现 `protocol/version.ts`
-
-6. **Day 11-12: 导出策略**
-   - 配置所有入口的 `index.ts`
-   - 写文档：`docs/types/README.md`（类型系统导览）
-   - 写文档：`docs/types/migration.md`（从旧类型迁移指南）
-
-**产出：**
-- 完整的新类型系统
-- 所有新类型标记为 `@beta`
-- 类型导出文档
-
-**验证：**
-```bash
-pnpm run build  # 确保新类型编译通过
-pnpm run type-check  # 确保没有类型错误
-```
+- 内部类型重命名在单独 patch 完成，不与 wire schema 变更混合。
+- 每个切片先增加失败的 type/contract test，再迁移实现。
+- 旧内部名称不保留 deprecated alias；它们不是公共 contract。
+- 公开类型如需删除或重命名，只能在 v8 major 中进行，并提供迁移表。
+- 每个公开类型只有一个 owner；其他入口只做显式 type re-export。
+- 迁移完成后使用 `rg` 全量确认旧名称和禁止 import 为零，不做抽样检查。
 
 ---
 
-### Phase 2: 实现新 API 层（8-10 天）
+## 7. 验收门禁
 
-**目标：** 基于新类型实现 `createAgent()` 和 `defineTool()`
+### 编译期
 
-**工作内容：**
+- `pnpm run type-check`
+- Zod/JSON Schema authoring inference tests
+- root/browser/advanced export ownership tests
+- protocol type/schema parity tests
 
-1. **Day 1-2: `defineTool()` 实现**
-   - 实现 `tools/builder.ts`
-   - 支持 Zod schema 自动推导参数类型
-   - 支持 async function 和 async generator 两种形式
-   - 内部转换为 `RuntimeTool`
+### 运行时
 
-2. **Day 3-4: `createAgent()` facade**
-   - 实现 `agent/createAgent.ts`
-   - 接受 `AgentConfig`（分层配置）
-   - 内部转换为旧的 `SessionOptions`
-   - 返回 `Agent` 接口实例
+- `pnpm test`
+- `pnpm run test:coverage:session`
+- `pnpm run verify:entrypoints`
+- `pnpm run verify:install`
+- DeepSeek live Agent/Tool/Response smoke，无框架重试连续 3 次
 
-3. **Day 5-6: `AgentResponse` 实现**
-   - 实现 `agent/AgentResponse.ts`
-   - 实现 `.text()`, `.textStream()`, `.on()`, `.result()`
-   - 底层基于现有的 `session.stream()`
-   - 实现 `toPublicEvent()` 转换器
+### 文档
 
-4. **Day 7-8: 集成测试**
-   - 写示例：`examples/quickstart/` 使用新 API
-   - 写集成测试：`tests/integration/new-api.test.ts`
-   - 确保新 API 可以完整运行
+- `pnpm run docs:build`
+- 中英文 API reference 保持 entrypoint parity
+- 本 RFC 与实际 owner 路径一致
 
-5. **Day 9-10: 文档**
-   - 更新 README.md 为新 API
-   - 写 `docs/api/agent.md`
-   - 写 `docs/api/tool.md`
+### 完成条件
 
-**产出：**
-- 新 API 完全可用
-- 旧 API 仍然可用（未删除）
-- 新 API 文档完整
-
-**验证：**
-```bash
-cd examples/quickstart
-node index.mjs  # 新 API 可以运行
-pnpm test       # 所有测试通过
-```
+- 公开 Agent 配置只有 `AgentOptions`。
+- 内部仅使用 `AgentRuntimeOptions` 和 `AgentExecutionContext`。
+- Tool authoring 两条 schema 路径均有类型与运行时测试。
+- Wire payload 保持纯 JSON，credential 和 runtime dependency 不跨边界。
+- 没有新增平行类型体系、默认事件断言或聚合 Store。
 
 ---
 
-### Phase 3: 内部迁移（12-15 天）
+## 8. 实施记录
 
-**目标：** 内部代码全部切换到新类型
+2026-09-14 完成四个切片：
 
-**工作内容：**
+- 生产源码仅保留一个公开 `AgentOptions`；内部使用 `AgentRuntimeOptions`。
+- `ChatContext` 生产引用归零，替换为三个窄 contract 组合的
+  `AgentExecutionContext`。
+- Tool owner 提供 Zod、JSON Schema 和内部 erased definition contract。
+- `UserMessageContent` 迁至独立 wire-safe owner；sandbox context 的 TypeScript
+  contract 与 strict stream schema 保持一致。
+- protocol ownership test 覆盖全部当前 package source entrypoint、未知 wire 字段和
+  `StreamBroadcaster` 穷举规则。
 
-1. **Day 1-3: Session 内部迁移**
-   - `Session.ts` 内部使用 `InternalContext`
-   - 保持 `ISession` 接口不变（兼容旧 API）
-   - 事件分发使用 `toPublicEvent()` 转换
+验收结果：
 
-2. **Day 4-6: Agent 内部迁移**
-   - `Agent.ts` 内部使用新的 `InternalSessionData`
-   - `AgentLoop` 使用新的 `InternalEvent`
-   - 保持对外接口不变
-
-3. **Day 7-9: Tool 系统迁移**
-   - `ToolCatalog` 使用 `RuntimeTool`
-   - `ExecutionPipeline` 使用新的 `ToolContext`
-   - 所有内置工具用 `defineTool()` 重写
-
-4. **Day 10-12: 测试覆盖**
-   - 补充单元测试到 70%+ 覆盖率
-   - 补充集成测试覆盖关键路径
-   - E2E 测试覆盖生产场景
-
-5. **Day 13-15: 清理**
-   - 删除旧类型（`SessionOptions`, `AgentOptions` 等）
-   - 删除旧 API 的兼容层
-   - 更新所有 import 路径
-
-**产出：**
-- 内部代码 100% 使用新类型
-- 旧类型和旧 API 完全删除
-- 测试覆盖率 ≥ 70%
-
-**验证：**
-```bash
-pnpm run build
-pnpm test  # 所有测试通过
-pnpm run example:production  # 生产示例可以运行
-```
-
----
-
-### Phase 4: 入口精简与文档（5-7 天）
-
-**目标：** 精简入口点，完善文档
-
-**工作内容：**
-
-1. **Day 1-2: 入口精简**
-   - 废除 `/core`, `/model`, `/session`, `/tools`, `/middleware` 独立入口
-   - 保留 `/browser`, `/advanced`
-   - 更新 `package.json` 的 `exports` 字段
-
-2. **Day 3-4: API 文档生成**
-   - 配置 TypeDoc
-   - 生成 API 文档到 `docs/api/`
-   - 写 `docs/types/architecture.md`（类型架构说明）
-
-3. **Day 5-7: 用户指南**
-   - 写 `docs/guide/getting-started.md`（5 分钟快速开始）
-   - 写 `docs/guide/tools.md`（自定义工具）
-   - 写 `docs/guide/advanced.md`（生产部署）
-   - 写 `docs/guide/migration.md`（从 v7 迁移）
-
-**产出：**
-- 入口点从 11 个精简到 3 个
-- 完整的 API 文档
-- 完整的用户指南
-
----
-
-## 总工期估算
-
-| Phase | 工作内容 | 工期 |
-|-------|----------|------|
-| Phase 1 | 建立新类型系统 | 10-12 天 |
-| Phase 2 | 实现新 API 层 | 8-10 天 |
-| Phase 3 | 内部迁移 | 12-15 天 |
-| Phase 4 | 入口精简与文档 | 5-7 天 |
-| **总计** | | **35-44 天** |
-
-如果是 2 人团队，Phase 1 和 Phase 2 可以并行，总工期可以压缩到 **25-30 天**。
-
----
-
-## 验收标准
-
-### Phase 1 完成标准
-
-- [ ] 所有新类型定义完成，编译通过
-- [ ] 类型系统文档完整（README + 迁移指南）
-- [ ] 导出策略文档完整
-
-### Phase 2 完成标准
-
-- [ ] `createAgent()` 可以创建 agent
-- [ ] `defineTool()` 可以定义工具，泛型推导正确
-- [ ] `AgentResponse` 的所有方法可用
-- [ ] quickstart 示例可以运行
-- [ ] 新 API 文档完整
-
-### Phase 3 完成标准
-
-- [ ] 内部代码 100% 使用新类型
-- [ ] 旧类型和旧 API 完全删除
-- [ ] 测试覆盖率 ≥ 70%
-- [ ] 所有 examples 运行正常
-
-### Phase 4 完成标准
-
-- [ ] 入口点精简到 3 个
-- [ ] API 文档自动生成
-- [ ] 用户指南完整（快速开始 + 自定义工具 + 生产部署 + 迁移）
-- [ ] 发布 v8.0.0
-
----
-
-## 附录：关键设计决策说明
-
-### 为什么 `AgentConfig` 要分三层？
-
-**原因：** 新手只需要看到 2-3 个必填字段，老手可以在 `advanced` 里找到所有高级选项。这是"渐进式披露"的设计模式。
-
-### 为什么工具定义要用 Zod？
-
-**原因：** Zod 提供类型级别的约束，`z.infer<TSchema>` 可以自动推导参数类型，保证 `parameters` 和 `execute` 的参数类型一致。这是唯一能在编译期保证类型安全的方案。
-
-### 为什么要区分 `InternalEvent` 和 `SessionStreamEvent`？
-
-**原因：** 内部事件包含所有细节（32 种），公开事件是稳定的协议（17 种）。内部事件可以随时增加，不影响公开 API。
-
-### 为什么要用品牌类型（branded types）？
-
-**原因：** 防止 ID 混用。`SessionId` 和 `AgentId` 都是 `string`，但品牌类型让 TypeScript 把它们当作不同类型，避免 `agent.send(sessionId)` 这种错误。
-
-### 为什么 `ToolContext` 是窄接口？
-
-**原因：** 工具不应该依赖太多内部细节。`ToolContext` 只暴露工具需要的能力（`signal`, `confirm`, `progress`），内部的 `backgroundAgents` 和 `executionLease` 对工具不可见。
+- lint、type-check、文档构建、changelog parity、entrypoint 和最小安装通过。
+- 全量 Vitest：205 files / 2178 tests passed，95 个环境型测试 skipped。
+- DeepSeek live Agent/Skill/Response smoke 无框架重试连续 3 次通过。

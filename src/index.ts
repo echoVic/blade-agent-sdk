@@ -22,6 +22,7 @@ export type {
   AgentResponseSubmission,
 } from './agent/AgentResponse.js';
 export { AgentResponse } from './agent/AgentResponse.js';
+export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -269,6 +270,7 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
+  JsonSchemaToolDefinitionInput,
   Tool,
   ToolBehavior,
   ToolConfig,
@@ -295,6 +297,7 @@ export type {
   ToolSchema,
   ToolSettledLifecycle,
   ToolYield,
+  ZodToolDefinitionInput,
 } from './tools/types/index.js';
 export {
   collectToolExecution,

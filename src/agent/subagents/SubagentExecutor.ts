@@ -24,7 +24,7 @@ export class SubagentExecutor {
 
   /**
    * 执行 subagent 任务
-   * 无状态设计：systemPrompt 通过 ChatContext 传入
+   * 无状态设计：systemPrompt 通过 AgentExecutionContext 传入
    * 子代理对话流写入独立 JSONL 文件 (agent_<id>.jsonl)
    */
   async execute(context: SubagentContext): Promise<SubagentResult> {

@@ -5,6 +5,7 @@ import type { ToolBehavior } from '../types/kind.js';
 import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
+  JsonSchemaToolDefinitionInput,
   Tool,
   ToolConfig,
   ToolDefinition,
@@ -12,6 +13,7 @@ import type {
   ToolDescription,
   ToolExposureMode,
   ToolInvocation,
+  ZodToolDefinitionInput,
 } from '../types/tool.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
@@ -406,10 +408,11 @@ function isPathLikeKey(key: string): boolean {
  * ```
  */
 export function defineTool<TSchema extends z.ZodSchema, TData extends JsonValue = JsonValue>(
-  definition: Omit<ToolDefinitionInput<z.infer<TSchema>, TData>, 'parameters'> & {
-    parameters: TSchema;
-  },
+  definition: ZodToolDefinitionInput<TSchema, TData>,
 ): ToolDefinition<z.infer<TSchema>, TData>;
+export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
+  definition: JsonSchemaToolDefinitionInput<TParams, TData>,
+): ToolDefinition<TParams, TData>;
 export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
   definition: ToolDefinitionInput<TParams, TData>,
 ): ToolDefinition<TParams, TData>;

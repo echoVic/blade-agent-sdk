@@ -42,7 +42,7 @@ function resolveModelId(config: SubagentConfig): string | undefined {
  *
  * SubagentExecutor 和 BackgroundAgentManager 共用此函数，
  * 统一 modelId 推导、Agent.create 配置、subagentInfo 构造以及
- * systemPrompt 传递方式（统一通过 ChatContext 传入，而非已废弃的 AgentOptions）。
+ * systemPrompt 传递方式（统一通过 AgentExecutionContext 传入，而非 AgentRuntimeOptions）。
  */
 export async function runSubagent(options: RunSubagentOptions): Promise<LoopResult> {
   const {

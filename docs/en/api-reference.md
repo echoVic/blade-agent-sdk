@@ -46,7 +46,7 @@ Types:
 `AgentFilesystemOptions`, `AgentPermission`, `AgentPermissionPreset`,
 `AgentPermissionRequest`, `AgentPermissionDecision`, `AgentResponseEvent`,
 `AgentResponseEventType`, `AgentResponseListener`, `AgentResponseSubmission`,
-`InlineHooks`, `SessionHookEvent`, `SkillActivationContext`,
+`InlineHooks`, `SessionHookEvent`, `UserMessageContent`, `SkillActivationContext`,
 `SkillDefinition`, `SkillMetadata`, and `SkillRegistryConfig`.
 
 ## Session
@@ -377,8 +377,9 @@ Authoring and execution:
 Types:
 
 `ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
-`FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDefinition`,
-`ToolDefinitionInput`, `ToolDescription`,
+`FunctionDeclaration`, `JsonSchemaToolDefinitionInput`, `Tool`,
+`ToolBehavior`, `ToolConfig`, `ToolDefinition`,
+`ToolDefinitionInput`, `ToolDescription`, `ZodToolDefinitionInput`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
 `ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,

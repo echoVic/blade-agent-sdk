@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { RECONCILED_INITIAL_INPUT } from '../agent/InitialInputPreparation.js';
-import type { ChatContext, LoopResult } from '../agent/types.js';
+import type { AgentExecutionContext, LoopResult } from '../agent/types.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { createContextSnapshot } from '../runtime/index.js';
 import {
@@ -312,7 +312,7 @@ export class SessionStreamRunner {
     runtime.prepareTurn(snapshot);
     const executionLease = this.state.executionLease;
 
-    const context: ChatContext = {
+    const context: AgentExecutionContext = {
       messages: this.state.messages,
       userId: 'sdk-user',
       sessionId: this.state.sessionId,

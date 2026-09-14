@@ -68,6 +68,7 @@ export {
 } from './result.js';
 export type {
   FunctionDeclaration,
+  JsonSchemaToolDefinitionInput,
   PreparedPermissionMatcher,
   Tool,
   ToolConfig,
@@ -79,4 +80,5 @@ export type {
   ToolExposureMode,
   ToolInvocation,
   ToolSchema,
+  ZodToolDefinitionInput,
 } from './tool.js';

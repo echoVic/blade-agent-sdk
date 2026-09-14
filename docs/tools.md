@@ -35,6 +35,10 @@ const searchTool = defineTool({
 直接返回的 JSON 值会成为成功结果的 `model` 和 `data`。需要发送进度、消息或
 effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
 
+`ZodToolDefinitionInput<TSchema>` 表示可自动推导参数的 Zod authoring 路径；
+`JsonSchemaToolDefinitionInput<TParams>` 表示显式参数类型的 JSON Schema 路径。
+异构工具集合的类型擦除只发生在 Session 内部，应用代码不需要声明该内部类型。
+
 ### 可以省略什么
 
 `defineTool` 只有 `name`、`description`、`parameters` 和 `execute` 是必填的：

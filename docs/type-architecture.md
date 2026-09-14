@@ -8,8 +8,8 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 | 领域 | 所有者 | 代表类型 |
 |------|--------|----------|
 | Model | `src/model/` | `ModelMessage`、`ConversationMessage`、`ModelService`、`ModelUsage` |
-| Agent | `src/agent/` | `AgentEvent`、`AgentConfig`、loop state |
-| Tool | `src/tools/types/` | `Tool`、`ToolDefinition`、`ToolResult`、`ToolBehavior` |
+| Agent | `src/agent/` | 公开 `AgentOptions` / `AgentResponse` / `UserMessageContent`，内部 `AgentRuntimeOptions` / `AgentExecutionContext` |
+| Tool | `src/tools/types/` | `Tool`、`ToolDefinition`、authoring input、`ToolResult`、`ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`、`SessionStreamEvent`、`PromptResult` |
 | Transcript | `src/session/transcript.ts` | `TranscriptEvent`、`TranscriptMessage`、`TranscriptPart` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`、`DurableSessionProjection` |
@@ -19,6 +19,19 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 
 `src/types/` 只承载真正跨领域的基础契约。业务配置、消息和事件不能放入
 `common.ts` 一类的万能模块。
+
+## Agent 配置与执行上下文
+
+公开 Agent facade 与内部 Agent loop 使用不同 owner：
+
+- `src/agent/createAgent.ts::AgentOptions` 是根入口唯一公开的 Agent 配置。
+- `src/agent/types.ts::AgentRuntimeOptions` 只用于 Agent/LoopRunner 运行时。
+- `SessionOptions` 是 `/advanced` 的低层 Session contract，不是
+  `AgentOptions` 的重复定义。
+
+内部 `AgentExecutionContext` 由 conversation state、execution control 和 runtime
+services 三个窄接口组合。组合后的对象仍保持扁平，避免在 model/tool 热路径增加
+包装对象；这些内部类型不从 package entrypoint 导出。
 
 ## Model 边界
 
@@ -133,8 +146,15 @@ JSON schema 的递归基础定义统一来自 `src/types/jsonSchema.ts`。
 
 ## Tool 泛型
 
-异构工具集合在运行时接收 `unknown`。每个 Tool 自己通过 Zod 校验输入，泛型
-`TParams` 只描述校验成功后的 invocation：
+Zod 和 JSON Schema authoring 是两条明确路径：
+
+- `ZodToolDefinitionInput<TSchema>` 从 schema 推导 callback 参数，并在执行前验证。
+- `JsonSchemaToolDefinitionInput<TParams>` 接受调用方显式声明的参数类型；schema
+  仍是模型侧声明，不伪装成编译期推导。
+
+异构工具集合通过 Tool owner 定义的 `ErasedToolDefinition` 擦除 authoring
+参数。Session 不直接写 `ToolDefinition<never>`。编译后的 runtime `Tool`
+接收 `unknown`，并在建立 invocation 时完成验证：
 
 ```ts
 interface Tool<TParams = unknown> {

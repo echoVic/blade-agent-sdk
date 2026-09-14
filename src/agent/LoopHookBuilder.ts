@@ -35,10 +35,10 @@ import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
 import type { TokenBudget } from './TokenBudget.js';
-import type { ChatContext, LoopOptions } from './types.js';
+import type { AgentExecutionContext, LoopOptions } from './types.js';
 
 export interface LoopHookBuilderDeps {
-  context: ChatContext;
+  context: AgentExecutionContext;
   options: LoopOptions | undefined;
   loopState: LoopState;
   maxTurns: number;

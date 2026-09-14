@@ -8,7 +8,7 @@ import { Agent } from '../Agent.js';
 import type { BladeConfig } from '../config.js';
 import { RECONCILED_INITIAL_INPUT } from '../InitialInputPreparation.js';
 import { BackgroundAgentManager } from '../subagents/BackgroundAgentManager.js';
-import type { ChatContext, LoopOptions, UserMessageContent } from '../types.js';
+import type { AgentExecutionContext, LoopOptions, UserMessageContent } from '../types.js';
 
 function createExecutionPipeline() {
   return {
@@ -62,7 +62,7 @@ describe('Agent lifecycle', () => {
       },
     );
     const message = 'Agent is not initialized. Call initialize() before using this method.';
-    const context: ChatContext = {
+    const context: AgentExecutionContext = {
       messages: [],
       userId: 'test-user',
       sessionId: SessionId('test-session'),
@@ -134,7 +134,7 @@ describe('Agent lifecycle', () => {
       notifyStarted = resolve;
     });
     const runLoop = vi.fn(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) => {
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) => {
         const lease = await lockManager.acquire(filePath);
         notifyStarted();
         return new Promise<{
@@ -289,12 +289,12 @@ describe('Agent input preparation', () => {
       isInitialized: boolean;
       prepareMessageForContext(
         message: UserMessageContent,
-        context: ChatContext,
+        context: AgentExecutionContext,
       ): Promise<UserMessageContent>;
       discoverSkillsForCwd(cwd?: string): Promise<void>;
       prepareContext(
         message: UserMessageContent,
-        context: ChatContext,
+        context: AgentExecutionContext,
         options?: LoopOptions,
       ): Promise<{ enhancedMessage: UserMessageContent }>;
     };
@@ -303,7 +303,7 @@ describe('Agent input preparation', () => {
       .spyOn(testable, 'prepareMessageForContext')
       .mockResolvedValue('prepared again');
     const discover = vi.spyOn(testable, 'discoverSkillsForCwd').mockResolvedValue();
-    const context: ChatContext = {
+    const context: AgentExecutionContext = {
       messages: [],
       userId: 'test-user',
       sessionId: SessionId('recovered-session'),

@@ -42,14 +42,14 @@ import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
-  AgentOptions,
-  ChatContext,
+  AgentExecutionContext,
+  AgentRuntimeOptions,
   LoopOptions,
   LoopResult,
   UserMessageContent,
 } from './types.js';
 
-function syncContextMessages(context: ChatContext, convState: ConversationState): void {
+function syncContextMessages(context: AgentExecutionContext, convState: ConversationState): void {
   context.messages = convState.getContextMessages();
 }
 
@@ -67,7 +67,7 @@ export class LoopRunner {
 
   constructor(
     private config: BladeConfig,
-    private runtimeOptions: AgentOptions,
+    private runtimeOptions: AgentRuntimeOptions,
     private modelManager: ModelManager,
     private executionPipeline: ExecutionPipeline,
     private defaultProjectPath?: string,
@@ -86,7 +86,7 @@ export class LoopRunner {
 
   async runLoop(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): Promise<LoopResult> {
     this.logger.debug('💬 Processing enhanced chat message...');
@@ -96,7 +96,7 @@ export class LoopRunner {
 
   async *runLoopStream(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const systemPrompt = await this.buildNormalSystemPrompt(context);
@@ -107,7 +107,7 @@ export class LoopRunner {
 
   async executeLoop(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
     systemPrompt?: string,
   ): Promise<LoopResult> {
@@ -131,7 +131,7 @@ export class LoopRunner {
 
   async *executeWithAgentLoop(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
@@ -320,7 +320,7 @@ export class LoopRunner {
 
   // ===== SystemPrompt =====
 
-  private async buildNormalSystemPrompt(context: ChatContext): Promise<string> {
+  private async buildNormalSystemPrompt(context: AgentExecutionContext): Promise<string> {
     const basePrompt = context.systemPrompt
       ? this.runtimePatchManager.appendRuntimeSystemPrompt(context.systemPrompt)
       : await this.buildSystemPromptOnDemand(context);
@@ -331,7 +331,7 @@ export class LoopRunner {
     return basePrompt ? `${envContext}\n\n---\n\n${basePrompt}` : envContext;
   }
 
-  async buildSystemPromptOnDemand(context?: ChatContext): Promise<string> {
+  async buildSystemPromptOnDemand(context?: AgentExecutionContext): Promise<string> {
     const replacePrompt = this.runtimeOptions.systemPrompt;
     const appendPrompt = this.runtimePatchManager.getEffectiveSystemPromptAppend(
       this.runtimeOptions.appendSystemPrompt,
@@ -377,7 +377,7 @@ export class LoopRunner {
   // ===== LoopState 创建 =====
 
   private createLoopState(
-    context: ChatContext,
+    context: AgentExecutionContext,
     conversationState: ConversationState,
     permissionMode: PermissionMode | undefined,
     toolExecutionLifecycle: LoopOptions['toolExecutionLifecycle'],

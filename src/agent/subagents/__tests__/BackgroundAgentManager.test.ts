@@ -5,13 +5,13 @@ import { createContextSnapshot } from '../../../runtime/index.js';
 import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, ExecutionLeaseId, FencingToken, SessionId } from '../../../types/identifiers.js';
-import type { ChatContext, LoopOptions } from '../../types.js';
+import type { AgentExecutionContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
 const runAgenticLoop = vi.fn<
   (
     message: string,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ) => Promise<{
     success: boolean;
@@ -152,7 +152,7 @@ describe('BackgroundAgentManager', () => {
     );
   });
 
-  it('does not declare another parent session\'s running subagents orphaned', async () => {
+  it("does not declare another parent session's running subagents orphaned", async () => {
     const store = AgentSessionStore.create();
     const foreign = {
       id: AgentId('agent_foreign'),
@@ -172,18 +172,14 @@ describe('BackgroundAgentManager', () => {
     // A shared repository holds every runtime's subagents. A new runtime for
     // parent A must leave parent B's running child alone even though it is not
     // in this manager's in-memory map.
-    const managerA = BackgroundAgentManager.create(
-      NOOP_LOGGER,
-      store,
-      SessionId('parent-a'),
-    );
+    const managerA = BackgroundAgentManager.create(NOOP_LOGGER, store, SessionId('parent-a'));
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(markCompleted).not.toHaveBeenCalled();
     managerA.killAll();
   });
 
-  it('still reclaims its own parent session\'s lost subagents', async () => {
+  it("still reclaims its own parent session's lost subagents", async () => {
     const store = AgentSessionStore.create();
     const own = {
       id: AgentId('agent_own'),
@@ -200,11 +196,7 @@ describe('BackgroundAgentManager', () => {
     store.listSessions = vi.fn(async () => [own]);
     store.markCompleted = markCompleted;
 
-    const managerA = BackgroundAgentManager.create(
-      NOOP_LOGGER,
-      store,
-      SessionId('parent-a'),
-    );
+    const managerA = BackgroundAgentManager.create(NOOP_LOGGER, store, SessionId('parent-a'));
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(markCompleted).toHaveBeenCalledWith(
@@ -245,7 +237,7 @@ describe('BackgroundAgentManager', () => {
 
   it('maintains separate lifecycle and work controllers for a running agent', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -296,7 +288,7 @@ describe('BackgroundAgentManager', () => {
 
   it('preserves cancelled status after killing a running agent', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -329,7 +321,7 @@ describe('BackgroundAgentManager', () => {
 
   it('seals new admissions only after all background agents settle', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',
@@ -372,7 +364,7 @@ describe('BackgroundAgentManager', () => {
 
   it('seals admission and cancels every running agent after ownership loss', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',

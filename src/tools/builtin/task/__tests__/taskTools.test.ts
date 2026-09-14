@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.js';
-import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
+import type { AgentExecutionContext, LoopOptions } from '../../../../agent/types.js';
 import { HookManager } from '../../../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../../../../logging/Logger.js';
@@ -24,7 +24,7 @@ const { runAgenticLoop, createAgent, destroyAgent } = vi.hoisted(() => ({
     vi.fn<
       (
         message: string,
-        context: ChatContext,
+        context: AgentExecutionContext,
         options?: LoopOptions,
       ) => Promise<{
         success: boolean;
@@ -218,7 +218,7 @@ describe('task tools', () => {
 
   it('stops a running background agent via TaskStop and keeps it cancelled', async () => {
     runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: ChatContext, options?: LoopOptions) =>
+      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
         await new Promise((resolve) => {
           options?.signal?.addEventListener(
             'abort',

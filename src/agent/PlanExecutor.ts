@@ -9,18 +9,23 @@ import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
 import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { PermissionMode } from '../types/constants.js';
 import type { AgentEvent } from './AgentEvent.js';
-import type { ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
+import type {
+  AgentExecutionContext,
+  LoopOptions,
+  LoopResult,
+  UserMessageContent,
+} from './types.js';
 
 type LoopExecutor = (
   message: UserMessageContent,
-  context: ChatContext,
+  context: AgentExecutionContext,
   options?: LoopOptions,
   systemPrompt?: string,
 ) => Promise<LoopResult>;
 
 type StreamLoopExecutor = (
   message: UserMessageContent,
-  context: ChatContext,
+  context: AgentExecutionContext,
   options?: LoopOptions,
   systemPrompt?: string,
 ) => AsyncGenerator<AgentEvent, LoopResult>;
@@ -63,7 +68,7 @@ export class PlanExecutor {
   /**
    * 构建 Plan 模式系统提示词
    */
-  async buildPlanSystemPrompt(context?: ChatContext): Promise<string> {
+  async buildPlanSystemPrompt(context?: AgentExecutionContext): Promise<string> {
     const { prompt } = await buildSystemPrompt({
       projectPath: context?.snapshot?.cwd,
       mode: PermissionMode.PLAN,
@@ -80,7 +85,7 @@ export class PlanExecutor {
    */
   async runPlanLoop(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options: LoopOptions | undefined,
     executeLoop: LoopExecutor,
   ): Promise<LoopResult> {
@@ -95,7 +100,7 @@ export class PlanExecutor {
    */
   async *runPlanLoopStream(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options: LoopOptions | undefined,
     executeStream: StreamLoopExecutor,
   ): AsyncGenerator<AgentEvent, LoopResult> {

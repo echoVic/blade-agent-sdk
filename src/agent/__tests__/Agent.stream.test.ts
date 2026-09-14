@@ -3,7 +3,7 @@ import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { AgentEvent } from '../AgentEvent.js';
-import type { ChatContext, LoopResult } from '../types.js';
+import type { AgentExecutionContext, LoopResult } from '../types.js';
 
 const createMockModelService = () => ({
   chat: vi.fn(() =>
@@ -31,7 +31,7 @@ const createMockAgent = (modelService: ReturnType<typeof createMockModelService>
   return {
     streamChat: async function* (
       _message: string,
-      context: ChatContext,
+      context: AgentExecutionContext,
       options?: { maxTurns?: number; signal?: AbortSignal },
     ): AsyncGenerator<AgentEvent, LoopResult> {
       events.push({ type: 'turn_start', turn: 1, maxTurns: options?.maxTurns ?? 10 });
@@ -99,7 +99,7 @@ describe('Agent.streamChat', () => {
 
   describe('Plan mode streaming realtime', () => {
     it('should yield events in real-time during plan mode', async () => {
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),
@@ -126,7 +126,7 @@ describe('Agent.streamChat', () => {
     });
 
     it('should yield content_delta events incrementally', async () => {
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),
@@ -149,7 +149,7 @@ describe('Agent.streamChat', () => {
 
   describe('Plan to execute streaming relay', () => {
     it('should seamlessly transition from plan to execute mode', async () => {
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),
@@ -180,7 +180,7 @@ describe('Agent.streamChat', () => {
     });
 
     it('should preserve event order during plan→execute transition', async () => {
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),
@@ -216,7 +216,7 @@ describe('Agent.streamChat', () => {
     });
 
     it('should return final result after plan→execute completion', async () => {
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),
@@ -254,7 +254,7 @@ describe('Agent.streamChat', () => {
       const errorAgent = {
         streamChat: async function* (
           _message: string,
-          _context: ChatContext,
+          _context: AgentExecutionContext,
         ): AsyncGenerator<AgentEvent, LoopResult> {
           yield { type: 'turn_start', turn: 1, maxTurns: 10 };
 
@@ -280,7 +280,7 @@ describe('Agent.streamChat', () => {
         },
       };
 
-      const context: ChatContext = {
+      const context: AgentExecutionContext = {
         messages: [],
         userId: 'test-user',
         sessionId: SessionId('test-session'),

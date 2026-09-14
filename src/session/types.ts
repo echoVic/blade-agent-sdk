@@ -21,8 +21,8 @@ import type {
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { SkillDefinition } from '../skills/types.js';
-import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
+import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
   ToolDisplayContent,
@@ -30,7 +30,7 @@ import type {
   ToolModelContent,
   ToolProgress,
 } from '../tools/types/result.js';
-import type { Tool, ToolDefinition } from '../tools/types/tool.js';
+import type { ErasedToolDefinition, Tool } from '../tools/types/tool.js';
 import type { HookEvent, PermissionMode, SessionStreamEventType } from '../types/constants.js';
 import type {
   EventSequence,
@@ -243,7 +243,7 @@ export interface AgentDefinition {
   model?: string;
 }
 
-export type SessionTool = ToolDefinition<never> | Tool;
+export type SessionTool = ErasedToolDefinition | Tool;
 
 export interface SessionOptions {
   provider: ProviderConnectionConfig;

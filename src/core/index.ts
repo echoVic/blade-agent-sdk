@@ -1,6 +1,7 @@
 // Browser-safe protocol, constants, and type exports.
 // Keep this entry free of Node-only runtime imports.
 
+export type { UserMessageContent } from '../agent/UserMessageContent.js';
 export type { ProviderRegistryErrorCode } from '../errors/ProviderRegistryError.js';
 export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 export type { McpServerConfig } from '../mcp/config.js';
@@ -98,6 +99,7 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
+  JsonSchemaToolDefinitionInput,
   ToolBehavior,
   ToolConfig,
   ToolDefinition,
@@ -123,6 +125,7 @@ export type {
   ToolSchema,
   ToolSettledLifecycle,
   ToolYield,
+  ZodToolDefinitionInput,
 } from '../tools/types/index.js';
 export {
   collectToolExecution,

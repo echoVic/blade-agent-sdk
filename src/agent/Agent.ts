@@ -51,8 +51,8 @@ import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import { TokenBudget, type TokenBudgetConfig, type TokenBudgetSnapshot } from './TokenBudget.js';
 import type {
-  AgentOptions,
-  ChatContext,
+  AgentExecutionContext,
+  AgentRuntimeOptions,
   LoopOptions,
   LoopResult,
   PlanApprovalResult,
@@ -84,14 +84,14 @@ interface PreparedContext {
   /** 经过附件 / @mention 处理后的消息 */
   enhancedMessage: UserMessageContent;
   /** 已注入 backgroundAgentManager 的上下文 */
-  context: ChatContext;
+  context: AgentExecutionContext;
   /** 合并 signal 后的循环选项 */
   loopOptions: LoopOptions;
 }
 
 export class Agent {
   private config: BladeConfig;
-  private runtimeOptions: AgentOptions;
+  private runtimeOptions: AgentRuntimeOptions;
   private isInitialized = false;
   private executionPipeline: ExecutionPipeline;
   private readonly toolCatalog: ToolCatalog;
@@ -121,7 +121,11 @@ export class Agent {
   private planExecutor: PlanExecutor;
   private loopRunner?: LoopRunner;
 
-  constructor(config: BladeConfig, runtimeOptions: AgentOptions = {}, deps: AgentRuntimeDeps = {}) {
+  constructor(
+    config: BladeConfig,
+    runtimeOptions: AgentRuntimeOptions = {},
+    deps: AgentRuntimeDeps = {},
+  ) {
     this.config = config;
     this.runtimeOptions = runtimeOptions;
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
@@ -180,7 +184,7 @@ export class Agent {
 
   static async create(
     config: BladeConfig,
-    options: AgentOptions = {},
+    options: AgentRuntimeOptions = {},
     deps: AgentRuntimeDeps = {},
   ): Promise<Agent> {
     const models = config.models || [];
@@ -273,7 +277,7 @@ export class Agent {
 
   public async chat(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): Promise<string> {
     this.assertInitialized();
@@ -301,7 +305,7 @@ export class Agent {
 
   public streamChat(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     this.assertInitialized();
@@ -326,13 +330,13 @@ export class Agent {
 
   public async runAgenticLoop(
     message: string,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): Promise<LoopResult> {
     this.assertInitialized();
     return this.trackActiveRun(async () => {
       const loopRunner = this.getLoopRunner();
-      const chatContext: ChatContext = this.withBackgroundAgentManager({
+      const executionContext: AgentExecutionContext = this.withBackgroundAgentManager({
         messages: context.messages,
         userId: context.userId || 'subagent',
         sessionId: context.sessionId || SessionId(`subagent_${Date.now()}`),
@@ -352,7 +356,7 @@ export class Agent {
         signal: this.withLifecycleSignal(options?.signal ?? context.signal),
       };
 
-      return loopRunner.runLoop(message, chatContext, loopOptions);
+      return loopRunner.runLoop(message, executionContext, loopOptions);
     });
   }
 
@@ -559,7 +563,7 @@ export class Agent {
     });
   }
 
-  private withBackgroundAgentManager(context: ChatContext): ChatContext {
+  private withBackgroundAgentManager(context: AgentExecutionContext): AgentExecutionContext {
     if (context.backgroundAgentManager) {
       return context;
     }
@@ -586,7 +590,7 @@ export class Agent {
    */
   private async prepareContext(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     options?: LoopOptions,
   ): Promise<PreparedContext> {
     this.assertInitialized();
@@ -652,7 +656,7 @@ export class Agent {
       if (isPlanApprovalResult(planResult)) {
         const targetMode = planResult.metadata.targetMode;
         const planContent = planResult.metadata.planContent;
-        const newContext: ChatContext = { ...context, permissionMode: targetMode };
+        const newContext: AgentExecutionContext = { ...context, permissionMode: targetMode };
         const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
         return yield* loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
       }
@@ -665,7 +669,7 @@ export class Agent {
 
   private async executePlanApproval(
     enhancedMessage: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
     loopOptions: LoopOptions,
     result: PlanApprovalResult,
   ): Promise<string> {
@@ -673,7 +677,7 @@ export class Agent {
     const planContent = result.metadata.planContent;
     this.logger.debug(`🔄 Plan 模式已批准，切换到 ${targetMode} 模式并重新执行`);
 
-    const newContext: ChatContext = { ...context, permissionMode: targetMode };
+    const newContext: AgentExecutionContext = { ...context, permissionMode: targetMode };
     const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
 
     const newResult = await this.getLoopRunner().runLoop(messageWithPlan, newContext, loopOptions);
@@ -822,11 +826,11 @@ export class Agent {
     }
   }
 
-  private getContextWorkingDirectory(context: ChatContext): string | undefined {
+  private getContextWorkingDirectory(context: AgentExecutionContext): string | undefined {
     return context.snapshot?.cwd || getContextCwd(this.defaultContext);
   }
 
-  private createAttachmentHandler(context: ChatContext): AttachmentHandler | null {
+  private createAttachmentHandler(context: AgentExecutionContext): AttachmentHandler | null {
     const cwd = this.getContextWorkingDirectory(context);
     if (!cwd) {
       return null;
@@ -836,7 +840,7 @@ export class Agent {
 
   private async prepareMessageForContext(
     message: UserMessageContent,
-    context: ChatContext,
+    context: AgentExecutionContext,
   ): Promise<UserMessageContent> {
     await this.discoverSkillsForCwd(this.getContextWorkingDirectory(context));
     if (!this.localDiscovery) {

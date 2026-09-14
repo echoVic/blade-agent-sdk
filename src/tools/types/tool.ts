@@ -84,6 +84,30 @@ export type ToolDefinitionInput<TParams = JsonObject, TData extends JsonValue = 
   ) => ToolExecution<TData> | Promise<TData | ToolResult<TData>>;
 };
 
+/** Zod authoring path: callback params are inferred directly from the schema. */
+export type ZodToolDefinitionInput<
+  TSchema extends z.ZodSchema,
+  TData extends JsonValue = JsonValue,
+> = Omit<ToolDefinitionInput<z.infer<TSchema>, TData>, 'parameters'> & {
+  parameters: TSchema;
+};
+
+/** JSON Schema authoring path: callers may provide an explicit params type. */
+export type JsonSchemaToolDefinitionInput<
+  TParams = JsonObject,
+  TData extends JsonValue = JsonValue,
+> = Omit<ToolDefinitionInput<TParams, TData>, 'parameters'> & {
+  parameters: JSONSchema7;
+};
+
+/**
+ * Type-erased definition for heterogeneous runtime collections.
+ *
+ * Authoring remains strongly typed; erasure happens only when definitions enter
+ * a Session-owned collection and are compiled into runtime Tool instances.
+ */
+export type ErasedToolDefinition = ToolDefinition<never, JsonValue>;
+
 export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams = JsonObject> {
   name: string;
   aliases?: string[];

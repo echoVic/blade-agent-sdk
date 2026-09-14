@@ -128,6 +128,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `AgentFilesystemOptions` | local filesystem roots 与 cwd |
 | `AgentPermission` / `AgentPermissionPreset` | 单一权限字段及其预设 |
 | `AgentPermissionRequest` / `AgentPermissionDecision` | 自定义权限回调契约 |
+| `UserMessageContent` | Agent、Session 与 wire command 共用的文本或多模态输入 |
 | `InlineHooks` / `SessionHookEvent` | 进程内 callback hook 契约 |
 | `SkillDefinition` | `advanced.skills` 接受的 Session 私有数据 Skill |
 | `SkillActivationContext` / `SkillMetadata` / `SkillRegistryConfig` | Skill 发现、过滤与 registry 配置类型 |
@@ -302,6 +303,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
 | `ToolDefinitionInput` | `defineTool()` 接受的 async function 或 generator 定义 |
+| `ZodToolDefinitionInput` | 从 Zod schema 自动推导 callback 参数的工具定义 |
+| `JsonSchemaToolDefinitionInput` | 使用显式参数类型的 JSON Schema 工具定义 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |

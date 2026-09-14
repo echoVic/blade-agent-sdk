@@ -35,6 +35,11 @@ The returned JSON value becomes both `model` and `data` on the internal success
 result. Use `async *execute` and return a complete `ToolResult` when the tool
 must emit progress, messages, or effects.
 
+`ZodToolDefinitionInput<TSchema>` is the schema-inferred Zod authoring path.
+`JsonSchemaToolDefinitionInput<TParams>` is the explicitly typed JSON Schema
+path. Heterogeneous definition erasure happens only inside Session; application
+code does not declare that internal type.
+
 ### What you can omit
 
 Only `name`, `description`, `parameters`, and `execute` are required:

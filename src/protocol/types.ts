@@ -1,4 +1,4 @@
-import type { UserMessageContent } from '../agent/types.js';
+import type { UserMessageContent } from '../agent/UserMessageContent.js';
 import type { SessionStreamEvent } from '../session/types.js';
 import type {
   CommandId,

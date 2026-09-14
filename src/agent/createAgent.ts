@@ -20,7 +20,7 @@ import type {
   PermissionResult,
 } from '../types/permissions.js';
 import { AgentResponse } from './AgentResponse.js';
-import type { UserMessageContent } from './types.js';
+import type { UserMessageContent } from './UserMessageContent.js';
 
 export type AgentProfile = 'local' | 'server';
 

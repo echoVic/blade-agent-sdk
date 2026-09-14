@@ -104,6 +104,33 @@ const toolProgressSchema = z
   })
   .strict();
 
+const sandboxSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    autoAllowBashIfSandboxed: z.boolean().optional(),
+    excludedCommands: z.array(z.string()).optional(),
+    allowUnsandboxedCommands: z.boolean().optional(),
+    network: z
+      .object({
+        allowLocalBinding: z.boolean().optional(),
+        allowUnixSockets: z.array(z.string()).optional(),
+        allowAllUnixSockets: z.boolean().optional(),
+        httpProxyPort: z.number().optional(),
+        socksProxyPort: z.number().optional(),
+      })
+      .strict()
+      .optional(),
+    ignoreViolations: z
+      .object({
+        file: z.array(z.string()).optional(),
+        network: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+    enableWeakerNestedSandbox: z.boolean().optional(),
+  })
+  .strict();
+
 const runtimeContextSchema = z
   .object({
     id: z.string().optional(),
@@ -116,6 +143,7 @@ const runtimeContextSchema = z
           })
           .strict()
           .optional(),
+        sandbox: sandboxSettingsSchema.optional(),
         browser: z
           .object({
             pageId: z.string().optional(),
