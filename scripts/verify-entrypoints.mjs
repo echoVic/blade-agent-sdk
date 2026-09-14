@@ -92,76 +92,64 @@ assertIncludes(browserRootOutput, 'function 1', 'browser AgentClient import');
 assertIncludes(browserRootOutput, 'server-only for createAgent', 'browser root Agent facade');
 assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root stub');
 
-const browserNodeOutput = run(process.execPath, [
+const browserAdvancedOutput = run(process.execPath, [
   '--conditions=browser',
   '-e',
   [
-    "const m = await import('@blade-ai/agent-sdk/node');",
+    "const m = await import('@blade-ai/agent-sdk/advanced');",
+    'try { m.createNodeSession({}); } catch (error) { console.log(error.message); }',
+    'try { m.createServerSession({}); } catch (error) { console.log(error.message); }',
     'try { m.getBuiltinTools(); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlSessionRepository("."); } catch (error) { console.log(error.message); }',
     'try { new m.DockerExecutionHost(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
-assertIncludes(browserNodeOutput, 'server-only for getBuiltinTools', 'browser Node stub');
 assertIncludes(
-  browserNodeOutput,
+  browserAdvancedOutput,
+  'server-only for createNodeSession',
+  'browser advanced local Session stub',
+);
+assertIncludes(
+  browserAdvancedOutput,
+  'server-only for createServerSession',
+  'browser advanced server Session stub',
+);
+assertIncludes(browserAdvancedOutput, 'server-only for getBuiltinTools', 'browser advanced stub');
+assertIncludes(
+  browserAdvancedOutput,
   'server-only for JsonlDurableEventStore',
-  'browser Node durable event store stub',
+  'browser advanced durable event store stub',
 );
 assertIncludes(
-  browserNodeOutput,
+  browserAdvancedOutput,
   'server-only for JsonlSessionRepository',
-  'browser Node Session repository stub',
+  'browser advanced Session repository stub',
 );
 assertIncludes(
-  browserNodeOutput,
+  browserAdvancedOutput,
   'server-only for DockerExecutionHost',
-  'browser Docker execution host stub',
+  'browser advanced execution host stub',
 );
 
-const browserServerOutput = run(process.execPath, [
+const browserInfraOutput = run(process.execPath, [
   '--conditions=browser',
   '-e',
   [
-    "const m = await import('@blade-ai/agent-sdk/server');",
+    "const m = await import('@blade-ai/agent-sdk/server/infra');",
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
     'try { new m.AgentWorker({}); } catch (error) { console.log(error.message); }',
-    'try { new m.EffectDispatcher({}); } catch (error) { console.log(error.message); }',
-    'try { new m.PostgresRuntimeStore({}); } catch (error) { console.log(error.message); }',
-    'try { new m.EphemeralCredentialBroker({}); } catch (error) { console.log(error.message); }',
-    'try { new m.ExecutionHostError(); } catch (error) { console.log(error.message); }',
     'try { new m.WorkerRuntimeError(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(
-  browserServerOutput,
+  browserInfraOutput,
   'server-only for InProcessSessionExecutor',
   'browser in-process Session executor stub',
 );
-assertIncludes(browserServerOutput, 'server-only for AgentWorker', 'browser AgentWorker stub');
+assertIncludes(browserInfraOutput, 'server-only for AgentWorker', 'browser AgentWorker stub');
 assertIncludes(
-  browserServerOutput,
-  'server-only for EffectDispatcher',
-  'browser effect dispatcher stub',
-);
-assertIncludes(
-  browserServerOutput,
-  'server-only for PostgresRuntimeStore',
-  'browser PostgreSQL runtime Store stub',
-);
-assertIncludes(
-  browserServerOutput,
-  'server-only for EphemeralCredentialBroker',
-  'browser credential broker stub',
-);
-assertIncludes(
-  browserServerOutput,
-  'server-only for ExecutionHostError',
-  'browser execution host error stub',
-);
-assertIncludes(
-  browserServerOutput,
+  browserInfraOutput,
   'server-only for WorkerRuntimeError',
   'browser worker runtime error stub',
 );
@@ -169,57 +157,75 @@ assertIncludes(
 const subpathOutput = run(process.execPath, [
   '-e',
   [
-    "const core = await import('@blade-ai/agent-sdk/core');",
+    "const root = await import('@blade-ai/agent-sdk');",
     "const browser = await import('@blade-ai/agent-sdk/browser');",
-    "const server = await import('@blade-ai/agent-sdk/server');",
-    "const otel = await import('@blade-ai/agent-sdk/server/otel');",
-    "const postgres = await import('@blade-ai/agent-sdk/server/postgres');",
-    "const testing = await import('@blade-ai/agent-sdk/server/testing');",
-    "const tools = await import('@blade-ai/agent-sdk/tools');",
-    "const node = await import('@blade-ai/agent-sdk/node');",
-    "const protocol = await import('@blade-ai/agent-sdk/protocol');",
-    "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "const model = await import('@blade-ai/agent-sdk/model');",
-    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, core.projectDurableSession([]).status, typeof core.DurableSessionJournal.open, typeof core.DurableSessionRecoveryCoordinator.open, typeof core.DurableEventSubscription.open, browser.PermissionMode.DEFAULT, typeof browser.AgentClient, typeof server.createSession, typeof server.AgentServer, typeof server.InProcessSessionExecutor, typeof postgres.PostgresRuntimeStore, typeof otel.OpenTelemetryAgentServerTelemetry, typeof testing.assertRuntimeStoreConformance, typeof tools.defineTool, typeof node.createSession, typeof node.getBuiltinTools, typeof node.JsonlDurableEventStore, typeof node.JsonlSessionRepository, protocol.AGENT_PROTOCOL_VERSION, typeof middleware.composeMiddleware, model.PROVIDER_TYPES.length);",
-    "console.log(postgres.RUNTIME_SESSION_STATES.join(','), typeof postgres.effectLease, typeof server.WorkerRuntimeError);",
-    "console.log(typeof server.EphemeralCredentialBroker, typeof server.ExecutionHostError, typeof node.DockerExecutionHost, core.ExecutionId('execution-1'), core.ExecutionCheckpointId('checkpoint-1'), core.CredentialLeaseId('credential-1'));",
-    "console.log(typeof server.AgentWorker, typeof server.EffectDispatcher, typeof server.SdkSessionRunner, typeof server.ExecutionHostSessionRunner, typeof server.AgentRuntimeOperations, typeof otel.OpenTelemetryAgentWorkerTelemetry);",
+    "const advanced = await import('@blade-ai/agent-sdk/advanced');",
+    "const infra = await import('@blade-ai/agent-sdk/server/infra');",
+    "console.log('root', typeof root.createAgent, typeof root.defineTool, typeof root.composeMiddleware, root.PROVIDER_TYPES.length);",
+    "console.log('browser', typeof browser.AgentClient, typeof browser.AgentResponse, browser.AGENT_PROTOCOL_VERSION);",
+    "console.log('advanced', typeof advanced.createSession, typeof advanced.createServerSession, typeof advanced.getBuiltinTools, typeof advanced.JsonlDurableEventStore, typeof advanced.DockerExecutionHost, typeof advanced.EffectDispatcher, typeof advanced.SdkSessionRunner);",
+    "console.log('infra', typeof infra.AgentServer, typeof infra.AgentWorker, typeof infra.InMemoryAgentServerStore, typeof infra.RuntimeStoreError, typeof infra.assertRuntimeStoreConformance, infra.RUNTIME_SESSION_STATES.length);",
+    "console.log('boundaries', 'createAgent' in infra, 'createSession' in infra, 'EffectDispatcher' in infra, 'PostgresRuntimeStore' in infra, 'OpenTelemetryAgentServerTelemetry' in infra);",
   ].join(' '),
 ]);
+assertIncludes(subpathOutput, 'root function function function 6', 'root entrypoint');
+assertIncludes(subpathOutput, 'browser function function 1', 'browser entrypoint');
 assertIncludes(
   subpathOutput,
-  'default request_accepted empty function function function default function function function function function function function function function function function function 1 function 6',
-  'subpath imports',
+  'advanced function function function function function function function',
+  'advanced entrypoint',
 );
 assertIncludes(
   subpathOutput,
-  'queued,provisioning,running,waiting_approval,suspended,idle,completed,failed function function',
-  'worker runtime exports',
+  'infra function function function function function 8',
+  'server infrastructure entrypoint',
 );
 assertIncludes(
   subpathOutput,
-  'function function function execution-1 checkpoint-1 credential-1',
-  'execution host exports',
-);
-assertIncludes(
-  subpathOutput,
-  'function function function function function function',
-  'server worker exports',
+  'boundaries false false false false false',
+  'canonical entrypoint boundaries',
 );
 
 const profileOutput = run(process.execPath, [
   '-e',
   [
     "const root = await import('@blade-ai/agent-sdk');",
-    "const server = await import('@blade-ai/agent-sdk/server');",
-    "const node = await import('@blade-ai/agent-sdk/node');",
-    "console.log(typeof root.createAgent, root.createAgent === server.createAgent, root.createAgent === node.createAgent, root.createSession === server.createSession, node.createSession === server.createSession, 'getBuiltinTools' in root, 'getBuiltinTools' in node);",
+    "const infra = await import('@blade-ai/agent-sdk/server/infra');",
+    "const advanced = await import('@blade-ai/agent-sdk/advanced');",
+    "console.log(typeof root.createAgent, root.createAgent === advanced.createAgent, root.createSession === advanced.createServerSession, advanced.createSession === advanced.createServerSession, 'createAgent' in infra, 'createSession' in infra, 'getBuiltinTools' in root, 'getBuiltinTools' in advanced);",
   ].join(' '),
 ]);
 assertIncludes(
   profileOutput,
-  'function true true true false false true',
+  'function true true false false false false true',
   'runtime profile boundaries',
+);
+
+const compatibilityOutput = run(process.execPath, [
+  '-e',
+  [
+    "const root = await import('@blade-ai/agent-sdk');",
+    "const core = await import('@blade-ai/agent-sdk/core');",
+    "const model = await import('@blade-ai/agent-sdk/model');",
+    "const middleware = await import('@blade-ai/agent-sdk/middleware');",
+    "const tools = await import('@blade-ai/agent-sdk/tools');",
+    "const browser = await import('@blade-ai/agent-sdk/browser');",
+    "const protocol = await import('@blade-ai/agent-sdk/protocol');",
+    "const advanced = await import('@blade-ai/agent-sdk/advanced');",
+    "const node = await import('@blade-ai/agent-sdk/node');",
+    "const session = await import('@blade-ai/agent-sdk/session');",
+    "const infra = await import('@blade-ai/agent-sdk/server/infra');",
+    "const server = await import('@blade-ai/agent-sdk/server');",
+    "const postgres = await import('@blade-ai/agent-sdk/server/postgres');",
+    "const otel = await import('@blade-ai/agent-sdk/server/otel');",
+    "const testing = await import('@blade-ai/agent-sdk/server/testing');",
+    "console.log(core.PermissionMode === root.PermissionMode, model.PROVIDER_TYPES === root.PROVIDER_TYPES, middleware.composeMiddleware === root.composeMiddleware, tools.defineTool === root.defineTool, protocol.AGENT_PROTOCOL_VERSION === browser.AGENT_PROTOCOL_VERSION, node.createSession === advanced.createSession, session.createSession === advanced.createServerSession, server.AgentServer === infra.AgentServer, typeof postgres.PostgresRuntimeStore, typeof otel.OpenTelemetryAgentServerTelemetry, testing.assertRuntimeStoreConformance === infra.assertRuntimeStoreConformance);",
+  ].join(' '),
+]);
+assertIncludes(
+  compatibilityOutput,
+  'true true true true true true true true function function true',
+  'deprecated compatibility aliases',
 );
 
 verifyBrowserSafeDist('dist/browser/index.js');

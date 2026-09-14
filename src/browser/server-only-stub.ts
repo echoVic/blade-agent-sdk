@@ -1,6 +1,6 @@
 function serverOnly(name: string): never {
   throw new Error(
-    `@blade-ai/agent-sdk is server-only for ${name}. Use it from a Node server, API route, server action, or CLI process. Browser clients should import AgentClient from @blade-ai/agent-sdk/browser or contracts from @blade-ai/agent-sdk/protocol.`,
+    `@blade-ai/agent-sdk is server-only for ${name}. Use it from a Node server, API route, server action, or CLI process. Browser clients should import AgentClient and protocol contracts from @blade-ai/agent-sdk/browser.`,
   );
 }
 
@@ -12,16 +12,48 @@ export function createSession(..._args: unknown[]): never {
   return serverOnly('createSession');
 }
 
+export function createNodeSession(..._args: unknown[]): never {
+  return serverOnly('createNodeSession');
+}
+
+export function createServerSession(..._args: unknown[]): never {
+  return serverOnly('createServerSession');
+}
+
 export function resumeSession(..._args: unknown[]): never {
   return serverOnly('resumeSession');
+}
+
+export function resumeNodeSession(..._args: unknown[]): never {
+  return serverOnly('resumeNodeSession');
+}
+
+export function resumeServerSession(..._args: unknown[]): never {
+  return serverOnly('resumeServerSession');
 }
 
 export function forkSession(..._args: unknown[]): never {
   return serverOnly('forkSession');
 }
 
+export function forkNodeSession(..._args: unknown[]): never {
+  return serverOnly('forkNodeSession');
+}
+
+export function forkServerSession(..._args: unknown[]): never {
+  return serverOnly('forkServerSession');
+}
+
 export function prompt(..._args: unknown[]): never {
   return serverOnly('prompt');
+}
+
+export function promptNode(..._args: unknown[]): never {
+  return serverOnly('promptNode');
+}
+
+export function promptServer(..._args: unknown[]): never {
+  return serverOnly('promptServer');
 }
 
 export function getBuiltinTools(..._args: unknown[]): never {
@@ -89,6 +121,12 @@ export class SdkSessionRunner {
 export class AgentWorker {
   constructor(..._args: unknown[]) {
     serverOnly('AgentWorker');
+  }
+}
+
+export class AgentRuntimeOperations {
+  constructor(..._args: unknown[]) {
+    serverOnly('AgentRuntimeOperations');
   }
 }
 
@@ -191,4 +229,22 @@ export class OpenTelemetryAgentServerTelemetry {
   constructor(..._args: unknown[]) {
     serverOnly('OpenTelemetryAgentServerTelemetry');
   }
+}
+
+export class OpenTelemetryAgentWorkerTelemetry {
+  constructor(..._args: unknown[]) {
+    serverOnly('OpenTelemetryAgentWorkerTelemetry');
+  }
+}
+
+export function assertRuntimeStoreConformance(..._args: unknown[]): never {
+  return serverOnly('assertRuntimeStoreConformance');
+}
+
+export function assertAgentServerStoreConformance(..._args: unknown[]): never {
+  return serverOnly('assertAgentServerStoreConformance');
+}
+
+export function assertSessionExecutorReadResult(..._args: unknown[]): never {
+  return serverOnly('assertSessionExecutorReadResult');
 }

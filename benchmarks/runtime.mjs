@@ -2,8 +2,8 @@ import { platform, release } from 'node:os';
 import { Pool } from 'pg';
 import {
   AgentWorker,
-  EffectDispatcher,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
+import { EffectDispatcher } from '@blade-ai/agent-sdk/advanced';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import {
   AGENT_PROTOCOL_VERSION,
@@ -12,7 +12,7 @@ import {
   ExecutionLeaseId,
   SessionId,
   WorkerId,
-} from '@blade-ai/agent-sdk/core';
+} from '@blade-ai/agent-sdk';
 
 const connectionString = process.env.TEST_POSTGRES_URL;
 if (!connectionString) {

@@ -225,7 +225,7 @@ class Session implements ISession {
     ) {
       throw new ConfigError(
         'Server sessions require sessionRepository and sessionEventStore for persistence. ' +
-          'Import from @blade-ai/agent-sdk/node to use storagePath-backed local persistence.',
+          'Import from @blade-ai/agent-sdk/advanced to use storagePath-backed local persistence.',
       );
     }
     this.sessionId = sessionId || SessionId(nanoid());
@@ -273,7 +273,7 @@ class Session implements ISession {
             },
           },
         }
-      : options.defaultContext ?? {};
+      : (options.defaultContext ?? {});
     this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
     this.confirmationHandler =
       options.confirmationHandlerFactory?.(this.sessionId) ?? options.confirmationHandler;

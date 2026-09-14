@@ -1,7 +1,7 @@
-import { AgentWorker } from '@blade-ai/agent-sdk/server';
+import { AgentWorker } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { WorkerId } from '@blade-ai/agent-sdk/core';
-import { DockerExecutionHost } from '@blade-ai/agent-sdk/node';
+import { WorkerId } from '@blade-ai/agent-sdk';
+import { DockerExecutionHost } from '@blade-ai/agent-sdk/advanced';
 import { RepositorySessionRunner } from './RepositorySessionRunner.mjs';
 import { RepositoryState } from './RepositoryState.mjs';
 

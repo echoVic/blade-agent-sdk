@@ -3,8 +3,8 @@ import {
   DurableExecutionLease,
   ExecutionCheckpointId,
   ExecutionId,
-} from '@blade-ai/agent-sdk/core';
-import { resumeSession } from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk';
+import { resumeServerSession as resumeSession } from '@blade-ai/agent-sdk/advanced';
 import { createRepositorySessionOptions } from './RepositoryDemoProvider.mjs';
 import { createRepositoryTools } from './RepositoryTools.mjs';
 import { publishTerminalOutcome } from './RepositoryTerminalOutcome.mjs';

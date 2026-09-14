@@ -10,7 +10,7 @@ import { build } from 'esbuild';
 import {
   AgentRuntimeOperations,
   AgentServer,
-} from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { RepositoryState } from './RepositoryState.mjs';
 import { reconcilePendingWork } from './RepositoryReconcile.mjs';

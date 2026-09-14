@@ -38,7 +38,7 @@ describe('createBladeAgent', () => {
     const manifest = JSON.parse(await readFile(join(result.directory, 'package.json'), 'utf8'));
     expect(Object.keys(manifest.dependencies)).toEqual(['@blade-ai/agent-sdk']);
     expect(await readFile(join(result.directory, 'src/index.mjs'), 'utf8')).toContain(
-      '@blade-ai/agent-sdk/node',
+      '@blade-ai/agent-sdk/advanced',
     );
   });
 
@@ -113,7 +113,7 @@ describe('createBladeAgent', () => {
       budgetMs: 60_000,
     });
     const entrypoint = await readFile(join(result.directory, 'src/index.mjs'), 'utf8');
-    expect(entrypoint).toContain('@blade-ai/agent-sdk/node');
+    expect(entrypoint).toContain('@blade-ai/agent-sdk/advanced');
     expect(entrypoint).toContain('const persistSession = false;');
     expect(await readFile(join(result.directory, 'README.md'), 'utf8')).toMatch(
       /no\s+PostgreSQL or Docker/,

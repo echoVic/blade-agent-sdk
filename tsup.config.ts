@@ -15,6 +15,7 @@ const externals: string[] = [
 
 export default defineConfig({
   entry: {
+    'advanced/index': 'src/advanced/index.ts',
     index: 'src/index.ts',
     'browser/index': 'src/browser/index.ts',
     'browser/server-only-stub': 'src/browser/server-only-stub.ts',
@@ -25,6 +26,7 @@ export default defineConfig({
     'node/index': 'src/node/index.ts',
     'protocol/index': 'src/protocol/index.ts',
     'server/index': 'src/server/index.ts',
+    'server/infra': 'src/server/infra.ts',
     'server/otel': 'src/server/otel.ts',
     'server/postgres': 'src/server/postgres.ts',
     'server/testing/index': 'src/server/testing/index.ts',

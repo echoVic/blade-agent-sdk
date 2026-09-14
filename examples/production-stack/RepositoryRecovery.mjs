@@ -5,7 +5,7 @@ import {
   InputId,
   RequestId,
   TurnId,
-} from '@blade-ai/agent-sdk/core';
+} from '@blade-ai/agent-sdk';
 
 function identity(...parts) {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32);

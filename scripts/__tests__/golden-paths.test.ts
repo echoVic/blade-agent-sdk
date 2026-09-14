@@ -56,13 +56,13 @@ describe('golden paths', () => {
   it('exercises the intended runtime boundaries', () => {
     expect(
       readFileSync(resolve('examples/local-cli-agent/index.mjs'), 'utf8'),
-    ).toContain('@blade-ai/agent-sdk/node');
+    ).toContain('@blade-ai/agent-sdk/advanced');
     expect(
       readFileSync(resolve('examples/web-agent-server/client.js'), 'utf8'),
     ).toContain('@blade-ai/agent-sdk/browser');
     expect(
       readFileSync(resolve('examples/web-agent-server/server.mjs'), 'utf8'),
-    ).toContain('@blade-ai/agent-sdk/server');
+    ).toContain('@blade-ai/agent-sdk/server/infra');
     const worker = readFileSync(
       resolve('examples/postgres-worker-recovery/worker.mjs'),
       'utf8',

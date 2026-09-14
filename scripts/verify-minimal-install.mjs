@@ -63,8 +63,8 @@ try {
       '-e',
       [
         "const root = await import('@blade-ai/agent-sdk');",
-        "const server = await import('@blade-ai/agent-sdk/server');",
-        "const node = await import('@blade-ai/agent-sdk/node');",
+        "const server = await import('@blade-ai/agent-sdk/server/infra');",
+        "const node = await import('@blade-ai/agent-sdk/advanced');",
         "console.log(typeof root.createSession, typeof server.AgentWorker, typeof node.DockerExecutionHost);",
         "try { await root.createSession({ provider: { type: 'anthropic', apiKey: 'test' }, model: 'test', persistSession: false }); } catch (error) { console.log(error.message); }",
       ].join(' '),

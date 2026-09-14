@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import {
   createSession,
   ProviderRegistry,
-} from '@blade-ai/agent-sdk/node';
+} from '@blade-ai/agent-sdk/advanced';
 
 const apiKey = process.env.OPENAI_API_KEY;
 const smoke = process.argv.includes('--smoke');

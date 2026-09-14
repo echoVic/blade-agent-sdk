@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { isDeepStrictEqual } from 'node:util';
-import { AgentProtocolError } from '@blade-ai/agent-sdk/protocol';
+import { AgentProtocolError } from '@blade-ai/agent-sdk/browser';
 
 function toPendingSubmission(row) {
   return { sessionId: row.sessionId, requestId: row.requestId, input: row.input, value: { ...row.value, input: row.input } };

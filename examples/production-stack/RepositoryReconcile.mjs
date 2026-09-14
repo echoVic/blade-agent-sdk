@@ -1,4 +1,4 @@
-import { projectDurableSession, SessionId } from '@blade-ai/agent-sdk/core';
+import { projectDurableSession, SessionId } from '@blade-ai/agent-sdk';
 import { publishTerminalOutcome } from './RepositoryTerminalOutcome.mjs';
 
 const SETTLED_ROUTE_STATES = new Set(['idle', 'completed', 'failed']);

@@ -3,9 +3,9 @@ import { Pool } from 'pg';
 import {
   ExecutionLeaseId,
   WorkerId,
-} from '@blade-ai/agent-sdk/core';
+} from '@blade-ai/agent-sdk';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { effectLease } from '@blade-ai/agent-sdk/server';
+import { effectLease } from '@blade-ai/agent-sdk/server/infra';
 
 const [
   connectionString,

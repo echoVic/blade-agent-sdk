@@ -229,10 +229,7 @@ async function copyWebTemplate(sourceRoot: string, directory: string): Promise<v
 async function copyTemplate(directory: string, preset: CreateBladeAgentPreset): Promise<void> {
   const sourceRoot = join(PACKAGE_ROOT, 'examples');
   if (preset === 'local') {
-    const localSource = await readFile(
-      join(sourceRoot, 'local-cli-agent/index.mjs'),
-      'utf8',
-    );
+    const localSource = await readFile(join(sourceRoot, 'local-cli-agent/index.mjs'), 'utf8');
     const marker = 'const persistSession = true;';
     if (!localSource.includes(marker)) {
       throw new Error(`Local template marker is missing: ${marker}`);
@@ -306,7 +303,7 @@ Run the offline first-result check:
 ${run} smoke
 \`\`\`
 
-This preset uses \`@blade-ai/agent-sdk/node\` with an in-memory Session and no
+This preset uses \`@blade-ai/agent-sdk/advanced\` with an in-memory Session and no
 PostgreSQL or Docker. Move to the \`web\` or \`production\` preset when the
 Agent must serve remote clients.
 `;

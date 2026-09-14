@@ -7,10 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
-import {
-  AgentServer,
-  ProviderRegistry,
-} from '@blade-ai/agent-sdk/server';
+import { ProviderRegistry } from '@blade-ai/agent-sdk';
+import { AgentServer } from '@blade-ai/agent-sdk/server/infra';
 
 const smoke = process.argv.includes('--smoke');
 const apiKey = smoke ? undefined : process.env.OPENAI_API_KEY;

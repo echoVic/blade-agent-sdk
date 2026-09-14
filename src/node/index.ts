@@ -1,5 +1,5 @@
 // Node host capabilities: builtin tools, MCP, memory, and sandbox adapters.
-// Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
+// Browser consumers should use @blade-ai/agent-sdk or a remote server API.
 
 import type { UserMessageContent } from '../agent/types.js';
 import {
@@ -33,10 +33,7 @@ export function resumeSession(options: ResumeOptions): Promise<ISession> {
 }
 
 export function forkSession(options: ForkOptions): Promise<ISession> {
-  return forkSessionWithHost(
-    withNodeSessionRepository(options) as ForkOptions,
-    NODE_SESSION_HOST,
-  );
+  return forkSessionWithHost(withNodeSessionRepository(options) as ForkOptions, NODE_SESSION_HOST);
 }
 
 export function prompt(

@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { SessionId } from '@blade-ai/agent-sdk/core';
+import { SessionId } from '@blade-ai/agent-sdk';
 
 const execFileAsync = promisify(execFile);
 const root = dirname(fileURLToPath(import.meta.url));

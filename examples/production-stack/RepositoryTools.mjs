@@ -1,4 +1,4 @@
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk/tools';
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
 
 export const GREETING_PATH = 'src/greeting.sh';
 export const TEST_PATH = 'test/greeting.test.sh';

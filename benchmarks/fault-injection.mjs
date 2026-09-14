@@ -8,8 +8,8 @@ import {
   ExecutionLeaseId,
   SessionId,
   WorkerId,
-} from '@blade-ai/agent-sdk/core';
-import { effectLease } from '@blade-ai/agent-sdk/server';
+} from '@blade-ai/agent-sdk';
+import { effectLease } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 
 const connectionString = process.env.TEST_POSTGRES_URL;

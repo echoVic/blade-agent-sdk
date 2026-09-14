@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { createSession, resumeSession } from '@blade-ai/agent-sdk/session';
-import { AgentProtocolError } from '@blade-ai/agent-sdk/protocol';
+import {
+  createServerSession as createSession,
+  resumeServerSession as resumeSession,
+} from '@blade-ai/agent-sdk/advanced';
+import { AgentProtocolError } from '@blade-ai/agent-sdk/browser';
 import { createRepositorySessionOptions } from './RepositoryDemoProvider.mjs';
 
 export const QUEUED_REQUEST_METADATA_KEY = 'bladeQueuedRequest';

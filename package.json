@@ -23,6 +23,11 @@
       "browser": "./dist/browser/index.js",
       "import": "./dist/index.js"
     },
+    "./advanced": {
+      "types": "./dist/advanced/index.d.ts",
+      "browser": "./dist/browser/server-only-stub.js",
+      "import": "./dist/advanced/index.js"
+    },
     "./core": {
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
@@ -39,6 +44,11 @@
       "types": "./dist/server/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/server/index.js"
+    },
+    "./server/infra": {
+      "types": "./dist/server/infra.d.ts",
+      "browser": "./dist/browser/server-only-stub.js",
+      "import": "./dist/server/infra.js"
     },
     "./server/postgres": {
       "types": "./dist/server/postgres.d.ts",

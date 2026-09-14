@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ProviderRegistry } from '@blade-ai/agent-sdk/server';
+import { ProviderRegistry } from '@blade-ai/agent-sdk';
 import { CORRECTED_GREETING, GREETING_PATH, ORIGINAL_GREETING } from './RepositoryTools.mjs';
 
 const TOOL_NAMES = ['RepoRead', 'RepoWrite', 'RepoRunTests'];
