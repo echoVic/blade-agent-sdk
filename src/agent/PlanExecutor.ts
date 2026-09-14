@@ -6,6 +6,7 @@
 
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
+import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { PermissionMode } from '../types/constants.js';
 import type { AgentEvent } from './AgentEvent.js';
 import type { ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
@@ -31,6 +32,7 @@ export class PlanExecutor {
     private language?: string,
     logger?: InternalLogger,
     private readonly includeSkills = true,
+    private readonly skillRegistry?: SkillRegistry,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
@@ -67,6 +69,7 @@ export class PlanExecutor {
       mode: PermissionMode.PLAN,
       includeEnvironment: context?.omitEnvironment !== true,
       includeSkills: this.includeSkills,
+      skillRegistry: this.skillRegistry,
       language: this.language,
     });
     return prompt;

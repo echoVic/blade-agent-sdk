@@ -3,11 +3,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { getSessionFilePathFromStorageRoot } from '../context/storage/pathUtils.js';
-import type { AgentOptions } from '../index.js';
+import type { Agent, AgentOptions } from '../index.js';
+import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import type { PermissionHandler, PermissionHandlerRequest } from '../types/permissions.js';
 
 const createRuntimeAgent = vi.fn(async (..._args: unknown[]) => ({
   async setModel() {},
+  async *streamChat() {
+    yield { type: 'turn_start' as const, turn: 1, maxTurns: 4 };
+    yield { type: 'content_delta' as const, delta: 'Hello ' };
+    yield { type: 'content_delta' as const, delta: 'world' };
+    yield { type: 'turn_end' as const, turn: 1 };
+    return {
+      success: true,
+      finalMessage: 'Hello world',
+      metadata: {
+        turnsCount: 1,
+        toolCallsCount: 0,
+        duration: 1,
+      },
+    };
+  },
 }));
 
 vi.mock('../agent/Agent.js', () => ({
@@ -214,6 +230,7 @@ describe('createAgent', () => {
     expectTypeOf<AdvancedOptions>().not.toHaveProperty('permissionMode');
     expectTypeOf<AdvancedOptions>().not.toHaveProperty('permissionHandler');
     expectTypeOf<AdvancedOptions>().not.toHaveProperty('canUseTool');
+    expectTypeOf<Agent>().not.toHaveProperty('stream');
   });
 
   it('does not forward legacy permission fields from untyped callers', async () => {
@@ -237,5 +254,90 @@ describe('createAgent', () => {
     });
 
     await agent.close();
+  });
+
+  it('exposes one replayable response through text, textStream, on, and stream', async () => {
+    const agent = await sdk.createAgent({
+      model: 'gpt-4o-mini',
+      apiKey: 'test-key',
+    });
+
+    const response = await agent.send('Say hello');
+    const observed: string[] = [];
+    response.on('content', (event) => {
+      observed.push(event.delta);
+    });
+
+    await expect(response.text()).resolves.toBe('Hello world');
+
+    const chunks: string[] = [];
+    for await (const chunk of response.textStream()) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(['Hello ', 'world']);
+
+    const eventTypes: string[] = [];
+    for await (const event of response.stream()) {
+      eventTypes.push(event.type);
+    }
+    expect(eventTypes).toEqual(['turn_start', 'content', 'content', 'turn_end', 'usage', 'result']);
+    expect(observed).toEqual(['Hello ', 'world']);
+
+    await agent.close();
+  });
+
+  it('injects data skills into isolated per-Agent registries', async () => {
+    const first = await sdk.createAgent({
+      model: 'gpt-4o-mini',
+      apiKey: 'test-key',
+      advanced: {
+        skills: [
+          {
+            name: 'first-skill',
+            description: 'First inline skill',
+            content: 'Follow the first inline instructions.',
+            allowedTools: ['Read'],
+          },
+        ],
+      },
+    });
+    const firstDeps = createRuntimeAgent.mock.calls.at(-1)?.[2] as {
+      skillRegistry: SkillRegistry;
+    };
+
+    const second = await sdk.createAgent({
+      model: 'gpt-4o-mini',
+      apiKey: 'test-key',
+      advanced: {
+        skills: [
+          {
+            name: 'second-skill',
+            description: 'Second inline skill',
+            content: 'Follow the second inline instructions.',
+          },
+        ],
+      },
+    });
+    const secondDeps = createRuntimeAgent.mock.calls.at(-1)?.[2] as {
+      skillRegistry: SkillRegistry;
+    };
+
+    expect(firstDeps.skillRegistry).not.toBe(secondDeps.skillRegistry);
+    expect(firstDeps.skillRegistry.getAll().map((skill) => skill.name)).toEqual(['first-skill']);
+    expect(secondDeps.skillRegistry.getAll().map((skill) => skill.name)).toEqual(['second-skill']);
+    expect(firstDeps.skillRegistry.generateAvailableSkillsList()).toContain(
+      'first-skill: First inline skill',
+    );
+    await expect(firstDeps.skillRegistry.loadContent('first-skill')).resolves.toMatchObject({
+      instructions: 'Follow the first inline instructions.',
+      metadata: {
+        allowedTools: ['Read'],
+      },
+    });
+    expect(firstDeps.skillRegistry.has('second-skill')).toBe(false);
+    expect(secondDeps.skillRegistry.has('first-skill')).toBe(false);
+
+    await first.close();
+    await second.close();
   });
 });

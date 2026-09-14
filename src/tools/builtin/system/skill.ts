@@ -60,7 +60,8 @@ Important:
 
     // The Skill list belongs to the project this execution runs in.
     const projectDir = getEffectiveProjectDir(context);
-    const registry = getSkillRegistry(projectDir ? { cwd: projectDir } : undefined);
+    const registry =
+      context.skillRegistry ?? getSkillRegistry(projectDir ? { cwd: projectDir } : undefined);
     const skillMetadata = registry.get(skill);
 
     // 检查 skill 是否存在

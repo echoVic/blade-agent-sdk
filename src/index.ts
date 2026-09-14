@@ -15,6 +15,13 @@ export type {
   InlineHooks,
 } from './agent/createAgent.js';
 export { createAgent } from './agent/createAgent.js';
+export type {
+  AgentResponseEvent,
+  AgentResponseEventType,
+  AgentResponseListener,
+  AgentResponseSubmission,
+} from './agent/AgentResponse.js';
+export { AgentResponse } from './agent/AgentResponse.js';
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -194,6 +201,12 @@ export {
 } from './services/deepseek.js';
 export type { ProviderAdapter } from './services/ProviderRegistry.js';
 export { ProviderRegistry } from './services/ProviderRegistry.js';
+export type {
+  SkillActivationContext,
+  SkillDefinition,
+  SkillMetadata,
+  SkillRegistryConfig,
+} from './skills/index.js';
 export * from './session/events/core.js';
 export type {
   AgentDefinition,

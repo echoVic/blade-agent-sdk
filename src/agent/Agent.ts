@@ -26,7 +26,8 @@ import type { ModelService } from '../model/service.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import { getContextCwd, type RuntimeContext } from '../runtime/index.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
-import { discoverSkills } from '../skills/index.js';
+import { getSkillRegistry } from '../skills/index.js';
+import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
@@ -70,6 +71,7 @@ export interface AgentRuntimeDeps {
   providerRegistry?: ProviderRegistry;
   modelMiddleware?: readonly ModelMiddleware[];
   toolMiddleware?: readonly ToolMiddleware[];
+  skillRegistry?: SkillRegistry;
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -102,12 +104,14 @@ export class Agent {
   private readonly ownsBackgroundAgentManager: boolean;
   private readonly hookRuntime?: HookRuntime;
   private readonly localDiscovery: boolean;
+  private readonly skillsEnabled: boolean;
+  private readonly skillRegistry: SkillRegistry;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private readonly lifecycleController = new AbortController();
   private readonly activeRuns = new Set<Promise<void>>();
   private readonly activeStreams = new Set<AsyncGenerator<AgentEvent, LoopResult>>();
-  private lastPreparedSkillCwd?: string;
+  private lastPreparedSkillCwd?: string | null;
   private tokenBudget?: TokenBudget;
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
@@ -129,6 +133,11 @@ export class Agent {
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.localDiscovery = runtimeOptions.localDiscovery ?? true;
+    this.skillsEnabled = this.localDiscovery || deps.skillRegistry !== undefined;
+    const defaultSkillCwd = getContextCwd(this.defaultContext);
+    this.skillRegistry =
+      deps.skillRegistry ??
+      getSkillRegistry(defaultSkillCwd ? { cwd: defaultSkillCwd } : undefined);
     this.ownsRuntimeMcpRegistry = deps.mcpRegistry === undefined && !this.runtimeManaged;
     this.runtimeMcpRegistry =
       deps.mcpRegistry ?? (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
@@ -158,7 +167,12 @@ export class Agent {
       deps.modelMiddleware,
       deps.providerRegistry,
     );
-    this.planExecutor = new PlanExecutor(config.language, this.rootLogger, this.localDiscovery);
+    this.planExecutor = new PlanExecutor(
+      config.language,
+      this.rootLogger,
+      this.skillsEnabled,
+      this.skillRegistry,
+    );
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
 
@@ -217,6 +231,8 @@ export class Agent {
 
       if (this.localDiscovery) {
         await this.loadSubagents();
+      }
+      if (this.skillsEnabled) {
         await this.discoverSkills();
       }
 
@@ -240,6 +256,7 @@ export class Agent {
         compactionHandler,
         this.tokenBudget,
         this.hookRuntime,
+        this.skillRegistry,
       );
 
       this.isInitialized = true;
@@ -577,11 +594,11 @@ export class Agent {
     const ctx = this.withBackgroundAgentManager(context);
     let enhancedMessage: UserMessageContent;
     if (options?.initialInputPreparation === RECONCILED_INITIAL_INPUT) {
-      if (this.localDiscovery) {
+      if (this.skillsEnabled) {
         await this.discoverSkillsForCwd(this.getContextWorkingDirectory(ctx));
       }
       enhancedMessage = message;
-    } else if (this.localDiscovery) {
+    } else if (this.skillsEnabled) {
       enhancedMessage = await this.prepareMessageForContext(message, ctx);
     } else {
       enhancedMessage = message;
@@ -590,7 +607,7 @@ export class Agent {
       ...options,
       signal: this.withLifecycleSignal(options?.signal ?? ctx.signal),
       prepareInput: (input) =>
-        this.localDiscovery ? this.prepareMessageForContext(input, ctx) : Promise.resolve(input),
+        this.skillsEnabled ? this.prepareMessageForContext(input, ctx) : Promise.resolve(input),
     };
 
     return { enhancedMessage, context: ctx, loopOptions };
@@ -680,7 +697,8 @@ export class Agent {
         basePrompt: this.runtimeOptions.systemPrompt,
         append: this.runtimeOptions.appendSystemPrompt,
         includeEnvironment: false,
-        includeSkills: this.localDiscovery,
+        includeSkills: this.skillsEnabled,
+        skillRegistry: this.skillRegistry,
         language: this.config.language,
       });
       if (result.prompt) {
@@ -782,12 +800,13 @@ export class Agent {
   }
 
   private async discoverSkillsForCwd(cwd?: string): Promise<void> {
-    if (!cwd || this.lastPreparedSkillCwd === cwd) {
+    const registryCwd = cwd ?? null;
+    if (this.lastPreparedSkillCwd === registryCwd) {
       return;
     }
     try {
-      const result = await discoverSkills({ cwd });
-      this.lastPreparedSkillCwd = cwd;
+      const result = await this.skillRegistry.initialize(cwd ? { cwd } : undefined);
+      this.lastPreparedSkillCwd = registryCwd;
       if (result.skills.length > 0) {
         this.logger.debug(
           `✅ Discovered ${result.skills.length} skills: ${result.skills.map((s) => s.name).join(', ')}`,
@@ -820,6 +839,9 @@ export class Agent {
     context: ChatContext,
   ): Promise<UserMessageContent> {
     await this.discoverSkillsForCwd(this.getContextWorkingDirectory(context));
+    if (!this.localDiscovery) {
+      return message;
+    }
     const attachmentHandler = this.createAttachmentHandler(context);
     return attachmentHandler ? attachmentHandler.processAtMentionsForContent(message) : message;
   }

@@ -5,6 +5,7 @@ import {
 } from '../../../hooks/WindowsProcessJob.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
+import type { SkillRegistry } from '../../../skills/SkillRegistry.js';
 import type { ExecutionContext } from '../../../tools/types/execution.js';
 import { completeToolExecution } from '../../../tools/types/result.js';
 import { ModelAttemptId, SessionId } from '../../../types/identifiers.js';
@@ -113,6 +114,49 @@ describe('executeToolCalls', () => {
           filesystemRoots: ['/snapshot-root'],
         }),
       }),
+    );
+  });
+
+  it('should forward the Session-scoped Skill registry into tool execution', async () => {
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'ok',
+      }),
+    );
+    const skillRegistry = { sessionScoped: true } as unknown as SkillRegistry;
+
+    await executeToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [
+          {
+            id: 'tool-skill',
+            type: 'function',
+            function: {
+              name: 'Skill',
+              arguments: JSON.stringify({ skill: 'inline-review' }),
+            },
+          },
+        ],
+      },
+      executionPipeline: {
+        execute,
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-skill'),
+        userId: 'user-1',
+        skillRegistry,
+      } as never,
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      'Skill',
+      { skill: 'inline-review' },
+      expect.objectContaining({ skillRegistry }),
     );
   });
 

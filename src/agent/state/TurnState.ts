@@ -2,6 +2,7 @@ import type { ModelMessage } from '../../model/message.js';
 import type { ModelService, ModelToolDefinition } from '../../model/service.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
+import type { SkillRegistry } from '../../skills/SkillRegistry.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
@@ -32,6 +33,7 @@ export interface LoopExecutionContext {
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
+  skillRegistry?: SkillRegistry;
   discoveredTools?: string[];
   lifecycle?: ToolExecutionLifecycle;
 }

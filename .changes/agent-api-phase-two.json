@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add replayable Agent responses, Session-scoped data Skills, and four canonical package entrypoints.",
+  "zh-CN": "新增可重放的 Agent 响应、Session 私有数据 Skills，以及四个 canonical 包入口。"
+}

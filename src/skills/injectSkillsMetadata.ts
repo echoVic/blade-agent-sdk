@@ -6,7 +6,7 @@
  */
 
 import type { FunctionDeclaration } from '../tools/types/tool.js';
-import { getSkillRegistry } from './SkillRegistry.js';
+import { getSkillRegistry, type SkillRegistry } from './SkillRegistry.js';
 import type { SkillActivationContext } from './types.js';
 
 /** Skill 工具名称 */
@@ -28,10 +28,11 @@ export function injectSkillsMetadata(
   tools: FunctionDeclaration[],
   activationContext?: SkillActivationContext,
   cwd?: string,
+  skillRegistry?: SkillRegistry,
 ): FunctionDeclaration[] {
   // Resolved per working directory so a project does not advertise another
   // project's Skills.
-  const registry = getSkillRegistry(cwd ? { cwd } : undefined);
+  const registry = skillRegistry ?? getSkillRegistry(cwd ? { cwd } : undefined);
   const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有发现任何 skills，返回原数组

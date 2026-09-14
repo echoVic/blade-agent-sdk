@@ -6,6 +6,7 @@ import { NODE_SESSION_HOST, SERVER_SESSION_HOST } from '../session/SessionHostPr
 import type {
   HookCallback,
   ISession,
+  SendOptions,
   SessionHookEvent,
   SessionOptions,
   SessionTool,
@@ -18,6 +19,8 @@ import type {
   PermissionHandlerRequest,
   PermissionResult,
 } from '../types/permissions.js';
+import { AgentResponse } from './AgentResponse.js';
+import type { UserMessageContent } from './types.js';
 
 export type AgentProfile = 'local' | 'server';
 
@@ -77,9 +80,11 @@ export interface AgentOptions {
   advanced?: AgentAdvancedOptions;
 }
 
-export type Agent = ISession;
+export interface Agent extends Omit<ISession, 'send' | 'stream'> {
+  send(message: UserMessageContent, options?: SendOptions): Promise<AgentResponse>;
+}
 
-export function createAgent(options: AgentOptions): Promise<Agent> {
+export async function createAgent(options: AgentOptions): Promise<Agent> {
   const {
     connection,
     permission,
@@ -117,10 +122,52 @@ export function createAgent(options: AgentOptions): Promise<Agent> {
     ...resolvePermission(permission),
   };
 
-  return createSessionWithHost(
+  const session = await createSessionWithHost(
     profile === 'local' ? withNodeSessionRepository(sessionOptions) : sessionOptions,
     hostProfile,
   );
+  return createAgentFacade(session);
+}
+
+function createAgentFacade(session: ISession): Agent {
+  let activeResponse: AgentResponse | undefined;
+
+  const send = async (
+    message: UserMessageContent,
+    options?: SendOptions,
+  ): Promise<AgentResponse> => {
+    if (activeResponse && !activeResponse.isSettled) {
+      throw new Error(
+        'The previous Agent response is still active. Consume it before sending another message.',
+      );
+    }
+
+    const submission = await session.send(message, options);
+    if (submission.status !== 'started') {
+      throw new Error(
+        'High-level Agent.send() only starts new requests. Use createSession() from ' +
+          '@blade-ai/agent-sdk/advanced for steering and queued inputs.',
+      );
+    }
+
+    const response = new AgentResponse(submission, session.stream(), () => {
+      if (activeResponse === response) {
+        activeResponse = undefined;
+      }
+    });
+    activeResponse = response;
+    return response;
+  };
+
+  return new Proxy(session, {
+    get(target, property) {
+      if (property === 'send') {
+        return send;
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as unknown as Agent;
 }
 
 function mergeFilesystemContext(

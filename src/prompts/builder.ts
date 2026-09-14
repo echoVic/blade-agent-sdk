@@ -14,6 +14,7 @@
  */
 
 import { getSkillRegistry } from '../skills/index.js';
+import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import type { SkillActivationContext } from '../skills/types.js';
 import { PermissionMode } from '../types/constants.js';
 import { getEnvironmentContext } from '../utils/environment.js';
@@ -66,6 +67,9 @@ export interface BuildSystemPromptOptions {
    * Skills 激活上下文，用于过滤带 conditions 的 skill 可见性。
    */
   skillActivationContext?: SkillActivationContext;
+
+  /** Session-scoped Skill registry. Falls back to cwd-based discovery. */
+  skillRegistry?: SkillRegistry;
 
   /**
    * 覆盖 Plan 模式的 system prompt（不提供时使用 SDK 内置的 PLAN_MODE_SYSTEM_PROMPT）
@@ -127,6 +131,7 @@ export async function buildSystemPrompt(
     language,
     planModePrompt,
     skillActivationContext,
+    skillRegistry,
   } = options;
 
   const parts: string[] = [];
@@ -164,7 +169,7 @@ export async function buildSystemPrompt(
 
   // 注入 Skills 元数据到 <available_skills> 占位符
   if (includeSkills) {
-    prompt = injectSkillsToPrompt(prompt, skillActivationContext, projectPath);
+    prompt = injectSkillsToPrompt(prompt, skillActivationContext, projectPath, skillRegistry);
   }
 
   // 注入语言指令
@@ -180,9 +185,10 @@ function injectSkillsToPrompt(
   prompt: string,
   activationContext?: SkillActivationContext,
   cwd?: string,
+  skillRegistry?: SkillRegistry,
 ): string {
   // The project's own Skills, not whichever configuration was seen first.
-  const registry = getSkillRegistry(cwd ? { cwd } : undefined);
+  const registry = skillRegistry ?? getSkillRegistry(cwd ? { cwd } : undefined);
   const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有 skills，保持占位符为空（但保留标签结构）

@@ -5,7 +5,7 @@
  *
  * 核心特性：
  * - Progressive Disclosure：启动时仅加载元数据，执行时才加载完整内容
- * - 基于文件系统：SKILL.md + 可选脚本/模板
+ * - 支持 Session 数据定义与文件系统 SKILL.md
  * - AI 自动决策：LLM 根据 description 判断何时调用
  *
  * 目录结构：
@@ -28,10 +28,15 @@
  */
 
 export { injectSkillsMetadata } from './injectSkillsMetadata.js';
-export { discoverSkills, getSkillRegistry } from './SkillRegistry.js';
+export { discoverSkills, getSkillRegistry, SkillRegistry } from './SkillRegistry.js';
 export {
   collectSkillActivationPaths,
   filterSkillsByActivation,
   isSkillAvailableInContext,
 } from './activation.js';
-export type { SkillActivationContext } from './types.js';
+export type {
+  SkillActivationContext,
+  SkillDefinition,
+  SkillMetadata,
+  SkillRegistryConfig,
+} from './types.js';

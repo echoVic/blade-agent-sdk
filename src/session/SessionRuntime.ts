@@ -19,10 +19,12 @@ import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
+import { SkillRegistry } from '../skills/SkillRegistry.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { SnapshotManager } from '../tools/builtin/file/SnapshotManager.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
+import { skillTool } from '../tools/builtin/system/skill.js';
 import { TaskStore } from '../tools/builtin/task/TaskStore.js';
 import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
@@ -98,6 +100,7 @@ export class SessionRuntime {
   private readonly storageRoot?: string;
   private readonly mcpRegistry: McpRegistry;
   private readonly subagentRegistry: SubagentRegistry;
+  private readonly skillRegistry: SkillRegistry;
   private readonly toolRegistry = new ToolRegistry();
   private readonly toolCatalog = new ToolCatalog(this.toolRegistry);
   private readonly contextManager: ContextManager;
@@ -126,14 +129,19 @@ export class SessionRuntime {
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
+    this.skillRegistry = new SkillRegistry({
+      cwd: getContextCwd(defaultContext),
+      projectSkillsDir: hostProfile === NODE_SESSION_HOST ? 'skills' : undefined,
+      skills: options.skills,
+    });
     this.pluginHost = new PluginHost({
       middleware: options.middleware,
       plugins: options.plugins,
     });
     // Injected when the parent runs on a shared repository, so subagent state can
     // survive a move between hosts instead of only a restart on this one.
-    const sessionStore = options.agentSessionRepository
-      ?? AgentSessionStore.create(this.storageRoot, this.rootLogger);
+    const sessionStore =
+      options.agentSessionRepository ?? AgentSessionStore.create(this.storageRoot, this.rootLogger);
     this.backgroundAgentManager = BackgroundAgentManager.create(
       this.rootLogger,
       sessionStore,
@@ -180,6 +188,7 @@ export class SessionRuntime {
       defaultContext: this.defaultContext,
       mcpRegistry: this.mcpRegistry,
       subagentRegistry: this.subagentRegistry,
+      skillRegistry: this.skillRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
       providerRegistry: this.options.providerRegistry,
@@ -259,10 +268,18 @@ export class SessionRuntime {
     }
 
     this.initializeSubagents();
+    const skillDiscovery = await this.skillRegistry.initialize({
+      cwd: getContextCwd(this.defaultContext),
+    });
+    for (const error of skillDiscovery.errors) {
+      this.logger.warn(`⚠️  Skill loading error at ${error.path}: ${error.error}`);
+    }
     await this.contextManager.initialize();
     this.initializeHooks();
     if (this.hostProfile === NODE_SESSION_HOST) {
       await this.registerBuiltinTools();
+    } else if (this.options.skills?.length) {
+      this.registerBuiltinToolSet([skillTool]);
     }
     this.registerCustomTools();
     this.registerPluginTools();
@@ -446,7 +463,11 @@ export class SessionRuntime {
       includeMcpProtocolTools: false,
       subagentRegistry: this.subagentRegistry,
     });
-    const filteredTools = this.filterTools(builtinTools);
+    this.registerBuiltinToolSet(builtinTools);
+  }
+
+  private registerBuiltinToolSet(tools: Tool[]): void {
+    const filteredTools = this.filterTools(tools);
     if (filteredTools.length === 0) {
       return;
     }

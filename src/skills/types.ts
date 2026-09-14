@@ -7,7 +7,14 @@ import type { JsonObject } from '../types/json.js';
  * Skills 不再只是 prompt 片段，而是可发现、可编译、可执行的运行时能力包。
  */
 
-export type SkillSourceKind = 'managed' | 'user' | 'project' | 'bundled' | 'plugin' | 'mcp';
+export type SkillSourceKind =
+  | 'managed'
+  | 'inline'
+  | 'user'
+  | 'project'
+  | 'bundled'
+  | 'plugin'
+  | 'mcp';
 
 export type SkillTrustLevel = 'trusted' | 'workspace' | 'remote';
 
@@ -149,6 +156,23 @@ export interface SkillContent {
   assets: SkillAssetManifest;
 }
 
+export interface SkillDefinition {
+  name: string;
+  description: string;
+  content: string;
+  allowedTools?: readonly string[];
+  disallowedTools?: readonly string[];
+  version?: string;
+  argumentHint?: string;
+  userInvocable?: boolean;
+  disableModelInvocation?: boolean;
+  model?: string;
+  whenToUse?: string;
+  runtimeEffects?: SkillRuntimeEffects;
+  conditions?: SkillActivationConditions;
+  metadata?: JsonObject;
+}
+
 /**
  * SKILL.md 解析结果
  */
@@ -183,6 +207,9 @@ export interface SkillRegistryConfig {
 
   /** 额外的 source（bundled/plugin/mcp 等） */
   additionalSources?: SkillSourceConfig[];
+
+  /** Session-scoped Skills supplied as data rather than discovered from disk. */
+  skills?: readonly SkillDefinition[];
 }
 
 /**
@@ -209,6 +236,14 @@ export function defaultSkillSource(
       precedence: 500,
       shellPolicy: 'allow',
       hookPolicy: 'allow',
+    },
+    inline: {
+      trustLevel: 'trusted',
+      sourceId: 'inline',
+      rootDir,
+      precedence: 400,
+      shellPolicy: 'deny',
+      hookPolicy: 'deny',
     },
     user: {
       trustLevel: 'trusted',

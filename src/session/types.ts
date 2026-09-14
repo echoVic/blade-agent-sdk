@@ -20,6 +20,7 @@ import type {
 } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
+import type { SkillDefinition } from '../skills/types.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
@@ -283,6 +284,8 @@ export interface SessionOptions {
   /** Network-boundary policy for the built-in WebFetch tool. */
   webFetch?: WebFetchSecurityPolicy;
   agents?: Record<string, AgentDefinition>;
+  /** Session-scoped Skills supplied as data instead of discovered from disk. */
+  skills?: readonly SkillDefinition[];
   subagent?: SubagentInfo;
 
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;

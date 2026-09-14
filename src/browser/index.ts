@@ -1,4 +1,11 @@
 export * from '../core/index.js';
+export type {
+  AgentResponseEvent,
+  AgentResponseEventType,
+  AgentResponseListener,
+  AgentResponseSubmission,
+} from '../agent/AgentResponse.js';
+export { AgentResponse } from '../agent/AgentResponse.js';
 export {
   AgentClient,
   type AgentClientCommandOptions,

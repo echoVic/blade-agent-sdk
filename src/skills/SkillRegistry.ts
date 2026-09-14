@@ -18,8 +18,7 @@ import type {
   SkillRegistryConfig,
 } from './types.js';
 
-type ResolvedSkillRegistryConfig =
-  Omit<SkillRegistryConfig, 'cwd'> & { cwd?: string };
+type ResolvedSkillRegistryConfig = Omit<SkillRegistryConfig, 'cwd'> & { cwd?: string };
 
 interface RegisteredSource {
   descriptor: SkillSource;
@@ -29,7 +28,11 @@ interface RegisteredSource {
 const DEFAULT_CONFIG: ResolvedSkillRegistryConfig = {
   projectSkillsDir: 'skills',
   additionalSources: [],
+  skills: [],
 };
+
+const INLINE_SKILL_NAME_REGEX = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]?$/;
+const MAX_SKILL_DESCRIPTION_LENGTH = 1024;
 
 /**
  * One registry per discovery and execution-policy configuration.
@@ -61,11 +64,13 @@ function registryKey(config: ResolvedSkillRegistryConfig): string {
       source.hookPolicy ?? null,
       source.sourceId ?? null,
     ]),
+    config.skills ?? [],
   ]);
 }
 
 export class SkillRegistry {
   private skills: Map<string, SkillMetadata> = new Map();
+  private readonly inlineContents = new Map<string, SkillContent>();
   private config: ResolvedSkillRegistryConfig;
   private initialized = false;
 
@@ -97,6 +102,7 @@ export class SkillRegistry {
       this.config = { ...this.config, cwd: config.cwd };
       this.initialized = false;
       this.skills.clear();
+      this.inlineContents.clear();
     }
     if (this.initialized) {
       return {
@@ -107,6 +113,7 @@ export class SkillRegistry {
 
     const errors: SkillDiscoveryResult['errors'] = [];
     const byCanonicalPath = new Map<string, SkillMetadata>();
+    this.inlineContents.clear();
 
     for (const source of this.resolveSources()) {
       const result = await this.scanDirectory(source);
@@ -125,7 +132,10 @@ export class SkillRegistry {
       }
     }
 
-    const discoveredCandidates = Array.from(byCanonicalPath.values());
+    const discoveredCandidates = [
+      ...Array.from(byCanonicalPath.values()),
+      ...this.createInlineSkills(errors),
+    ];
     discoveredCandidates.sort((left, right) => left.source.precedence - right.source.precedence);
 
     for (const skill of discoveredCandidates) {
@@ -141,6 +151,83 @@ export class SkillRegistry {
       skills: Array.from(this.skills.values()),
       errors,
     };
+  }
+
+  private createInlineSkills(errors: SkillDiscoveryResult['errors']): SkillMetadata[] {
+    const metadata: SkillMetadata[] = [];
+
+    for (const definition of this.config.skills ?? []) {
+      const path = `inline://${encodeURIComponent(definition.name || 'unnamed')}/SKILL.md`;
+      if (!INLINE_SKILL_NAME_REGEX.test(definition.name)) {
+        errors.push({
+          path,
+          error:
+            `Invalid name "${definition.name}": must be lowercase letters, numbers, ` +
+            'and hyphens only, 1-64 characters',
+        });
+        continue;
+      }
+      const description = definition.description.trim();
+      if (!description || description.length > MAX_SKILL_DESCRIPTION_LENGTH) {
+        errors.push({
+          path,
+          error: description
+            ? `Description too long: ${description.length} characters ` +
+              `(max ${MAX_SKILL_DESCRIPTION_LENGTH})`
+            : 'Missing required field: description',
+        });
+        continue;
+      }
+      if (!definition.content.trim()) {
+        errors.push({ path, error: 'Missing required field: content' });
+        continue;
+      }
+
+      const source = defaultSkillSource('inline', undefined, {
+        sourceId: `inline:${definition.name}`,
+      });
+      const allowedTools = definition.allowedTools ? [...definition.allowedTools] : undefined;
+      const disallowedTools = definition.disallowedTools
+        ? [...definition.disallowedTools]
+        : undefined;
+      const skillMetadata: SkillMetadata = {
+        name: definition.name,
+        description,
+        allowedTools,
+        disallowedTools,
+        version: definition.version,
+        argumentHint: definition.argumentHint,
+        userInvocable: definition.userInvocable,
+        disableModelInvocation: definition.disableModelInvocation,
+        model: definition.model,
+        whenToUse: definition.whenToUse,
+        runtimeEffects: {
+          ...definition.runtimeEffects,
+          allowedTools: definition.runtimeEffects?.allowedTools ?? allowedTools,
+          deniedTools: definition.runtimeEffects?.deniedTools ?? disallowedTools,
+          modelId: definition.runtimeEffects?.modelId ?? definition.model,
+          activeScope: definition.runtimeEffects?.activeScope ?? 'session',
+        },
+        conditions: definition.conditions,
+        metadata: definition.metadata,
+        path,
+        basePath: `inline://${encodeURIComponent(definition.name)}`,
+        source,
+      };
+      const content: SkillContent = {
+        metadata: skillMetadata,
+        instructions: definition.content.trim(),
+        assets: {
+          scripts: [],
+          references: [],
+          templates: [],
+        },
+      };
+      this.inlineContents.set(path, content);
+      metadata.push(skillMetadata);
+    }
+
+    return metadata;
   }
 
   private resolveSources(): RegisteredSource[] {
@@ -252,6 +339,10 @@ export class SkillRegistry {
   ): Promise<SkillContent | null> {
     const metadata = this.skills.get(name);
     if (!metadata) return null;
+    const inlineContent = this.inlineContents.get(metadata.path);
+    if (inlineContent) {
+      return structuredClone(inlineContent);
+    }
     return loadSkillContent(metadata, options);
   }
 
@@ -281,9 +372,7 @@ export class SkillRegistry {
         skill.description.length > 100
           ? `${skill.description.substring(0, 97)}...`
           : skill.description;
-      const nameWithHint = skill.argumentHint
-        ? `${skill.name} ${skill.argumentHint}`
-        : skill.name;
+      const nameWithHint = skill.argumentHint ? `${skill.name} ${skill.argumentHint}` : skill.name;
       lines.push(`- ${nameWithHint}: ${desc}`);
     }
 
@@ -296,6 +385,7 @@ export class SkillRegistry {
 
   async refresh(): Promise<SkillDiscoveryResult> {
     this.skills.clear();
+    this.inlineContents.clear();
     this.initialized = false;
     return this.initialize();
   }
@@ -305,9 +395,7 @@ export function getSkillRegistry(config?: SkillRegistryConfig): SkillRegistry {
   return SkillRegistry.getInstance(config);
 }
 
-export async function discoverSkills(
-  config?: SkillRegistryConfig,
-): Promise<SkillDiscoveryResult> {
+export async function discoverSkills(config?: SkillRegistryConfig): Promise<SkillDiscoveryResult> {
   const registry = getSkillRegistry(config);
   return registry.initialize({ ...(config?.cwd !== undefined ? { cwd: config.cwd } : {}) });
 }

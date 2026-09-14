@@ -189,4 +189,42 @@ Review code carefully.
       },
     ]);
   });
+
+  it('loads a Session-scoped data Skill without filesystem discovery', async () => {
+    const registry = new SkillRegistry({
+      projectSkillsDir: undefined,
+      skills: [
+        {
+          name: 'inline-review',
+          description: 'Review code from an inline definition',
+          content: 'Review the supplied code for correctness.',
+          allowedTools: ['Read'],
+        },
+      ],
+    });
+    await registry.initialize();
+
+    const { result, events } = await executeSkill(
+      { skill: 'inline-review' },
+      { skillRegistry: registry },
+    );
+
+    expect(result.status).toBe('success');
+    expect(String(result.model)).toContain('Review the supplied code for correctness.');
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: 'effect',
+        effect: expect.objectContaining({
+          type: 'runtimePatch',
+          patch: expect.objectContaining({
+            skill: expect.objectContaining({ name: 'inline-review' }),
+            toolPolicy: {
+              allow: ['Read'],
+              deny: undefined,
+            },
+          }),
+        }),
+      }),
+    ]);
+  });
 });

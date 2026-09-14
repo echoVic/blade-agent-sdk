@@ -21,6 +21,7 @@ import {
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
+import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { ToolCatalog } from '../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/index.js';
@@ -75,6 +76,7 @@ export class LoopRunner {
     private compactionHandler?: CompactionHandler,
     private tokenBudget?: TokenBudget,
     private hookRuntime?: HookRuntime,
+    private skillRegistry?: SkillRegistry,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
     this.runtimePatchManager = new RuntimePatchManager(hookRuntime, this.logger);
@@ -348,6 +350,7 @@ export class LoopRunner {
       includeSkills: this.runtimeOptions.localDiscovery !== false,
       language: this.config.language,
       skillActivationContext,
+      skillRegistry: this.skillRegistry,
     });
 
     return result.prompt;
@@ -432,6 +435,7 @@ export class LoopRunner {
         runWithExecutionLease: context.runWithExecutionLease,
         toolCatalog: catalog instanceof ToolCatalog ? catalog : undefined,
         toolRegistry: registry,
+        skillRegistry: this.skillRegistry,
         discoveredTools: Array.from(rpm.discoveredTools ?? []),
         lifecycle: toolExecutionLifecycle,
       },
@@ -465,6 +469,7 @@ export class LoopRunner {
           rawTools,
           skillActivationContext,
           loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath,
+          this.skillRegistry,
         );
         return rawTools;
       },

@@ -220,6 +220,41 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('registers only the Skill system tool for server sessions with data skills', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('server-data-skill-session'),
+      createOptions({
+        skills: [
+          {
+            name: 'inline-review',
+            description: 'Review code from an inline definition',
+            content: 'Review the supplied code for correctness.',
+          },
+        ],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+      SERVER_SESSION_HOST,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolRegistry().getAll().map((tool) => tool.name)).toEqual(['Skill']);
+    expect(runtime.getToolCatalog().getEntry('Skill')).toMatchObject({
+      source: {
+        kind: 'builtin',
+        trustLevel: 'trusted',
+        sourceId: 'builtin',
+      },
+    });
+
+    await runtime.close();
+  });
+
   it.each([
     'abort',
     'throw',
