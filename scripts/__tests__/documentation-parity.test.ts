@@ -71,11 +71,10 @@ describe('documentation locale parity', () => {
     expect(config).toContain("link: '/en/'");
   });
 
-  it('excludes internal research and audit documents', () => {
+  it('excludes internal documents from the public site', () => {
     const config = readFileSync(resolve('docs/.vitepress/config.ts'), 'utf8');
 
-    expect(config).toContain("'deepseek-api-research.md'");
-    expect(config).toContain("'simplification-audit.md'");
+    expect(config).toContain("'internal/**'");
     expect(config).toContain("'superpowers/**'");
   });
 

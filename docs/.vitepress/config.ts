@@ -96,11 +96,7 @@ const enSidebar = [
 export default defineConfig({
   base: '/blade-agent-sdk/',
   lastUpdated: true,
-  srcExclude: [
-    'deepseek-api-research.md',
-    'simplification-audit.md',
-    'superpowers/**',
-  ],
+  srcExclude: ['internal/**', 'superpowers/**'],
   locales: {
     root: {
       label: '简体中文',
