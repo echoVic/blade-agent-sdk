@@ -5,6 +5,7 @@ import type {
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
 import { resolveBehavior } from '../behavior.js';
+import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
 export interface RuntimeToolPolicySnapshot {
@@ -12,12 +13,19 @@ export interface RuntimeToolPolicySnapshot {
   deny?: string[];
 }
 
-export interface ToolDiscoveryEntry {
+export interface DiscoverableToolInfo {
   name: string;
-  displayName: string;
+  title: string;
   description: string;
-  mode: Extract<ToolExposureMode, 'deferred' | 'discoverable-only'>;
+  exposureMode: Extract<ToolExposureMode, 'deferred' | 'discoverable-only'>;
   discoveryHint?: string;
+}
+
+export interface DiscoverableCatalogView {
+  listDiscoverable(input: {
+    query: string;
+    permissionMode?: PermissionMode;
+  }): readonly DiscoverableToolInfo[];
 }
 
 export interface ToolExposure {
@@ -29,7 +37,7 @@ export interface ToolExposure {
 export interface ToolExposurePlan {
   declarations: FunctionDeclaration[];
   exposures: ToolExposure[];
-  discoverableTools: ToolDiscoveryEntry[];
+  discoverableTools: DiscoverableToolInfo[];
 }
 
 export interface ToolExposurePlannerOptions {
@@ -39,8 +47,11 @@ export interface ToolExposurePlannerOptions {
   sourcePolicy?: ToolCatalogSourcePolicy;
 }
 
-export class ToolExposurePlanner {
-  constructor(private readonly catalog: ToolCatalogReadView) {}
+export class ToolExposurePlanner implements DiscoverableCatalogView {
+  constructor(
+    private readonly catalog: ToolCatalogReadView,
+    private readonly getDiscoveredTools: () => ReadonlySet<string> = () => new Set(),
+  ) {}
 
   plan(options: ToolExposurePlannerOptions = {}): ToolExposurePlan {
     const catalogEntries = this.catalog.getEntries?.();
@@ -53,7 +64,7 @@ export class ToolExposurePlanner {
 
     const declarations: FunctionDeclaration[] = [];
     const exposures: ToolExposure[] = [];
-    const discoverableTools: ToolDiscoveryEntry[] = [];
+    const discoverableTools: DiscoverableToolInfo[] = [];
     const discovered = new Set(options.discoveredTools ?? []);
     const deniedTools = new Set(options.runtimeToolPolicy?.deny ?? []);
     const allowSelectors = options.runtimeToolPolicy?.allow;
@@ -89,9 +100,9 @@ export class ToolExposurePlanner {
 
       discoverableTools.push({
         name: tool.name,
-        displayName: tool.displayName,
+        title: tool.displayName,
         description: tool.description.short,
-        mode: exposureMode,
+        exposureMode,
         discoveryHint: tool.exposure.discoveryHint || undefined,
       });
     }
@@ -101,6 +112,23 @@ export class ToolExposurePlanner {
       exposures,
       discoverableTools,
     };
+  }
+
+  listDiscoverable(input: {
+    query: string;
+    permissionMode?: PermissionMode;
+  }): readonly DiscoverableToolInfo[] {
+    const eligible = new Map(
+      this.plan({
+        permissionMode: input.permissionMode,
+        discoveredTools: this.getDiscoveredTools(),
+      }).discoverableTools.map((tool) => [tool.name, tool]),
+    );
+
+    return searchTools(this.catalog.getAll(), input.query).flatMap((tool) => {
+      const entry = eligible.get(tool.name);
+      return entry ? [entry] : [];
+    });
   }
 
   private planFromDeclarations(options: ToolExposurePlannerOptions): ToolExposurePlan {

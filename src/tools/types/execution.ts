@@ -13,8 +13,7 @@ import type { SkillRegistry } from '../../skills/SkillRegistry.js';
 import type { PermissionMode } from '../../types/constants.js';
 import type { JsonObject } from '../../types/json.js';
 import type { ToolKind, ToolSideEffect } from '../behavior.js';
-import type { ToolCatalog } from '../catalog/index.js';
-import type { ToolRegistry } from '../registry/ToolRegistry.js';
+import type { DiscoverableCatalogView } from '../exposure/ToolExposurePlanner.js';
 import type { ToolResult } from './result.js';
 
 interface QuestionOption {
@@ -137,11 +136,9 @@ export interface ExecutionContext {
   bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
   runtime?: Partial<RuntimeAccess>;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
+  discoverableCatalog?: DiscoverableCatalogView;
   /** @internal Session-scoped Skill registry. */
   skillRegistry?: SkillRegistry;
-  discoveredTools?: string[];
   /** @internal Awaited lifecycle boundary immediately before the tool side effect. */
   toolInvocationLifecycle?: ToolInvocationLifecycle;
 }

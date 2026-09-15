@@ -7,9 +7,8 @@ import {
   isExecutionLeaseFailure,
 } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { SkillRegistry } from '../../skills/SkillRegistry.js';
-import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import type { DiscoverableCatalogView } from '../../tools/exposure/index.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
 import { resolveBehavior, ToolSideEffect } from '../../tools/behavior.js';
@@ -101,10 +100,8 @@ export interface ToolExecutionContext {
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
-  toolCatalog?: ToolCatalog;
-  toolRegistry?: ToolRegistry;
+  discoverableCatalog?: DiscoverableCatalogView;
   skillRegistry?: SkillRegistry;
-  discoveredTools?: string[];
   lifecycle?: ToolExecutionLifecycle;
 }
 
@@ -237,10 +234,8 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
           assertExecutionLease: input.executionContext.assertExecutionLease,
           runWithExecutionLease: input.executionContext.runWithExecutionLease,
         },
-        toolCatalog: input.executionContext.toolCatalog,
-        toolRegistry: input.executionContext.toolRegistry,
+        discoverableCatalog: input.executionContext.discoverableCatalog,
         skillRegistry: input.executionContext.skillRegistry,
-        discoveredTools: input.executionContext.discoveredTools,
         permissionMode: input.permissionMode,
         toolInvocationLifecycle: invocationLifecycle,
       });

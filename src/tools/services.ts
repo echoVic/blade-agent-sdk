@@ -3,6 +3,7 @@ import type { IBackgroundAgentManager } from '../agent/types.js';
 import type { McpRegistry } from '../mcp/McpRegistry.js';
 import type { MemoryManager } from '../memory/MemoryManager.js';
 import type { SkillRegistry } from '../skills/SkillRegistry.js';
+import type { DiscoverableCatalogView } from './exposure/ToolExposurePlanner.js';
 
 export interface ToolServiceMap {
   subagentRegistry: SubagentRegistry;
@@ -10,6 +11,7 @@ export interface ToolServiceMap {
   mcpRegistry: McpRegistry;
   skillRegistry: SkillRegistry;
   backgroundAgentManager: IBackgroundAgentManager;
+  discoverableCatalog: DiscoverableCatalogView;
 }
 
 export type ToolServiceName = keyof ToolServiceMap;
@@ -48,6 +50,13 @@ export function selectToolServices(
       case 'backgroundAgentManager':
         if (available.backgroundAgentManager) {
           selected.backgroundAgentManager = available.backgroundAgentManager;
+        } else {
+          missing.push(name);
+        }
+        break;
+      case 'discoverableCatalog':
+        if (available.discoverableCatalog) {
+          selected.discoverableCatalog = available.discoverableCatalog;
         } else {
           missing.push(name);
         }

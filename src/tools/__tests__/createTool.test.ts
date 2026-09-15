@@ -827,6 +827,49 @@ describe('createTool', () => {
       });
     });
 
+    it('uses the execution-scoped discoverable catalog for declared discovery services', async () => {
+      const registeredView = {
+        listDiscoverable: () => [
+          {
+            name: 'RegisteredTool',
+            title: 'Registered Tool',
+            description: 'Registered view',
+            exposureMode: 'deferred' as const,
+          },
+        ],
+      };
+      const scopedView = {
+        listDiscoverable: () => [
+          {
+            name: 'ScopedTool',
+            title: 'Scoped Tool',
+            description: 'Scoped view',
+            exposureMode: 'deferred' as const,
+          },
+        ],
+      };
+      const definition = defineTool({
+        name: 'ScopedDiscovery',
+        description: 'Reads the scoped discovery view',
+        parameters: Type.Object({}),
+        services: ['discoverableCatalog'],
+        async execute(_params, context) {
+          return context.discoverableCatalog.listDiscoverable({ query: 'tool' })[0]?.name ?? 'none';
+        },
+      });
+      const tool = toolFromDefinition(definition, {
+        discoverableCatalog: registeredView,
+      });
+
+      await expect(
+        collectToolExecution(
+          tool.execute({}, { discoverableCatalog: scopedView }),
+        ),
+      ).resolves.toMatchObject({
+        model: 'ScopedTool',
+      });
+    });
+
     it('validates every TypeBox definition before execution', () => {
       const tool = toolFromDefinition({
         name: 'ValidatedDefinition',

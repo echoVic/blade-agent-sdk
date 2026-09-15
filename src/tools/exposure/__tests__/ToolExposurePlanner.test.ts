@@ -181,9 +181,9 @@ describe('ToolExposurePlanner', () => {
     expect(hiddenPlan.discoverableTools).toEqual([
       {
         name: 'DeferredTool',
-        displayName: 'Deferred Tool',
+        title: 'Deferred Tool',
         description: 'Deferred tool',
-        mode: 'deferred',
+        exposureMode: 'deferred',
         discoveryHint: 'Use when you need heavyweight inspection.',
       },
     ]);
@@ -191,6 +191,57 @@ describe('ToolExposurePlanner', () => {
       'AlwaysLoadTool',
       'DeferredTool',
     ]);
+  });
+
+  it('provides a narrow searchable view of undiscovered tools', () => {
+    const registry = new ToolRegistry();
+    for (const name of ['HeavyInspect', 'HeavyWrite', 'VisibleRead']) {
+      registerTool(
+        registry,
+        createTool({
+          name,
+          displayName: name,
+          kind: name === 'VisibleRead' ? ToolKind.ReadOnly : ToolKind.Execute,
+          sideEffect: name === 'VisibleRead' ? 'pure' : 'non_idempotent',
+          description: { short: `${name} tool` },
+          exposure: {
+            mode: name === 'VisibleRead' ? 'eager' : 'deferred',
+          },
+          schema: Type.Object({}),
+          execute: () => completeToolExecution({ status: 'success', model: '' }),
+        }),
+      );
+    }
+    const planner = new ToolExposurePlanner(
+      registry,
+      () => new Set(['HeavyWrite']),
+    );
+    const matches = planner.listDiscoverable({ query: 'heavy' });
+
+    expect(matches.map((tool) => tool.name)).toEqual(['HeavyInspect']);
+  });
+
+  it('reads the current discovered set from its scoped provider', () => {
+    const registry = new ToolRegistry();
+    registerTool(
+      registry,
+      createTool({
+        name: 'HeavyInspect',
+        displayName: 'Heavy Inspect',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Heavy inspection tool' },
+        exposure: { mode: 'deferred' },
+        schema: Type.Object({}),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
+      }),
+    );
+    const planner = new ToolExposurePlanner(
+      registry,
+      () => new Set(['HeavyInspect']),
+    );
+
+    expect(planner.listDiscoverable({ query: 'heavy' })).toEqual([]);
   });
 
   it('filters tool exposure by source and trust when planning from a catalog', () => {
@@ -270,9 +321,9 @@ describe('ToolExposurePlanner', () => {
     expect(plan.discoverableTools).toEqual([
       {
         name: 'DeferredTool',
-        displayName: 'Deferred Tool',
+        title: 'Deferred Tool',
         description: 'Deferred tool',
-        mode: 'deferred',
+        exposureMode: 'deferred',
         discoveryHint: undefined,
       },
     ]);

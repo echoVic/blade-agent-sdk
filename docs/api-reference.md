@@ -323,6 +323,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolDisplayContent` | 展示给用户的工具内容 |
 | `ExecutionContext` | 工具执行上下文 |
 | `RuntimeAccess` | 工具执行期的租约校验与 fencing 能力 |
+| `DiscoverableCatalogView` | 可发现工具目录的窄只读查询接口 |
+| `DiscoverableToolInfo` | 可发现工具的只读摘要 |
 | `ToolServiceMap` | `defineTool` 可按需声明的会话级服务映射 |
 | `ToolServiceName` | `ToolServiceMap` 的合法服务名联合 |
 | `ToolExecutionRecord` | 工具调用记录 |

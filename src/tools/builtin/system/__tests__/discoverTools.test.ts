@@ -2,6 +2,7 @@ import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
 import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
 import { createTool } from '../../../core/createTool.js';
+import { ToolExposurePlanner } from '../../../exposure/ToolExposurePlanner.js';
 import { ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import { ToolKind } from '../../../behavior.js';
@@ -27,6 +28,41 @@ async function executeDiscoverTools(
 }
 
 describe('DiscoverTools tool', () => {
+  it('discovers tools through a narrow catalog view', async () => {
+    const { result, events } = await executeDiscoverTools(
+      { query: 'heavy' },
+      {
+        discoverableCatalog: {
+          listDiscoverable: () => [
+            {
+              name: 'HeavyInspect',
+              title: 'Heavy Inspect',
+              description: 'Heavy inspection tool',
+              exposureMode: 'deferred',
+            },
+          ],
+        },
+      } as Partial<ExecutionContext>,
+    );
+
+    expect(result.status).toBe('success');
+    expect(events).toEqual([
+      {
+        kind: 'effect',
+        effect: {
+          type: 'runtimePatch',
+          patch: {
+            scope: 'session',
+            source: 'tool',
+            toolDiscovery: {
+              discover: ['HeavyInspect'],
+            },
+          },
+        },
+      },
+    ]);
+  });
+
   it('activates matching deferred tools through a runtime patch', async () => {
     const registry = new ToolRegistry();
     registry.register(
@@ -46,7 +82,7 @@ describe('DiscoverTools tool', () => {
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
-      { toolRegistry: registry },
+      { discoverableCatalog: new ToolExposurePlanner(registry) },
     );
 
     expect(result.status).toBe('success');
@@ -86,7 +122,12 @@ describe('DiscoverTools tool', () => {
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
-      { toolRegistry: registry, discoveredTools: ['HeavyInspect'] },
+      {
+        discoverableCatalog: new ToolExposurePlanner(
+          registry,
+          () => new Set(['HeavyInspect']),
+        ),
+      },
     );
 
     expect(result.status).toBe('success');
@@ -118,7 +159,7 @@ describe('DiscoverTools tool', () => {
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
-      { toolCatalog: catalog },
+      { discoverableCatalog: new ToolExposurePlanner(catalog) },
     );
 
     expect(result.status).toBe('success');

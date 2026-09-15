@@ -1,6 +1,6 @@
 # Tools 模块重设计方案
 
-> 状态：设计定稿；§13 第 1-3 步已实施
+> 状态：设计定稿；§13 第 1-4 步已实施
 > 前提：**不考虑向后兼容**（API 面可自由重塑；已持久化的 durable 字符串取值除外）
 > 依据：所有判断均基于当前代码调用点实测（见各节行号引用）
 
@@ -261,11 +261,9 @@ export interface ToolServiceMap {
   mcpRegistry: McpRegistry;
   skillRegistry: SkillRegistry;
   backgroundAgentManager: IBackgroundAgentManager;
+  discoverableCatalog: DiscoverableCatalogView;
 }
 ```
-
-`discoverableCatalog` 在第 4 步随 `DiscoverableCatalogView` 一并加入，避免在接口
-落地前引入占位依赖。
 
 ### 7.2 `defineTool` 声明位
 
@@ -348,19 +346,19 @@ export interface DiscoverableToolInfo {
 }
 
 export interface DiscoverableCatalogView {
-  /** 当前对模型隐藏但可被发现激活的工具（已应用 plan/allow/deny/source 过滤）。 */
+  /** 当前对模型隐藏但可被发现激活的工具（已应用 permission mode 与 discovered 状态）。 */
   listDiscoverable(input: {
-    query?: string;
-    discovered: ReadonlySet<string>;
+    query: string;
     permissionMode?: PermissionMode;
   }): readonly DiscoverableToolInfo[];
 }
 ```
 
-实现方为 `ToolExposurePlanner`（暴露唯一 owner）。DiscoverTools 声明
-`services: ['discoverableCatalog']`，拿不到 `register/unregister/get`，也无法
-枚举已暴露工具。`toolRegistry`/`toolCatalog`/`discoveredTools` 由此从
-`ExecutionContext` 移除（`discovered` 改为调用方入参）。
+实现方为 `ToolExposurePlanner`（暴露唯一 owner），通过构造期 provider 读取当前
+`RuntimePatchManager.discoveredTools`。第 4 步先把 execution-scoped 窄视图交给
+现有 DiscoverTools；第 5 步迁移为 `services: ['discoverableCatalog']`。
+DiscoverTools 拿不到 `register/unregister/get`，也无法枚举已暴露工具。
+`toolRegistry`/`toolCatalog`/`discoveredTools` 已从 `ExecutionContext` 移除。
 
 ---
 
@@ -445,7 +443,7 @@ defineTool(def)                          // 纯数据 + 依赖声明
 1. [x] `behavior.ts` 合并单一 `resolveBehavior` + `ToolBehavior`（字面量值保持一致）。
 2. [x] `ExecutionContext` 三层拆分 + `RuntimeAccess` + `ctx.runtime`（旧顶层字段已删除）。
 3. [x] `ToolServiceMap` + `defineTool` 的 `services`/`requiresRuntime` 声明位 + 注册器注入。
-4. `DiscoverableCatalogView` 落地，DiscoverTools 切窄接口；从 context 删 registry/catalog。
+4. [x] `DiscoverableCatalogView` 落地，DiscoverTools 切窄接口；从 context 删 registry/catalog。
 5. 类 A 6 工厂删除改读 `ctx.sessionId`；类 B 5 工厂改 `services`；删剩余 `as` 兜底。
 6. `Tool`/`ToolInvocation` 替换胖接口；Pipeline 改吃不可变 `ToolInvocation`。
 7. `registry.ts` 单容器，删 `ToolCatalog`；exposure 收敛为唯一 owner。

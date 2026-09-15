@@ -22,7 +22,6 @@ import {
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
 import type { SkillRegistry } from '../skills/SkillRegistry.js';
-import { ToolCatalog } from '../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/index.js';
 import { PermissionMode } from '../types/constants.js';
@@ -385,8 +384,10 @@ export class LoopRunner {
     const rpm = this.runtimePatchManager;
     const catalog = this.executionPipeline.getCatalog();
     const exposureCatalog = catalog ?? this.executionPipeline.getRegistry();
-    const registry = this.executionPipeline.getRegistry();
-    const exposurePlanner = new ToolExposurePlanner(exposureCatalog);
+    const exposurePlanner = new ToolExposurePlanner(
+      exposureCatalog,
+      () => rpm.discoveredTools ?? new Set(),
+    );
     const effectiveSnapshot = rpm.buildRuntimeContextSnapshot(context.sessionId, context.snapshot);
     const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
     const initialMessages = conversationState.toArray();
@@ -433,10 +434,8 @@ export class LoopRunner {
         executionFence: context.executionFence,
         assertExecutionLease: context.assertExecutionLease,
         runWithExecutionLease: context.runWithExecutionLease,
-        toolCatalog: catalog instanceof ToolCatalog ? catalog : undefined,
-        toolRegistry: registry,
+        discoverableCatalog: exposurePlanner,
         skillRegistry: this.skillRegistry,
-        discoveredTools: Array.from(rpm.discoveredTools ?? []),
         lifecycle: toolExecutionLifecycle,
       },
       baseContextSnapshot: context.snapshot,
@@ -444,7 +443,6 @@ export class LoopRunner {
       resolveTools: () => {
         const skillActivationContext = resolveSkillActivationContext();
         loopState.executionContext.skillActivationPaths = skillActivationContext.referencedPaths;
-        loopState.executionContext.discoveredTools = Array.from(rpm.discoveredTools ?? []);
         const runtimeToolPolicy =
           rpm.runtimeToolPolicySnapshot ??
           (rpm.skillContext

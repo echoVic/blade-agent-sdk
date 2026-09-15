@@ -7,6 +7,8 @@ import type {
   ConfirmationDetails,
   ConfirmationHandler,
   ConversationMessage,
+  DiscoverableCatalogView,
+  DiscoverableToolInfo,
   DurableAcceptedRequestRecovery,
   DurableCommandCommitOptions,
   DurableCommandEventDraft,
@@ -79,17 +81,19 @@ import * as root from '../index.js';
 import {
   AGENT_PROTOCOL_VERSION,
   AgentCommandType,
-  CommandId,
   collectToolExecution,
+  CommandId,
   completeToolExecution,
   composeMiddleware,
   CredentialLeaseId,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
+  definePlugin,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
   DURABLE_EXECUTION_LEASE_FORMAT,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
+  durableEventCursor,
   DurableEventStoreTimeoutError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
@@ -102,8 +106,6 @@ import {
   DurableSessionRecoveryCoordinator,
   DurableSessionRecoveryError,
   DurableSessionRecoveryRequiredError,
-  definePlugin,
-  durableEventCursor,
   EventId,
   EventSequence,
   ExecutionCheckpointId,
@@ -117,9 +119,9 @@ import {
   ModelAttemptId,
   ModelTimeoutError,
   PermissionRequestId,
+  projectDurableSession,
   ProviderRegistry,
   ProviderRegistryError,
-  projectDurableSession,
   RequestId,
   SessionDurableRecorderError,
   SessionHandoffError,
@@ -281,7 +283,15 @@ describe('root exports', () => {
     expectTypeOf<ExecutionContext>().not.toHaveProperty('executionFence');
     expectTypeOf<ExecutionContext>().not.toHaveProperty('assertExecutionLease');
     expectTypeOf<ExecutionContext>().not.toHaveProperty('runWithExecutionLease');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('toolRegistry');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('toolCatalog');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('discoveredTools');
     expectTypeOf<ToolServiceName>().toEqualTypeOf<keyof ToolServiceMap>();
+    expectTypeOf<DiscoverableCatalogView['listDiscoverable']>().toBeFunction();
+    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('get');
+    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('register');
+    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('unregister');
+    expectTypeOf<DiscoverableToolInfo['name']>().toEqualTypeOf<string>();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'

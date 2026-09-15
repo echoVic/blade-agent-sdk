@@ -27,7 +27,7 @@ import {
   summarizeRuntimePatchApplications,
 } from '../runtime/index.js';
 import type { SkillActivationContext } from '../skills/index.js';
-import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';
+import type { DiscoverableToolInfo } from '../tools/exposure/index.js';
 import type { ToolEffect } from '../tools/types/effects.js';
 import { getRuntimePatchEffect } from '../tools/types/effects.js';
 import type { SessionId } from '../types/identifiers.js';
@@ -418,7 +418,7 @@ export class RuntimePatchManager {
 
   syncDiscoverableToolsCatalogMessage(
     convState: ConversationState,
-    discoverableTools: ToolDiscoveryEntry[],
+    discoverableTools: DiscoverableToolInfo[],
   ): void {
     const existingIndex = convState.findIndex(
       (message) =>

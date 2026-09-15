@@ -1,7 +1,15 @@
 // Server-first facade. Import /node when the runtime may access local host
 // capabilities such as builtin tools, sandboxing, and JSONL stores.
 
+export { AgentResponse } from './agent/AgentResponse.js';
+export type {
+  AgentResponseEvent,
+  AgentResponseEventType,
+  AgentResponseListener,
+  AgentResponseSubmission
+} from './agent/AgentResponse.js';
 // --- Agent ---
+export { createAgent } from './agent/createAgent.js';
 export type {
   Agent,
   AgentAdvancedOptions,
@@ -12,17 +20,8 @@ export type {
   AgentPermissionPreset,
   AgentPermissionRequest,
   AgentProfile,
-  InlineHooks,
+  InlineHooks
 } from './agent/createAgent.js';
-export { createAgent } from './agent/createAgent.js';
-export type {
-  AgentResponseEvent,
-  AgentResponseEventType,
-  AgentResponseListener,
-  AgentResponseSubmission,
-} from './agent/AgentResponse.js';
-export { AgentResponse } from './agent/AgentResponse.js';
-export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -32,16 +31,17 @@ export type {
   SubagentConfig,
   SubagentContext,
   SubagentResult,
-  SubagentSource,
+  SubagentSource
 } from './agent/subagents/types.js';
 export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
+export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type {
   HookTimeoutErrorCode,
   ModelTimeoutErrorCode,
   ProviderRegistryErrorCode,
   SdkErrorOptions,
   SessionHandoffErrorCode,
-  SessionInputErrorCode,
+  SessionInputErrorCode
 } from './errors/index.js';
 // --- Error hierarchy ---
 export {
@@ -54,7 +54,7 @@ export {
   SdkError,
   SessionHandoffError,
   SessionInputError,
-  ToolExecutionError,
+  ToolExecutionError
 } from './errors/index.js';
 // --- Hook schema accessors ---
 export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
@@ -62,27 +62,25 @@ export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
 export {
   DecisionBehavior,
   HookExitCode,
-  HookType,
+  HookType
 } from './hooks/types.js';
 export type {
   CleanupFn,
   CleanupHandle,
-  GracefulShutdownOptions,
+  GracefulShutdownOptions
 } from './lifecycle/CleanupRegistry.js';
 // --- Lifecycle ---
 export {
   gracefulShutdown,
   registerCleanup,
-  resetCleanupRegistry,
+  resetCleanupRegistry
 } from './lifecycle/CleanupRegistry.js';
 // --- Constants & types ---
 export type { McpServerConfig } from './mcp/config.js';
 export type {
   McpToolCallResponse,
-  McpToolDefinition,
-  SdkMcpServerHandle,
-  SdkTool,
-  ToolResponse as McpToolResponse,
+  McpToolDefinition, ToolResponse as McpToolResponse, SdkMcpServerHandle,
+  SdkTool
 } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Middleware and plugins ---
@@ -115,7 +113,7 @@ export type {
   ProviderConnectionConfig,
   ProviderType,
   QuerySource,
-  TokenUsage,
+  TokenUsage
 } from './model/index.js';
 // --- Model contracts ---
 export {
@@ -124,7 +122,7 @@ export {
   isConversationMessageSource,
   normalizeModelUsage,
   PROVIDER_TYPES,
-  resolveModelIdentity,
+  resolveModelIdentity
 } from './model/index.js';
 // --- Observability ---
 export type {
@@ -135,7 +133,7 @@ export type {
   TraceSink,
   TraceSpan,
   TraceSpanKind,
-  TraceStatus,
+  TraceStatus
 } from './observability/index.js';
 // --- Remote protocol ---
 export * from './protocol/index.js';
@@ -150,34 +148,15 @@ export type {
   RuntimePatchScope,
   RuntimePatchSkillInfo,
   RuntimeToolDiscoveryPatch,
-  RuntimeToolPolicyPatch,
+  RuntimeToolPolicyPatch
 } from './runtime/index.js';
 // --- Runtime ---
 export {
   createContextSnapshot,
   hasFilesystemCapability,
-  mergeContext,
+  mergeContext
 } from './runtime/index.js';
 export type { SandboxSettings } from './sandbox/config.js';
-export type {
-  DeepSeekBatchChatCompletionItem,
-  DeepSeekBatchChatCompletionOptions,
-  DeepSeekBatchChatCompletionResult,
-  DeepSeekBatchChatCompletionSummary,
-  DeepSeekCacheOptimizationOptions,
-  DeepSeekChatCompletionOptions,
-  DeepSeekChatCompletionResponse,
-  DeepSeekChatMessage,
-  DeepSeekCostBreakdown,
-  DeepSeekCostSnapshot,
-  DeepSeekFimCompletionOptions,
-  DeepSeekFimCompletionResponse,
-  DeepSeekLongContextChunk,
-  DeepSeekLongContextOptions,
-  DeepSeekLongContextPlan,
-  DeepSeekPricing,
-  DeepSeekProviderOptions,
-} from './services/deepseek.js';
 export {
   calculateDeepSeekCost,
   createDeepSeekBatchChatCompletions,
@@ -198,16 +177,29 @@ export {
   optimizeDeepSeekCachePrefix,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
-  summarizeDeepSeekBatchChatCompletions,
+  summarizeDeepSeekBatchChatCompletions
 } from './services/deepseek.js';
-export type { ProviderAdapter } from './services/ProviderRegistry.js';
-export { ProviderRegistry } from './services/ProviderRegistry.js';
 export type {
-  SkillActivationContext,
-  SkillDefinition,
-  SkillMetadata,
-  SkillRegistryConfig,
-} from './skills/index.js';
+  DeepSeekBatchChatCompletionItem,
+  DeepSeekBatchChatCompletionOptions,
+  DeepSeekBatchChatCompletionResult,
+  DeepSeekBatchChatCompletionSummary,
+  DeepSeekCacheOptimizationOptions,
+  DeepSeekChatCompletionOptions,
+  DeepSeekChatCompletionResponse,
+  DeepSeekChatMessage,
+  DeepSeekCostBreakdown,
+  DeepSeekCostSnapshot,
+  DeepSeekFimCompletionOptions,
+  DeepSeekFimCompletionResponse,
+  DeepSeekLongContextChunk,
+  DeepSeekLongContextOptions,
+  DeepSeekLongContextPlan,
+  DeepSeekPricing,
+  DeepSeekProviderOptions
+} from './services/deepseek.js';
+export { ProviderRegistry } from './services/ProviderRegistry.js';
+export type { ProviderAdapter } from './services/ProviderRegistry.js';
 export * from './session/events/core.js';
 export type {
   AgentDefinition,
@@ -228,6 +220,7 @@ export type {
   SendOptions,
   SessionEventStore,
   SessionHandoffResult,
+  SessionHookEvent,
   SessionOptions,
   SessionPersistence,
   SessionRepository,
@@ -237,12 +230,11 @@ export type {
   SessionRepositoryStorageStats,
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
-  SessionHookEvent,
   SessionStreamEvent,
   SessionTool,
   StreamOptions,
   SubagentInfo,
-  ToolExecutionRecord,
+  ToolExecutionRecord
 } from './session/index.js';
 // --- Session ---
 export {
@@ -250,21 +242,37 @@ export {
   forkSession,
   InputPriority,
   prompt,
-  resumeSession,
+  resumeSession
 } from './session/index.js';
+export type {
+  SkillActivationContext,
+  SkillDefinition,
+  SkillMetadata,
+  SkillRegistryConfig
+} from './skills/index.js';
+export { ToolKind, ToolSideEffect } from './tools/behavior.js';
 export type { WebFetchSecurityPolicy } from './tools/builtin/web/webFetch.js';
 // --- Tool authoring primitives ---
+export { ToolCatalog } from './tools/catalog/index.js';
 export type {
   ToolCatalogEntry,
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
   ToolSourceInfo,
   ToolSourceKind,
-  ToolTrustLevel,
+  ToolTrustLevel
 } from './tools/catalog/index.js';
-export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+export type {
+  DiscoverableCatalogView,
+  DiscoverableToolInfo
+} from './tools/exposure/index.js';
 export type { ToolServiceMap, ToolServiceName } from './tools/services.js';
+export {
+  collectToolExecution,
+  completeToolExecution,
+  ToolErrorType
+} from './tools/types/index.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,
@@ -297,20 +305,14 @@ export type {
   ToolScheduledLifecycle,
   ToolSchema,
   ToolSettledLifecycle,
-  ToolYield,
+  ToolYield
 } from './tools/types/index.js';
-export {
-  collectToolExecution,
-  completeToolExecution,
-  ToolErrorType,
-} from './tools/types/index.js';
-export { ToolKind, ToolSideEffect } from './tools/behavior.js';
 export {
   HookEvent,
   MessageRole,
   PermissionDecision,
   PermissionMode,
-  SessionStreamEventType,
+  SessionStreamEventType
 } from './types/constants.js';
 export {
   AgentId,
@@ -335,7 +337,7 @@ export {
   TraceEventId,
   TraceId,
   TurnId,
-  WorkerId,
+  WorkerId
 } from './types/identifiers.js';
 export type { JsonObject, JsonValue } from './types/json.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
@@ -347,7 +349,7 @@ export type {
   PermissionResult,
   PermissionRuleValue,
   PermissionsConfig,
-  PermissionUpdate,
+  PermissionUpdate
 } from './types/permissions.js';
 // --- Permission system ---
 export {
@@ -355,7 +357,7 @@ export {
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
+  createRuleBasedPermissionHandler
 } from './types/permissions.js';
 // --- Error utilities ---
 export { getErrorCode, getErrorMessage, getErrorName, toError } from './utils/errorUtils.js';

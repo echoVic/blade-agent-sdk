@@ -432,6 +432,10 @@ function createDefinitionContext(
   services: ToolServices,
   requiresRuntime: boolean,
 ): ExecutionContext & ToolServices {
+  const executionServices =
+    services.discoverableCatalog && context.discoverableCatalog
+      ? { ...services, discoverableCatalog: context.discoverableCatalog }
+      : services;
   return Object.freeze({
     signal: context.signal,
     sessionId: context.sessionId,
@@ -440,7 +444,7 @@ function createDefinitionContext(
     permissionMode: context.permissionMode,
     confirmationHandler: context.confirmationHandler,
     bladeConfig: context.bladeConfig,
-    ...services,
+    ...executionServices,
     ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
   });
 }

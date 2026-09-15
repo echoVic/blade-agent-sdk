@@ -31,15 +31,13 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     }),
   ),
   async *execute(params, context) {
-    const searchCatalog = context.toolCatalog;
-    const searchSource = searchCatalog ?? context.toolRegistry;
-    if (!searchSource) {
+    if (!context.discoverableCatalog) {
       return {
         status: 'error',
-        model: 'Tool discovery is unavailable because no tool registry was provided.',
+        model: 'Tool discovery is unavailable because no discoverable catalog was provided.',
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: 'Tool registry is unavailable',
+          message: 'Discoverable catalog is unavailable',
         },
         metadata: {
           summary: '工具发现不可用',
@@ -48,10 +46,11 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     }
 
     const maxResults = params.max_results ?? 5;
-    const discovered = new Set(context.discoveredTools ?? []);
-    const matches = searchSource
-      .search(params.query)
-      .filter((tool) => tool.exposure.mode !== 'eager' && !discovered.has(tool.name))
+    const matches = context.discoverableCatalog
+      .listDiscoverable({
+        query: params.query,
+        permissionMode: context.permissionMode,
+      })
       .slice(0, maxResults);
 
     if (matches.length === 0) {
@@ -65,7 +64,7 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     }
 
     const activatedNames = matches.map((tool) => tool.name);
-    const summary = matches.map((tool) => `- ${tool.name}: ${tool.description.short}`).join('\n');
+    const summary = matches.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n');
     const runtimePatch = {
       scope: 'session' as const,
       source: 'tool' as const,

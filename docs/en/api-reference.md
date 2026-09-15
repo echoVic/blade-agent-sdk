@@ -386,7 +386,8 @@ Types:
 `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
 `ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
 `ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`, `ToolSideEffect`,
-`RuntimeAccess`, `ToolServiceMap`, `ToolServiceName`,
+`RuntimeAccess`, `DiscoverableCatalogView`, `DiscoverableToolInfo`,
+`ToolServiceMap`, `ToolServiceName`,
 `ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:

@@ -32,7 +32,9 @@ import {
   type ToolSourceInfo,
 } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
+import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import type { ToolServices } from '../tools/services.js';
 import type { Tool } from '../tools/types/tool.js';
 import type { PermissionMode } from '../types/constants.js';
 import { HookEvent } from '../types/constants.js';
@@ -145,13 +147,15 @@ export class SessionRuntime {
       },
       options.providerRegistry,
     );
-    this.toolRegistry = new ToolRegistry({
+    const toolServices: ToolServices = {
       subagentRegistry: this.subagentRegistry,
       mcpRegistry: this.mcpRegistry,
       skillRegistry: this.skillRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
-    });
+    };
+    this.toolRegistry = new ToolRegistry(toolServices);
     this.toolCatalog = new ToolCatalog(this.toolRegistry);
+    toolServices.discoverableCatalog = new ToolExposurePlanner(this.toolCatalog);
     this.contextManager = new ContextManager(
       {
         storage: {
