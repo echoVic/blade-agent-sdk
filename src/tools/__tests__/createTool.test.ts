@@ -1,5 +1,5 @@
+import Type from 'typebox';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { z } from 'zod';
 import { createTool, defineTool, toolFromDefinition } from '../core/createTool.js';
 import { ToolKind } from '../types/kind.js';
 import type { ReadMetadata } from '../types/metadata.js';
@@ -12,6 +12,98 @@ import {
 import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
+  describe('TypeBox contract', () => {
+    it('uses the authored schema directly for declarations and metadata', () => {
+      const parameters = Type.Object({
+        message: Type.String({ description: 'Message to echo' }),
+      });
+      const tool = createTool({
+        name: 'TypeBoxEcho',
+        displayName: 'TypeBox Echo',
+        kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
+        description: { short: 'Echo a message' },
+        schema: parameters,
+        execute: ({ message }) =>
+          completeToolExecution({
+            status: 'success',
+            model: message,
+          }),
+      });
+
+      expect(tool.getFunctionDeclaration().parameters).toBe(parameters);
+      expect(tool.getMetadata().schema).toBe(parameters);
+    });
+
+    it('applies TypeBox defaults before callbacks receive params', async () => {
+      const tool = createTool({
+        name: 'TypeBoxDefaults',
+        displayName: 'TypeBox Defaults',
+        kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
+        description: { short: 'Apply defaults' },
+        schema: Type.Object({
+          message: Type.String(),
+          count: Type.Optional(Type.Number({ default: 2 })),
+        }),
+        execute: ({ message, count }) =>
+          completeToolExecution({
+            status: 'success',
+            model: Array(count).fill(message).join(' '),
+          }),
+      });
+
+      const result = await collectToolExecution(tool.execute({ message: 'hello' }));
+
+      expect(result.model).toBe('hello hello');
+    });
+
+    it('rejects invalid TypeBox params before any Tool callback runs', () => {
+      let callbackCount = 0;
+      const tool = createTool({
+        name: 'TypeBoxValidation',
+        displayName: 'TypeBox Validation',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Validate input' },
+        schema: Type.Object({
+          count: Type.Integer({ minimum: 1 }),
+        }),
+        describe: () => {
+          callbackCount += 1;
+          return { short: 'Validated invocation' };
+        },
+        execute: () => {
+          callbackCount += 1;
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      });
+
+      expect(() => tool.build({ count: 0 })).toThrow(/参数验证失败/);
+      expect(callbackCount).toBe(0);
+    });
+
+    it('validates defineTool params with the same TypeBox runtime path', () => {
+      let executionCount = 0;
+      const definition = defineTool({
+        name: 'DefinedTypeBoxTool',
+        description: 'TypeBox definition',
+        parameters: Type.Object({
+          query: Type.String({ minLength: 1 }),
+        }),
+        async execute({ query }) {
+          executionCount += 1;
+          return { query };
+        },
+      });
+      const tool = toolFromDefinition(definition);
+
+      expect(tool.getFunctionDeclaration().parameters).toBe(definition.parameters);
+      expect(() => tool.build({ query: '' })).toThrow(/参数验证失败/);
+      expect(executionCount).toBe(0);
+    });
+  });
+
   it('exposes ToolResult as a status-discriminated generic union', () => {
     type EchoResult = ToolResult<{ echoed: string }, ReadMetadata>;
 
@@ -30,9 +122,9 @@ describe('createTool', () => {
     >();
   });
 
-  const testSchema = z.object({
-    message: z.string().describe('The message to echo'),
-    count: z.number().optional().describe('Number of times to repeat'),
+  const testSchema = Type.Object({
+    message: Type.String({ description: 'The message to echo' }),
+    count: Type.Optional(Type.Number({ description: 'Number of times to repeat' })),
   });
 
   const echoTool = createTool({
@@ -67,7 +159,7 @@ describe('createTool', () => {
           displayName: 'Missing Side Effect',
           kind: ToolKind.ReadOnly,
           description: { short: 'Invalid tool' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           execute: () => completeToolExecution({ status: 'success', model: '' }),
         } as never),
       ).toThrow(/sideEffect must be/);
@@ -81,7 +173,7 @@ describe('createTool', () => {
           kind: ToolKind.ReadOnly,
           sideEffect: 'sometimes' as never,
           description: { short: 'Invalid tool' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           execute: () => completeToolExecution({ status: 'success', model: '' }),
         }),
       ).toThrow(/sideEffect must be/);
@@ -179,8 +271,8 @@ describe('createTool', () => {
         description: { short: 'Lazy tool' },
         schema: lazySchema(() => {
           schemaInitCount += 1;
-          return z.object({
-            value: z.string(),
+          return Type.Object({
+            value: Type.String(),
           });
         }),
         execute: ({ value }) =>
@@ -209,8 +301,8 @@ describe('createTool', () => {
         describe: (params) => ({
           short: params?.target ? `Inspect target: ${params.target}` : 'General tool description',
         }),
-        schema: z.object({
-          target: z.string(),
+        schema: Type.Object({
+          target: Type.String(),
         }),
         execute: ({ target }) =>
           completeToolExecution({
@@ -260,10 +352,10 @@ describe('createTool', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Path-aware tool' },
-        schema: z.object({
-          file_path: z.string(),
-          backupPath: z.string().optional(),
-          files: z.array(z.string()).optional(),
+        schema: Type.Object({
+          file_path: Type.String(),
+          backupPath: Type.Optional(Type.String()),
+          files: Type.Optional(Type.Array(Type.String())),
         }),
         execute: ({ file_path }) =>
           completeToolExecution({
@@ -288,7 +380,7 @@ describe('createTool', () => {
 
     it('should throw on invalid params', () => {
       expect(() => {
-        echoTool.build({ message: 123 } as unknown as z.infer<typeof testSchema>);
+        echoTool.build({ message: 123 } as unknown as Type.Static<typeof testSchema>);
       }).toThrow();
     });
   });
@@ -323,8 +415,8 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Tool with semantic validation' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         validateInput: ({ value }) =>
           value === 'blocked'
@@ -356,7 +448,7 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Tool with cleanup' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute() {
           try {
             yield { kind: 'progress', message: 'started' };
@@ -382,7 +474,7 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Tool with failing cleanup' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute() {
           try {
             yield { kind: 'progress', message: 'started' };
@@ -408,7 +500,7 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Invalid legacy tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: (async () => ({
           status: 'success',
           model: 'legacy result',
@@ -427,10 +519,7 @@ describe('createTool', () => {
         name: 'InvalidDefinition',
         sideEffect: 'pure',
         description: 'Invalid legacy tool definition',
-        parameters: {
-          type: 'object',
-          properties: {},
-        },
+        parameters: Type.Object({}),
         execute: (async () => ({
           status: 'success',
           model: 'legacy result',
@@ -451,8 +540,8 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Tool with permission check' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         checkPermissions: ({ value }) =>
           value === 'blocked'
@@ -487,7 +576,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Read only tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(readonlyTool.isReadOnly).toBe(true);
@@ -498,7 +587,7 @@ describe('createTool', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Write tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(writeTool.isReadOnly).toBe(false);
@@ -512,7 +601,7 @@ describe('createTool', () => {
         sideEffect: 'pure',
         isReadOnly: false,
         description: { short: 'Custom tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(tool.isReadOnly).toBe(false);
@@ -525,8 +614,8 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic behavior tool' },
-        schema: z.object({
-          mode: z.enum(['read', 'write']).default('read'),
+        schema: Type.Object({
+          mode: Type.Enum(['read', 'write'], { default: 'read' }),
         }),
         resolveBehavior: (params) => ({
           kind: params.mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
@@ -563,7 +652,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Limited tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         maxResultSizeChars: 128,
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
@@ -578,7 +667,7 @@ describe('createTool', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Blocking tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         interruptBehavior: 'block',
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
@@ -598,7 +687,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Tool with signature' },
-        schema: z.object({ path: z.string() }),
+        schema: Type.Object({ path: Type.String() }),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
         preparePermissionMatcher: (params) => ({
           signatureContent: params.path,
@@ -649,19 +738,21 @@ describe('createTool', () => {
     });
 
     it('treats a missing sideEffect as non-idempotent instead of rejecting the definition', () => {
-      expect(defineTool({
-        name: 'Unlabelled',
-        description: 'No side effect declared',
-        parameters: { type: 'object', properties: {} },
-        execute() {
-          return completeToolExecution({ status: 'success', model: 'ok' });
-        },
-      }).sideEffect).toBeUndefined();
+      expect(
+        defineTool({
+          name: 'Unlabelled',
+          description: 'No side effect declared',
+          parameters: Type.Object({}),
+          execute() {
+            return completeToolExecution({ status: 'success', model: 'ok' });
+          },
+        }).sideEffect,
+      ).toBeUndefined();
 
-      const tool = toolFromDefinition<Record<string, never>>({
+      const tool = toolFromDefinition({
         name: 'Unlabelled',
         description: 'No side effect declared',
-        parameters: { type: 'object', properties: {} },
+        parameters: Type.Object({}),
         execute() {
           return completeToolExecution({ status: 'success', model: 'ok' });
         },
@@ -671,11 +762,12 @@ describe('createTool', () => {
       expect(tool.getBehaviorHint?.()).toMatchObject({ sideEffect: 'non_idempotent' });
     });
 
-    it('accepts a Zod schema and validates parameters against it', async () => {
-      const tool = toolFromDefinition<{ query: string }>({
-        name: 'ZodTool',
-        description: 'Declared with Zod',
-        parameters: z.object({ query: z.string() }),
+    it('accepts a TypeBox schema and validates parameters against it', async () => {
+      const parameters = Type.Object({ query: Type.String() });
+      const tool = toolFromDefinition({
+        name: 'TypeBoxTool',
+        description: 'Declared with TypeBox',
+        parameters,
         execute(params) {
           return completeToolExecution({ status: 'success', model: `query=${params.query}` });
         },
@@ -687,9 +779,7 @@ describe('createTool', () => {
         required: ['query'],
       });
 
-      const accepted = await collectToolExecution(
-        tool.execute({ query: 'blade' }),
-      );
+      const accepted = await collectToolExecution(tool.execute({ query: 'blade' }));
       expect(accepted).toMatchObject({ status: 'success', model: 'query=blade' });
 
       expect(() => tool.execute({ query: 42 })).toThrow(/query/);
@@ -699,7 +789,7 @@ describe('createTool', () => {
       const definition = defineTool({
         name: 'AsyncWeather',
         description: 'Get weather for a city',
-        parameters: z.object({ city: z.string() }),
+        parameters: Type.Object({ city: Type.String() }),
         async execute({ city }) {
           expectTypeOf(city).toEqualTypeOf<string>();
           return {
@@ -710,9 +800,7 @@ describe('createTool', () => {
       });
       const tool = toolFromDefinition(definition);
 
-      await expect(
-        collectToolExecution(tool.execute({ city: 'Tokyo' })),
-      ).resolves.toMatchObject({
+      await expect(collectToolExecution(tool.execute({ city: 'Tokyo' }))).resolves.toMatchObject({
         status: 'success',
         model: 'Tokyo: clear',
       });
@@ -722,38 +810,36 @@ describe('createTool', () => {
       const definition = defineTool({
         name: 'SimpleWeather',
         description: 'Get weather for a city',
-        parameters: z.object({ city: z.string() }),
+        parameters: Type.Object({ city: Type.String() }),
         async execute({ city }) {
           return { weather: `${city}: clear` };
         },
       });
       const tool = toolFromDefinition(definition);
 
-      await expect(
-        collectToolExecution(tool.execute({ city: 'Tokyo' })),
-      ).resolves.toEqual({
+      await expect(collectToolExecution(tool.execute({ city: 'Tokyo' }))).resolves.toEqual({
         status: 'success',
         model: { weather: 'Tokyo: clear' },
         data: { weather: 'Tokyo: clear' },
       });
     });
 
-    it('keeps a JSON Schema advisory and does not validate parameters against it', async () => {
-      const tool = toolFromDefinition<{ message: string }>({
-        name: 'JsonSchemaTool',
-        description: 'Declared with JSON Schema',
-        parameters: {
-          type: 'object',
-          properties: { message: { type: 'string' } },
-          required: ['message'],
-        },
+    it('validates every TypeBox definition before execution', () => {
+      const tool = toolFromDefinition({
+        name: 'ValidatedDefinition',
+        description: 'Declared with TypeBox',
+        parameters: Type.Object({
+          message: Type.String(),
+        }),
         execute(params) {
-          return completeToolExecution({ status: 'success', model: `message=${String(params.message)}` });
+          return completeToolExecution({
+            status: 'success',
+            model: `message=${String(params.message)}`,
+          });
         },
       });
 
-      const result = await collectToolExecution(tool.execute({ message: 7 }));
-      expect(result).toMatchObject({ status: 'success', model: 'message=7' });
+      expect(() => tool.build({ message: 7 })).toThrow(/参数验证失败/);
     });
   });
 });

@@ -7,7 +7,7 @@ import type { TerminalCleanupGuard } from './TerminalCleanupGuard.js';
 /**
  * Keeps `state` in sync with the tool's invocation object.
  *
- * Rebuilding an invocation may rewrite parameters (Zod defaults/coercions,
+ * Rebuilding an invocation may rewrite parameters (schema defaults,
  * permission-handler updates), so the resolved behavior, affected paths and
  * permission signature must be recomputed together. Every stage that mutates
  * parameters goes through this binder rather than editing the state directly.

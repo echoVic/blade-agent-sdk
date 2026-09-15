@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
@@ -23,8 +23,8 @@ Use when:
 - After being assigned a task, to get complete requirements`,
     },
     schema: lazySchema(() =>
-      z.object({
-        taskId: z.string().describe('The ID of the task to retrieve'),
+      Type.Object({
+        taskId: Type.String({ description: 'The ID of the task to retrieve' }),
       }),
     ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution

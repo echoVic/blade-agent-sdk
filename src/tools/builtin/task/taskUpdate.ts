@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
-import { jsonValueSchema } from '../../../types/jsonSchema.js';
+import type { JsonValue } from '../../../types/json.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
@@ -25,22 +25,28 @@ Use \`deleted\` to permanently remove a task.
 ONLY mark a task as completed when you have FULLY accomplished it.`,
     },
     schema: lazySchema(() =>
-      z.object({
-        taskId: z.string().describe('The ID of the task to update'),
-        status: z.enum(['pending', 'in_progress', 'completed', 'deleted']).optional(),
-        subject: z.string().optional(),
-        description: z.string().optional(),
-        activeForm: z.string().optional(),
-        owner: z.string().optional(),
-        metadata: z
-          .record(z.string(), jsonValueSchema)
-          .optional()
-          .describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
-        addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
-        addBlockedBy: z
-          .array(z.string())
-          .optional()
-          .describe('Task IDs that must complete before this one can start'),
+      Type.Object({
+        taskId: Type.String({ description: 'The ID of the task to update' }),
+        status: Type.Optional(Type.Enum(['pending', 'in_progress', 'completed', 'deleted'])),
+        subject: Type.Optional(Type.String()),
+        description: Type.Optional(Type.String()),
+        activeForm: Type.Optional(Type.String()),
+        owner: Type.Optional(Type.String()),
+        metadata: Type.Optional(
+          Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
+            description: 'Metadata keys to merge into the task. Set a key to null to delete it.',
+          }),
+        ),
+        addBlocks: Type.Optional(
+          Type.Array(Type.String(), {
+            description: 'Task IDs that this task blocks',
+          }),
+        ),
+        addBlockedBy: Type.Optional(
+          Type.Array(Type.String(), {
+            description: 'Task IDs that must complete before this one can start',
+          }),
+        ),
       }),
     ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution

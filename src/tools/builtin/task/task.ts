@@ -10,7 +10,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { z } from 'zod';
+import Type from 'typebox';
 import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
 import { SubagentExecutor } from '../../../agent/subagents/SubagentExecutor.js';
 import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
@@ -27,7 +27,7 @@ import { ToolKind } from '../../types/kind.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
  * 从错误中提取用户友好的错误信息
@@ -122,33 +122,36 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     isReadOnly: true,
     isConcurrencySafe: false,
     schema: lazySchema(() =>
-      z.object({
-        subagent_type: z
-          .string()
-          .refine(
-            (type) => isValidSubagentType(type, registry),
-            (val) => ({
-              message: `Invalid subagent type: "${val}". Available: ${getAvailableSubagentTypesMessage(registry)}`,
-            }),
-          )
-          .describe('Subagent type to use (e.g., "Explore", "Plan")'),
-        description: z.string().min(3).max(100).describe('Short task description (3-5 words)'),
-        prompt: z.string().min(10).describe('Detailed task instructions'),
+      Type.Object({
+        subagent_type: Type.Refine(
+          Type.String({ description: 'Subagent type to use (e.g., "Explore", "Plan")' }),
+          (type) => isValidSubagentType(type, registry),
+          (value) =>
+            `Invalid subagent type: "${value}". Available: ${getAvailableSubagentTypesMessage(registry)}`,
+        ),
+        description: Type.String({
+          minLength: 3,
+          maxLength: 100,
+          description: 'Short task description (3-5 words)',
+        }),
+        prompt: Type.String({
+          minLength: 10,
+          description: 'Detailed task instructions',
+        }),
         run_in_background: ToolSchemas.flag({
           defaultValue: false,
           description:
             'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
         }),
-        resume: z
-          .string()
-          .optional()
-          .describe(
-            'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.',
-          ),
-        subagent_session_id: z
-          .string()
-          .optional()
-          .describe('Internal subagent session id for tracking'),
+        resume: Type.Optional(
+          Type.String({
+            description:
+              'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.',
+          }),
+        ),
+        subagent_session_id: Type.Optional(
+          Type.String({ description: 'Internal subagent session id for tracking' }),
+        ),
       }),
     ),
     description: {

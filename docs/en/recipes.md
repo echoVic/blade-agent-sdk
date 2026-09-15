@@ -278,14 +278,14 @@ import {
   tool,
 } from '@blade-ai/agent-sdk/advanced';
 import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const analyzeDependencies = tool(
   'analyze-dependencies',
   'Analyze package dependencies',
-  {
-    packageJson: z.string(),
-  },
+  Type.Object({
+    packageJson: Type.String(),
+  }),
   async ({ packageJson }) => ({
     content: [
       {

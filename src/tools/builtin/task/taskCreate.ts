@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
-import { jsonValueSchema } from '../../../types/jsonSchema.js';
+import type { JsonValue } from '../../../types/json.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
@@ -25,23 +25,23 @@ Use this tool proactively when:
 All tasks are created with status \`pending\`.`,
     },
     schema: lazySchema(() =>
-      z.object({
-        subject: z
-          .string()
-          .describe(
+      Type.Object({
+        subject: Type.String({
+          description:
             'A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")',
-          ),
-        description: z.string().describe('What needs to be done'),
-        activeForm: z
-          .string()
-          .optional()
-          .describe(
-            'Present continuous form shown in spinner when in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.',
-          ),
-        metadata: z
-          .record(z.string(), jsonValueSchema)
-          .optional()
-          .describe('Arbitrary metadata to attach to the task'),
+        }),
+        description: Type.String({ description: 'What needs to be done' }),
+        activeForm: Type.Optional(
+          Type.String({
+            description:
+              'Present continuous form shown in spinner when in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.',
+          }),
+        ),
+        metadata: Type.Optional(
+          Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
+            description: 'Arbitrary metadata to attach to the task',
+          }),
+        ),
       }),
     ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution

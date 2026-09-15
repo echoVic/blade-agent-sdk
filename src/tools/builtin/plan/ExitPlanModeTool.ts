@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { z } from 'zod';
+import Type from 'typebox';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
@@ -17,8 +17,8 @@ export const exitPlanModeTool = createTool({
   sideEffect: 'non_idempotent',
 
   schema: lazySchema(() =>
-    z.object({
-      plan: z.string().describe('The complete implementation plan in markdown format'),
+    Type.Object({
+      plan: Type.String({ description: 'The complete implementation plan in markdown format' }),
     }),
   ),
 

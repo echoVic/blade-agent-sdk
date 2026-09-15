@@ -142,14 +142,14 @@ import {
   tool,
 } from '@blade-ai/agent-sdk/advanced';
 import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const getWeather = tool(
   'get-weather',
   'Get the current weather for a city',
-  {
-    city: z.string(),
-  },
+  Type.Object({
+    city: Type.String(),
+  }),
   async ({ city }) => ({
     content: [
       {

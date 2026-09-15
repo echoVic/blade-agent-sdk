@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
@@ -25,8 +25,10 @@ export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: st
     isConcurrencySafe: false,
 
     schema: lazySchema(() =>
-      z.object({
-        todos: z.array(TodoItemSchema).min(1, 'At least one task is required'),
+      Type.Object({
+        todos: Type.Array(TodoItemSchema, {
+          minItems: 1,
+        }),
       }),
     ),
 

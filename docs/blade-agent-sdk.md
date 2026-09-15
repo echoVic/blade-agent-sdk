@@ -56,12 +56,12 @@ console.log(`耗时 ${result.duration}ms，使用了 ${result.toolCalls.length} 
 
 ```ts
 import { createAgent, defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const weatherTool = defineTool({
   name: 'GetWeather',
   description: '查询指定城市的天气',
-  parameters: z.object({ city: z.string() }),
+  parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}: 晴 25°C` };
   },

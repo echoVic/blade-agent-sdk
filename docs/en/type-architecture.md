@@ -156,13 +156,11 @@ differ.
 
 ## Tool generics
 
-Zod and JSON Schema authoring are explicit, separate paths:
-
-- `ZodToolDefinitionInput<TSchema>` infers callback parameters from the schema
-  and validates before execution.
-- `JsonSchemaToolDefinitionInput<TParams>` accepts an explicitly declared
-  parameter type; its schema remains a model-facing declaration rather than
-  pretending to provide compile-time inference.
+Tool authoring accepts TypeBox schemas only. `ToolDefinition<TSchema>` and
+`ToolDefinitionInput<TSchema>` infer callback parameters through
+`Type.Static<TSchema>`. The same schema object is both the model-facing JSON
+Schema and the runtime validation source, with no schema conversion or
+advisory-only path.
 
 Heterogeneous collections use the Tool-owned `ErasedToolDefinition` boundary;
 Session does not spell `ToolDefinition<never>` directly. Compiled runtime

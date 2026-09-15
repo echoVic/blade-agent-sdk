@@ -139,7 +139,7 @@ server profile。
 - 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
-- 工具：支持 async function 与 AsyncGenerator、Zod schema、按能力分组的内置工具、MCP 工具、类型化进度/副作用与 `blade-tool-*` 包约定
+- 工具：支持 async function 与 AsyncGenerator、TypeBox schema、按能力分组的内置工具、MCP 工具、类型化进度/副作用与 `blade-tool-*` 包约定
 - 扩展：洋葱式模型/工具 middleware，以及可打包 middleware、hooks 与工具的声明式插件
 - 协作：前台/后台子 Agent、任务工具，以及项目级 Skills
 - 安全：有界模型、工具与 inline hook 执行、权限模式、策略回调、路径检查和可选 OS 沙箱集成
@@ -170,16 +170,16 @@ for await (const event of session.stream()) {
 
 ## 自定义工具
 
-常用路径使用 Zod schema 和普通 async function。返回值会自动转换成内部成功结果：
+常用路径使用 TypeBox schema 和普通 async function。返回值会自动转换成内部成功结果：
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: '查询城市天气',
-  parameters: z.object({ city: z.string() }),
+  parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}：晴，25 C` };
   },

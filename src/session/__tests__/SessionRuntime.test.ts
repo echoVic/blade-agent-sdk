@@ -1,8 +1,8 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Type from 'typebox';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
@@ -17,7 +17,6 @@ import { createTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { ToolKind } from '../../tools/types/kind.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
-import type { ToolDefinition } from '../../tools/types/tool.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { JsonObject } from '../../types/json.js';
@@ -50,16 +49,13 @@ vi.mock('../../mcp/McpClient.js', () => ({
 
 const { SessionRuntime } = await import('../SessionRuntime.js');
 
-const customTool: ToolDefinition<{ value?: string }> = {
+const customTool = {
   name: 'CustomTool',
-  sideEffect: 'pure',
+  sideEffect: 'pure' as const,
   description: 'Custom test tool',
-  parameters: {
-    type: 'object',
-    properties: {
-      value: { type: 'string' },
-    },
-  },
+  parameters: Type.Object({
+    value: Type.Optional(Type.String()),
+  }),
   execute() {
     return completeToolExecution({
       status: 'success',
@@ -243,7 +239,12 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    expect(runtime.getToolRegistry().getAll().map((tool) => tool.name)).toEqual(['Skill']);
+    expect(
+      runtime
+        .getToolRegistry()
+        .getAll()
+        .map((tool) => tool.name),
+    ).toEqual(['Skill']);
     expect(runtime.getToolCatalog().getEntry('Skill')).toMatchObject({
       source: {
         kind: 'builtin',
@@ -266,7 +267,7 @@ describe('SessionRuntime', () => {
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Wait until cancelled' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       async *execute(_params, context) {
         await new Promise<void>((_resolve, reject) => {
           context.signal?.addEventListener(
@@ -337,7 +338,7 @@ describe('SessionRuntime', () => {
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Ignore cancellation until released' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       // biome-ignore lint/correctness/useYield: exercises an uncooperative terminal execution
       async *execute() {
         started.resolve();
@@ -557,7 +558,7 @@ describe('SessionRuntime', () => {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Plugin test tool' },
-      schema: z.object({ value: z.string().optional() }),
+      schema: Type.Object({ value: Type.Optional(Type.String()) }),
       execute(params) {
         return completeToolExecution({
           status: 'success',
@@ -777,8 +778,8 @@ describe('SessionRuntime', () => {
       sideEffect: 'pure',
       interruptBehavior: 'cancel',
       strict: true,
-      schema: z.object({
-        value: z.string(),
+      schema: Type.Object({
+        value: Type.String(),
       }),
       description: {
         short: 'Runtime tool',

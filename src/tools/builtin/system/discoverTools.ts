@@ -1,9 +1,8 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 export const discoverToolsTool = createTool({
   name: 'DiscoverTools',
@@ -17,12 +16,18 @@ export const discoverToolsTool = createTool({
 This tool searches deferred/discoverable tools, returns the best matches, and activates them for subsequent turns in the current session.`,
   },
   schema: lazySchema(() =>
-    z.object({
-      query: z.string().min(1).describe('Search query for hidden tools'),
-      max_results: ToolSchemas.semanticNumber()
-        .pipe(z.number().int().min(1).max(10))
-        .optional()
-        .describe('Maximum tools to activate'),
+    Type.Object({
+      query: Type.String({
+        minLength: 1,
+        description: 'Search query for hidden tools',
+      }),
+      max_results: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: 10,
+          description: 'Maximum tools to activate',
+        }),
+      ),
     }),
   ),
   async *execute(params, context) {

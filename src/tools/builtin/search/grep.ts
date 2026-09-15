@@ -9,7 +9,7 @@ import { join, relative } from 'node:path';
 const _require = createRequire(import.meta.url);
 
 import picomatch from 'picomatch';
-import { z } from 'zod';
+import Type from 'typebox';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
@@ -21,7 +21,7 @@ import type { GrepMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
  * 搜索策略枚举
@@ -634,72 +634,81 @@ export const grepTool = createTool({
   interruptBehavior: 'cancel',
   maxResultSizeChars: 100_000, // ~100KB before externalization
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       pattern: ToolSchemas.pattern({
         description: 'The regular expression pattern to search for in file contents',
       }),
-      path: z
-        .string()
-        .optional()
-        .describe(
-          'File or directory to search in (rg PATH). Defaults to current working directory',
-        ),
-      glob: z
-        .string()
-        .optional()
-        .describe('Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob'),
-      type: z
-        .string()
-        .optional()
-        .describe(
-          'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types',
-        ),
-      output_mode: z
-        .enum(['content', 'files_with_matches', 'count'])
-        .default('files_with_matches')
-        .describe(
+      path: Type.Optional(
+        Type.String({
+          description:
+            'File or directory to search in (rg PATH). Defaults to current working directory',
+        }),
+      ),
+      glob: Type.Optional(
+        Type.String({
+          description:
+            'Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob',
+        }),
+      ),
+      type: Type.Optional(
+        Type.String({
+          description:
+            'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types',
+        }),
+      ),
+      output_mode: Type.Enum(['content', 'files_with_matches', 'count'], {
+        default: 'files_with_matches',
+        description:
           'Output mode: "content" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), "files_with_matches" shows file paths (supports head_limit), "count" shows match counts (supports head_limit). Defaults to "files_with_matches"',
-        ),
-      '-i': z.boolean().optional().describe('Case insensitive search (rg -i)'),
-      '-n': z
-        .boolean()
-        .default(true)
-        .describe(
+      }),
+      '-i': Type.Optional(Type.Boolean({ description: 'Case insensitive search (rg -i)' })),
+      '-n': Type.Boolean({
+        default: true,
+        description:
           'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true',
-        ),
-      '-B': ToolSchemas.nonNegativeInt()
-        .optional()
-        .describe(
-          'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise',
-        ),
-      '-A': ToolSchemas.nonNegativeInt()
-        .optional()
-        .describe(
-          'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise',
-        ),
-      '-C': ToolSchemas.nonNegativeInt()
-        .optional()
-        .describe(
-          'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise',
-        ),
-      head_limit: ToolSchemas.positiveInt()
-        .optional()
-        .describe(
-          'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on "cap" experiment value: 0 (unlimited), 20, or 100',
-        ),
-      offset: ToolSchemas.nonNegativeInt()
-        .optional()
-        .describe(
-          'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0',
-        ),
-      multiline: z
-        .boolean()
-        .default(false)
-        .describe(
+      }),
+      '-B': Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          description:
+            'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise',
+        }),
+      ),
+      '-A': Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          description:
+            'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise',
+        }),
+      ),
+      '-C': Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          description:
+            'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise',
+        }),
+      ),
+      head_limit: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          description:
+            'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on "cap" experiment value: 0 (unlimited), 20, or 100',
+        }),
+      ),
+      offset: Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          description:
+            'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0',
+        }),
+      ),
+      multiline: Type.Boolean({
+        default: false,
+        description:
           'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false',
-        ),
+      }),
     }),
   ),
 
@@ -720,11 +729,9 @@ export const grepTool = createTool({
       };
     }
     try {
-      params.path = await resolveAuthorizedFilesystemPath(
-        searchRoot,
-        context.contextSnapshot,
-        { cwd: context.contextSnapshot?.cwd },
-      );
+      params.path = await resolveAuthorizedFilesystemPath(searchRoot, context.contextSnapshot, {
+        cwd: context.contextSnapshot?.cwd,
+      });
     } catch (error) {
       const message = getErrorMessage(error);
       return {

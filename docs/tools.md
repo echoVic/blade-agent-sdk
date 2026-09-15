@@ -4,9 +4,9 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 
 | 方式 | 函数 | Schema | 适用场景 |
 |------|------|--------|----------|
-| 简单模式 | `defineTool()` | JSON Schema 或 Zod Schema | 快速定义，可直接传给 Session |
-| 工厂模式 | `createTool()` | Zod Schema | 完整类型推断、运行时验证和中断策略 |
-| 转换模式 | `toolFromDefinition()` | JSON Schema 或 Zod Schema | 将 ToolDefinition 转为内部 Tool 对象 |
+| 简单模式 | `defineTool()` | TypeBox | 快速定义，可直接传给 Session |
+| 工厂模式 | `createTool()` | TypeBox | 完整类型推断、运行时验证和中断策略 |
+| 转换模式 | `toolFromDefinition()` | TypeBox | 将 ToolDefinition 转为内部 Tool 对象 |
 
 ## defineTool
 
@@ -16,14 +16,14 @@ generator；默认值（例如省略的 `sideEffect`）在 `toolFromDefinition()
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const searchTool = defineTool({
   name: 'SearchDocs',
   description: '搜索文档库',
-  parameters: z.object({
-    query: z.string().describe('搜索关键词'),
-    limit: z.number().optional().describe('返回数量'),
+  parameters: Type.Object({
+    query: Type.String({ description: '搜索关键词' }),
+    limit: Type.Optional(Type.Number({ description: '返回数量' })),
   }),
   async execute(params) {
     const results = await searchDocuments(params.query, params.limit ?? 10);
@@ -35,9 +35,9 @@ const searchTool = defineTool({
 直接返回的 JSON 值会成为成功结果的 `model` 和 `data`。需要发送进度、消息或
 effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
 
-`ZodToolDefinitionInput<TSchema>` 表示可自动推导参数的 Zod authoring 路径；
-`JsonSchemaToolDefinitionInput<TParams>` 表示显式参数类型的 JSON Schema 路径。
-异构工具集合的类型擦除只发生在 Session 内部，应用代码不需要声明该内部类型。
+TypeBox schema 是参数类型、运行时校验与模型侧 JSON Schema 的单一事实源。
+`execute` 参数由 `Type.Static<TSchema>` 自动推导；异构工具集合的类型擦除只发生在
+Session 内部，应用代码不需要声明该内部类型。
 
 ### 可以省略什么
 
@@ -46,18 +46,17 @@ effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
 - **`sideEffect` 可省略**，省略时按 `non_idempotent` 处理，也就是恢复时**绝不重放**这个工具。
   只读或可安全重试的工具请显式声明 `ToolSideEffect.PURE` 或 `ToolSideEffect.IDEMPOTENT`，
   这样才能进入可重试的恢复集合。
-- **`parameters` 可以直接传 Zod Schema**，SDK 会复用 `createTool` 的转换规则生成发给模型的
-  JSON Schema，并**真的用它校验参数**；传普通 JSON Schema 时它只是给模型的声明式描述，
-  不做运行时校验（与之前行为一致）。
+- **`parameters` 接受 TypeBox schema**。同一个 schema 对象会直接发给模型，并由
+  SDK 编译为运行时 validator；不存在 Zod/JSON Schema 互转或只声明不校验的旁路。
 
 ```ts
-import { z } from 'zod';
 import { defineTool } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
 const lookup = defineTool({
   name: 'Lookup',
   description: '按 ID 查询一条记录',
-  parameters: z.object({ id: z.string() }),
+  parameters: Type.Object({ id: Type.String() }),
   async execute({ id }) {
     return await lookupRecord(id);
   },
@@ -72,13 +71,13 @@ const lookup = defineTool({
 
 ## createTool
 
-使用 Zod Schema 的工厂函数，提供完整的类型推断、运行时验证和工具行为配置。
+使用 TypeBox schema 的工厂函数，提供完整的类型推断、运行时验证和工具行为配置。
 返回的 `Tool` 可以直接放入 `SessionOptions.tools`，Session 会保留原实例，
 不会再次适配或丢失行为。
 
 ```ts
-import { z } from 'zod';
 import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
 const deployTool = createTool({
   name: 'Deploy',
@@ -91,9 +90,9 @@ const deployTool = createTool({
     usageNotes: ['需要先通过 CI 测试'],
     important: ['production 部署需要人工确认'],
   },
-  schema: z.object({
-    environment: z.enum(['staging', 'production']).describe('目标环境'),
-    version: z.string().describe('部署版本号'),
+  schema: Type.Object({
+    environment: Type.Enum(['staging', 'production'], { description: '目标环境' }),
+    version: Type.String({ description: '部署版本号' }),
   }),
   async *execute(params, context) {
     yield {
@@ -115,7 +114,9 @@ const deployTool = createTool({
 将 `ToolDefinition` 转换为内部 `Tool` 对象。一般在需要直接操作 Tool 接口时使用。
 
 ```ts
-function toolFromDefinition<TParams>(definition: ToolDefinition<TParams>): Tool<TParams>
+function toolFromDefinition<TSchema extends Type.TSchema>(
+  definition: ToolDefinition<TSchema>,
+): Tool<Type.Static<TSchema>>
 ```
 
 ## getBuiltinTools
@@ -178,7 +179,7 @@ const tools = await getBuiltinTools({
 发布前必须满足：
 
 - 每个工具显式声明准确的 `sideEffect` 和 `interruptBehavior`。
-- 参数使用 Zod 或完整 JSON Schema；执行结果必须是可序列化数据。
+- 参数使用 TypeBox schema；执行结果必须是可序列化数据。
 - credential 由调用方注入，包内不得读取或内置隐式全局凭据。
 - 网络工具必须执行协议、重定向与私网地址校验；文件工具必须遵守
   `ExecutionContext` 的 filesystem capability。
@@ -252,21 +253,21 @@ const session2 = await createSession({
 
 ```ts
 interface ToolDefinition<
-  TParams = JsonObject,
+  TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
 > {
   name: string;
   aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
-  parameters: JSONSchema7;
-  sideEffect: ToolSideEffect;
+  parameters: TSchema;
+  sideEffect?: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
   exposure?: ToolExposureConfig;
   execute: (
-    params: TParams,
+    params: Type.Static<TSchema>,
     context: ExecutionContext,
   ) => ToolExecution<TData>;
 }
@@ -344,24 +345,24 @@ artifact 落盘针对 `model` 内容，并不单独持久化 `data`。若领域 
 
 ### 为工具参数与 data 提供类型
 
-`defineTool` 支持两个可选泛型：`TParams`（参数类型）与 `TData`（`data` 字段类型，须 `extends JsonValue`）。指定后 `execute` 的 `params` 与返回的 `data` 都会得到精确类型，无需在 `execute` 内部做 `as` 断言：
+`defineTool` 从 TypeBox schema 自动推导参数类型。需要显式约束返回数据时，可传
+`TSchema` 与 `TData` 两个泛型；通常直接依赖推导即可：
 
 ```ts
 import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
-const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
+const parameters = Type.Object({
+  query: Type.String(),
+  limit: Type.Optional(Type.Number()),
+});
+
+const tool = defineTool<typeof parameters, { count: number }>({
   name: 'SearchDocs',
   description: '搜索文档库',
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
-  parameters: {
-    type: 'object',
-    properties: {
-      query: { type: 'string' },
-      limit: { type: 'number' },
-    },
-    required: ['query'],
-  },
+  parameters,
   async *execute(params) {
     // params.query: string, params.limit?: number —— 无需 cast
     const results = await searchDocuments(params.query, params.limit ?? 10);
@@ -375,7 +376,7 @@ const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
 });
 ```
 
-带具体 `TParams` 的工具可以直接放进 `SessionOptions.tools`，无需断言。
+带具体 `TSchema` 的工具可以直接放进 `SessionOptions.tools`，无需断言。
 
 ### ExecutionContext
 

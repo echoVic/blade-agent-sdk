@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
 import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/index.js';
 import type { SkillContent } from '../../../skills/types.js';
@@ -25,9 +25,11 @@ export const skillTool = createTool({
   sideEffect: 'non_idempotent',
 
   schema: lazySchema(() =>
-    z.object({
-      skill: z.string().describe('The skill name. E.g., "commit-message" or "code-review"'),
-      args: z.string().optional().describe('Optional arguments for the skill'),
+    Type.Object({
+      skill: Type.String({
+        description: 'The skill name. E.g., "commit-message" or "code-review"',
+      }),
+      args: Type.Optional(Type.String({ description: 'Optional arguments for the skill' })),
     }),
   ),
 

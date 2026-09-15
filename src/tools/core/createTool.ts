@@ -1,23 +1,22 @@
-import type { z } from 'zod';
+import type { JSONSchema7 } from 'json-schema';
+import type Type from 'typebox';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { ExecutionContext } from '../types/execution.js';
 import type { ToolBehavior } from '../types/kind.js';
 import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
-  JsonSchemaToolDefinitionInput,
   Tool,
   ToolConfig,
   ToolDefinition,
   ToolDefinitionInput,
   ToolDescription,
+  ErasedToolDefinition,
   ToolExposureMode,
   ToolInvocation,
-  ZodToolDefinitionInput,
 } from '../types/tool.js';
-import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
-import { zodToFunctionSchema } from '../validation/zodToJson.js';
+import { compileToolInput, type CompiledToolInput } from '../validation/toolInput.js';
 import { UnifiedToolInvocation } from './ToolInvocation.js';
 
 /**
@@ -26,31 +25,11 @@ import { UnifiedToolInvocation } from './ToolInvocation.js';
  */
 const DEFAULT_TOOL_SIDE_EFFECT = 'non_idempotent' as const;
 
-function isZodSchema(value: unknown): value is z.ZodSchema {
-  return typeof value === 'object'
-    && value !== null
-    && typeof (value as { safeParse?: unknown }).safeParse === 'function';
-}
-
-function resolveDefinitionParameters(parameters: ToolDefinition['parameters']): {
-  readonly jsonSchema: import('json-schema').JSONSchema7;
-  readonly raw: ToolDefinition['parameters'];
-} {
-  if (isZodSchema(parameters)) {
-    return { jsonSchema: zodToFunctionSchema(parameters), raw: parameters };
-  }
-  return { jsonSchema: parameters as import('json-schema').JSONSchema7, raw: parameters };
-}
-
-
 /**
  * Assembles the `Tool` object from already-normalised inputs.
  *
- * Both authoring entry points describe the same runtime contract and differ only
- * in how parameters are declared and validated, so the shape is built in one place:
- * `createTool` supplies schema-backed validation, `toolFromDefinition` supplies a
- * definition. Keeping a single assembler is what stops the two from drifting into
- * subtly different tools.
+ * Both authoring entry points share the same TypeBox validation path. Keeping a
+ * single assembler stops the resulting runtime tools from drifting.
  */
 interface ToolAssembly<TParams> {
   readonly name: string;
@@ -69,8 +48,8 @@ interface ToolAssembly<TParams> {
   /** Description for model-facing declarations, already formatted. */
   readonly declarationDescription: () => string;
   /** JSON Schema sent to the model. */
-  readonly functionSchema: () => import('json-schema').JSONSchema7;
-  /** Zod schema for callers that validate params, when the tool has one. */
+  readonly functionSchema: () => JSONSchema7;
+  /** TypeBox schema used to validate params. */
   readonly metadataSchema: () => unknown;
   readonly resolveDescription: (params?: unknown) => ToolDescription;
   readonly invocationParams: (params: unknown) => TParams;
@@ -164,12 +143,12 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
 /**
  * 创建工具的工厂函数
  */
-export function createTool<TSchema extends z.ZodSchema>(
-  config: ToolConfig<TSchema, z.infer<TSchema>>,
-): Tool<z.infer<TSchema>> {
-  type TParams = z.infer<TSchema>;
+export function createTool<TSchema extends Type.TSchema>(
+  config: ToolConfig<TSchema>,
+): Tool<Type.Static<TSchema>> {
+  type TParams = Type.Static<TSchema>;
   let cachedSchema: TSchema | undefined;
-  let cachedFunctionSchema: ReturnType<typeof zodToFunctionSchema> | undefined;
+  let cachedInput: CompiledToolInput<TSchema> | undefined;
   let cachedStaticDescriptionText: string | undefined;
 
   const getSchema = (): TSchema => {
@@ -177,6 +156,12 @@ export function createTool<TSchema extends z.ZodSchema>(
       cachedSchema = resolveToolSchema(config.schema);
     }
     return cachedSchema;
+  };
+  const getInput = (): CompiledToolInput<TSchema> => {
+    if (!cachedInput) {
+      cachedInput = compileToolInput(getSchema());
+    }
+    return cachedInput;
   };
 
   const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
@@ -224,42 +209,33 @@ export function createTool<TSchema extends z.ZodSchema>(
       }
       return cachedStaticDescriptionText;
     },
-    functionSchema: () => {
-      if (!cachedFunctionSchema) {
-        cachedFunctionSchema = zodToFunctionSchema(getSchema());
-      }
-      return cachedFunctionSchema;
-    },
-    metadataSchema: () => {
-      if (!cachedFunctionSchema) {
-        cachedFunctionSchema = zodToFunctionSchema(getSchema());
-      }
-      return cachedFunctionSchema;
-    },
+    functionSchema: () => getSchema() as JSONSchema7,
+    metadataSchema: () => getSchema(),
     resolveDescription: (params?: unknown) =>
-      resolveDescription(params === undefined ? undefined : parseWithZod(getSchema(), params)),
-    // Zod validation is what makes a bad call fail before it reaches execute.
-    invocationParams: (params) => parseWithZod(getSchema(), params) as TParams,
+      resolveDescription(params === undefined ? undefined : getInput().parse(params)),
+    invocationParams: (params) => getInput().parse(params),
     ...(validateInputFn
-      ? { invocationValidation: (params: TParams, context: ExecutionContext) =>
-          validateInputFn(params, context) }
+      ? {
+          invocationValidation: (params: TParams, context: ExecutionContext) =>
+            validateInputFn(params, context),
+        }
       : {}),
     invocationDescription: (params: TParams) => resolveDescription(params).short,
     execute: (params, context) => config.execute(params, context),
     ...(validateInputFn
       ? {
           validateInput: (params: unknown, context: ExecutionContext) =>
-            validateInputFn(parseWithZod(getSchema(), params), context),
+            validateInputFn(getInput().parse(params), context),
         }
       : {}),
     ...(checkPermissionsFn
       ? {
           checkPermissions: (params: unknown, context: ExecutionContext) =>
-            checkPermissionsFn(parseWithZod(getSchema(), params), context),
+            checkPermissionsFn(getInput().parse(params), context),
         }
       : {}),
     resolveBehavior: (params: unknown) => {
-      const validatedParams = parseWithZod(getSchema(), params);
+      const validatedParams = getInput().parse(params);
       if (!config.resolveBehavior) {
         return staticBehavior;
       }
@@ -271,7 +247,7 @@ export function createTool<TSchema extends z.ZodSchema>(
     ...(preparePermissionMatcherFn
       ? {
           preparePermissionMatcher: (params: unknown) =>
-            preparePermissionMatcherFn(parseWithZod(getSchema(), params)),
+            preparePermissionMatcherFn(getInput().parse(params)),
         }
       : {}),
     getBehaviorHint: () => behaviorHint,
@@ -306,9 +282,13 @@ function formatToolDescription(description: {
  *
  * 用于将用户定义的简化工具转换为内部 Tool 对象
  */
-export function toolFromDefinition<TParams = JsonObject>(
-  definition: ToolDefinition<TParams>,
-): Tool<TParams> {
+export function toolFromDefinition<TSchema extends Type.TSchema>(
+  definition: ToolDefinition<TSchema>,
+): Tool<Type.Static<TSchema>>;
+export function toolFromDefinition(definition: ErasedToolDefinition): Tool;
+export function toolFromDefinition(
+  definition: ToolDefinition<Type.TSchema> | ErasedToolDefinition,
+): Tool {
   const description =
     typeof definition.description === 'string'
       ? { short: definition.description }
@@ -317,13 +297,13 @@ export function toolFromDefinition<TParams = JsonObject>(
   if (!isToolSideEffect(sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
-  const { jsonSchema, raw } = resolveDefinitionParameters(definition.parameters);
+  const input = compileToolInput(definition.parameters);
   const kind = definition.kind || ToolKind.Execute;
   const staticBehavior = createToolBehavior(kind, sideEffect, {
     isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
   });
 
-  return assembleTool<TParams>({
+  return assembleTool<unknown>({
     name: definition.name,
     aliases: definition.aliases,
     displayName: definition.displayName || definition.name,
@@ -342,14 +322,11 @@ export function toolFromDefinition<TParams = JsonObject>(
     category: definition.category,
     tags: definition.tags || [],
     declarationDescription: () => formatToolDescription(description),
-    functionSchema: () => jsonSchema,
-    metadataSchema: () => raw,
+    functionSchema: () => definition.parameters as JSONSchema7,
+    metadataSchema: () => definition.parameters,
     resolveDescription: () => description,
-    // A Zod schema declares the contract, so validate against it the same way
-    // createTool does. A plain JSON Schema stays advisory for the model.
-    invocationParams: (params) =>
-      isZodSchema(raw) ? (parseWithZod(raw, params) as TParams) : (params as TParams),
-    execute: (params, context) => definition.execute(params, context),
+    invocationParams: (params) => input.parse(params),
+    execute: (params, context) => definition.execute(params as never, context),
     getBehaviorHint: () => staticBehavior,
     resolveBehavior: () => staticBehavior,
   });
@@ -400,25 +377,16 @@ function isPathLikeKey(key: string): boolean {
  * const myTool = defineTool({
  *   name: 'MyTool',
  *   description: 'A simple tool',
- *   parameters: z.object({ message: z.string() }),
+ *   parameters: Type.Object({ message: Type.String() }),
  *   async execute({ message }) {
  *     return { received: message };
  *   }
  * });
  * ```
  */
-export function defineTool<TSchema extends z.ZodSchema, TData extends JsonValue = JsonValue>(
-  definition: ZodToolDefinitionInput<TSchema, TData>,
-): ToolDefinition<z.infer<TSchema>, TData>;
-export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
-  definition: JsonSchemaToolDefinitionInput<TParams, TData>,
-): ToolDefinition<TParams, TData>;
-export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
-  definition: ToolDefinitionInput<TParams, TData>,
-): ToolDefinition<TParams, TData>;
-export function defineTool<TParams, TData extends JsonValue>(
-  definition: ToolDefinitionInput<TParams, TData>,
-): ToolDefinition<TParams, TData> {
+export function defineTool<TSchema extends Type.TSchema, TData extends JsonValue = JsonValue>(
+  definition: ToolDefinitionInput<TSchema, TData>,
+): ToolDefinition<TSchema, TData> {
   if (definition.sideEffect !== undefined && !isToolSideEffect(definition.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
@@ -429,7 +397,7 @@ export function defineTool<TParams, TData extends JsonValue>(
 }
 
 function normalizeToolExecution<TData extends JsonValue>(
-  execution: ReturnType<ToolDefinitionInput<unknown, TData>['execute']>,
+  execution: ToolExecution<TData> | Promise<TData | ToolResult<TData>>,
 ): ToolExecution<TData> {
   return (async function* () {
     if (isAsyncGenerator(execution)) {
@@ -451,20 +419,20 @@ function isToolResult<TData extends JsonValue>(
   value: TData | ToolResult<TData>,
 ): value is ToolResult<TData> {
   return (
-    typeof value === 'object'
-    && value !== null
-    && !Array.isArray(value)
-    && 'status' in value
-    && 'model' in value
-    && (value.status === 'success' || value.status === 'error')
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'status' in value &&
+    'model' in value &&
+    (value.status === 'success' || value.status === 'error')
   );
 }
 
 function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is ToolExecution<TData> {
   return (
-    typeof value === 'object'
-    && value !== null
-    && typeof (value as { next?: unknown }).next === 'function'
-    && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { next?: unknown }).next === 'function' &&
+    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
   );
 }

@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { Agent as UndiciAgent } from 'undici';
-import { z } from 'zod';
+import Type from 'typebox';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
@@ -10,7 +10,7 @@ import { ToolKind } from '../../types/kind.js';
 import type { WebFetchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
  * Web response result shape
@@ -170,7 +170,7 @@ function createSafeDispatcher(policy: WebFetchSecurityPolicy): UndiciAgent {
 
 /**
  * WebFetchTool - Web content fetcher
- * Uses the newer Zod validation design
+ * Uses the shared TypeBox validation design
  */
 export const webFetchTool = createTool({
   name: 'WebFetch',
@@ -179,44 +179,56 @@ export const webFetchTool = createTool({
   sideEffect: 'non_idempotent',
   interruptBehavior: 'cancel',
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
-      url: z.string().url().describe('URL to request'),
-      method: z
-        .enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'])
-        .default('GET')
-        .describe('HTTP method'),
+    Type.Object({
+      url: Type.String({ format: 'url', description: 'URL to request' }),
+      method: Type.Enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'], {
+        default: 'GET',
+        description: 'HTTP method',
+      }),
       extract_content: ToolSchemas.flag({
         defaultValue: false,
         description:
           'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
       }),
-      jina_options: z
-        .object({
-          with_generated_alt: ToolSchemas.flag({
-            defaultValue: false,
-            description: 'Generate alt text for images',
-          }),
-          with_links_summary: ToolSchemas.flag({
-            defaultValue: false,
-            description: 'Include summary of all links',
-          }),
-          wait_for_selector: z
-            .string()
-            .optional()
-            .describe('Wait for specific CSS selector to load'),
-        })
-        .optional()
-        .describe('Jina Reader advanced options (only used when extract_content is true)'),
-      headers: z.record(z.string()).optional().describe('Request headers (optional)'),
-      body: z.string().optional().describe('Request body (optional)'),
+      jina_options: Type.Optional(
+        Type.Object(
+          {
+            with_generated_alt: ToolSchemas.flag({
+              defaultValue: false,
+              description: 'Generate alt text for images',
+            }),
+            with_links_summary: ToolSchemas.flag({
+              defaultValue: false,
+              description: 'Include summary of all links',
+            }),
+            wait_for_selector: Type.Optional(
+              Type.String({ description: 'Wait for specific CSS selector to load' }),
+            ),
+          },
+          {
+            description: 'Jina Reader advanced options (only used when extract_content is true)',
+          },
+        ),
+      ),
+      headers: Type.Optional(
+        Type.Record(Type.String(), Type.String(), {
+          description: 'Request headers (optional)',
+        }),
+      ),
+      body: Type.Optional(Type.String({ description: 'Request body (optional)' })),
       timeout: ToolSchemas.timeout(1000, 120000, 30000),
       follow_redirects: ToolSchemas.flag({
         defaultValue: true,
         description: 'Follow redirects',
       }),
-      max_redirects: z.number().int().min(0).max(10).default(5).describe('Maximum redirect hops'),
+      max_redirects: Type.Integer({
+        minimum: 0,
+        maximum: 10,
+        default: 5,
+        description: 'Maximum redirect hops',
+      }),
       return_headers: ToolSchemas.flag({
         defaultValue: false,
         description: 'Return response headers',
@@ -285,7 +297,7 @@ Usage notes:
       return_headers = false,
     } = params;
     const signal = context.signal ?? new AbortController().signal;
-      const securityPolicy = context.bladeConfig?.webFetch ?? {};
+    const securityPolicy = context.bladeConfig?.webFetch ?? {};
 
     try {
       // 如果启用内容提取，使用 Jina Reader
@@ -302,7 +314,7 @@ Usage notes:
             jinaOptions: jina_options,
             timeout,
             signal,
-              securityPolicy,
+            securityPolicy,
           });
           yield {
             kind: 'message',
@@ -367,7 +379,7 @@ Usage notes:
         follow_redirects,
         max_redirects,
         signal,
-          securityPolicy,
+        securityPolicy,
       });
 
       const responseTime = Date.now() - startTime;
@@ -389,7 +401,7 @@ Usage notes:
         final_url: response.url,
         content_type: response.content_type,
         redirect_chain: response.redirect_chain,
-          body_dropped: response.body_dropped,
+        body_dropped: response.body_dropped,
       };
 
       // HTTP错误状态码处理
@@ -520,52 +532,52 @@ async function performRequest(options: {
   const dispatcher = createSafeDispatcher(securityPolicy);
 
   try {
-  while (true) {
+    while (true) {
       assertWebFetchUrl(currentUrl, securityPolicy);
       const requestHeaders = { ...currentHeaders };
-    if (
-      currentBody &&
-      currentMethod !== 'GET' &&
-      currentMethod !== 'HEAD' &&
-      !hasHeader(requestHeaders, 'content-type')
-    ) {
-      requestHeaders['Content-Type'] = 'application/json';
-    }
+      if (
+        currentBody &&
+        currentMethod !== 'GET' &&
+        currentMethod !== 'HEAD' &&
+        !hasHeader(requestHeaders, 'content-type')
+      ) {
+        requestHeaders['Content-Type'] = 'application/json';
+      }
 
-    const response = await fetchWithTimeout(
-      currentUrl,
-      {
-        method: currentMethod,
-        headers: requestHeaders,
-        body:
-          currentBody && currentMethod !== 'GET' && currentMethod !== 'HEAD'
-            ? currentBody
-            : undefined,
-        redirect: 'manual',
-      },
-      timeout,
-      signal,
+      const response = await fetchWithTimeout(
+        currentUrl,
+        {
+          method: currentMethod,
+          headers: requestHeaders,
+          body:
+            currentBody && currentMethod !== 'GET' && currentMethod !== 'HEAD'
+              ? currentBody
+              : undefined,
+          redirect: 'manual',
+        },
+        timeout,
+        signal,
         dispatcher,
-    );
+      );
 
-    const location = response.headers.get('location');
-    const isRedirectStatus = response.status >= 300 && response.status < 400;
-    const shouldFollow =
-      follow_redirects && isRedirectStatus && location && redirects < max_redirects;
+      const location = response.headers.get('location');
+      const isRedirectStatus = response.status >= 300 && response.status < 400;
+      const shouldFollow =
+        follow_redirects && isRedirectStatus && location && redirects < max_redirects;
 
-    if (isRedirectStatus && follow_redirects && !location) {
-      throw new Error(`收到状态码 ${response.status} 但响应缺少 Location 头`);
-    }
+      if (isRedirectStatus && follow_redirects && !location) {
+        throw new Error(`收到状态码 ${response.status} 但响应缺少 Location 头`);
+      }
 
-    if (isRedirectStatus && follow_redirects && redirects >= max_redirects) {
-      throw new Error(`超过最大重定向次数 (${max_redirects})`);
-    }
+      if (isRedirectStatus && follow_redirects && redirects >= max_redirects) {
+        throw new Error(`超过最大重定向次数 (${max_redirects})`);
+      }
 
-    if (shouldFollow && location) {
-      redirects++;
-      const nextUrl = resolveRedirectUrl(location, currentUrl);
+      if (shouldFollow && location) {
+        redirects++;
+        const nextUrl = resolveRedirectUrl(location, currentUrl);
         assertWebFetchUrl(nextUrl, securityPolicy);
-      redirectChain.push(`${response.status} → ${nextUrl}`);
+        redirectChain.push(`${response.status} → ${nextUrl}`);
         await response.body?.cancel();
         if (new URL(nextUrl).origin !== new URL(currentUrl).origin) {
           currentHeaders = Object.fromEntries(
@@ -578,38 +590,38 @@ async function performRequest(options: {
           );
         }
 
-      if (
-        response.status === 303 ||
-        ((response.status === 301 || response.status === 302) &&
-          currentMethod !== 'GET' &&
-          currentMethod !== 'HEAD')
-      ) {
+        if (
+          response.status === 303 ||
+          ((response.status === 301 || response.status === 302) &&
+            currentMethod !== 'GET' &&
+            currentMethod !== 'HEAD')
+        ) {
           bodyDropped ||= currentBody !== undefined;
-        currentMethod = 'GET';
-        currentBody = undefined;
+          currentMethod = 'GET';
+          currentBody = undefined;
+        }
+
+        currentUrl = nextUrl;
+        continue;
       }
 
-      currentUrl = nextUrl;
-      continue;
-    }
+      const responseBody = await response.text();
+      const responseHeaders = headersToObject(response.headers);
 
-    const responseBody = await response.text();
-    const responseHeaders = headersToObject(response.headers);
-
-    return {
-      status: response.status,
-      status_text: response.statusText,
-      headers: responseHeaders,
-      body: responseBody,
-      url: response.url || currentUrl,
-      redirected: redirects > 0,
-      redirect_count: redirects,
-      redirect_chain: redirectChain,
-      content_type: responseHeaders['content-type'],
+      return {
+        status: response.status,
+        status_text: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
+        url: response.url || currentUrl,
+        redirected: redirects > 0,
+        redirect_count: redirects,
+        redirect_chain: redirectChain,
+        content_type: responseHeaders['content-type'],
         body_dropped: bodyDropped || undefined,
-      response_time: 0, // 将在外部设置
-    };
-  }
+        response_time: 0, // 将在外部设置
+      };
+    }
   } finally {
     await dispatcher.close();
   }
@@ -721,19 +733,19 @@ async function fetchWithJinaReader(options: {
   let markdownContent: string;
   try {
     response = await fetchWithTimeout(
-    jinaUrl,
-    {
-      method: 'GET',
-      headers,
-    },
-    timeout,
-    signal,
+      jinaUrl,
+      {
+        method: 'GET',
+        headers,
+      },
+      timeout,
+      signal,
       dispatcher,
-  );
+    );
 
-  if (!response.ok) {
-    throw new Error(`Jina Reader error: ${response.status} ${response.statusText}`);
-  }
+    if (!response.ok) {
+      throw new Error(`Jina Reader error: ${response.status} ${response.statusText}`);
+    }
 
     markdownContent = await response.text();
   } finally {

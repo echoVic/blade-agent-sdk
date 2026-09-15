@@ -23,6 +23,41 @@ describe('createMcpTool', () => {
     expect(tool.tags).toContain('mcp-server:test-server');
   });
 
+  it('preserves the MCP JSON Schema as the model-facing declaration', () => {
+    const inputSchema: JSONSchema7 = {
+      $id: 'mcp://schemas/search',
+      type: 'object',
+      properties: {
+        query: { type: 'string', minLength: 1 },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    };
+    const tool = buildTool(inputSchema);
+
+    expect(tool.getFunctionDeclaration().parameters).toEqual(inputSchema);
+  });
+
+  it('treats a missing MCP input schema as an empty object without warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const tool = createMcpTool(mockClient as never, 'test-server', {
+        name: 'schema_less_tool',
+        description: 'No input schema',
+        inputSchema: undefined,
+      } as never);
+
+      expect(() => tool.build({})).not.toThrow();
+      expect(tool.getFunctionDeclaration().parameters).toMatchObject({
+        type: 'object',
+        properties: {},
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('keeps the remote protocol name separate from the exposed namespace', async () => {
     const tool = buildTool({ type: 'object' });
 

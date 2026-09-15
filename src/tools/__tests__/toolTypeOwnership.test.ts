@@ -1,24 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { JSONSchema7 } from 'json-schema';
+import Type from 'typebox';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { z } from 'zod';
-import type {
-  JsonSchemaToolDefinitionInput,
-  ToolDefinition,
-  ToolDefinitionInput,
-  ZodToolDefinitionInput,
-} from '../../index.js';
+import type { ToolDefinitionInput } from '../../index.js';
 import { defineTool } from '../../index.js';
 import type { ErasedToolDefinition } from '../types/tool.js';
 
 describe('Tool type ownership', () => {
-  it('infers Zod authoring params from the schema', () => {
-    const schema = z.object({
-      query: z.string(),
-      limit: z.number().optional(),
+  it('infers authoring params from the TypeBox schema', () => {
+    const schema = Type.Object({
+      query: Type.String(),
+      limit: Type.Optional(Type.Number()),
     });
-    type Definition = ZodToolDefinitionInput<typeof schema>;
+    type Definition = ToolDefinitionInput<typeof schema>;
     type Params = Parameters<Definition['execute']>[0];
 
     expectTypeOf<Params>().toEqualTypeOf<{
@@ -27,31 +21,23 @@ describe('Tool type ownership', () => {
     }>();
   });
 
-  it('keeps an explicit JSON Schema authoring path', () => {
-    type Params = { query: string };
-    type Definition = JsonSchemaToolDefinitionInput<Params>;
-
-    expectTypeOf<Definition['parameters']>().toEqualTypeOf<JSONSchema7>();
-    expectTypeOf<Parameters<Definition['execute']>[0]>().toEqualTypeOf<Params>();
-  });
-
-  it('keeps generic ToolDefinitionInput variables callable during migration', () => {
-    const definition: ToolDefinitionInput<{ query: string }> = {
-      name: 'LegacyTypedDefinition',
-      description: 'Compatibility input',
-      parameters: {
-        type: 'object',
-        properties: { query: { type: 'string' } },
-        required: ['query'],
-      },
+  it('preserves the TypeBox schema generic through defineTool', () => {
+    const parameters = Type.Object({
+      query: Type.String(),
+    });
+    const definition = defineTool({
+      name: 'TypedDefinition',
+      description: 'TypeBox input',
+      parameters,
       async execute({ query }) {
         return { query };
       },
-    };
+    });
 
-    expectTypeOf(defineTool(definition)).toEqualTypeOf<
-      ToolDefinition<{ query: string }>
-    >();
+    expectTypeOf(definition.parameters).toEqualTypeOf<typeof parameters>();
+    expectTypeOf<Parameters<typeof definition.execute>[0]>().toEqualTypeOf<{
+      query: string;
+    }>();
   });
 
   it('owns heterogeneous definition erasure in the Tool module', () => {
@@ -68,9 +54,25 @@ describe('Tool type ownership', () => {
       'src/core/index.ts',
       'src/tools/index.ts',
     ]) {
-      expect(readFileSync(resolve(entrypoint), 'utf8')).not.toMatch(
-        /\bErasedToolDefinition\b/,
-      );
+      expect(readFileSync(resolve(entrypoint), 'utf8')).not.toMatch(/\bErasedToolDefinition\b/);
     }
+  });
+
+  it('does not expose schema-family or codec-specific Tool contracts', () => {
+    const toolTypes = readFileSync(resolve('src/tools/types/tool.ts'), 'utf8');
+    const publicEntrypoints = [
+      'src/index.ts',
+      'src/core/index.ts',
+      'src/tools/index.ts',
+      'src/tools/types/index.ts',
+    ].map((entrypoint) => readFileSync(resolve(entrypoint), 'utf8'));
+
+    for (const source of [toolTypes, ...publicEntrypoints]) {
+      expect(source).not.toMatch(/\bZodToolDefinitionInput\b/);
+      expect(source).not.toMatch(/\bJsonSchemaToolDefinitionInput\b/);
+      expect(source).not.toMatch(/\bcodec\b/i);
+    }
+    expect(toolTypes).not.toMatch(/from ['"]zod['"]/);
+    expect(toolTypes).toMatch(/Type\.Static/);
   });
 });

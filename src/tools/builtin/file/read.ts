@@ -1,5 +1,5 @@
 import { basename, extname } from 'node:path';
-import { z } from 'zod';
+import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -9,7 +9,7 @@ import type { ReadMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 
 export function truncateTextLine(line: string, maxCodePoints = 2000): string {
@@ -21,7 +21,7 @@ export function truncateTextLine(line: string, maxCodePoints = 2000): string {
 
 /**
  * ReadTool - File read tool
- * Uses the newer Zod validation design
+ * Uses the shared TypeBox validation design
  */
 export const readTool = createTool({
   name: 'Read',
@@ -31,18 +31,22 @@ export const readTool = createTool({
   interruptBehavior: 'cancel',
   maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       file_path: ToolSchemas.filePath({
         description: 'File path to read (must be absolute)',
       }),
-      offset: ToolSchemas.lineNumber({
-        description: 'Starting line number (0-based, text files only)',
-      }).optional(),
-      limit: ToolSchemas.lineLimit({
-        description: 'Number of lines to read (text files only)',
-      }).optional(),
+      offset: Type.Optional(
+        ToolSchemas.lineNumber({
+          description: 'Starting line number (0-based, text files only)',
+        }),
+      ),
+      limit: Type.Optional(
+        ToolSchemas.lineLimit({
+          description: 'Number of lines to read (text files only)',
+        }),
+      ),
       encoding: ToolSchemas.encoding(),
     }),
   ),

@@ -1,5 +1,5 @@
+import Type from 'typebox';
 import { describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import { runToolCall } from '../../agent/loop/runToolCall.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { createTool } from '../../tools/core/createTool.js';
@@ -26,7 +26,7 @@ function createRegistry(execute: (value: string) => ToolResult): ToolRegistry {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Echo a value' },
-      schema: z.object({ value: z.string() }),
+      schema: Type.Object({ value: Type.String() }),
       async *execute({ value }) {
         yield { kind: 'progress', message: value };
         return execute(value);
@@ -258,7 +258,7 @@ describe('ToolMiddleware', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic interrupt behavior' },
-        schema: z.object({ mode: z.enum(['block', 'cancel']) }),
+        schema: Type.Object({ mode: Type.Enum(['block', 'cancel']) }),
         resolveBehavior: ({ mode }) => ({
           interruptBehavior: mode,
         }),
@@ -555,7 +555,7 @@ describe('ToolMiddleware', () => {
           kind: ToolKind.Execute,
           sideEffect: 'non_idempotent',
           description: { short: 'Return an error after timeout abort' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           async *execute(_params, context) {
             await new Promise<void>((resolve) => {
               context.signal?.addEventListener('abort', () => resolve(), { once: true });

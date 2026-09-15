@@ -1,12 +1,12 @@
 import * as fs from 'node:fs/promises';
-import { z } from 'zod';
+import Type from 'typebox';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
  * NotebookEdit tool
@@ -19,29 +19,28 @@ export const notebookEditTool = createTool({
   sideEffect: 'non_idempotent',
 
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       notebook_path: ToolSchemas.filePath({
         description:
           'The absolute path to the Jupyter notebook file to edit (must be absolute, not relative)',
       }),
-      cell_id: z
-        .string()
-        .optional()
-        .describe(
-          'The ID of the cell to edit. When inserting a new cell, the new cell will be inserted after the cell with this ID, or at the beginning if not specified.',
-        ),
-      new_source: z.string().describe('The new source for the cell'),
-      cell_type: z
-        .enum(['code', 'markdown'])
-        .optional()
-        .describe(
-          'The type of the cell (code or markdown). If not specified, it defaults to the current cell type. If using edit_mode=insert, this is required.',
-        ),
-      edit_mode: z
-        .enum(['replace', 'insert', 'delete'])
-        .optional()
-        .default('replace')
-        .describe('The type of edit to make (replace, insert, delete). Defaults to replace.'),
+      cell_id: Type.Optional(
+        Type.String({
+          description:
+            'The ID of the cell to edit. When inserting a new cell, the new cell will be inserted after the cell with this ID, or at the beginning if not specified.',
+        }),
+      ),
+      new_source: Type.String({ description: 'The new source for the cell' }),
+      cell_type: Type.Optional(
+        Type.Enum(['code', 'markdown'], {
+          description:
+            'The type of the cell (code or markdown). If not specified, it defaults to the current cell type. If using edit_mode=insert, this is required.',
+        }),
+      ),
+      edit_mode: Type.Enum(['replace', 'insert', 'delete'], {
+        default: 'replace',
+        description: 'The type of edit to make (replace, insert, delete). Defaults to replace.',
+      }),
     }),
   ),
 

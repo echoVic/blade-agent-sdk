@@ -14,8 +14,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Type from 'typebox';
 import { afterEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import {
   createSdkMcpServer,
   createSession,
@@ -276,15 +276,11 @@ describeIntegration('4. 自定义工具调用', () => {
         name: 'get_weather',
         sideEffect: 'pure',
         description: 'Get current weather for a city. Returns temperature in Celsius.',
-        parameters: {
-          type: 'object',
-          properties: {
-            city: { type: 'string', description: 'City name' },
-          },
-          required: ['city'],
-        },
+        parameters: Type.Object({
+          city: Type.String({ description: 'City name' }),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: { city: string }) {
+        async *execute(params) {
           return {
             status: 'success' as const,
             model: JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' }),
@@ -338,16 +334,12 @@ describeIntegration('4. 自定义工具调用', () => {
         name: 'calculator',
         sideEffect: 'pure',
         description: 'Simple calculator. Supports add, subtract, multiply, divide.',
-        parameters: {
-          type: 'object',
-          properties: {
-            operation: { type: 'string', enum: ['add', 'subtract', 'multiply', 'divide'] },
-            a: { type: 'number' },
-            b: { type: 'number' },
-          },
-          required: ['operation', 'a', 'b'],
-        },
-        async *execute(params: { operation: string; a: number; b: number }) {
+        parameters: Type.Object({
+          operation: Type.Enum(['add', 'subtract', 'multiply', 'divide']),
+          a: Type.Number(),
+          b: Type.Number(),
+        }),
+        async *execute(params) {
           const ops: Record<string, (a: number, b: number) => number> = {
             add: (a, b) => a + b,
             subtract: (a, b) => a - b,
@@ -592,15 +584,11 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         name: 'echo_hook',
         sideEffect: 'pure',
         description: 'Echo the provided value for integration testing.',
-        parameters: {
-          type: 'object',
-          properties: {
-            value: { type: 'string', description: 'Value to echo' },
-          },
-          required: ['value'],
-        },
+        parameters: Type.Object({
+          value: Type.String({ description: 'Value to echo' }),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: { value: string }) {
+        async *execute(params) {
           return {
             status: 'success',
             model: `server:${params.value}`,
@@ -658,13 +646,9 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         name: 'restricted_action',
         sideEffect: 'non_idempotent',
         description: 'A restricted tool that should be denied by permissions.',
-        parameters: {
-          type: 'object',
-          properties: {
-            reason: { type: 'string' },
-          },
-          required: ['reason'],
-        },
+        parameters: Type.Object({
+          reason: Type.String(),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
         async *execute() {
           return {
@@ -722,9 +706,9 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
           tool(
             'lookup_release_train',
             'Lookup the release train code for integration testing.',
-            {
-              project: z.string().describe('Project name'),
-            },
+            Type.Object({
+              project: Type.String({ description: 'Project name' }),
+            }),
             async (params) => ({
               content: [
                 {
@@ -915,9 +899,9 @@ describeIntegration('6.4 多模态 / MCP 恢复真实链路', () => {
           tool(
             'lookup_recovery_code',
             'Lookup a recovery code for integration testing.',
-            {
-              project: z.string().describe('Project name'),
-            },
+            Type.Object({
+              project: Type.String({ description: 'Project name' }),
+            }),
             async (params) => ({
               content: [
                 {

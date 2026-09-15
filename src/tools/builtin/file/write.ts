@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, extname } from 'node:path';
-import { z } from 'zod';
+import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
@@ -11,14 +11,14 @@ import type { WriteMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
 import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
 /**
  * WriteTool - File writer
- * Uses the newer Zod validation design
+ * Uses the shared TypeBox validation design
  */
 export const writeTool = createTool({
   name: 'Write',
@@ -28,18 +28,18 @@ export const writeTool = createTool({
   strict: true, // 启用 OpenAI Structured Outputs
   isConcurrencySafe: false, // 文件写入不支持并发
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       file_path: ToolSchemas.filePath({
         description: 'Absolute file path to write',
       }),
-      content: z.string().describe('Content to write'),
+      content: Type.String({ description: 'Content to write' }),
       encoding: ToolSchemas.encoding(),
-      create_directories: z
-        .boolean()
-        .default(true)
-        .describe('Automatically create missing parent directories'),
+      create_directories: Type.Boolean({
+        default: true,
+        description: 'Automatically create missing parent directories',
+      }),
     }),
   ),
 

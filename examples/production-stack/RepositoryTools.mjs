@@ -1,4 +1,5 @@
 import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
 export const GREETING_PATH = 'src/greeting.sh';
 export const TEST_PATH = 'test/greeting.test.sh';
@@ -94,12 +95,11 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
       description: 'Read src/greeting.sh or the trusted test/greeting.test.sh in the isolated fixture repository.',
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
-      parameters: {
-        type: 'object',
-        properties: { file_path: { type: 'string', enum: [GREETING_PATH, TEST_PATH] } },
-        required: ['file_path'],
+      parameters: Type.Object({
+        file_path: Type.Enum([GREETING_PATH, TEST_PATH]),
+      }, {
         additionalProperties: false,
-      },
+      }),
       async *execute(params, context) {
         if (!hasOnlyKeys(params, ['file_path']) || ![GREETING_PATH, TEST_PATH].includes(params.file_path)) {
           return failure('RepoRead', 'Only the fixture source and test files may be read');
@@ -120,16 +120,14 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
       description: 'Replace src/greeting.sh after approval. Supply its exact content from RepoRead as expected_content. Writes are limited to 16 KiB; retries of an already applied write are idempotent.',
       kind: ToolKind.Write,
       sideEffect: 'idempotent',
-      parameters: {
-        type: 'object',
-        properties: {
-          file_path: { type: 'string', enum: [GREETING_PATH] },
-          expected_content: { type: 'string', maxLength: 16_384 },
-          content: { type: 'string', maxLength: 16_384 },
+      parameters: Type.Object(
+        {
+          file_path: Type.Literal(GREETING_PATH),
+          expected_content: Type.String({ maxLength: 16_384 }),
+          content: Type.String({ maxLength: 16_384 }),
         },
-        required: ['file_path', 'expected_content', 'content'],
-        additionalProperties: false,
-      },
+        { additionalProperties: false },
+      ),
       async *execute(params, context) {
         if (!hasOnlyKeys(params, ['file_path', 'expected_content', 'content'])
           || params.file_path !== GREETING_PATH
@@ -173,7 +171,7 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
       description: 'Run the fixed, verified greeting tests in the isolated repository and return their actual exit code and output.',
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      parameters: Type.Object({}, { additionalProperties: false }),
       async *execute(params, context) {
         if (!hasOnlyKeys(params, [])) {
           return failure('RepoRunTests', 'The test command is fixed and accepts no arguments');

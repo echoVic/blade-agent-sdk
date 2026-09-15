@@ -1,5 +1,5 @@
 import { basename, extname } from 'node:path';
-import { z } from 'zod';
+import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -9,7 +9,7 @@ import type { EditErrorMetadata, EditMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
 import { flexibleMatch, type MatchResult, MatchStrategy, unescapeString } from './editCorrector.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
@@ -17,7 +17,7 @@ import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
 /**
  * EditTool - File edit tool
- * Uses the newer Zod validation design
+ * Uses the shared TypeBox validation design
  */
 export const editTool = createTool({
   name: 'Edit',
@@ -27,15 +27,21 @@ export const editTool = createTool({
   strict: true, // 启用 OpenAI Structured Outputs
   isConcurrencySafe: false, // 文件编辑不支持并发
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       file_path: ToolSchemas.filePath({
         description: 'Absolute path of the file to edit',
       }),
-      old_string: z.string().min(1, 'old_string cannot be empty').describe('String to replace'),
-      new_string: z.string().describe('Replacement string (can be empty)'),
-      replace_all: z.boolean().default(false).describe('Replace all matches (default: first only)'),
+      old_string: Type.String({
+        minLength: 1,
+        description: 'String to replace',
+      }),
+      new_string: Type.String({ description: 'Replacement string (can be empty)' }),
+      replace_all: Type.Boolean({
+        default: false,
+        description: 'Replace all matches (default: first only)',
+      }),
     }),
   ),
 

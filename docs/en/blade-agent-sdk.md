@@ -57,12 +57,12 @@ console.log(result.usage);
 
 ```ts
 import { createAgent, defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the current weather for a city',
-  parameters: z.object({ city: z.string() }),
+  parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}: clear, 25 C` };
   },

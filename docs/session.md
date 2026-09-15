@@ -1045,12 +1045,12 @@ interface SessionOptions {
 ### ToolDefinition
 
 ```ts
-interface ToolDefinition<TParams = JsonObject> {
+interface ToolDefinition<TSchema extends Type.TSchema = Type.TSchema> {
   name: string;
   description: string | ToolDescription;
-  parameters: JSONSchema7;          // JSON Schema
-  sideEffect: ToolSideEffect;
-  execute: (params: TParams, context: ExecutionContext) => ToolExecution;
+  parameters: TSchema;              // TypeBox schema
+  sideEffect?: ToolSideEffect;
+  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution;
   kind?: ToolKind;
 }
 ```
@@ -1058,24 +1058,22 @@ interface ToolDefinition<TParams = JsonObject> {
 ### 自定义工具示例
 
 ```ts
-import { createSession, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import type { ToolDefinition } from '@blade-ai/agent-sdk';
+import { createSession, defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
-const weatherTool: ToolDefinition = {
+const weatherTool = defineTool({
   name: 'GetWeather',
   description: '获取指定城市的当前天气信息',
-  parameters: {
-    type: 'object',
-    properties: {
-      city: { type: 'string', description: '城市名称' },
-      unit: { type: 'string', enum: ['celsius', 'fahrenheit'], description: '温度单位' },
-    },
-    required: ['city'],
-  },
+  parameters: Type.Object({
+    city: Type.String({ description: '城市名称' }),
+    unit: Type.Optional(
+      Type.Enum(['celsius', 'fahrenheit'], { description: '温度单位' }),
+    ),
+  }),
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
   async *execute(params, context) {
-    const { city, unit = 'celsius' } = params as { city: string; unit?: string };
+    const { city, unit = 'celsius' } = params;
     yield {
       kind: 'progress',
       message: `正在查询 ${city}`,
@@ -1089,7 +1087,7 @@ const weatherTool: ToolDefinition = {
       },
     };
   },
-};
+});
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
@@ -1098,20 +1096,20 @@ const session = await createSession({
 });
 ```
 
-### 使用 createTool + Zod Schema
+### 使用 createTool + TypeBox
 
 ```ts
 import { createSession, createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const dbQueryTool = createTool({
   name: 'DatabaseQuery',
   displayName: 'Database Query',
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
-  schema: z.object({
-    query: z.string().describe('SQL 查询语句'),
-    database: z.string().optional().describe('数据库名称'),
+  schema: Type.Object({
+    query: Type.String({ description: 'SQL 查询语句' }),
+    database: Type.Optional(Type.String({ description: '数据库名称' })),
   }),
   description: {
     short: '执行只读数据库查询',
@@ -1135,7 +1133,7 @@ const session = await createSession({
 ```
 
 `SessionOptions.tools` 接受 `ToolDefinition` 和完整 `Tool`。传入
-`createTool()` 的结果时，Session 会保留其 Zod 校验、权限检查和
+`createTool()` 的结果时，Session 会保留其 TypeBox 校验、权限检查和
 `interruptBehavior`。
 
 ### 工具过滤

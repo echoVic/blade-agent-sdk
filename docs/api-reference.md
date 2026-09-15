@@ -41,7 +41,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `forkSession` | session | 分叉会话 |
 | `prompt` | session | 一次性调用 |
 | `defineTool` | tools | 定义工具（简单模式） |
-| `createTool` | tools | 创建工具（Zod 模式） |
+| `createTool` | tools | 创建 TypeBox 工具 |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
 | `getBuiltinTools` | advanced | 获取内置 Node 本地工具 |
 | `createMemoryReadTool` | advanced | 创建 opt-in MemoryRead 工具 |
@@ -302,9 +302,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
-| `ToolDefinitionInput` | `defineTool()` 接受的 async function 或 generator 定义 |
-| `ZodToolDefinitionInput` | 从 Zod schema 自动推导 callback 参数的工具定义 |
-| `JsonSchemaToolDefinitionInput` | 使用显式参数类型的 JSON Schema 工具定义 |
+| `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema + async function 或 generator 定义 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import type { JsonValue } from '../../../types/json.js';
 import { createTool } from '../../core/createTool.js';
@@ -6,17 +6,17 @@ import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
-const ReadMcpResourceParamsSchema = z.object({
-  uri: z.string().describe('The URI of the MCP resource to read'),
-  serverName: z
-    .string()
-    .optional()
-    .describe(
-      'Optional: The name of the MCP server that provides this resource. If not provided, will search all connected servers.',
-    ),
+const ReadMcpResourceParamsSchema = Type.Object({
+  uri: Type.String({ description: 'The URI of the MCP resource to read' }),
+  serverName: Type.Optional(
+    Type.String({
+      description:
+        'Optional: The name of the MCP server that provides this resource. If not provided, will search all connected servers.',
+    }),
+  ),
 });
 
-type ReadMcpResourceParams = z.infer<typeof ReadMcpResourceParamsSchema>;
+type ReadMcpResourceParams = Type.Static<typeof ReadMcpResourceParamsSchema>;
 
 interface ResourceContent {
   uri: string;

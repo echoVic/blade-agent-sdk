@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import Type from 'typebox';
 import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { SessionId } from '../../../types/identifiers.js';
@@ -13,7 +13,7 @@ import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { buildShellEnvironment } from './environment.js';
 import { OutputTruncator } from './OutputTruncator.js';
@@ -36,17 +36,19 @@ export const bashTool = createTool({
   interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       command: ToolSchemas.command({
         description: 'Bash command to execute',
       }),
       timeout: ToolSchemas.timeout(1000, 300000, 30000),
-      cwd: z
-        .string()
-        .optional()
-        .describe('Working directory (optional; applies only to this command). To persist, use cd'),
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            'Working directory (optional; applies only to this command). To persist, use cd',
+        }),
+      ),
       env: ToolSchemas.environment(),
       run_in_background: ToolSchemas.flag({
         defaultValue: false,
@@ -163,12 +165,14 @@ Before executing commands:
     ],
   },
 
-  describe: ({ command, cwd, run_in_background } = {}) => {
-    const commandPreview = command?.trim()
-      ? command.trim().replace(/\s+/g, ' ').slice(0, 80)
+  describe: (params) => {
+    const commandPreview = params?.command?.trim()
+      ? params.command.trim().replace(/\s+/g, ' ').slice(0, 80)
       : 'bash command';
-    const modeLabel = run_in_background ? 'Run background bash command' : 'Run bash command';
-    const cwdSuffix = cwd ? ` in ${cwd}` : '';
+    const modeLabel = params?.run_in_background
+      ? 'Run background bash command'
+      : 'Run bash command';
+    const cwdSuffix = params?.cwd ? ` in ${params.cwd}` : '';
 
     return {
       short: `${modeLabel}: ${commandPreview}${cwdSuffix}`,
@@ -448,13 +452,11 @@ async function executeWithTimeout(
 
     let terminationPromise: Promise<void> | undefined;
     const terminateTree = (): Promise<void> => {
-      terminationPromise ??= terminateProcessTree(
-        bashProcess.pid,
-        bashProcess,
-        1_000,
-      ).catch((error) => {
-        stderr += `\nFailed to terminate command process tree: ${getErrorMessage(error)}`;
-      });
+      terminationPromise ??= terminateProcessTree(bashProcess.pid, bashProcess, 1_000).catch(
+        (error) => {
+          stderr += `\nFailed to terminate command process tree: ${getErrorMessage(error)}`;
+        },
+      );
       return terminationPromise;
     };
 

@@ -365,8 +365,8 @@ Authoring and execution:
 
 | Export | Purpose |
 |--------|---------|
-| `defineTool` | Define an async-function or generator tool with JSON Schema or Zod |
-| `createTool` | Create a Zod-backed tool |
+| `defineTool` | Define an async-function or generator tool with TypeBox |
+| `createTool` | Create a TypeBox-backed runtime tool |
 | `toolFromDefinition` | Convert a definition to `Tool` |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
@@ -377,9 +377,9 @@ Authoring and execution:
 Types:
 
 `ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
-`FunctionDeclaration`, `JsonSchemaToolDefinitionInput`, `Tool`,
+`FunctionDeclaration`, `Tool`,
 `ToolBehavior`, `ToolConfig`, `ToolDefinition`,
-`ToolDefinitionInput`, `ToolDescription`, `ZodToolDefinitionInput`,
+`ToolDefinitionInput`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
 `ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,

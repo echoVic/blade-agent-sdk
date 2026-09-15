@@ -1,20 +1,20 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
-const ListMcpResourcesParamsSchema = z.object({
-  serverName: z
-    .string()
-    .optional()
-    .describe(
-      'Optional: Filter resources by MCP server name. If not provided, lists resources from all connected servers.',
-    ),
+const ListMcpResourcesParamsSchema = Type.Object({
+  serverName: Type.Optional(
+    Type.String({
+      description:
+        'Optional: Filter resources by MCP server name. If not provided, lists resources from all connected servers.',
+    }),
+  ),
 });
 
-type ListMcpResourcesParams = z.infer<typeof ListMcpResourcesParamsSchema>;
+type ListMcpResourcesParams = Type.Static<typeof ListMcpResourcesParamsSchema>;
 
 interface McpResource {
   uri: string;

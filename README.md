@@ -145,7 +145,7 @@ runtime is a shared multi-tenant service and storage is injected explicitly.
 - Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
-- Tools: async-function and AsyncGenerator authoring, Zod schemas, capability-grouped built-ins, MCP tools, typed progress/effects, and the `blade-tool-*` package convention
+- Tools: async-function and AsyncGenerator authoring, TypeBox schemas, capability-grouped built-ins, MCP tools, typed progress/effects, and the `blade-tool-*` package convention
 - Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: bounded model, tool, and inline-hook execution, permission modes, policy callbacks, path checks, and optional OS sandbox integration
@@ -176,17 +176,17 @@ Use `getPendingInputs()` and `cancelInput()` to manage accepted inputs.
 
 ## Custom Tools
 
-Use a Zod schema with a regular async function for the common path. The return
+Use a TypeBox schema with a regular async function for the common path. The return
 value is converted to a successful internal tool result:
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the weather for a city',
-  parameters: z.object({ city: z.string() }),
+  parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}: clear, 25 C` };
   },

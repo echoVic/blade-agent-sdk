@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import { AgentId, type SessionId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
@@ -18,15 +18,15 @@ export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
       long: 'Use this tool to stop a running background task (spawned via the Agent tool with run_in_background=true). This marks the task as completed and records the stop time.',
     },
     schema: lazySchema(() =>
-      z.object({
-        taskId: z.string().describe('The ID of the background task to stop'),
+      Type.Object({
+        taskId: Type.String({ description: 'The ID of the background task to stop' }),
       }),
     ),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
     async *execute({ taskId }, context) {
       const agentManager = context.backgroundAgentManager;
       const aid = AgentId(taskId);
-      if (agentManager && await agentManager.getAgent(aid)) {
+      if (agentManager && (await agentManager.getAgent(aid))) {
         const stopped = await agentManager.killAgent(aid);
         const latestSession = await agentManager.getAgent(aid);
         if (!stopped && latestSession?.status === 'running') {

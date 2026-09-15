@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
@@ -14,8 +14,11 @@ export const killShellTool = createTool({
   sideEffect: 'idempotent',
 
   schema: lazySchema(() =>
-    z.object({
-      shell_id: z.string().min(1).describe('Background Shell ID to terminate'),
+    Type.Object({
+      shell_id: Type.String({
+        minLength: 1,
+        description: 'Background Shell ID to terminate',
+      }),
     }),
   ),
 

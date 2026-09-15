@@ -167,13 +167,13 @@ const agent = createAgent({
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 // 简单路径（新增）：async function，返回结果
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get weather for a city',
-  parameters: z.object({ city: z.string() }),  // 支持 Zod，内部自动转 JSON Schema
+  parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}: clear, 25°C` };
   },
@@ -182,7 +182,7 @@ const weather = defineTool({
 // 进阶路径（保留）：AsyncGenerator，支持进度
 const heavyTool = defineTool({
   name: 'HeavyTask',
-  parameters: z.object({ input: z.string() }),
+  parameters: Type.Object({ input: Type.String() }),
   async *execute({ input }, { progress }) {
     await progress('Step 1/3...');
     return { result: input };
@@ -300,7 +300,7 @@ advanced: {
 
 - [x] 实现 `createAgent()`，内部代理到现有 `createSession()`
 - [x] 实现 `AgentOptions` 三层结构（必需 / 常用 / `advanced`）
-- [x] `defineTool` 支持 async function + Zod schema（内部自动包装为 generator）
+- [x] `defineTool` 支持 async function + TypeBox schema（内部自动包装为 generator）
 - [x] 废除 `canUseTool`，统一权限接口为单一 `permission` 字段
 - [x] 明确区分 inline hooks 与 shell hooks 的 API 位置
 - [x] 更新 README 为"5 分钟快速开始"格式

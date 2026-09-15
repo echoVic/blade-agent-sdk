@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 
 /**
  * TODO 任务状态
@@ -27,12 +27,12 @@ export interface TodoItem {
 /**
  * TODO 任务输入 Schema（用于验证）
  */
-export const TodoItemSchema = z.object({
-  id: z.string().optional(),
-  content: z.string().min(1, 'Content cannot be empty'),
-  status: z.enum(['pending', 'in_progress', 'completed']),
-  activeForm: z.string().min(1, 'ActiveForm cannot be empty'),
-  priority: z.enum(['high', 'medium', 'low']).default('medium'),
+export const TodoItemSchema = Type.Object({
+  id: Type.Optional(Type.String()),
+  content: Type.String({ minLength: 1 }),
+  status: Type.Enum(['pending', 'in_progress', 'completed']),
+  activeForm: Type.String({ minLength: 1 }),
+  priority: Type.Enum(['high', 'medium', 'low'], { default: 'medium' }),
 });
 
 /**

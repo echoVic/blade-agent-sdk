@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Entry } from 'fast-glob';
 import fg from 'fast-glob';
-import { z } from 'zod';
+import Type from 'typebox';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 
@@ -35,7 +35,7 @@ import type { GlobMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
  * Create a standard AbortError
@@ -59,7 +59,7 @@ interface FileMatch {
 
 /**
  * GlobTool - File pattern matcher
- * Uses the newer Zod validation design
+ * Uses the shared TypeBox validation design
  */
 export const globTool = createTool({
   name: 'Glob',
@@ -68,25 +68,27 @@ export const globTool = createTool({
   sideEffect: 'pure',
   interruptBehavior: 'cancel',
 
-  // Zod Schema 定义
+  // TypeBox schema definition
   schema: lazySchema(() =>
-    z.object({
+    Type.Object({
       pattern: ToolSchemas.glob({
         description: 'Glob pattern string (supports *, ?, ** wildcards)',
       }),
-      path: z.string().optional().describe('Search path (optional, defaults to cwd)'),
-      max_results: ToolSchemas.semanticNumber()
-        .pipe(
-          z
-            .number()
-            .int('Must be an integer')
-            .min(1, 'Must be greater than 0')
-            .max(1000, 'At most 1000 results can be returned'),
-        )
-        .default(100)
-        .describe('Maximum number of results'),
-      include_directories: z.boolean().default(false).describe('Include directories in results'),
-      case_sensitive: z.boolean().default(false).describe('Case sensitive matching'),
+      path: Type.Optional(Type.String({ description: 'Search path (optional, defaults to cwd)' })),
+      max_results: Type.Integer({
+        minimum: 1,
+        maximum: 1000,
+        default: 100,
+        description: 'Maximum number of results',
+      }),
+      include_directories: Type.Boolean({
+        default: false,
+        description: 'Include directories in results',
+      }),
+      case_sensitive: Type.Boolean({
+        default: false,
+        description: 'Case sensitive matching',
+      }),
     }),
   ),
 
@@ -107,11 +109,9 @@ export const globTool = createTool({
       };
     }
     try {
-      params.path = await resolveAuthorizedFilesystemPath(
-        searchRoot,
-        context.contextSnapshot,
-        { cwd: context.contextSnapshot?.cwd },
-      );
+      params.path = await resolveAuthorizedFilesystemPath(searchRoot, context.contextSnapshot, {
+        cwd: context.contextSnapshot?.cwd,
+      });
     } catch (error) {
       const message = getErrorMessage(error);
       return {

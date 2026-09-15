@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
@@ -24,7 +24,7 @@ Returns a summary of each task:
 
 Prefer working on tasks in ID order (lowest ID first) when multiple tasks are available.`,
     },
-    schema: lazySchema(() => z.object({})),
+    schema: lazySchema(() => Type.Object({})),
     async *execute(_input, context) {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);

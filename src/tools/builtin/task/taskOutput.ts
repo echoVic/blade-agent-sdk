@@ -6,7 +6,7 @@
  * - 后台 agent 输出
  */
 
-import { z } from 'zod';
+import Type from 'typebox';
 import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
 import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
@@ -16,7 +16,7 @@ import { ToolKind } from '../../types/kind.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
 /**
@@ -33,13 +33,21 @@ export const taskOutputTool = createTool({
   sideEffect: 'non_idempotent',
 
   schema: lazySchema(() =>
-    z.object({
-      task_id: z.string().min(1).describe('The task ID to get output from'),
+    Type.Object({
+      task_id: Type.String({
+        minLength: 1,
+        description: 'The task ID to get output from',
+      }),
       block: ToolSchemas.flag({
         defaultValue: true,
         description: 'Whether to wait for completion',
       }),
-      timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
+      timeout: Type.Integer({
+        minimum: 0,
+        maximum: 600000,
+        default: 30000,
+        description: 'Max wait time in ms',
+      }),
     }),
   ),
 
@@ -93,7 +101,7 @@ export const taskOutputTool = createTool({
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager && await agentManager.getAgent(AgentId(task_id))) {
+    if (agentManager && (await agentManager.getAgent(AgentId(task_id)))) {
       return handleAgentOutput(AgentId(task_id), block, timeout, agentManager);
     }
 

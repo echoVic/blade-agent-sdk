@@ -270,7 +270,6 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
-  JsonSchemaToolDefinitionInput,
   Tool,
   ToolBehavior,
   ToolConfig,
@@ -297,7 +296,6 @@ export type {
   ToolSchema,
   ToolSettledLifecycle,
   ToolYield,
-  ZodToolDefinitionInput,
 } from './tools/types/index.js';
 export {
   collectToolExecution,

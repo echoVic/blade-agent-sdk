@@ -1,5 +1,5 @@
+import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { PermissionMode } from '../../../types/constants.js';
 import { ToolCatalog } from '../../catalog/ToolCatalog.js';
 import { createTool } from '../../core/createTool.js';
@@ -23,7 +23,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Read tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -35,7 +35,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Write tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -67,7 +67,7 @@ describe('ToolExposurePlanner', () => {
           isReadOnly: true,
         }),
         description: { short: 'Hinted readonly tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -84,7 +84,7 @@ describe('ToolExposurePlanner', () => {
           isReadOnly: false,
         }),
         description: { short: 'Hinted non-readonly tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -112,7 +112,7 @@ describe('ToolExposurePlanner', () => {
           kind: name === 'Read' ? ToolKind.ReadOnly : ToolKind.Execute,
           sideEffect: name === 'Read' ? 'pure' : 'non_idempotent',
           description: { short: `${name} tool` },
-          schema: z.object({}),
+          schema: Type.Object({}),
           execute: () => completeToolExecution({ status: 'success', model: '' }),
         }),
       );
@@ -150,7 +150,7 @@ describe('ToolExposurePlanner', () => {
           mode: 'deferred',
           discoveryHint: 'Use when you need heavyweight inspection.',
         },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -166,7 +166,7 @@ describe('ToolExposurePlanner', () => {
           mode: 'deferred',
           alwaysLoad: true,
         },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
@@ -201,7 +201,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Builtin tool' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
     const remoteMcpTool = createTool({
@@ -210,7 +210,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Remote tool' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
@@ -253,7 +253,7 @@ describe('ToolExposurePlanner', () => {
       exposure: {
         mode: 'deferred',
       },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 

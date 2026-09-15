@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
@@ -14,7 +14,7 @@ export const enterPlanModeTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => z.object({})),
+  schema: lazySchema(() => Type.Object({})),
 
   // 工具描述
   description: {

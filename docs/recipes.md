@@ -360,12 +360,14 @@ const session = await createSession({
 ```ts
 import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/advanced';
 import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const myTool = tool(
   'analyze-deps',
   '分析项目依赖关系',
-  { packageJson: z.string().describe('package.json 路径') },
+  Type.Object({
+    packageJson: Type.String({ description: 'package.json 路径' }),
+  }),
   async ({ packageJson }) => ({
     content: [{ type: 'text', text: `分析完成: ${packageJson}` }],
   }),

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import type { Memory } from '../../../memory/types.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
@@ -7,20 +7,20 @@ import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
-const memoryReadSchema = z.discriminatedUnion('operation', [
-  z.object({
-    operation: z.literal('list').describe('List all memories'),
+const memoryReadSchema = Type.Union([
+  Type.Object({
+    operation: Type.Literal('list', { description: 'List all memories' }),
   }),
-  z.object({
-    operation: z.literal('get').describe('Get a specific memory by name'),
-    name: z.string().describe('Memory name'),
+  Type.Object({
+    operation: Type.Literal('get', { description: 'Get a specific memory by name' }),
+    name: Type.String({ description: 'Memory name' }),
   }),
-  z.object({
-    operation: z.literal('search').describe('Search memories by query'),
-    query: z.string().describe('Search query'),
+  Type.Object({
+    operation: Type.Literal('search', { description: 'Search memories by query' }),
+    query: Type.String({ description: 'Search query' }),
   }),
-  z.object({
-    operation: z.literal('index').describe('Read the derived memory index content'),
+  Type.Object({
+    operation: Type.Literal('index', { description: 'Read the derived memory index content' }),
   }),
 ]);
 

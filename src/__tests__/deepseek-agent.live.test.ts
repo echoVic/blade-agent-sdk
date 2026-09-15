@@ -11,6 +11,7 @@
  * 运行方式:
  *   DEEPSEEK_LIVE_TESTS=1 pnpm vitest run src/__tests__/deepseek-agent.live.test.ts
  */
+import Type from 'typebox';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createSession,
@@ -130,15 +131,11 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
     name: 'calculate',
     sideEffect: 'pure',
     description: 'Evaluate a math expression. Returns numeric result.',
-    parameters: {
-      type: 'object',
-      properties: {
-        expression: { type: 'string', description: 'Math expression like "2+3*4"' },
-      },
-      required: ['expression'],
-    },
+    parameters: Type.Object({
+      expression: Type.String({ description: 'Math expression like "2+3*4"' }),
+    }),
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
-    async *execute(params: { expression: string }) {
+    async *execute(params) {
       // eslint-disable-next-line no-eval
       const result = Function(`"use strict"; return (${params.expression})`)();
       return { status: 'success' as const, model: String(result) };
@@ -180,16 +177,12 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         name: 'query_db',
         sideEffect: 'pure',
         description: 'Query a database table. Returns matching records.',
-        parameters: {
-          type: 'object',
-          properties: {
-            table: { type: 'string', description: 'Table name' },
-            filter: { type: 'string', description: 'Filter condition' },
-          },
-          required: ['table'],
-        },
+        parameters: Type.Object({
+          table: Type.String({ description: 'Table name' }),
+          filter: Type.Optional(Type.String({ description: 'Filter condition' })),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: { table: string; filter?: string }) {
+        async *execute(params) {
           const data: Record<string, unknown[]> = {
             users: [
               { id: 1, name: 'Alice', age: 30 },
@@ -237,15 +230,11 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         name: 'unstable_api',
         sideEffect: 'pure',
         description: 'An API that sometimes fails. Call it to get data.',
-        parameters: {
-          type: 'object',
-          properties: {
-            endpoint: { type: 'string' },
-          },
-          required: ['endpoint'],
-        },
+        parameters: Type.Object({
+          endpoint: Type.String(),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: { endpoint: string }) {
+        async *execute(params) {
           if (params.endpoint === '/health') {
             return { status: 'success' as const, model: '{"status":"healthy","version":"2.1.0"}' };
           }
@@ -352,29 +341,18 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
         name: 'create_task',
         sideEffect: 'non_idempotent',
         description: 'Create a project task with details.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Task title' },
-            priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-            assignee: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                email: { type: 'string' },
-              },
-              required: ['name'],
-            },
-            tags: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            dueDate: { type: 'string', description: 'ISO date string' },
-          },
-          required: ['title', 'priority', 'assignee'],
-        },
+        parameters: Type.Object({
+          title: Type.String({ description: 'Task title' }),
+          priority: Type.Enum(['low', 'medium', 'high', 'critical']),
+          assignee: Type.Object({
+            name: Type.String(),
+            email: Type.Optional(Type.String()),
+          }),
+          tags: Type.Optional(Type.Array(Type.String())),
+          dueDate: Type.Optional(Type.String({ description: 'ISO date string' })),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: Record<string, unknown>) {
+        async *execute(params) {
           return {
             status: 'success' as const,
             model: JSON.stringify({ id: 'TASK-001', created: true, ...params }),
@@ -413,17 +391,13 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
         name: 'set_status',
         sideEffect: 'idempotent',
         description: 'Set item status. Only accepts: draft, review, approved, rejected.',
-        parameters: {
-          type: 'object',
-          properties: {
-            itemId: { type: 'string' },
-            status: { type: 'string', enum: ['draft', 'review', 'approved', 'rejected'] },
-            reason: { type: 'string', description: 'Optional reason for status change' },
-          },
-          required: ['itemId', 'status'],
-        },
+        parameters: Type.Object({
+          itemId: Type.String(),
+          status: Type.Enum(['draft', 'review', 'approved', 'rejected']),
+          reason: Type.Optional(Type.String({ description: 'Optional reason for status change' })),
+        }),
         // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params: { itemId: string; status: string; reason?: string }) {
+        async *execute(params) {
           return {
             status: 'success' as const,
             model: JSON.stringify({ updated: true, ...params }),

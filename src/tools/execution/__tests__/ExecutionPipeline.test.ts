@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import Type from 'typebox';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import { ConfigError } from '../../../errors/ConfigError.js';
 import type { HookRuntime } from '../../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
@@ -76,8 +76,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Concurrency-limited read' },
-        schema: z.object({
-          id: z.number(),
+        schema: Type.Object({
+          id: Type.Number(),
         }),
         async *execute({ id }) {
           started.push(id);
@@ -132,7 +132,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Concurrency queue cancellation tool' },
-        schema: z.object({ id: z.number() }),
+        schema: Type.Object({ id: Type.Number() }),
         async *execute({ id }) {
           started.push(id);
           yield { kind: 'progress', data: { id } };
@@ -212,9 +212,9 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'File lock cancellation tool' },
-        schema: z.object({
-          id: z.number(),
-          file_path: z.string(),
+        schema: Type.Object({
+          id: Type.Number(),
+          file_path: Type.String(),
         }),
         async *execute({ id }) {
           started.push(id);
@@ -299,9 +299,9 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Canonical file lock tool' },
-        schema: z.object({
-          id: z.number(),
-          file_path: z.string(),
+        schema: Type.Object({
+          id: Type.Number(),
+          file_path: Type.String(),
         }),
         validateInput: async (params, context) => {
           params.file_path = await resolveAuthorizedFilesystemPath(
@@ -385,7 +385,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Lease check cancellation tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () =>
           completeToolExecution({
             status: 'success',
@@ -446,8 +446,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Streaming read tool' },
-        schema: z.object({
-          file_path: z.string(),
+        schema: Type.Object({
+          file_path: Type.String(),
         }),
         async *execute() {
           try {
@@ -499,7 +499,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Slow streaming tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute(_params, context) {
           try {
             await new Promise<void>((_resolve, reject) => {
@@ -552,7 +552,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Return success after abort' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute(_params, context) {
           started.resolve();
           await new Promise<void>((resolve) => {
@@ -597,7 +597,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Paused streaming tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute(_params, context) {
           observedSignal = context.signal;
           try {
@@ -656,7 +656,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Ignore cancellation' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute() {
           started.resolve();
           await new Promise(() => {});
@@ -672,7 +672,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Wait behind the timed-out tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution(queuedExecute()),
       }),
     );
@@ -760,7 +760,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Throwing tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         // biome-ignore lint/correctness/useYield: exercises a terminal execution failure
         async *execute() {
           throw new Error('boom');
@@ -799,7 +799,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Containment failure tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         // biome-ignore lint/correctness/useYield: exercises a terminal execution failure
         async *execute() {
           throw containmentError;
@@ -835,7 +835,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Late containment failure tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute(_params, context) {
           started.resolve();
           await new Promise<void>((resolve) => {
@@ -893,7 +893,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission containment failure tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -962,7 +962,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Concurrent containment tool' },
-        schema: z.object({ id: z.string() }),
+        schema: Type.Object({ id: Type.String() }),
         execute: executeSpy,
       }),
     );
@@ -1033,8 +1033,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic behavior tool' },
-        schema: z.object({
-          mode: z.enum(['read', 'write']),
+        schema: Type.Object({
+          mode: Type.Enum(['read', 'write']),
         }),
         resolveBehavior: ({ mode }) => ({
           kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
@@ -1086,8 +1086,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Write tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         execute: ({ value }) =>
           completeToolExecution({
@@ -1131,8 +1131,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Validated tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         validateInput: ({ value }) =>
           value === 'bad'
@@ -1198,16 +1198,16 @@ describe('ExecutionPipeline', () => {
           kind: ToolKind.Execute,
           sideEffect: 'non_idempotent',
           description: { short: 'Permission cancellation boundary tool' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           ...(boundary === 'validateInput'
             ? {
-                validateInput: (_params: JsonObject, context: ExecutionContext) =>
+                validateInput: (_params: object, context: ExecutionContext) =>
                   waitForRelease(context.signal, undefined),
               }
             : {}),
           ...(boundary === 'checkPermissions'
             ? {
-                checkPermissions: (_params: JsonObject, context: ExecutionContext) =>
+                checkPermissions: (_params: object, context: ExecutionContext) =>
                   waitForRelease(context.signal, { behavior: 'allow' as const }),
               }
             : boundary === 'confirmationHandler'
@@ -1349,8 +1349,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Guarded tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         checkPermissions: ({ value }) =>
           value === 'blocked'
@@ -1397,7 +1397,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission precedence tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -1446,8 +1446,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         description: { short: 'Path mutation tool' },
-        schema: z.object({
-          file_path: z.string(),
+        schema: Type.Object({
+          file_path: Type.String(),
         }),
         execute: executeSpy,
       }),
@@ -1501,9 +1501,9 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic permission tool' },
-        schema: z.object({
-          mode: z.enum(['read', 'write']),
-          value: z.string(),
+        schema: Type.Object({
+          mode: Type.Enum(['read', 'write']),
+          value: Type.String(),
         }),
         resolveBehavior: ({ mode }) => ({
           kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Execute,
@@ -1561,8 +1561,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission matcher tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         preparePermissionMatcher: ({ value }) => ({
           signatureContent: `sig:${value}`,
@@ -1636,8 +1636,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission effect tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         preparePermissionMatcher: ({ value }) => ({
           signatureContent: `sig:${value}`,
@@ -1704,8 +1704,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Tool-level ask tool' },
-        schema: z.object({
-          value: z.string(),
+        schema: Type.Object({
+          value: Type.String(),
         }),
         checkPermissions: () => ({
           behavior: 'ask',
@@ -1748,7 +1748,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Limited output tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         maxResultSizeChars: 32,
         execute: () =>
           completeToolExecution({
@@ -1815,7 +1815,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'idempotent',
         description: { short: 'Legacy runtime effect tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         async *execute() {
           yield {
             kind: 'effect',
@@ -1942,8 +1942,8 @@ describe('ExecutionPipeline', () => {
         describe: (params) => ({
           short: params?.target ? `Delete file: ${params.target}` : 'Dangerous tool',
         }),
-        schema: z.object({
-          target: z.string(),
+        schema: Type.Object({
+          target: Type.String(),
         }),
         checkPermissions: () => ({
           behavior: 'ask',
@@ -1997,8 +1997,8 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Write,
         sideEffect: 'non_idempotent',
         description: { short: 'Writes to a file' },
-        schema: z.object({
-          file_path: z.string(),
+        schema: Type.Object({
+          file_path: Type.String(),
         }),
         execute: executeSpy,
       }),
@@ -2093,8 +2093,8 @@ describe('ExecutionPipeline', () => {
           signatureContent: file_path,
         }),
         description: { short: 'Reads a sensitive file' },
-        schema: z.object({
-          file_path: z.string(),
+        schema: Type.Object({
+          file_path: Type.String(),
         }),
         execute: executeSpy,
       }),
@@ -2136,7 +2136,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Lifecycle tool' },
-        schema: z.object({ value: z.string() }),
+        schema: Type.Object({ value: Type.String() }),
         checkPermissions: () => ({
           behavior: 'ask',
           message: 'Confirm lifecycle tool',
@@ -2212,7 +2212,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission lifecycle tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         checkPermissions: () => ({ behavior: 'ask', message: 'Confirm' }),
         execute: executeSpy,
       }),
@@ -2291,7 +2291,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Blocked lifecycle tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -2338,7 +2338,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Fenced tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -2389,7 +2389,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Queued fenced tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -2438,7 +2438,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Cancellation boundary tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: executeSpy,
       }),
     );
@@ -2491,7 +2491,7 @@ describe('ExecutionPipeline', () => {
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
         description: { short: 'Permission resolution tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         checkPermissions: () => ({ behavior: 'ask', message: 'Confirm' }),
         execute: executeSpy,
       }),

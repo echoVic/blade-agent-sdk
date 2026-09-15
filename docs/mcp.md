@@ -167,13 +167,15 @@ interface McpToolInfo {
 ```ts
 import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/advanced';
 import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
-import { z } from 'zod';
+import Type from 'typebox';
 
-// 定义工具（使用 Zod Schema）
+// 定义工具（使用 TypeBox schema）
 const getWeather = tool(
   'get-weather',
   '查询指定城市的当前天气',
-  { city: z.string().describe('城市名称') },
+  Type.Object({
+    city: Type.String({ description: '城市名称' }),
+  }),
   async ({ city }) => ({
     content: [{ type: 'text', text: `${city}: 晴 25°C` }],
   }),
@@ -182,10 +184,10 @@ const getWeather = tool(
 const queryDB = tool(
   'query-database',
   '执行 SQL 查询',
-  {
-    sql: z.string().describe('SQL 语句'),
-    database: z.string().default('main').describe('数据库名'),
-  },
+  Type.Object({
+    sql: Type.String({ description: 'SQL 语句' }),
+    database: Type.String({ default: 'main', description: '数据库名' }),
+  }),
   async ({ sql, database }) => {
     const result = await executeSQL(database, sql);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
@@ -216,12 +218,12 @@ const session = await createSession({
 ### tool() 函数签名
 
 ```ts
-function tool<T extends ZodRawShape>(
+function tool<TSchema extends Type.TObject>(
   name: string,
   description: string,
-  schema: T,
-  handler: (params: z.infer<z.ZodObject<T>>) => Promise<McpToolCallResponse>,
-): SdkTool;
+  schema: TSchema,
+  handler: (params: Type.Static<TSchema>) => Promise<McpToolCallResponse>,
+): SdkTool<TSchema>;
 ```
 
 ### McpToolCallResponse
@@ -318,13 +320,13 @@ MCP 服务器注册的工具在发送给 LLM 时排列在内置工具**之后**�
 ```ts
 import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/advanced';
 import { createServerSession as createSession } from '@blade-ai/agent-sdk/advanced';
-import { z } from 'zod';
+import Type from 'typebox';
 
 // 进程内工具
 const analyzeCode = tool(
   'analyze-code',
   '分析代码质量',
-  { filePath: z.string() },
+  Type.Object({ filePath: Type.String() }),
   async ({ filePath }) => {
     const result = await runLinter(filePath);
     return { content: [{ type: 'text', text: result }] };

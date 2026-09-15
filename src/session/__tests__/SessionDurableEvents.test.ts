@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Type from 'typebox';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import { RECONCILED_INITIAL_INPUT } from '../../agent/InitialInputPreparation.js';
@@ -2066,10 +2067,7 @@ describe('Session durable events', () => {
           name: 'PermissionCleanupTool',
           description: 'Permission cleanup test tool',
           sideEffect: 'non_idempotent',
-          parameters: {
-            type: 'object',
-            properties: {},
-          },
+          parameters: Type.Object({}),
           execute: () =>
             completeToolExecution({
               status: 'success',

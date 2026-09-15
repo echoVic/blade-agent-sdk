@@ -146,11 +146,10 @@ JSON schema 的递归基础定义统一来自 `src/types/jsonSchema.ts`。
 
 ## Tool 泛型
 
-Zod 和 JSON Schema authoring 是两条明确路径：
-
-- `ZodToolDefinitionInput<TSchema>` 从 schema 推导 callback 参数，并在执行前验证。
-- `JsonSchemaToolDefinitionInput<TParams>` 接受调用方显式声明的参数类型；schema
-  仍是模型侧声明，不伪装成编译期推导。
+Tool authoring 只接受 TypeBox schema。`ToolDefinition<TSchema>` 和
+`ToolDefinitionInput<TSchema>` 通过 `Type.Static<TSchema>` 推导 callback 参数；
+同一个 schema 对象既是模型侧 JSON Schema，也是执行前的运行时验证依据，不存在
+schema 格式转换或 advisory-only 旁路。
 
 异构工具集合通过 Tool owner 定义的 `ErasedToolDefinition` 擦除 authoring
 参数。Session 不直接写 `ToolDefinition<never>`。编译后的 runtime `Tool`

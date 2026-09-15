@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import Type from 'typebox';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
@@ -6,17 +6,19 @@ import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
-const memoryWriteSchema = z.discriminatedUnion('operation', [
-  z.object({
-    operation: z.literal('save').describe('Create or update a memory'),
-    name: z.string().describe('Memory name (unique identifier)'),
-    description: z.string().describe('One-line description'),
-    type: z.enum(['user', 'feedback', 'project', 'reference']).describe('Memory type'),
-    body: z.string().describe('Memory body content'),
+const memoryWriteSchema = Type.Union([
+  Type.Object({
+    operation: Type.Literal('save', { description: 'Create or update a memory' }),
+    name: Type.String({ description: 'Memory name (unique identifier)' }),
+    description: Type.String({ description: 'One-line description' }),
+    type: Type.Enum(['user', 'feedback', 'project', 'reference'], {
+      description: 'Memory type',
+    }),
+    body: Type.String({ description: 'Memory body content' }),
   }),
-  z.object({
-    operation: z.literal('delete').describe('Request deletion of a memory'),
-    name: z.string().describe('Memory name (unique identifier)'),
+  Type.Object({
+    operation: Type.Literal('delete', { description: 'Request deletion of a memory' }),
+    name: Type.String({ description: 'Memory name (unique identifier)' }),
   }),
 ]);
 

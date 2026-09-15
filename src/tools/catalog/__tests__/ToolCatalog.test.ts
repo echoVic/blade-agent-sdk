@@ -1,5 +1,5 @@
+import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
 import { completeToolExecution } from '../../types/result.js';
@@ -14,7 +14,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Read tool' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
@@ -44,7 +44,7 @@ describe('ToolCatalog', () => {
       sideEffect: 'pure',
       description: { short: 'Search docs' },
       tags: ['docs'],
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
@@ -67,7 +67,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Read tool' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
     const writeTool = createTool({
@@ -76,7 +76,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.Write,
       sideEffect: 'idempotent',
       description: { short: 'Write tool' },
-      schema: z.object({}),
+      schema: Type.Object({}),
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 

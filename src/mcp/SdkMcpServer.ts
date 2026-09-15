@@ -10,20 +10,26 @@
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { z } from 'zod';
-import type { JsonObject } from '../types/json.js';
+import {
+  CallToolRequestSchema,
+  type CallToolResult,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
+import type Type from 'typebox';
+import { compileToolInput } from '../tools/validation/toolInput.js';
 
 export type ToolResponse = CallToolResult;
 
 /**
  * A single tool definition for the in-process MCP server
  */
-export interface SdkTool {
+export interface SdkTool<TSchema extends Type.TObject = Type.TObject> {
   name: string;
   description: string;
-  schema: Record<string, z.ZodTypeAny>;
-  handler: (params: JsonObject) => Promise<ToolResponse>;
+  schema: TSchema;
+  handler(params: Type.Static<TSchema>): Promise<ToolResponse>;
 }
 
 /**
@@ -52,24 +58,24 @@ export interface SdkMcpServerHandle {
  * const myTool = tool(
  *   'greet',
  *   'Greet a user by name',
- *   { name: z.string().describe('The user name') },
+ *   Type.Object({ name: Type.String({ description: 'The user name' }) }),
  *   async (params) => ({
  *     content: [{ type: 'text', text: `Hello, ${params.name}!` }],
  *   })
  * );
  * ```
  */
-export function tool<T extends Record<string, z.ZodTypeAny>>(
+export function tool<TSchema extends Type.TObject>(
   name: string,
   description: string,
-  schema: T,
-  handler: (params: { [K in keyof T]: z.infer<T[K]> }) => Promise<ToolResponse>,
-): SdkTool {
+  schema: TSchema,
+  handler: (params: Type.Static<TSchema>) => Promise<ToolResponse>,
+): SdkTool<TSchema> {
   return {
     name,
     description,
     schema,
-    handler: handler as (params: JsonObject) => Promise<ToolResponse>,
+    handler,
   };
 }
 
@@ -105,11 +111,47 @@ export async function createSdkMcpServer(config: {
     version: config.version,
   });
 
-  for (const t of config.tools) {
-    server.tool(t.name, t.description, t.schema, async (params) => {
-      return t.handler(params as JsonObject);
-    });
-  }
+  const tools = new Map(
+    config.tools.map((sdkTool) => [
+      sdkTool.name,
+      {
+        definition: sdkTool,
+        input: compileToolInput(sdkTool.schema),
+      },
+    ]),
+  );
+  server.server.registerCapabilities({ tools: {} });
+  server.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [...tools.values()].map(({ definition }) => ({
+      name: definition.name,
+      description: definition.description,
+      inputSchema: definition.schema as {
+        type: 'object';
+        properties?: Record<string, object>;
+        required?: string[];
+      },
+    })),
+  }));
+  server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const registered = tools.get(request.params.name);
+    if (!registered) {
+      throw new McpError(ErrorCode.InvalidParams, `Tool ${request.params.name} not found`);
+    }
+    try {
+      const params = registered.input.parse(request.params.arguments ?? {});
+      return await registered.definition.handler(params);
+    } catch (error) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: error instanceof Error ? error.message : 'Invalid tool input',
+          },
+        ],
+      };
+    }
+  });
 
   const createClientTransport = async (): Promise<Transport> => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

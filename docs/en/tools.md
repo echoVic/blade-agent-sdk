@@ -4,9 +4,9 @@ The SDK exposes three tool authoring APIs:
 
 | API | Schema | Use |
 |-----|--------|-----|
-| `defineTool()` | JSON Schema or Zod | Lightweight typed definitions accepted by Session |
-| `createTool()` | Zod | Full inference, runtime validation, and interruption policy |
-| `toolFromDefinition()` | JSON Schema or Zod | Convert a definition into the internal `Tool` interface |
+| `defineTool()` | TypeBox | Lightweight typed definitions accepted by Session |
+| `createTool()` | TypeBox | Full inference, runtime validation, and interruption policy |
+| `toolFromDefinition()` | TypeBox | Convert a definition into the internal `Tool` interface |
 
 Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
 `defineTool()` also accepts a regular async function and wraps its return value.
@@ -15,14 +15,14 @@ Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const searchDocs = defineTool({
   name: 'SearchDocs',
   description: 'Search the documentation index',
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional(),
+  parameters: Type.Object({
+    query: Type.String(),
+    limit: Type.Optional(Type.Number()),
   }),
   async execute(params) {
     const results = await search(params.query, params.limit ?? 10);
@@ -35,10 +35,10 @@ The returned JSON value becomes both `model` and `data` on the internal success
 result. Use `async *execute` and return a complete `ToolResult` when the tool
 must emit progress, messages, or effects.
 
-`ZodToolDefinitionInput<TSchema>` is the schema-inferred Zod authoring path.
-`JsonSchemaToolDefinitionInput<TParams>` is the explicitly typed JSON Schema
-path. Heterogeneous definition erasure happens only inside Session; application
-code does not declare that internal type.
+The TypeBox schema is the single source of truth for parameter inference,
+runtime validation, and the model-facing JSON Schema. `execute` parameters are
+inferred through `Type.Static<TSchema>`. Heterogeneous definition erasure happens
+only inside Session; application code does not declare that internal type.
 
 ### What you can omit
 
@@ -48,19 +48,18 @@ Only `name`, `description`, `parameters`, and `execute` are required:
   `non_idempotent`, so recovery never replays it. Declare `ToolSideEffect.PURE` or
   `ToolSideEffect.IDEMPOTENT` on read-only or safely repeatable tools to admit
   them into retryable recovery.
-- **`parameters` accepts a Zod schema directly.** The SDK reuses the `createTool`
-  conversion to build the JSON Schema sent to the model and **validates incoming
-  parameters against it**. A plain JSON Schema stays an advisory declaration for
-  the model and is not validated at runtime, matching the previous behavior.
+- **`parameters` accepts a TypeBox schema.** The same schema object is sent to
+  the model and compiled by the SDK for runtime validation. There is no
+  Zod/JSON Schema conversion or advisory-only path.
 
 ```ts
-import { z } from 'zod';
 import { defineTool } from '@blade-ai/agent-sdk';
+import Type from 'typebox';
 
 const lookup = defineTool({
   name: 'Lookup',
   description: 'Look up one record by id',
-  parameters: z.object({ id: z.string() }),
+  parameters: Type.Object({ id: Type.String() }),
   async execute({ id }) {
     return await lookupRecord(id);
   },
@@ -76,7 +75,7 @@ literals for it.
 
 ```ts
 import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import { z } from 'zod';
+import Type from 'typebox';
 
 const deploy = createTool({
   name: 'Deploy',
@@ -88,9 +87,9 @@ const deploy = createTool({
     long: 'Deploy a tested build to staging or production.',
     important: ['Production requires explicit approval.'],
   },
-  schema: z.object({
-    environment: z.enum(['staging', 'production']),
-    version: z.string(),
+  schema: Type.Object({
+    environment: Type.Enum(['staging', 'production']),
+    version: Type.String(),
   }),
   interruptBehavior: 'block',
   async *execute(params) {
@@ -227,7 +226,7 @@ types, and constants from the root SDK entrypoint.
 Before publishing, a tool package must:
 
 - Declare accurate `sideEffect` and `interruptBehavior` values for every tool.
-- Use Zod or complete JSON Schema parameters and return serializable data.
+- Use TypeBox parameter schemas and return serializable data.
 - Accept credentials from the caller instead of reading or embedding implicit
   global credentials.
 - Validate protocols, redirects, and private addresses for network access, and
@@ -318,21 +317,21 @@ replay.
 
 ```ts
 interface ToolDefinition<
-  TParams = JsonObject,
+  TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
 > {
   name: string;
   aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
-  parameters: JSONSchema7;
-  sideEffect: ToolSideEffect;
+  parameters: TSchema;
+  sideEffect?: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
   exposure?: ToolExposureConfig;
   execute(
-    params: TParams,
+    params: Type.Static<TSchema>,
     context: ExecutionContext,
   ): ToolExecution<TData>;
 }

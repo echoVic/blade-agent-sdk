@@ -14,7 +14,6 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
-  JsonSchemaToolDefinitionInput,
   Tool,
   ToolBehavior,
   ToolConfig,
@@ -35,7 +34,6 @@ export type {
   ToolResult,
   ToolSchema,
   ToolYield,
-  ZodToolDefinitionInput,
 } from './types/index.js';
 export {
   collectToolExecution,

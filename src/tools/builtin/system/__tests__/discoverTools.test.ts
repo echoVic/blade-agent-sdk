@@ -1,5 +1,5 @@
+import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
 import { createTool } from '../../../core/createTool.js';
 import { ToolRegistry } from '../../../registry/ToolRegistry.js';
@@ -39,7 +39,7 @@ describe('DiscoverTools tool', () => {
         exposure: {
           mode: 'deferred',
         },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }) as never,
     );
@@ -79,7 +79,7 @@ describe('DiscoverTools tool', () => {
         exposure: {
           mode: 'deferred',
         },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }) as never,
     );
@@ -106,7 +106,7 @@ describe('DiscoverTools tool', () => {
         exposure: {
           mode: 'deferred',
         },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
       {

@@ -15,7 +15,7 @@ Blade Agent SDK 不建立集中式“新类型系统”，也不把现有类型�
 
 类型按所有权分为五类：
 
-1. **Wire contract**：可序列化 DTO、版本、schema 和 codec。
+1. **Wire contract**：可序列化 DTO、版本、schema 和 parser。
 2. **Public API contract**：普通应用使用的 Agent、Response、Tool authoring API。
 3. **Advanced SPI contract**：部署者和框架集成者实现的稳定扩展端口。
 4. **Domain value contract**：跨模块共享、无运行时依赖的 ID、JSON 和值对象。
@@ -56,7 +56,7 @@ Wire contract 是正交的序列化边界，不是领域模型的“上层”。
 | Owner | 可依赖 |
 |-------|--------|
 | Domain values | 仅标准库与同层值类型 |
-| Wire contract | Domain values、wire-local schema/codec、显式标记为 wire-safe 的公开值 contract |
+| Wire contract | Domain values、wire-local schema/parser、显式标记为 wire-safe 的公开值 contract |
 | Public API | Domain values、公开的 module-local contract |
 | Advanced SPI | Domain values、Public API、必要的 Wire contract、稳定的 Server Infra port（仅 type-only） |
 | Internal runtime | 上述所有 contract 与具体 adapter |
@@ -70,7 +70,7 @@ Wire contract 是正交的序列化边界，不是领域模型的“上层”。
 
 ### 2.1 Wire 安全
 
-- Wire payload 只能包含 JSON value、版本化标识和经过 codec 验证的 DTO。
+- Wire payload 只能包含 JSON value、版本化标识和经过 parser 验证的 DTO。
 - Wire command 不携带 API key、Provider 实例、函数、middleware、Store 或
   execution handle。
 - `session.create` 只接受客户端 metadata。Provider、credential、tool 和 Store
@@ -136,8 +136,9 @@ command payload、expected-head CAS、幂等重放和终态冲突规则以
 
 - `defineTool()` 是用户 authoring API。
 - `Tool` 是编译后的 runtime contract。
-- Zod 路径必须从 schema 推导 callback 参数。
-- JSON Schema 路径继续支持显式参数类型，但不伪装成编译期 schema 推导。
+- Tool authoring 只接受 TypeBox schema，并通过 `Type.Static` 推导 callback 参数。
+- 同一个 schema 必须同时承担模型声明与运行时校验，禁止新增格式转换或
+  advisory-only 旁路。
 - `ToolResult` 保持 `status: 'success' | 'error'` discriminated union。
 - `ToolKind` 只描述 readonly/write/execute 权限类别；network、subagent 等能力不能
   塞进同一枚举。
@@ -287,37 +288,44 @@ src/tools/types/execution.ts # runtime execution capability
 src/tools/core/createTool.ts # compiler/adapter
 ```
 
-authoring 输入明确区分：
+Tool authoring 只接受 TypeBox schema：
 
 ```ts
-export type ZodToolDefinitionInput<
-  TSchema extends z.ZodSchema,
+export interface ToolDefinition<
+  TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
-> = Omit<ToolDefinitionInput<z.infer<TSchema>, TData>, 'parameters'> & {
+> {
   parameters: TSchema;
-};
-
-export type JsonSchemaToolDefinitionInput<
-  TParams = JsonObject,
-  TData extends JsonValue = JsonValue,
-> = Omit<ToolDefinitionInput<TParams, TData>, 'parameters'> & {
-  parameters: JSONSchema7;
-};
+  execute(
+    params: Type.Static<TSchema>,
+    context: ExecutionContext,
+  ): ToolExecution<TData>;
+}
 ```
 
-`defineTool()` 为两条路径提供独立 overload。异构 Session 工具集合通过一个明确命名
-的 erased contract 表达，而不是在 `SessionOptions` 里直接写
-`ToolDefinition<never>`。
+`Type.Static<TSchema>` 提供 callback 参数类型；TypeBox 生成的同一个 JSON Schema
+对象直接交给模型并由 `Schema.Compile()` 编译为 runtime validator。公开 API
+不定义 codec，也不存在 Zod/JSON Schema 转换或 advisory-only 校验旁路。
+
+异构 Session 工具集合通过一个明确命名的 erased contract 表达，而不是在
+`SessionOptions` 里直接展开类型擦除细节。
 
 ```ts
-type ErasedToolDefinition = ToolDefinition<never, JsonValue>;
+type ErasedToolDefinition =
+  & Omit<ToolDefinition<Type.TSchema, JsonValue>, 'execute'>
+  & {
+      execute(
+        params: never,
+        context: ExecutionContext,
+      ): ToolExecution<JsonValue>;
+    };
 type SessionTool = ErasedToolDefinition | Tool;
 ```
 
 完整转换链为：
 
 ```text
-ZodToolDefinitionInput / JsonSchemaToolDefinitionInput
+TypeBox TSchema
   → defineTool()
   → typed ToolDefinition
   → SessionTool boundary erases heterogeneous params
@@ -327,10 +335,11 @@ ZodToolDefinitionInput / JsonSchemaToolDefinitionInput
 ```
 
 `AgentOptions.tools` 和 `SessionOptions.tools` 接受 authoring definition 或已经编译的
-`Tool`。Zod 路径由 SDK 承担运行时验证；JSON Schema 路径的 `TParams` 是调用方声明
-的信任边界，当前只向模型描述 schema，不提供运行时验证保证。需要运行时保证时必须
-改用 Zod，或手工构造包含 `validateInput` 的完整 runtime `Tool`；当前
-`ToolConfig` 自身要求 Zod schema。
+`Tool`。`defineTool()`、`createTool()` 与 `toolFromDefinition()` 共享同一个 TypeBox
+编译路径，错误参数不能进入 description、permission、behavior 或 execute callback。
+MCP 客户端收到的 raw JSON Schema 是协议适配边界：它直接由 TypeBox 的 JSON Schema
+validator 编译，不转换成另一种 authoring schema。Wire、durable 和 MCP SDK 自身的
+Zod parser 不属于 Tool authoring API，继续由各自 owner 管理。
 
 ### 3.5 Session contract
 
@@ -452,18 +461,19 @@ Session/durable tests: unchanged
 
 ### Slice 3：Tool authoring contract
 
-- 新增 `ZodToolDefinitionInput` 和 `JsonSchemaToolDefinitionInput`。
-- `defineTool()` overload 分别使用对应输入。
+- `ToolDefinition<TSchema>` 和 `ToolDefinitionInput<TSchema>` 只接受 TypeBox schema。
+- `defineTool()` 通过 `Type.Static<TSchema>` 推导 callback 参数。
 - 引入 `ErasedToolDefinition`，让异构集合的类型擦除发生在 Tool 模块。
 - 保留完整 `Tool` runtime contract 和 discriminated `ToolResult`。
 
 验收：
 
-- Zod schema 自动推导 callback 参数。
-- JSON Schema 继续支持显式泛型。
-- 错误参数在 Zod runtime validation 前不能进入 tool body。
-- JSON Schema runtime test 明确验证当前 advisory 语义：参数不被 SDK schema
-  validator 拦截并原样进入 callback；它不宣称提供运行时类型保证。
+- TypeBox schema 自动推导 callback 参数。
+- 同一 schema 对象同时用于模型声明和运行时验证，不做格式转换。
+- 错误参数在任何 Tool callback 前被 runtime validator 拒绝。
+- MCP raw JSON Schema 在 adapter 内直接编译，保留 `$ref`、enum 和
+  `additionalProperties` 等协议语义。
+- Tool 公开入口不导出 codec 或 schema-family-specific authoring 类型。
 - 所有 builtin tool 与 durable tool tests 保持通过。
 
 ### Slice 4：Wire 与导出边界

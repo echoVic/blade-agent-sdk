@@ -1,8 +1,8 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Type from 'typebox';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { z } from 'zod';
 import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
@@ -674,7 +674,7 @@ describe('LoopRunner', () => {
           kind: ToolKind.ReadOnly,
           sideEffect: 'pure',
           description: { short: 'Builtin tool' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           execute: () =>
             completeToolExecution({
               status: 'success',
@@ -695,7 +695,7 @@ describe('LoopRunner', () => {
           kind: ToolKind.ReadOnly,
           sideEffect: 'pure',
           description: { short: 'Remote tool' },
-          schema: z.object({}),
+          schema: Type.Object({}),
           execute: () =>
             completeToolExecution({
               status: 'success',
@@ -901,7 +901,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         description: { short: 'Read tool' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       const discoverTool = createTool({
@@ -910,7 +910,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         sideEffect: 'idempotent',
         description: { short: 'Discover hidden tools' },
-        schema: z.object({ query: z.string() }),
+        schema: Type.Object({ query: Type.String() }),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       const heavyInspectTool = createTool({
@@ -920,7 +920,7 @@ describe('LoopRunner', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'Heavy inspection tool' },
         exposure: { mode: 'deferred', discoveryHint: 'Use for heavyweight inspection.' },
-        schema: z.object({}),
+        schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
