@@ -18,11 +18,11 @@ import {
 } from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { PermissionHandler } from '../../../types/permissions.js';
+import { ToolKind } from '../../behavior.js';
 import { readTool } from '../../builtin/file/read.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { ToolResult, ToolYield } from '../../types/result.js';
 import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
 import type { Tool } from '../../types/tool.js';
@@ -80,6 +80,7 @@ describe('ExecutionPipeline', () => {
         displayName: 'Runtime Context Tool',
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
+        requiresRuntime: true,
         description: { short: 'Observes runtime access' },
         schema: Type.Object({}),
         execute: (_params, context) => {
@@ -125,6 +126,7 @@ describe('ExecutionPipeline', () => {
         displayName: 'In-memory Runtime Tool',
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
+        requiresRuntime: true,
         description: { short: 'Uses runtime access without a durable lease' },
         schema: Type.Object({}),
         execute: async function* (_params, context) {
@@ -147,6 +149,76 @@ describe('ExecutionPipeline', () => {
     await executePipeline(pipeline, 'InMemoryRuntimeTool', {}, {});
 
     expect(observedValue).toBe('available');
+  });
+
+  it('does not expose runtime access to tools that do not request it', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown = 'not-called';
+    registerTool(
+      registry,
+      createTool({
+        name: 'OrdinaryTool',
+        displayName: 'Ordinary Tool',
+        kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
+        description: { short: 'Does not require runtime access' },
+        schema: Type.Object({}),
+        execute: (_params, context) => {
+          observedRuntime = Reflect.get(context, 'runtime');
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'OrdinaryTool', {}, {});
+
+    expect(observedRuntime).toBeUndefined();
+  });
+
+  it('enforces runtime isolation for custom Tool invocations', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown = 'not-called';
+    let observedValidationRuntime: unknown = 'not-called';
+    const baseTool = createTool({
+      name: 'CustomRuntimeTool',
+      displayName: 'Custom Runtime Tool',
+      kind: ToolKind.ReadOnly,
+      sideEffect: 'pure',
+      description: { short: 'Uses a custom invocation implementation' },
+      schema: Type.Object({}),
+      execute: () => completeToolExecution({ status: 'success', model: 'unused' }),
+    });
+    registerTool(registry, {
+      ...baseTool,
+      build(params) {
+        const invocation = baseTool.build(params);
+        return {
+          toolName: invocation.toolName,
+          params: invocation.params,
+          getDescription: () => invocation.getDescription(),
+          getAffectedPaths: () => invocation.getAffectedPaths(),
+          async validate(context) {
+            observedValidationRuntime = Reflect.get(context ?? {}, 'runtime');
+            return undefined;
+          },
+          execute(_signal, context) {
+            observedRuntime = Reflect.get(context ?? {}, 'runtime');
+            return completeToolExecution({ status: 'success', model: 'ok' });
+          },
+        };
+      },
+    });
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'CustomRuntimeTool', {}, {});
+
+    expect(observedRuntime).toBeUndefined();
+    expect(observedValidationRuntime).toBeUndefined();
   });
 
   it('enforces configured concurrency limits at the execution boundary', async () => {

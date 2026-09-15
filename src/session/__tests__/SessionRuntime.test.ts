@@ -13,7 +13,7 @@ import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecut
 import { SandboxService } from '../../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
 import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
-import { createTool } from '../../tools/core/createTool.js';
+import { createTool, defineTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { ToolKind } from '../../tools/behavior.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
@@ -187,6 +187,52 @@ describe('SessionRuntime', () => {
       },
     });
 
+    await runtime.close();
+  });
+
+  it('injects only services declared by a session tool definition', async () => {
+    let injectedSubagentRegistry: unknown;
+    let leakedSkillRegistry: unknown;
+    let injectedRuntime: unknown;
+    const serviceTool = defineTool({
+      name: 'ServiceTool',
+      description: 'Reads an explicitly declared service',
+      parameters: Type.Object({}),
+      services: ['subagentRegistry'] as const,
+      requiresRuntime: true,
+      execute(_params, context) {
+        injectedSubagentRegistry = context.subagentRegistry;
+        injectedRuntime = context.runtime;
+        // @ts-expect-error The tool did not declare the skillRegistry service.
+        leakedSkillRegistry = context.skillRegistry;
+        return completeToolExecution({ status: 'success', model: 'ok' });
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('service-tool-session'),
+      createOptions({ tools: [serviceTool] }),
+      { models: [] },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(
+      executionPipeline.execute('ServiceTool', {}, {}),
+    );
+
+    expect(result.status).toBe('success');
+    expect(injectedSubagentRegistry).toMatchObject({
+      getAllNames: expect.any(Function),
+    });
+    expect(leakedSkillRegistry).toBeUndefined();
+    expect(injectedRuntime).toMatchObject({
+      assertExecutionLease: expect.any(Function),
+      runWithExecutionLease: expect.any(Function),
+    });
     await runtime.close();
   });
 

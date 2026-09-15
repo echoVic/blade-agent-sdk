@@ -1,5 +1,7 @@
+import Type from 'typebox';
 import { describe, expect, it, vi } from 'vitest';
 import { PermissionMode } from '../../../types/constants.js';
+import { defineTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../ToolRegistry.js';
 
 function createTool(
@@ -40,6 +42,22 @@ function createTool(
 }
 
 describe('ToolRegistry ordering', () => {
+  it('skips definitions when a declared service is unavailable', () => {
+    const registry = new ToolRegistry();
+    const definition = defineTool({
+      name: 'MemoryBackedTool',
+      description: 'Requires memory services',
+      parameters: Type.Object({}),
+      services: ['memoryManager'] as const,
+      async execute() {
+        return {};
+      },
+    });
+
+    expect(registry.registerDefinition(definition)).toBeUndefined();
+    expect(registry.has('MemoryBackedTool')).toBe(false);
+  });
+
   it('rejects tools without a valid side-effect contract', () => {
     const registry = new ToolRegistry();
 

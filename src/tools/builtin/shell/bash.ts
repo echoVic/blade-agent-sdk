@@ -37,6 +37,7 @@ export const bashTool = createTool({
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
+  requiresRuntime: true,
   interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
 

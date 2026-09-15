@@ -8,6 +8,7 @@ export type {
 } from './catalog/index.js';
 export { ToolCatalog } from './catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './core/createTool.js';
+export type { ToolServiceMap, ToolServiceName } from './services.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,

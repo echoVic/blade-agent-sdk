@@ -20,15 +20,17 @@ import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { SkillRegistry } from '../skills/SkillRegistry.js';
-import { getBuiltinTools } from '../tools/builtin/index.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { SnapshotManager } from '../tools/builtin/file/SnapshotManager.js';
+import { getBuiltinTools } from '../tools/builtin/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { skillTool } from '../tools/builtin/system/skill.js';
 import { TaskStore } from '../tools/builtin/task/TaskStore.js';
 import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
-import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
-import { toolFromDefinition } from '../tools/core/createTool.js';
+import {
+  ToolCatalog,
+  type ToolSourceInfo,
+} from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/tool.js';
@@ -68,10 +70,6 @@ function isRuntimeTool(tool: SessionTool): tool is Tool {
   );
 }
 
-function toRuntimeTool(tool: SessionTool): Tool {
-  return isRuntimeTool(tool) ? tool : toolFromDefinition(tool);
-}
-
 function resolveStorageRoot(storagePath?: string): string | undefined {
   if (!storagePath) {
     return undefined;
@@ -96,8 +94,8 @@ export class SessionRuntime {
   private readonly mcpRegistry: McpRegistry;
   private readonly subagentRegistry: SubagentRegistry;
   private readonly skillRegistry: SkillRegistry;
-  private readonly toolRegistry = new ToolRegistry();
-  private readonly toolCatalog = new ToolCatalog(this.toolRegistry);
+  private readonly toolRegistry: ToolRegistry;
+  private readonly toolCatalog: ToolCatalog;
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
   private readonly backgroundAgentManager: BackgroundAgentManager;
@@ -147,6 +145,13 @@ export class SessionRuntime {
       },
       options.providerRegistry,
     );
+    this.toolRegistry = new ToolRegistry({
+      subagentRegistry: this.subagentRegistry,
+      mcpRegistry: this.mcpRegistry,
+      skillRegistry: this.skillRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+    });
+    this.toolCatalog = new ToolCatalog(this.toolRegistry);
     this.contextManager = new ContextManager(
       {
         storage: {
@@ -492,18 +497,20 @@ export class SessionRuntime {
     if (!this.options.tools || this.options.tools.length === 0) {
       return;
     }
-    const tools = this.options.tools.map(toRuntimeTool);
-    this.registerTools(tools);
+    const source = {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'session',
+    } as const;
+    for (const tool of this.options.tools) {
+      this.registerSessionTool(tool, source);
+    }
   }
 
   private registerPluginTools(): void {
     const registrations = this.pluginHost.getTools();
     for (const { pluginName, tool } of registrations) {
-      const filteredTools = this.filterTools([toRuntimeTool(tool)]);
-      if (filteredTools.length === 0) {
-        continue;
-      }
-      this.toolCatalog.registerAll(filteredTools, {
+      this.registerSessionTool(tool, {
         kind: 'custom',
         trustLevel: 'workspace',
         sourceId: `plugin:${pluginName}`,
@@ -568,28 +575,26 @@ export class SessionRuntime {
     }
   }
 
-  private registerTools(tools: Tool[]): void {
-    const filteredTools = this.filterTools(tools);
-    if (filteredTools.length === 0) {
+  private registerSessionTool(tool: SessionTool, source: ToolSourceInfo): void {
+    if (!this.isToolAllowed(tool.name)) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools, {
-      kind: 'custom',
-      trustLevel: 'workspace',
-      sourceId: 'session',
-    });
+    if (isRuntimeTool(tool)) {
+      this.toolCatalog.register(tool, source);
+      return;
+    }
+    this.toolCatalog.registerDefinition(tool, source);
   }
 
   private filterTools(tools: Tool[]): Tool[] {
-    const allowedTools = this.options.allowedTools;
-    const disallowedTools = new Set(this.options.disallowedTools || []);
+    return tools.filter((tool) => this.isToolAllowed(tool.name));
+  }
 
-    return tools.filter((tool) => {
-      if (allowedTools !== undefined && !allowedTools.includes(tool.name)) {
-        return false;
-      }
-      return !disallowedTools.has(tool.name);
-    });
+  private isToolAllowed(name: string): boolean {
+    if (this.options.allowedTools !== undefined && !this.options.allowedTools.includes(name)) {
+      return false;
+    }
+    return !this.options.disallowedTools?.includes(name);
   }
 
   private createPermissionHandler(): PermissionHandler | undefined {

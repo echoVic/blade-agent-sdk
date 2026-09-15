@@ -264,6 +264,7 @@ export type {
 } from './tools/catalog/index.js';
 export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+export type { ToolServiceMap, ToolServiceName } from './tools/services.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,

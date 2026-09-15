@@ -119,6 +119,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     displayName: 'Subagent Scheduler',
     kind: ToolKind.ReadOnly,
     sideEffect: 'non_idempotent',
+    requiresRuntime: true,
     isReadOnly: true,
     isConcurrencySafe: false,
     schema: lazySchema(() =>

@@ -64,10 +64,33 @@ const lookup = defineTool({
 ```
 
 ::: tip
-`kind` 和 `sideEffect` 都可以省略，但如果要写 `kind`，请使用 `ToolKind` 枚举
+`kind` 和 `sideEffect` 都可以省略，但如果要写 `kind`，请使用 `ToolKind` 常量
 （`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk`
 导入：TypeScript 下不接受裸字符串字面量。
 :::
+
+### 按需能力
+
+`services` 声明工具需要的 Session 服务，`execute` 只能访问已声明的服务。
+`requiresRuntime: true` 显式开放执行租约与 fence 能力：
+
+```ts
+const delegated = defineTool({
+  name: 'Delegate',
+  description: '委派任务',
+  parameters: Type.Object({ prompt: Type.String() }),
+  services: ['subagentRegistry'],
+  requiresRuntime: true,
+  async execute({ prompt }, context) {
+    await context.runtime.assertExecutionLease();
+    return { prompt, agents: context.subagentRegistry.getAllNames() };
+  },
+});
+```
+
+合法服务名由 `ToolServiceName` 限定。Session 缺少任一声明服务时不会注册该工具，
+也不会向工具暴露未声明的服务。普通工具的 `execute` 类型和实际运行上下文都没有
+`runtime`。
 
 ## createTool
 

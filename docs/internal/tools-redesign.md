@@ -1,6 +1,6 @@
 # Tools 模块重设计方案
 
-> 状态：设计定稿；§13 第 1-2 步已实施
+> 状态：设计定稿；§13 第 1-3 步已实施
 > 前提：**不考虑向后兼容**（API 面可自由重塑；已持久化的 durable 字符串取值除外）
 > 依据：所有判断均基于当前代码调用点实测（见各节行号引用）
 
@@ -134,6 +134,7 @@ export interface Tool {
   readonly staticBehavior: ToolBehavior;
   readonly exposure: ToolExposure;
   readonly maxResultSizeChars: number;
+  readonly requiresRuntime: boolean;
   readonly declaration: FunctionDeclaration; // 预计算 {name,description,jsonSchema,strict}，取代 getFunctionDeclaration()
 
   readonly prepare: (raw: unknown) => ToolInvocation;      // 取代 build()
@@ -259,10 +260,12 @@ export interface ToolServiceMap {
   memoryManager: MemoryManager;
   mcpRegistry: McpRegistry;
   skillRegistry: SkillRegistry;
-  backgroundAgentManager: BackgroundAgentManager;
-  discoverableCatalog: DiscoverableCatalogView;   // 窄只读接口，非 registry（见第 8 节）
+  backgroundAgentManager: IBackgroundAgentManager;
 }
 ```
+
+`discoverableCatalog` 在第 4 步随 `DiscoverableCatalogView` 一并加入，避免在接口
+落地前引入占位依赖。
 
 ### 7.2 `defineTool` 声明位
 
@@ -312,10 +315,11 @@ export function defineTool<
 ### 7.3 注册器注入（唯一注入点）
 
 ```typescript
-// src/tools/registry.ts
-register(def: ToolDefinition, source: ToolSource): void {
+// 第 3 步的过渡形态；第 7 步合并容器后收敛回 register
+registerDefinition(def: ToolDefinition, source: ToolSource): Tool | undefined {
   const injected = pick(this.services, def.services ?? []);   // 只取声明的键
-  this.tools.set(def.name, { tool: compile(def, injected), source });
+  if (hasMissingService(injected)) return undefined;
+  return register(compile(def, injected), source);
 }
 ```
 
@@ -440,9 +444,9 @@ defineTool(def)                          // 纯数据 + 依赖声明
 
 1. [x] `behavior.ts` 合并单一 `resolveBehavior` + `ToolBehavior`（字面量值保持一致）。
 2. [x] `ExecutionContext` 三层拆分 + `RuntimeAccess` + `ctx.runtime`（旧顶层字段已删除）。
-3. `ToolServiceMap` + `defineTool` 的 `services`/`requiresRuntime` 声明位 + 注册器注入。
+3. [x] `ToolServiceMap` + `defineTool` 的 `services`/`requiresRuntime` 声明位 + 注册器注入。
 4. `DiscoverableCatalogView` 落地，DiscoverTools 切窄接口；从 context 删 registry/catalog。
-5. 类 A 6 工厂删除改读 `ctx.sessionId`；类 B 5 工厂改 `services`；bash/task 切 `ctx.runtime`，删 `as` 兜底。
+5. 类 A 6 工厂删除改读 `ctx.sessionId`；类 B 5 工厂改 `services`；删剩余 `as` 兜底。
 6. `Tool`/`ToolInvocation` 替换胖接口；Pipeline 改吃不可变 `ToolInvocation`。
 7. `registry.ts` 单容器，删 `ToolCatalog`；exposure 收敛为唯一 owner。
 8. 清死代码（getMetadata/version/category/tag/stats/双暴露）。

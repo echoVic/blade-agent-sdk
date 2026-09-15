@@ -3,7 +3,8 @@ import type Type from 'typebox';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ToolBehavior, ToolKind, ToolSideEffect } from '../behavior.js';
-import type { ExecutionContext } from './execution.js';
+import type { ToolServiceMap, ToolServiceName } from '../services.js';
+import type { ExecutionContext, RuntimeAccess } from './execution.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
@@ -50,9 +51,29 @@ export interface PreparedPermissionMatcher {
   abstractRule?: string;
 }
 
+type ToolDefinitionBaseContext = Pick<
+  ExecutionContext,
+  | 'signal'
+  | 'sessionId'
+  | 'messageId'
+  | 'contextSnapshot'
+  | 'permissionMode'
+  | 'confirmationHandler'
+  | 'bladeConfig'
+>;
+
+type ToolDefinitionContext<
+  TServices extends ToolServiceName,
+  TRequiresRuntime extends boolean,
+> = ToolDefinitionBaseContext &
+  Pick<ToolServiceMap, TServices> &
+  (TRequiresRuntime extends true ? { runtime: RuntimeAccess } : Record<never, never>);
+
 export interface ToolDefinition<
   TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
 > {
   name: string;
   aliases?: string[];
@@ -70,16 +91,23 @@ export interface ToolDefinition<
   category?: string;
   tags?: string[];
   exposure?: ToolExposureConfig;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution<TData>;
+  services?: readonly TServices[];
+  requiresRuntime?: TRequiresRuntime;
+  execute: (
+    params: Type.Static<TSchema>,
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
+  ) => ToolExecution<TData>;
 }
 
 export type ToolDefinitionInput<
   TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
-> = Omit<ToolDefinition<TSchema, TData>, 'execute'> & {
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+> = Omit<ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>, 'execute'> & {
   execute: (
     params: Type.Static<TSchema>,
-    context: ExecutionContext,
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
   ) => ToolExecution<TData> | Promise<TData | ToolResult<TData>>;
 };
 
@@ -89,8 +117,11 @@ export type ToolDefinitionInput<
  * Authoring remains strongly typed; erasure happens only when definitions enter
  * a Session-owned collection and are compiled into runtime Tool instances.
  */
-export type ErasedToolDefinition = Omit<ToolDefinition<Type.TSchema, JsonValue>, 'execute'> & {
-  execute: (params: never, context: ExecutionContext) => ToolExecution<JsonValue>;
+export type ErasedToolDefinition = Omit<
+  ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>,
+  'execute'
+> & {
+  execute: (params: never, context: never) => ToolExecution<JsonValue>;
 };
 
 export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
@@ -105,6 +136,7 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
   strict?: boolean;
   maxResultSizeChars?: number;
   interruptBehavior?: 'cancel' | 'block';
+  requiresRuntime?: boolean;
   schema: ToolSchema<TSchema>;
   description: ToolDescription;
   describe?: ToolDescriptionResolver<Type.Static<TSchema>>;
@@ -139,6 +171,7 @@ export interface Tool<TParams = unknown> {
   readonly strict: boolean;
   readonly maxResultSizeChars: number;
   readonly interruptBehavior: 'cancel' | 'block';
+  readonly requiresRuntime: boolean;
   readonly description: ToolDescription;
   readonly exposure: Required<ToolExposureConfig> & {
     mode: ToolExposureMode;

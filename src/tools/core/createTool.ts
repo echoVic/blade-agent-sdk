@@ -7,7 +7,12 @@ import {
   type ToolBehavior,
   ToolKind,
 } from '../behavior.js';
-import type { ExecutionContext } from '../types/execution.js';
+import {
+  selectToolServices,
+  type ToolServiceName,
+  type ToolServices,
+} from '../services.js';
+import { type ExecutionContext, getRuntimeAccess } from '../types/execution.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
   ErasedToolDefinition,
@@ -44,6 +49,7 @@ interface ToolAssembly<TParams> {
   readonly planningBehavior: ToolBehavior;
   readonly strict: boolean;
   readonly maxResultSizeChars: number;
+  readonly requiresRuntime: boolean;
   readonly description: ToolDescription;
   readonly exposure: { mode: ToolExposureMode; alwaysLoad: boolean; discoveryHint: string };
   readonly version: string;
@@ -84,6 +90,7 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
     strict: assembly.strict,
     maxResultSizeChars: assembly.maxResultSizeChars,
     interruptBehavior: assembly.staticBehavior.interruptBehavior,
+    requiresRuntime: assembly.requiresRuntime,
     description: assembly.description,
     exposure: assembly.exposure,
     version: assembly.version,
@@ -202,6 +209,7 @@ export function createTool<TSchema extends Type.TSchema>(
     planningBehavior,
     strict: config.strict ?? false,
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
+    requiresRuntime: config.requiresRuntime ?? false,
     description: config.description,
     exposure,
     version: config.version || '1.0.0',
@@ -225,7 +233,11 @@ export function createTool<TSchema extends Type.TSchema>(
         }
       : {}),
     invocationDescription: (params: TParams) => resolveDescription(params).short,
-    execute: (params, context) => config.execute(params, context),
+    execute: (params, context) =>
+      config.execute(
+        params,
+        createConfiguredToolContext(context, config.requiresRuntime ?? false),
+      ),
     ...(validateInputFn
       ? {
           validateInput: (params: unknown, context: ExecutionContext) =>
@@ -281,11 +293,23 @@ function formatToolDescription(description: {
  *
  * 用于将用户定义的简化工具转换为内部 Tool 对象
  */
-export function toolFromDefinition<TSchema extends Type.TSchema>(
-  definition: ToolDefinition<TSchema>,
+export function toolFromDefinition<
+  TSchema extends Type.TSchema,
+  TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(
+  definition: ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>,
+  services?: ToolServices,
 ): Tool<Type.Static<TSchema>>;
-export function toolFromDefinition(definition: ErasedToolDefinition): Tool;
-export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
+export function toolFromDefinition(
+  definition: ErasedToolDefinition,
+  services?: ToolServices,
+): Tool;
+export function toolFromDefinition(
+  definition: ErasedToolDefinition,
+  services: ToolServices = {},
+): Tool {
   const description =
     typeof definition.description === 'string'
       ? { short: definition.description }
@@ -304,6 +328,13 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
   if (!staticBehavior) {
     throw new TypeError('Tool behavior could not be resolved');
   }
+  const serviceSelection = selectToolServices(services, definition.services);
+  if (serviceSelection.missing.length > 0) {
+    throw new TypeError(
+      `Tool '${definition.name}' requires unavailable services: ${serviceSelection.missing.join(', ')}`,
+    );
+  }
+  const requiresRuntime = definition.requiresRuntime ?? false;
 
   return assembleTool<unknown>({
     name: definition.name,
@@ -314,6 +345,7 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
     planningBehavior: staticBehavior,
     strict: false,
     maxResultSizeChars: Number.POSITIVE_INFINITY,
+    requiresRuntime,
     description,
     exposure: {
       mode: definition.exposure?.mode ?? 'eager',
@@ -328,7 +360,12 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
     metadataSchema: () => definition.parameters,
     resolveDescription: () => description,
     invocationParams: (params) => input.parse(params),
-    execute: (params, context) => executeErasedDefinition(definition, params, context),
+    execute: (params, context) =>
+      executeErasedDefinition(
+        definition,
+        params,
+        createDefinitionContext(context, serviceSelection.selected, requiresRuntime),
+      ),
     resolveBehavior: () => staticBehavior,
   });
 }
@@ -376,7 +413,36 @@ function executeErasedDefinition(
   context: ExecutionContext,
 ): ToolExecution {
   // Session erases heterogeneous parameter types only after schema validation.
-  return definition.execute(params as never, context);
+  return definition.execute.apply(undefined, [params, context] as never);
+}
+
+function createConfiguredToolContext(
+  context: ExecutionContext,
+  requiresRuntime: boolean,
+): ExecutionContext {
+  const { runtime: _runtime, ...base } = context;
+  return Object.freeze({
+    ...base,
+    ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
+  });
+}
+
+function createDefinitionContext(
+  context: ExecutionContext,
+  services: ToolServices,
+  requiresRuntime: boolean,
+): ExecutionContext & ToolServices {
+  return Object.freeze({
+    signal: context.signal,
+    sessionId: context.sessionId,
+    messageId: context.messageId,
+    contextSnapshot: context.contextSnapshot,
+    permissionMode: context.permissionMode,
+    confirmationHandler: context.confirmationHandler,
+    bladeConfig: context.bladeConfig,
+    ...services,
+    ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
+  });
 }
 
 /**
@@ -394,9 +460,14 @@ function executeErasedDefinition(
  * });
  * ```
  */
-export function defineTool<TSchema extends Type.TSchema, TData extends JsonValue = JsonValue>(
-  definition: ToolDefinitionInput<TSchema, TData>,
-): ToolDefinition<TSchema, TData> {
+export function defineTool<
+  TSchema extends Type.TSchema,
+  TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(
+  definition: ToolDefinitionInput<TSchema, TData, TServices, TRequiresRuntime>,
+): ToolDefinition<TSchema, TData, TServices, TRequiresRuntime> {
   if (definition.sideEffect !== undefined && !isToolSideEffect(definition.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }

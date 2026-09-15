@@ -69,6 +69,8 @@ import type {
   ToolProgress,
   ToolResult,
   ToolScheduledLifecycle,
+  ToolServiceMap,
+  ToolServiceName,
   ToolSettledLifecycle,
   ToolYield,
   UserMessageContent,
@@ -279,6 +281,7 @@ describe('root exports', () => {
     expectTypeOf<ExecutionContext>().not.toHaveProperty('executionFence');
     expectTypeOf<ExecutionContext>().not.toHaveProperty('assertExecutionLease');
     expectTypeOf<ExecutionContext>().not.toHaveProperty('runWithExecutionLease');
+    expectTypeOf<ToolServiceName>().toEqualTypeOf<keyof ToolServiceMap>();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'

@@ -4,6 +4,8 @@ import Type from 'typebox';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { ToolDefinitionInput } from '../../index.js';
 import { defineTool } from '../../index.js';
+import type { ToolServiceMap } from '../services.js';
+import type { RuntimeAccess } from '../types/execution.js';
 import type { ErasedToolDefinition } from '../types/tool.js';
 
 describe('Tool type ownership', () => {
@@ -38,6 +40,38 @@ describe('Tool type ownership', () => {
     expectTypeOf<Parameters<typeof definition.execute>[0]>().toEqualTypeOf<{
       query: string;
     }>();
+  });
+
+  it('exposes only declared services and runtime capabilities to execute', () => {
+    defineTool({
+      name: 'PrivilegedDefinition',
+      description: 'Checks authoring context inference',
+      parameters: Type.Object({}),
+      services: ['subagentRegistry'] as const,
+      requiresRuntime: true,
+      async execute(_params, context) {
+        expectTypeOf(context.subagentRegistry).toEqualTypeOf<
+          ToolServiceMap['subagentRegistry']
+        >();
+        expectTypeOf(context.runtime).toEqualTypeOf<RuntimeAccess>();
+        // @ts-expect-error memoryManager was not declared.
+        context.memoryManager;
+        // @ts-expect-error registry access is internal to the execution pipeline.
+        context.toolRegistry;
+        return {};
+      },
+    });
+
+    defineTool({
+      name: 'OrdinaryDefinition',
+      description: 'Does not request runtime access',
+      parameters: Type.Object({}),
+      async execute(_params, context) {
+        // @ts-expect-error runtime requires an explicit declaration.
+        context.runtime;
+        return {};
+      },
+    });
   });
 
   it('owns heterogeneous definition erasure in the Tool module', () => {
@@ -100,7 +134,7 @@ describe('Tool type ownership', () => {
     expect(combined).not.toMatch(/schema as \(\) => TSchema/);
     expect(combined).not.toMatch(/current as Record<string, unknown>/);
     expect(createToolSource).toContain('function executeErasedDefinition');
-    expect(createToolSource.match(/\bparams as never\b/g)).toHaveLength(1);
+    expect(createToolSource.match(/\[params, context\] as never/g)).toHaveLength(1);
     expect(createToolSource.match(/\bas JSONSchema7\b/g)).toHaveLength(1);
     expect(toolInputSource.match(/\bas CompiledToolInput<TSchema>/g)).toHaveLength(1);
   });

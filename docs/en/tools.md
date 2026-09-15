@@ -67,9 +67,33 @@ const lookup = defineTool({
 ```
 
 `kind` and `sideEffect` may both be omitted. When you do set `kind`, use the
-`ToolKind` enum (`ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`)
+`ToolKind` constants (`ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`)
 imported from `@blade-ai/agent-sdk`; TypeScript does not accept raw string
 literals for it.
+
+### Capabilities on demand
+
+Use `services` to declare Session services required by a tool. Its `execute`
+context exposes only declared services. Set `requiresRuntime: true` to request
+execution lease and fencing capabilities:
+
+```ts
+const delegated = defineTool({
+  name: 'Delegate',
+  description: 'Delegate a task',
+  parameters: Type.Object({ prompt: Type.String() }),
+  services: ['subagentRegistry'],
+  requiresRuntime: true,
+  async execute({ prompt }, context) {
+    await context.runtime.assertExecutionLease();
+    return { prompt, agents: context.subagentRegistry.getAllNames() };
+  },
+});
+```
+
+`ToolServiceName` defines the available service names. If a Session lacks any
+declared service, it does not register the tool. Undeclared services are not
+exposed, and ordinary tools receive no `runtime` property.
 
 ## createTool
 

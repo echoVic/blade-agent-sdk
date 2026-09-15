@@ -93,6 +93,7 @@ export type {
   StreamOptions,
 } from '../session/types.js';
 export { InputPriority } from '../session/types.js';
+export type { ToolServiceMap, ToolServiceName } from '../tools/services.js';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,

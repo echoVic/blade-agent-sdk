@@ -1,8 +1,17 @@
 import { PermissionMode } from '../../types/constants.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
-import { searchTools } from '../search/toolSearch.js';
 import { isToolSideEffect, resolveBehavior } from '../behavior.js';
-import type { FunctionDeclaration, Tool } from '../types/tool.js';
+import { toolFromDefinition } from '../core/createTool.js';
+import { searchTools } from '../search/toolSearch.js';
+import {
+  selectToolServices,
+  type ToolServices,
+} from '../services.js';
+import type {
+  ErasedToolDefinition,
+  FunctionDeclaration,
+  Tool,
+} from '../types/tool.js';
 
 const MCP_TOOL_NAME_PREFIX = 'mcp__';
 
@@ -19,6 +28,19 @@ export class ToolRegistry {
   private sortedAllToolsCache?: Tool[];
   private sortedBuiltinToolsCache?: Tool[];
   private sortedMcpToolsCache?: Tool[];
+
+  constructor(private readonly services: ToolServices = {}) {}
+
+  registerDefinition(definition: ErasedToolDefinition): Tool | undefined {
+    const selection = selectToolServices(this.services, definition.services);
+    if (selection.missing.length > 0) {
+      return undefined;
+    }
+
+    const tool = toolFromDefinition(definition, selection.selected);
+    this.register(tool);
+    return tool;
+  }
 
   /**
    * 注册内置工具

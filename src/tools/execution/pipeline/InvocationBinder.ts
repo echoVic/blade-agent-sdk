@@ -3,6 +3,7 @@ import type { ToolInvocation } from '../../types/tool.js';
 import type { PipelineExecutionState } from './state.js';
 import { buildPermissionSignature, toParamsRecord } from './state.js';
 import type { TerminalCleanupGuard } from './TerminalCleanupGuard.js';
+import { getToolContext } from './toolContext.js';
 
 /**
  * Keeps `state` in sync with the tool's invocation object.
@@ -44,8 +45,9 @@ export class InvocationBinder {
     if (!invocation?.validate) {
       return undefined;
     }
+    const toolContext = getToolContext(state.tool, state.context);
     const validationError = await this.guard.awaitPermissionCallback(
-      () => invocation.validate?.(state.context),
+      () => invocation.validate?.(toolContext),
       state.context.signal,
     );
     if (!validationError) {

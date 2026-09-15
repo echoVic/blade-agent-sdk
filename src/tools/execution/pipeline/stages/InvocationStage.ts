@@ -6,6 +6,7 @@ import { ToolErrorType } from '../../../types/result.js';
 import { createAbortedResult, createExecutionFailureResult } from '../results.js';
 import type { PipelineExecutionState } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
+import { getToolContext } from '../toolContext.js';
 
 /** Hard ceiling on how long a caller waits for a tool generator to close. */
 export const MAX_TOOL_CLEANUP_WAIT_MS = 5_000;
@@ -62,7 +63,7 @@ export class InvocationStage {
       ? AbortSignal.any([state.context.signal, timeoutController.signal])
       : timeoutController.signal;
     const execution = state.invocation.execute(executionSignal, {
-      ...state.context,
+      ...getToolContext(state.tool, state.context),
       signal: executionSignal,
     });
 

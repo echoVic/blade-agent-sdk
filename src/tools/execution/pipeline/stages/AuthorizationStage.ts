@@ -15,6 +15,7 @@ import type { PermissionRequestFactory } from '../PermissionRequestFactory.js';
 import { createAbortedResult } from '../results.js';
 import { addConfirmationReason, type PipelineExecutionState } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
+import { getToolContext } from '../toolContext.js';
 
 export interface AuthorizationStageOptions {
   permissionConfig: PermissionsConfig;
@@ -54,10 +55,11 @@ export class AuthorizationStage {
       if (!invocation) {
         throw new Error(`Failed to build invocation for tool: ${state.tool.name}`);
       }
+      const toolContext = getToolContext(state.tool, state.context);
 
       const validationError = invocation.validate
         ? await this.guard.awaitPermissionCallback(
-            () => invocation.validate?.(state.context),
+            () => invocation.validate?.(toolContext),
             state.context.signal,
           )
         : undefined;
@@ -69,7 +71,7 @@ export class AuthorizationStage {
 
       const toolPermissionResult = state.tool.checkPermissions
         ? await this.guard.awaitPermissionCallback(
-            () => state.tool.checkPermissions?.(invocation.params, state.context),
+            () => state.tool.checkPermissions?.(invocation.params, toolContext),
             state.context.signal,
           )
         : undefined;

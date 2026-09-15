@@ -1,7 +1,11 @@
 import type { PermissionMode } from '../../types/constants.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
-import type { FunctionDeclaration, Tool } from '../types/tool.js';
+import type {
+  ErasedToolDefinition,
+  FunctionDeclaration,
+  Tool,
+} from '../types/tool.js';
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
@@ -70,6 +74,21 @@ export class ToolCatalog implements ToolCatalogReadView {
     for (const tool of tools) {
       this.register(tool, source);
     }
+  }
+
+  registerDefinition(
+    definition: ErasedToolDefinition,
+    source: ToolSourceInfo = {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'custom',
+    },
+  ): Tool | undefined {
+    const tool = this.registry.registerDefinition(definition);
+    if (tool) {
+      this.entries.set(tool.name, { tool, source });
+    }
+    return tool;
   }
 
   registerMcpTool<TParams>(
