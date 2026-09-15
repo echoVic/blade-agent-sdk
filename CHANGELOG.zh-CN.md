@@ -2,6 +2,14 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.12] - 2026-09-15
+
+### 重构
+
+- 将 Session 编排拆分为有界的生命周期、请求、持久化、状态与流模块，将 SessionRunner 所有权迁至 advanced 入口，并定义 blade-tool-* 包约定。
+- 减少 TypeBox 工具编译、MCP schema 适配、Session 工具识别与内置 Memory 工具中的临时类型强转，并将不可避免的类型擦除断言收口到命名的内部边界。
+- 明确 Agent 运行时类型所有权，将内部执行上下文拆分为窄契约，以 TypeBox 统一工具参数推导与运行时校验，并对齐 wire-safe 用户输入与 sandbox context schema。
+
 ## [7.4.11] - 2026-09-14
 
 ### 新功能

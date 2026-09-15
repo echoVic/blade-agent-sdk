@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Split Session orchestration into bounded lifecycle, request, durability, state, and stream modules, move SessionRunner ownership to the advanced entrypoint, and define the blade-tool-* package convention.",
-  "zh-CN": "将 Session 编排拆分为有界的生命周期、请求、持久化、状态与流模块，将 SessionRunner 所有权迁至 advanced 入口，并定义 blade-tool-* 包约定。"
-}

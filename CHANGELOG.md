@@ -2,6 +2,14 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.12] - 2026-09-15
+
+### Refactoring
+
+- Split Session orchestration into bounded lifecycle, request, durability, state, and stream modules, move SessionRunner ownership to the advanced entrypoint, and define the blade-tool-* package convention.
+- Reduce ad hoc type assertions across TypeBox tool compilation, MCP schema adapters, Session tool detection, and built-in memory tools while keeping unavoidable erasure casts at named internal boundaries.
+- Clarify Agent runtime type ownership, split the internal execution context into narrow contracts, standardize tool authoring on TypeBox with one schema for inference and runtime validation, and align wire-safe user input and sandbox context schemas.
+
 ## [7.4.11] - 2026-09-14
 
 ### Features

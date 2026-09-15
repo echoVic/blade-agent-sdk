@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Clarify Agent runtime type ownership, split the internal execution context into narrow contracts, standardize tool authoring on TypeBox with one schema for inference and runtime validation, and align wire-safe user input and sandbox context schemas.",
-  "zh-CN": "明确 Agent 运行时类型所有权，将内部执行上下文拆分为窄契约，以 TypeBox 统一工具参数推导与运行时校验，并对齐 wire-safe 用户输入与 sandbox context schema。"
-}
