@@ -107,18 +107,6 @@ Operations:
           };
         }
       }
-
-      return {
-        status: 'error',
-        model: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        },
-        metadata: {
-          summary: '不支持的操作',
-        },
-      };
     },
   });
 }

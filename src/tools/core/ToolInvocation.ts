@@ -87,10 +87,11 @@ export class UnifiedToolInvocation<TParams = JsonObject> implements ToolInvocati
 }
 
 function isToolExecution(value: unknown): value is ToolExecution {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    Symbol.asyncIterator in value &&
-    typeof (value as { next?: unknown }).next === 'function'
+    typeof Reflect.get(value, 'next') === 'function' &&
+    typeof Reflect.get(value, Symbol.asyncIterator) === 'function'
   );
 }

@@ -10,5 +10,11 @@ export function lazySchema<TSchema extends Type.TSchema>(
 export function resolveToolSchema<TSchema extends Type.TSchema>(
   schema: ToolSchema<TSchema>,
 ): TSchema {
-  return typeof schema === 'function' ? (schema as () => TSchema)() : schema;
+  return isSchemaFactory(schema) ? schema() : schema;
+}
+
+function isSchemaFactory<TSchema extends Type.TSchema>(
+  schema: ToolSchema<TSchema>,
+): schema is () => TSchema {
+  return typeof schema === 'function';
 }

@@ -125,11 +125,7 @@ export async function createSdkMcpServer(config: {
     tools: [...tools.values()].map(({ definition }) => ({
       name: definition.name,
       description: definition.description,
-      inputSchema: definition.schema as {
-        type: 'object';
-        properties?: Record<string, object>;
-        required?: string[];
-      },
+      inputSchema: definition.schema,
     })),
   }));
   server.server.setRequestHandler(CallToolRequestSchema, async (request) => {

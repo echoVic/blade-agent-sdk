@@ -3,7 +3,6 @@ import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/kind.js';
-import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryWriteSchema = Type.Union([
@@ -68,18 +67,6 @@ Memory types: user, feedback, project, reference`,
           };
         }
       }
-
-      return {
-        status: 'error',
-        model: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        },
-        metadata: {
-          summary: '不支持的操作',
-        },
-      };
     },
   });
 }

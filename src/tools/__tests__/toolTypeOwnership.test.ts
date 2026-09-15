@@ -75,4 +75,33 @@ describe('Tool type ownership', () => {
     expect(toolTypes).not.toMatch(/from ['"]zod['"]/);
     expect(toolTypes).toMatch(/Type\.Static/);
   });
+
+  it('keeps TypeBox compilation and erasure boundaries free of ad hoc casts', () => {
+    const createToolSource = readFileSync(resolve('src/tools/core/createTool.ts'), 'utf8');
+    const toolInputSource = readFileSync(resolve('src/tools/validation/toolInput.ts'), 'utf8');
+    const sources = [
+      'src/tools/core/createTool.ts',
+      'src/mcp/createMcpTool.ts',
+      'src/mcp/SdkMcpServer.ts',
+      'src/session/SessionRuntime.ts',
+      'src/tools/builtin/memory/memoryRead.ts',
+      'src/tools/builtin/memory/memoryWrite.ts',
+      'src/tools/validation/lazySchema.ts',
+      'src/tools/validation/toolInput.ts',
+    ].map((file) => readFileSync(resolve(file), 'utf8'));
+    const combined = sources.join('\n');
+
+    expect(combined).not.toMatch(/parameters as JSONSchema7/);
+    expect(combined).not.toMatch(/params as JsonObject/);
+    expect(combined).not.toMatch(/inputSchema as Type\.TUnsafe/);
+    expect(combined).not.toMatch(/definition\.schema as \{/);
+    expect(combined).not.toMatch(/const candidate = tool as \{/);
+    expect(combined).not.toMatch(/params as \{ operation: string \}/);
+    expect(combined).not.toMatch(/schema as \(\) => TSchema/);
+    expect(combined).not.toMatch(/current as Record<string, unknown>/);
+    expect(createToolSource).toContain('function executeErasedDefinition');
+    expect(createToolSource.match(/\bparams as never\b/g)).toHaveLength(1);
+    expect(createToolSource.match(/\bas JSONSchema7\b/g)).toHaveLength(1);
+    expect(toolInputSource.match(/\bas CompiledToolInput<TSchema>/g)).toHaveLength(1);
+  });
 });

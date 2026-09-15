@@ -1,22 +1,22 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
-import type { JsonObject, JsonValue } from '../../types/json.js';
+import type { JsonValue } from '../../types/json.js';
 import type { ExecutionContext } from '../types/execution.js';
 import type { ToolBehavior } from '../types/kind.js';
 import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
+  ErasedToolDefinition,
   Tool,
   ToolConfig,
   ToolDefinition,
   ToolDefinitionInput,
   ToolDescription,
-  ErasedToolDefinition,
   ToolExposureMode,
   ToolInvocation,
 } from '../types/tool.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
-import { compileToolInput, type CompiledToolInput } from '../validation/toolInput.js';
+import { type CompiledToolInput, compileToolInput } from '../validation/toolInput.js';
 import { UnifiedToolInvocation } from './ToolInvocation.js';
 
 /**
@@ -209,7 +209,7 @@ export function createTool<TSchema extends Type.TSchema>(
       }
       return cachedStaticDescriptionText;
     },
-    functionSchema: () => getSchema() as JSONSchema7,
+    functionSchema: () => toFunctionSchema(getSchema()),
     metadataSchema: () => getSchema(),
     resolveDescription: (params?: unknown) =>
       resolveDescription(params === undefined ? undefined : getInput().parse(params)),
@@ -286,9 +286,7 @@ export function toolFromDefinition<TSchema extends Type.TSchema>(
   definition: ToolDefinition<TSchema>,
 ): Tool<Type.Static<TSchema>>;
 export function toolFromDefinition(definition: ErasedToolDefinition): Tool;
-export function toolFromDefinition(
-  definition: ToolDefinition<Type.TSchema> | ErasedToolDefinition,
-): Tool {
+export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
   const description =
     typeof definition.description === 'string'
       ? { short: definition.description }
@@ -322,11 +320,11 @@ export function toolFromDefinition(
     category: definition.category,
     tags: definition.tags || [],
     declarationDescription: () => formatToolDescription(description),
-    functionSchema: () => definition.parameters as JSONSchema7,
+    functionSchema: () => toFunctionSchema(definition.parameters),
     metadataSchema: () => definition.parameters,
     resolveDescription: () => description,
     invocationParams: (params) => input.parse(params),
-    execute: (params, context) => definition.execute(params as never, context),
+    execute: (params, context) => executeErasedDefinition(definition, params, context),
     getBehaviorHint: () => staticBehavior,
     resolveBehavior: () => staticBehavior,
   });
@@ -338,7 +336,7 @@ function inferAffectedPaths(params: unknown): string[] {
   }
 
   const candidates = new Set<string>();
-  for (const [key, value] of Object.entries(params as JsonObject)) {
+  for (const [key, value] of Object.entries(params)) {
     if (typeof value === 'string' && isPathLikeKey(key)) {
       const normalized = value.trim();
       if (normalized) {
@@ -367,6 +365,15 @@ function isPathLikeKey(key: string): boolean {
     key === 'file' ||
     key === 'directory'
   );
+}
+
+function executeErasedDefinition(
+  definition: ErasedToolDefinition,
+  params: unknown,
+  context: ExecutionContext,
+): ToolExecution {
+  // Session erases heterogeneous parameter types only after schema validation.
+  return definition.execute(params as never, context);
 }
 
 /**
@@ -429,10 +436,16 @@ function isToolResult<TData extends JsonValue>(
 }
 
 function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is ToolExecution<TData> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { next?: unknown }).next === 'function' &&
-    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
+    typeof Reflect.get(value, 'next') === 'function' &&
+    typeof Reflect.get(value, Symbol.asyncIterator) === 'function'
   );
+}
+
+/** TypeBox schemas are JSON Schema values; this is their single model boundary. */
+function toFunctionSchema(schema: Type.TSchema): JSONSchema7 {
+  return schema as JSONSchema7;
 }

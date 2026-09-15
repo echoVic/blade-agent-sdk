@@ -61,15 +61,10 @@ function isSdkMcpServerHandle(
 }
 
 function isRuntimeTool(tool: SessionTool): tool is Tool {
-  const candidate = tool as {
-    build?: unknown;
-    execute?: unknown;
-    getFunctionDeclaration?: unknown;
-  };
   return (
-    typeof candidate.build === 'function' &&
-    typeof candidate.execute === 'function' &&
-    typeof candidate.getFunctionDeclaration === 'function'
+    typeof Reflect.get(tool, 'build') === 'function' &&
+    typeof Reflect.get(tool, 'execute') === 'function' &&
+    typeof Reflect.get(tool, 'getFunctionDeclaration') === 'function'
   );
 }
 

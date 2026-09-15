@@ -25,7 +25,7 @@ export function createMcpTool(
   } else {
     try {
       assertResolvableLocalRefs(toolDef.inputSchema);
-      parameters = toolDef.inputSchema as Type.TUnsafe<JsonObject>;
+      parameters = Type.Unsafe<JsonObject>(toolDef.inputSchema);
       compileToolInput(parameters);
     } catch (error) {
       console.warn(`[createMcpTool] Schema 编译失败，使用降级 schema: ${toolDef.name}`, error);
@@ -127,11 +127,11 @@ function assertResolvableLocalRefs(schema: object): void {
       return;
     }
 
-    const record = value as Record<string, unknown>;
-    if (typeof record.$ref === 'string') {
-      resolveLocalRef(record.$ref, schema);
+    const ref = Reflect.get(value, '$ref');
+    if (typeof ref === 'string') {
+      resolveLocalRef(ref, schema);
     }
-    for (const child of Object.values(record)) {
+    for (const child of Object.values(value)) {
       visit(child);
     }
   };
@@ -152,7 +152,7 @@ function resolveLocalRef(ref: string, rootSchema: object): unknown {
     if (typeof current !== 'object' || current === null || !(segment in current)) {
       throw new Error(`Unable to resolve schema ref: ${ref}`);
     }
-    current = (current as Record<string, unknown>)[segment];
+    current = Reflect.get(current, segment);
   }
   return current;
 }

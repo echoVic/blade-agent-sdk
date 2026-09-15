@@ -1,0 +1,5 @@
+{
+  "type": "refactor",
+  "en": "Reduce ad hoc type assertions across TypeBox tool compilation, MCP schema adapters, Session tool detection, and built-in memory tools while keeping unavoidable erasure casts at named internal boundaries.",
+  "zh-CN": "减少 TypeBox 工具编译、MCP schema 适配、Session 工具识别与内置 Memory 工具中的临时类型强转，并将不可避免的类型擦除断言收口到命名的内部边界。"
+}

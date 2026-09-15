@@ -53,10 +53,10 @@ export function compileToolInput<TSchema extends Type.TSchema>(
       if (!valid) {
         throw formatValidationError(errors, withDefaults);
       }
-      return validator.Parse(withDefaults) as Type.Static<TSchema>;
+      return validator.Parse(withDefaults);
     },
   };
-  compiledInputs.set(schema, compiled as CompiledToolInput<Type.TSchema>);
+  compiledInputs.set(schema, compiled);
   return compiled;
 }
 
@@ -102,7 +102,7 @@ function getValueAtPath(value: unknown, instancePath: string): unknown {
     if (typeof current !== 'object' || current === null) {
       return undefined;
     }
-    current = (current as Record<string, unknown>)[segment];
+    current = Reflect.get(current, segment);
   }
   return current;
 }
