@@ -4,7 +4,7 @@ import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
 import { createTool } from '../../../core/createTool.js';
 import { ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
-import { ToolKind } from '../../../types/kind.js';
+import { ToolKind } from '../../../behavior.js';
 import {
   collectToolExecution,
   completeToolExecution,

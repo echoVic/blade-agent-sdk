@@ -1,6 +1,6 @@
 import type { PermissionMode } from '../../../types/constants.js';
 import type { PermissionHandlerRequest } from '../../../types/permissions.js';
-import { isReadOnlyKind, ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import type { ApprovalLedger } from './ApprovalLedger.js';
 import type { PipelineExecutionState } from './state.js';
 
@@ -51,8 +51,9 @@ export class PermissionRequestFactory {
     const resolvedBehavior = state.resolvedBehavior;
     return {
       sideEffect: resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
-      isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
-      isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? isReadOnlyKind(toolKind),
+      isReadOnly: resolvedBehavior?.isReadOnly ?? toolKind === ToolKind.ReadOnly,
+      isConcurrencySafe:
+        resolvedBehavior?.isConcurrencySafe ?? toolKind === ToolKind.ReadOnly,
       isDestructive: resolvedBehavior?.isDestructive ?? false,
       signature: state.permissionSignature,
       description,

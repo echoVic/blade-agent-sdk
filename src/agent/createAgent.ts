@@ -11,7 +11,7 @@ import type {
   SessionOptions,
   SessionTool,
 } from '../session/types.js';
-import type { ToolKind } from '../tools/types/kind.js';
+import type { ToolKind } from '../tools/behavior.js';
 import type { PermissionDecision } from '../types/constants.js';
 import { PermissionMode } from '../types/constants.js';
 import type {

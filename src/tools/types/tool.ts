@@ -2,8 +2,8 @@ import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
+import type { ToolBehavior, ToolKind, ToolSideEffect } from '../behavior.js';
 import type { ExecutionContext } from './execution.js';
-import type { ToolBehavior, ToolKind, ToolSideEffect } from './kind.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
@@ -118,8 +118,9 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
     params: Type.Static<TSchema>,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params: Type.Static<TSchema>) => Partial<ToolBehavior> | ToolBehavior;
-  resolveBehaviorHint?: () => Partial<ToolBehavior> | ToolBehavior;
+  resolveBehavior?: (
+    params?: Type.Static<TSchema>,
+  ) => Partial<ToolBehavior> | ToolBehavior;
   version?: string;
   category?: string;
   tags?: string[];
@@ -160,7 +161,6 @@ export interface Tool<TParams = unknown> {
     params: unknown,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params: unknown) => ToolBehavior;
-  getBehaviorHint?: () => ToolBehavior;
+  resolveBehavior?: (params?: unknown) => ToolBehavior;
   preparePermissionMatcher?: (params: unknown) => PreparedPermissionMatcher;
 }

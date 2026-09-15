@@ -130,7 +130,7 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from '../tools/types/index.js';
-export { ToolKind, ToolSideEffect } from '../tools/types/kind.js';
+export { ToolKind, ToolSideEffect } from '../tools/behavior.js';
 export {
   HookEvent,
   MessageRole,

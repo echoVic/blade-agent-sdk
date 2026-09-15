@@ -1,6 +1,6 @@
 import type { ToolEffect } from '../tools/types/effects.js';
-import type { ToolKind, ToolSideEffect } from '../tools/types/kind.js';
-import { ToolKind as ToolKindValue } from '../tools/types/kind.js';
+import type { ToolKind, ToolSideEffect } from '../tools/behavior.js';
+import { ToolKind as ToolKindValue } from '../tools/behavior.js';
 import {
   SensitiveFileDetector,
   SensitivityLevel,

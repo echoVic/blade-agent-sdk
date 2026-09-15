@@ -1,6 +1,6 @@
 import { SdkError } from '../../errors/SdkError.js';
 import type { ModelIdentity } from '../../model/identity.js';
-import type { ToolSideEffect } from '../../tools/types/kind.js';
+import type { ToolSideEffect } from '../../tools/behavior.js';
 import {
   type CommandId,
   EventId,

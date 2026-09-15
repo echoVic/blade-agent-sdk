@@ -5,7 +5,7 @@ import { DurableExecutionLeaseError } from '../../session/events/DurableExecutio
 import { createTool } from '../../tools/core/createTool.js';
 import { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import { ToolKind } from '../../tools/types/kind.js';
+import { ToolKind } from '../../tools/behavior.js';
 import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import {
   collectToolExecution,
@@ -259,8 +259,8 @@ describe('ToolMiddleware', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic interrupt behavior' },
         schema: Type.Object({ mode: Type.Enum(['block', 'cancel']) }),
-        resolveBehavior: ({ mode }) => ({
-          interruptBehavior: mode,
+        resolveBehavior: (params) => ({
+          interruptBehavior: params?.mode ?? 'block',
         }),
         execute() {
           execute();

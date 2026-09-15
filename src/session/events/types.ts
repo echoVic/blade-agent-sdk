@@ -1,6 +1,6 @@
 import type { ModelIdentity } from '../../model/identity.js';
 import type { ModelUsage, TokenUsage } from '../../model/usage.js';
-import type { ToolSideEffect } from '../../tools/types/kind.js';
+import type { ToolSideEffect } from '../../tools/behavior.js';
 import type {
   CommandId,
   EventId,

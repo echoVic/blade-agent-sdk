@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import type { SessionId } from '../../../types/identifiers.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { TaskStore } from './TaskStore.js';
 

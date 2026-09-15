@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import type { JsonObject } from '../types/json.js';
 import { createTool } from '../tools/core/createTool.js';
-import { ToolKind } from '../tools/types/kind.js';
+import { ToolKind } from '../tools/behavior.js';
 import { ToolErrorType } from '../tools/types/result.js';
 import { compileToolInput } from '../tools/validation/toolInput.js';
 import { getErrorMessage } from '../utils/errorUtils.js';

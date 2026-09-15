@@ -1,4 +1,4 @@
-import { resolveToolBehaviorSafely } from '../../types/kind.js';
+import { resolveBehavior } from '../../behavior.js';
 import type { ToolInvocation } from '../../types/tool.js';
 import type { PipelineExecutionState } from './state.js';
 import { buildPermissionSignature, toParamsRecord } from './state.js';
@@ -24,7 +24,7 @@ export class InvocationBinder {
 
   sync(state: PipelineExecutionState, invocation: ToolInvocation): void {
     state.params = toParamsRecord(invocation.params, state.params);
-    state.resolvedBehavior = resolveToolBehaviorSafely(state.tool, invocation.params);
+    state.resolvedBehavior = resolveBehavior(state.tool, invocation.params);
     state.affectedPaths = invocation.getAffectedPaths() || [];
     state.permissionSignature = buildPermissionSignature(
       state.tool.name,

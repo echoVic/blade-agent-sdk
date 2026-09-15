@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import Type from 'typebox';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -44,13 +44,16 @@ export const notebookEditTool = createTool({
     }),
   ),
 
-  resolveBehavior: ({ edit_mode }) => ({
-    kind: ToolKind.Write,
-    sideEffect: edit_mode === 'replace' ? 'idempotent' : 'non_idempotent',
-    isReadOnly: false,
-    isConcurrencySafe: false,
-    isDestructive: edit_mode === 'delete',
-  }),
+  resolveBehavior: (params) => {
+    const editMode = params?.edit_mode ?? 'replace';
+    return {
+      kind: ToolKind.Write,
+      sideEffect: editMode === 'replace' ? 'idempotent' : 'non_idempotent',
+      isReadOnly: false,
+      isConcurrencySafe: false,
+      isDestructive: editMode === 'delete',
+    };
+  },
 
   validateInput: async (params, context) => {
     try {

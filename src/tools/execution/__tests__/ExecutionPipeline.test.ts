@@ -15,7 +15,7 @@ import { readTool } from '../../builtin/file/read.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import type { ToolResult, ToolYield } from '../../types/result.js';
 import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
 import type { Tool } from '../../types/tool.js';
@@ -1036,13 +1036,16 @@ describe('ExecutionPipeline', () => {
         schema: Type.Object({
           mode: Type.Enum(['read', 'write']),
         }),
-        resolveBehavior: ({ mode }) => ({
-          kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
-          sideEffect: mode === 'read' ? 'pure' : 'idempotent',
-          isReadOnly: mode === 'read',
-          isConcurrencySafe: mode === 'read',
-          isDestructive: mode === 'write',
-        }),
+        resolveBehavior: (params) => {
+          const mode = params?.mode ?? 'write';
+          return {
+            kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
+            sideEffect: mode === 'read' ? 'pure' : 'idempotent',
+            isReadOnly: mode === 'read',
+            isConcurrencySafe: mode === 'read',
+            isDestructive: mode === 'write',
+          };
+        },
         execute: ({ mode }) =>
           completeToolExecution({
             status: 'success',
@@ -1505,13 +1508,16 @@ describe('ExecutionPipeline', () => {
           mode: Type.Enum(['read', 'write']),
           value: Type.String(),
         }),
-        resolveBehavior: ({ mode }) => ({
-          kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Execute,
-          sideEffect: mode === 'read' ? 'pure' : 'non_idempotent',
-          isReadOnly: mode === 'read',
-          isConcurrencySafe: mode === 'read',
-          isDestructive: mode === 'write',
-        }),
+        resolveBehavior: (params) => {
+          const mode = params?.mode ?? 'write';
+          return {
+            kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Execute,
+            sideEffect: mode === 'read' ? 'pure' : 'non_idempotent',
+            isReadOnly: mode === 'read',
+            isConcurrencySafe: mode === 'read',
+            isDestructive: mode === 'write',
+          };
+        },
         execute: executeSpy,
       }),
     );

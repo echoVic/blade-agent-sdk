@@ -2,7 +2,7 @@ import Type from 'typebox';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';

@@ -17,18 +17,13 @@ export type {
   ToolSettledLifecycle,
 } from './execution.js';
 export { getEffectiveProjectDir } from './execution.js';
-export type { ToolBehavior } from './kind.js';
+export type { ToolBehavior, ToolBehaviorSource } from '../behavior.js';
 export {
-  createToolBehavior,
-  getStaticToolBehavior,
-  isReadOnlyKind,
   isToolSideEffect,
-  resolveToolBehavior,
-  resolveToolBehaviorHint,
-  resolveToolBehaviorSafely,
+  resolveBehavior,
   ToolKind,
   ToolSideEffect,
-} from './kind.js';
+} from '../behavior.js';
 export type {
   BashBackgroundMetadata,
   BashForegroundMetadata,

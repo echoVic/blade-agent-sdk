@@ -12,7 +12,7 @@ import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type { ExecutionContext, ExecutionHistoryEntry } from '../types/execution.js';
-import { resolveToolBehaviorSafely, ToolKind } from '../types/kind.js';
+import { resolveBehavior, ToolKind } from '../behavior.js';
 import { ToolErrorType, type ToolExecution, type ToolResult } from '../types/result.js';
 import {
   type ConcurrencyLease,
@@ -242,7 +242,7 @@ export class ExecutionPipeline {
 
     await state.context.assertExecutionLease?.();
 
-    const resolvedBehavior = resolveToolBehaviorSafely(tool, request.input);
+    const resolvedBehavior = resolveBehavior(tool, request.input);
     const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
     let concurrencyLease: ConcurrencyLease | undefined;
 

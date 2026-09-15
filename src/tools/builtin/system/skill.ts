@@ -5,7 +5,7 @@ import type { SkillContent } from '../../../skills/types.js';
 import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 

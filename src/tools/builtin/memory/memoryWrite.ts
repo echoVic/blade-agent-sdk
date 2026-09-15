@@ -2,7 +2,7 @@ import Type from 'typebox';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryWriteSchema = Type.Union([

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import { SessionId } from '../../../types/identifiers.js';
+import { resolveBehavior } from '../../behavior.js';
 import { createBuiltinToolGroups, flattenBuiltinToolGroups } from '../groups.js';
 
 function toolNames(tools: ReturnType<typeof flattenBuiltinToolGroups>): string[] {
@@ -107,13 +108,13 @@ describe('builtin tool groups', () => {
 
     const bash = tools.find((tool) => tool.name === 'Bash');
     expect(
-      bash?.resolveBehavior?.({
+      resolveBehavior(bash, {
         command: 'sleep 10',
         run_in_background: false,
       }),
     ).toMatchObject({ interruptBehavior: 'cancel' });
     expect(
-      bash?.resolveBehavior?.({
+      resolveBehavior(bash, {
         command: 'sleep 10',
         run_in_background: true,
       }),
@@ -156,13 +157,13 @@ describe('builtin tool groups', () => {
 
     const bash = tools.find((tool) => tool.name === 'Bash');
     expect(
-      bash?.resolveBehavior?.({
+      resolveBehavior(bash, {
         command: 'git status',
         run_in_background: false,
       }),
     ).toMatchObject({ sideEffect: 'pure' });
     expect(
-      bash?.resolveBehavior?.({
+      resolveBehavior(bash, {
         command: 'git commit -m test',
         run_in_background: false,
       }),
@@ -170,13 +171,13 @@ describe('builtin tool groups', () => {
 
     const webFetch = tools.find((tool) => tool.name === 'WebFetch');
     expect(
-      webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'GET' }),
+      resolveBehavior(webFetch, { url: 'https://example.com', method: 'GET' }),
     ).toMatchObject({ sideEffect: 'pure' });
     expect(
-      webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'PUT' }),
+      resolveBehavior(webFetch, { url: 'https://example.com', method: 'PUT' }),
     ).toMatchObject({ sideEffect: 'idempotent' });
     expect(
-      webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'POST' }),
+      resolveBehavior(webFetch, { url: 'https://example.com', method: 'POST' }),
     ).toMatchObject({ sideEffect: 'non_idempotent' });
   });
 });

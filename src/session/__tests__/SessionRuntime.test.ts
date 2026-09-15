@@ -15,7 +15,7 @@ import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js
 import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
 import { createTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
-import { ToolKind } from '../../tools/types/kind.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';

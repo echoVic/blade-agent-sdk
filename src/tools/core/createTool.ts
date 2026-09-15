@@ -1,9 +1,13 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
 import type { JsonValue } from '../../types/json.js';
+import {
+  isToolSideEffect,
+  resolveBehavior,
+  type ToolBehavior,
+  ToolKind,
+} from '../behavior.js';
 import type { ExecutionContext } from '../types/execution.js';
-import type { ToolBehavior } from '../types/kind.js';
-import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
   ErasedToolDefinition,
@@ -37,7 +41,7 @@ interface ToolAssembly<TParams> {
   readonly displayName: string;
   readonly kind: ToolKind;
   readonly staticBehavior: ToolBehavior;
-  readonly behaviorHint: ToolBehavior;
+  readonly planningBehavior: ToolBehavior;
   readonly strict: boolean;
   readonly maxResultSizeChars: number;
   readonly description: ToolDescription;
@@ -63,10 +67,8 @@ interface ToolAssembly<TParams> {
   readonly execute: (params: TParams, context: ExecutionContext) => ToolExecution;
   readonly validateInput?: Tool['validateInput'];
   readonly checkPermissions?: Tool['checkPermissions'];
-  readonly resolveBehavior?: (params: unknown) => ToolBehavior;
+  readonly resolveBehavior?: (params?: unknown) => ToolBehavior;
   readonly preparePermissionMatcher?: Tool['preparePermissionMatcher'];
-  /** Optional hint used by callers that plan without validated parameters. */
-  readonly getBehaviorHint?: () => ToolBehavior;
 }
 
 function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
@@ -76,9 +78,9 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
     displayName: assembly.displayName,
     kind: assembly.kind,
     sideEffect: assembly.staticBehavior.sideEffect,
-    isReadOnly: assembly.behaviorHint.isReadOnly,
-    isConcurrencySafe: assembly.behaviorHint.isConcurrencySafe,
-    isDestructive: assembly.behaviorHint.isDestructive,
+    isReadOnly: assembly.planningBehavior.isReadOnly,
+    isConcurrencySafe: assembly.planningBehavior.isConcurrencySafe,
+    isDestructive: assembly.planningBehavior.isDestructive,
     strict: assembly.strict,
     maxResultSizeChars: assembly.maxResultSizeChars,
     interruptBehavior: assembly.staticBehavior.interruptBehavior,
@@ -136,7 +138,6 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
     ...(assembly.preparePermissionMatcher
       ? { preparePermissionMatcher: assembly.preparePermissionMatcher }
       : {}),
-    ...(assembly.getBehaviorHint ? { getBehaviorHint: assembly.getBehaviorHint } : {}),
   };
 }
 
@@ -166,18 +167,21 @@ export function createTool<TSchema extends Type.TSchema>(
 
   const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
 
-  const staticBehavior = createToolBehavior(config.kind, config.sideEffect, {
+  if (!isToolSideEffect(config.sideEffect)) {
+    throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
+  }
+  const staticBehavior = resolveBehavior({
+    kind: config.kind,
+    sideEffect: config.sideEffect,
     isReadOnly: config.isReadOnly,
     isConcurrencySafe: config.isConcurrencySafe,
     isDestructive: config.isDestructive,
     interruptBehavior: config.interruptBehavior,
   });
-  const behaviorHint = config.resolveBehaviorHint
-    ? {
-        ...staticBehavior,
-        ...config.resolveBehaviorHint(),
-      }
-    : staticBehavior;
+  const planningBehavior = resolveBehavior(config);
+  if (!staticBehavior || !planningBehavior) {
+    throw new TypeError('Tool behavior could not be resolved');
+  }
   const exposure = {
     mode: config.exposure?.mode ?? 'eager',
     alwaysLoad: config.exposure?.alwaysLoad ?? false,
@@ -195,7 +199,7 @@ export function createTool<TSchema extends Type.TSchema>(
     displayName: config.displayName,
     kind: config.kind,
     staticBehavior,
-    behaviorHint,
+    planningBehavior,
     strict: config.strict ?? false,
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
     description: config.description,
@@ -234,15 +238,11 @@ export function createTool<TSchema extends Type.TSchema>(
             checkPermissionsFn(getInput().parse(params), context),
         }
       : {}),
-    resolveBehavior: (params: unknown) => {
-      const validatedParams = getInput().parse(params);
-      if (!config.resolveBehavior) {
-        return staticBehavior;
+    resolveBehavior: (params?: unknown) => {
+      if (params === undefined) {
+        return planningBehavior;
       }
-      return {
-        ...staticBehavior,
-        ...config.resolveBehavior(validatedParams),
-      };
+      return resolveBehavior(config, getInput().parse(params)) ?? staticBehavior;
     },
     ...(preparePermissionMatcherFn
       ? {
@@ -250,7 +250,6 @@ export function createTool<TSchema extends Type.TSchema>(
             preparePermissionMatcherFn(getInput().parse(params)),
         }
       : {}),
-    getBehaviorHint: () => behaviorHint,
   });
 }
 
@@ -297,9 +296,14 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
   }
   const input = compileToolInput(definition.parameters);
   const kind = definition.kind || ToolKind.Execute;
-  const staticBehavior = createToolBehavior(kind, sideEffect, {
-    isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
+  const staticBehavior = resolveBehavior({
+    kind,
+    sideEffect,
+    isReadOnly: definition.kind ? definition.kind === ToolKind.ReadOnly : false,
   });
+  if (!staticBehavior) {
+    throw new TypeError('Tool behavior could not be resolved');
+  }
 
   return assembleTool<unknown>({
     name: definition.name,
@@ -307,7 +311,7 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
     displayName: definition.displayName || definition.name,
     kind,
     staticBehavior,
-    behaviorHint: staticBehavior,
+    planningBehavior: staticBehavior,
     strict: false,
     maxResultSizeChars: Number.POSITIVE_INFINITY,
     description,
@@ -325,7 +329,6 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
     resolveDescription: () => description,
     invocationParams: (params) => input.parse(params),
     execute: (params, context) => executeErasedDefinition(definition, params, context),
-    getBehaviorHint: () => staticBehavior,
     resolveBehavior: () => staticBehavior,
   });
 }

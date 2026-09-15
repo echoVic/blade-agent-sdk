@@ -5,7 +5,7 @@ import type { JsonObject } from '../../../types/json.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import type { ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { resolveToolBehaviorSafely, ToolSideEffect } from '../../types/kind.js';
+import { resolveBehavior, ToolSideEffect } from '../../behavior.js';
 import {
   ToolErrorType,
   type ToolExecution,
@@ -65,7 +65,7 @@ export class MiddlewareBoundary {
       input: { ...input.params },
       context: protectedContext,
     };
-    const initialBehavior = resolveToolBehaviorSafely(
+    const initialBehavior = resolveBehavior(
       this.registry.get(toolName),
       initialRequest.input,
     );
@@ -84,7 +84,7 @@ export class MiddlewareBoundary {
       if (request.context !== protectedContext) {
         throw new Error('Tool middleware cannot replace the execution context');
       }
-      const effectiveBehavior = resolveToolBehaviorSafely(
+      const effectiveBehavior = resolveBehavior(
         this.registry.get(toolName),
         request.input,
       );
@@ -217,7 +217,7 @@ export class MiddlewareBoundary {
   private async recordMiddlewareShortCircuit(request: ToolMiddlewareRequest): Promise<void> {
     const tool = this.registry.get(request.toolName);
     const sideEffect =
-      resolveToolBehaviorSafely(tool, request.input)?.sideEffect ??
+      resolveBehavior(tool, request.input)?.sideEffect ??
       tool?.sideEffect ??
       ToolSideEffect.NON_IDEMPOTENT;
     await request.context.assertExecutionLease?.();

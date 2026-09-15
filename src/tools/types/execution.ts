@@ -14,7 +14,7 @@ import type { PermissionMode } from '../../types/constants.js';
 import type { JsonObject } from '../../types/json.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolKind, ToolSideEffect } from './kind.js';
+import type { ToolKind, ToolSideEffect } from '../behavior.js';
 import type { ToolResult } from './result.js';
 
 interface QuestionOption {

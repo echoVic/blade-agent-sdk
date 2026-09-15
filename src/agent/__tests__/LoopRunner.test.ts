@@ -21,7 +21,7 @@ import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
-import { ToolKind } from '../../tools/types/kind.js';
+import { ToolKind } from '../../tools/behavior.js';
 import type { ToolResult } from '../../tools/types/result.js';
 import { completeToolExecution } from '../../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';

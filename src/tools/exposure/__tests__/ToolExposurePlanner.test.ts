@@ -4,7 +4,7 @@ import { PermissionMode } from '../../../types/constants.js';
 import { ToolCatalog } from '../../catalog/ToolCatalog.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { completeToolExecution } from '../../types/result.js';
 import { ToolExposurePlanner } from '../ToolExposurePlanner.js';
 
@@ -61,7 +61,7 @@ describe('ToolExposurePlanner', () => {
         displayName: 'Hint Read Tool',
         kind: ToolKind.Execute,
         sideEffect: 'non_idempotent',
-        resolveBehaviorHint: () => ({
+        resolveBehavior: () => ({
           kind: ToolKind.ReadOnly,
           sideEffect: 'pure',
           isReadOnly: true,
@@ -78,7 +78,7 @@ describe('ToolExposurePlanner', () => {
         displayName: 'Hint Write Tool',
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
-        resolveBehaviorHint: () => ({
+        resolveBehavior: () => ({
           kind: ToolKind.Execute,
           sideEffect: 'non_idempotent',
           isReadOnly: false,

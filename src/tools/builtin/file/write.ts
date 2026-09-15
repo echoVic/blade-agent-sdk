@@ -6,7 +6,7 @@ import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/erro
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import type { WriteMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
@@ -43,8 +43,8 @@ export const writeTool = createTool({
     }),
   ),
 
-  resolveBehavior: ({ file_path }) => {
-    const isDestructive = isSensitivePath(file_path);
+  resolveBehavior: (params) => {
+    const isDestructive = params ? isSensitivePath(params.file_path) : false;
     return {
       kind: ToolKind.Write,
       isReadOnly: false,

@@ -16,7 +16,7 @@
  */
 
 import { getAbortSignalReason } from '../../utils/abortPromise.js';
-import { ToolKind } from '../types/kind.js';
+import { ToolKind } from '../behavior.js';
 
 export interface ConcurrencyLease {
   release(): void;

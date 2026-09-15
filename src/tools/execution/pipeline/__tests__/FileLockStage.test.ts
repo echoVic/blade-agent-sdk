@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../../logging/Logger.js';
 import { PermissionMode } from '../../../../types/constants.js';
 import type { JsonObject } from '../../../../types/json.js';
-import { ToolKind, ToolSideEffect } from '../../../types/kind.js';
+import { ToolKind, ToolSideEffect } from '../../../behavior.js';
 import { ToolErrorType } from '../../../types/result.js';
 import { FileLockManager } from '../../FileLockManager.js';
 import { FileLockStage } from '../stages/FileLockStage.js';

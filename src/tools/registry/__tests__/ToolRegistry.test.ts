@@ -103,7 +103,7 @@ describe('ToolRegistry ordering', () => {
       ...createTool('HintRead'),
       kind: 'execute',
       isReadOnly: false,
-      getBehaviorHint: () => ({
+      resolveBehavior: () => ({
         kind: 'readonly',
         sideEffect: 'pure',
         isReadOnly: true,
@@ -114,7 +114,7 @@ describe('ToolRegistry ordering', () => {
     } as never);
     registry.register({
       ...createTool('HintWrite', { isReadOnly: true }),
-      getBehaviorHint: () => ({
+      resolveBehavior: () => ({
         kind: 'execute',
         sideEffect: 'non_idempotent',
         isReadOnly: false,

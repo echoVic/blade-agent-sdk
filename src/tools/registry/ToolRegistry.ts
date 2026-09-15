@@ -1,7 +1,7 @@
 import { PermissionMode } from '../../types/constants.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
 import { searchTools } from '../search/toolSearch.js';
-import { isToolSideEffect, resolveToolBehaviorHint } from '../types/kind.js';
+import { isToolSideEffect, resolveBehavior } from '../behavior.js';
 import type { FunctionDeclaration, Tool } from '../types/tool.js';
 
 const MCP_TOOL_NAME_PREFIX = 'mcp__';
@@ -182,7 +182,7 @@ export class ToolRegistry {
    */
   getReadOnlyFunctionDeclarations(): FunctionDeclaration[] {
     return this.getAll()
-      .filter((tool) => resolveToolBehaviorHint(tool).isReadOnly)
+      .filter((tool) => resolveBehavior(tool).isReadOnly)
       .map((tool) => tool.getFunctionDeclaration());
   }
 
@@ -214,7 +214,7 @@ export class ToolRegistry {
    * 获取只读工具
    */
   getReadOnlyTools(): Tool[] {
-    return this.getAll().filter((tool) => resolveToolBehaviorHint(tool).isReadOnly);
+    return this.getAll().filter((tool) => resolveBehavior(tool).isReadOnly);
   }
 
   /**

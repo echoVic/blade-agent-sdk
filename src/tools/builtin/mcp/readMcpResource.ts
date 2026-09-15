@@ -2,7 +2,7 @@ import Type from 'typebox';
 import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import type { JsonValue } from '../../../types/json.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 

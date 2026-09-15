@@ -40,4 +40,4 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from './types/index.js';
-export { ToolKind, ToolSideEffect } from './types/kind.js';
+export { ToolKind, ToolSideEffect } from './behavior.js';

@@ -4,7 +4,7 @@ import type {
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
-import { resolveToolBehaviorHint } from '../types/kind.js';
+import { resolveBehavior } from '../behavior.js';
 import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
 export interface RuntimeToolPolicySnapshot {
@@ -135,7 +135,7 @@ export class ToolExposurePlanner {
     deniedTools: Set<string>,
     sourcePolicy: ToolCatalogSourcePolicy | undefined,
   ): string | undefined {
-    if (permissionMode === PermissionMode.PLAN && !resolveToolBehaviorHint(tool).isReadOnly) {
+    if (permissionMode === PermissionMode.PLAN && !resolveBehavior(tool).isReadOnly) {
       return 'plan-mode-hidden';
     }
 

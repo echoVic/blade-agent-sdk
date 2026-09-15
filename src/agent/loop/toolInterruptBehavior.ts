@@ -1,8 +1,8 @@
 import {
-  resolveToolBehaviorSafely,
+  resolveBehavior,
   type ToolBehavior,
   type ToolKind,
-} from '../../tools/types/kind.js';
+} from '../../tools/behavior.js';
 import type { JsonObject } from '../../types/json.js';
 
 type InterruptBehavior = ToolBehavior['interruptBehavior'];
@@ -15,7 +15,7 @@ type ToolRegistryLike = {
         isConcurrencySafe?: boolean;
         isDestructive?: boolean;
         interruptBehavior?: InterruptBehavior;
-        resolveBehavior?: (params: JsonObject) => Partial<ToolBehavior> | ToolBehavior;
+        resolveBehavior?: (params?: JsonObject) => Partial<ToolBehavior> | ToolBehavior;
       }
     | undefined;
 };
@@ -26,7 +26,7 @@ export function resolveToolInterruptBehavior(
   params: JsonObject,
 ): InterruptBehavior {
   const tool = registry.get(toolName);
-  const behavior = resolveToolBehaviorSafely(tool, params);
+  const behavior = resolveBehavior(tool, params);
   return behavior?.interruptBehavior ?? 'cancel';
 }
 

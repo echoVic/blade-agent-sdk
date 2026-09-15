@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { resolveBehavior, ToolKind } from '../behavior.js';
 import { createTool, defineTool, toolFromDefinition } from '../core/createTool.js';
-import { ToolKind } from '../types/kind.js';
 import type { ReadMetadata } from '../types/metadata.js';
 import {
   collectToolExecution,
@@ -216,7 +216,7 @@ describe('createTool', () => {
     });
 
     it('should resolve default behavior from static config', () => {
-      expect(echoTool.resolveBehavior?.({ message: 'Hello' })).toEqual({
+      expect(resolveBehavior(echoTool, { message: 'Hello' })).toEqual({
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         isReadOnly: true,
@@ -617,17 +617,20 @@ describe('createTool', () => {
         schema: Type.Object({
           mode: Type.Enum(['read', 'write'], { default: 'read' }),
         }),
-        resolveBehavior: (params) => ({
-          kind: params.mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
-          sideEffect: params.mode === 'read' ? 'pure' : 'idempotent',
-          isReadOnly: params.mode === 'read',
-          isConcurrencySafe: params.mode === 'read',
-          isDestructive: params.mode !== 'read',
-        }),
+        resolveBehavior: (params) => {
+          const mode = params?.mode ?? 'read';
+          return {
+            kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
+            sideEffect: mode === 'read' ? 'pure' : 'idempotent',
+            isReadOnly: mode === 'read',
+            isConcurrencySafe: mode === 'read',
+            isDestructive: mode !== 'read',
+          };
+        },
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
-      expect(tool.resolveBehavior?.({} as unknown as { mode: 'read' | 'write' })).toEqual({
+      expect(resolveBehavior(tool, {} as unknown as { mode: 'read' | 'write' })).toEqual({
         kind: ToolKind.ReadOnly,
         sideEffect: 'pure',
         isReadOnly: true,
@@ -635,7 +638,7 @@ describe('createTool', () => {
         isDestructive: false,
         interruptBehavior: 'block',
       });
-      expect(tool.resolveBehavior?.({ mode: 'write' })).toEqual({
+      expect(resolveBehavior(tool, { mode: 'write' })).toEqual({
         kind: ToolKind.Write,
         sideEffect: 'idempotent',
         isReadOnly: false,
@@ -673,7 +676,7 @@ describe('createTool', () => {
       });
 
       expect(tool.interruptBehavior).toBe('block');
-      expect(tool.resolveBehavior?.({})).toMatchObject({
+      expect(resolveBehavior(tool, {})).toMatchObject({
         interruptBehavior: 'block',
       });
     });
@@ -759,7 +762,7 @@ describe('createTool', () => {
       });
 
       expect(tool.sideEffect).toBe('non_idempotent');
-      expect(tool.getBehaviorHint?.()).toMatchObject({ sideEffect: 'non_idempotent' });
+      expect(resolveBehavior(tool)).toMatchObject({ sideEffect: 'non_idempotent' });
     });
 
     it('accepts a TypeBox schema and validates parameters against it', async () => {

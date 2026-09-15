@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
+import { ToolKind } from '../../behavior.js';
 import { completeToolExecution } from '../../types/result.js';
 import { ToolCatalog } from '../ToolCatalog.js';
 

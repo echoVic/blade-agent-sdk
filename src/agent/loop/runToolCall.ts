@@ -12,7 +12,7 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
-import { resolveToolBehaviorSafely, ToolSideEffect } from '../../tools/types/kind.js';
+import { resolveBehavior, ToolSideEffect } from '../../tools/behavior.js';
 import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import { ToolErrorType } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
@@ -152,7 +152,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       params,
     );
     sideEffect =
-      resolveToolBehaviorSafely(
+      resolveBehavior(
         input.executionPipeline.getRegistry().get(input.toolCall.function.name),
         params,
       )?.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT;
