@@ -73,4 +73,4 @@ export {
   type JsonlDurableEventStoreOptions,
 } from '../session/events/JsonlDurableEventStore.js';
 export { getBuiltinTools } from '../tools/builtin/index.js';
-export { createMemoryReadTool, createMemoryWriteTool } from '../tools/builtin/memory/index.js';
+export { memoryReadTool, memoryWriteTool } from '../tools/builtin/memory/index.js';

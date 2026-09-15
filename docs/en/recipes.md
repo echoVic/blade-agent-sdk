@@ -201,12 +201,10 @@ for await (const event of session.stream({ includeThinking: true })) {
 
 ## Opt-in memory tools
 
-Create the opt-in Memory tools and pass them directly to Session:
+Provide a `MemoryManager` to register the opt-in Memory tools:
 
 ```ts
 import {
-  createMemoryReadTool,
-  createMemoryWriteTool,
   FileSystemMemoryStore,
   MemoryManager,
 } from '@blade-ai/agent-sdk/advanced';
@@ -219,10 +217,7 @@ const manager = new MemoryManager(
 const session = await createSession({
   provider,
   model,
-  tools: [
-    createMemoryReadTool({ manager }),
-    createMemoryWriteTool({ manager }),
-  ],
+  memoryManager: manager,
 });
 ```
 

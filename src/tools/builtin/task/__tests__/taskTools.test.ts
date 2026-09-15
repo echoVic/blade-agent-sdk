@@ -12,12 +12,12 @@ import type { ExecutionContext } from '../../../types/execution.js';
 import { collectToolExecution } from '../../../types/result.js';
 import type { Tool } from '../../../types/tool.js';
 import { getBuiltinTools } from '../../index.js';
-import { createTaskTool } from '../task.js';
-import { createTaskCreateTool } from '../taskCreate.js';
-import { createTaskGetTool } from '../taskGet.js';
-import { createTaskListTool } from '../taskList.js';
-import { createTaskStopTool } from '../taskStop.js';
-import { createTaskUpdateTool } from '../taskUpdate.js';
+import { taskTool } from '../task.js';
+import { taskCreateTool } from '../taskCreate.js';
+import { taskGetTool } from '../taskGet.js';
+import { taskListTool } from '../taskList.js';
+import { taskStopTool } from '../taskStop.js';
+import { taskUpdateTool } from '../taskUpdate.js';
 
 const { runAgenticLoop, createAgent, destroyAgent } = vi.hoisted(() => ({
   runAgenticLoop:
@@ -103,7 +103,7 @@ describe('task tools', () => {
   });
 
   it('registers all task management tools in builtin tools', async () => {
-    const tools = await getBuiltinTools({ sessionId: SessionId(`builtin-${Date.now()}`) });
+    const tools = await getBuiltinTools();
     const names = tools.map((tool) => tool.name);
 
     expect(names).toEqual(
@@ -113,21 +113,15 @@ describe('task tools', () => {
 
   it('creates, reads, updates, lists, stops, and deletes tasks in the runtime session', async () => {
     const runtimeSessionId = SessionId(`runtime-${Date.now()}`);
-    const factorySessionId = SessionId(`factory-${Date.now()}`);
-    const createTool = createTaskCreateTool({ sessionId: factorySessionId });
-    const getTool = createTaskGetTool({ sessionId: factorySessionId });
-    const updateTool = createTaskUpdateTool({ sessionId: factorySessionId });
-    const listTool = createTaskListTool({ sessionId: factorySessionId });
-    const stopTool = createTaskStopTool({ sessionId: factorySessionId });
 
-    expect(createTool.kind).toBe('write');
-    expect(getTool.kind).toBe('write');
-    expect(updateTool.kind).toBe('write');
-    expect(listTool.kind).toBe('write');
-    expect(stopTool.kind).toBe('write');
+    expect(taskCreateTool.kind).toBe('write');
+    expect(taskGetTool.kind).toBe('write');
+    expect(taskUpdateTool.kind).toBe('write');
+    expect(taskListTool.kind).toBe('write');
+    expect(taskStopTool.kind).toBe('write');
 
     const created = await executeWithContext(
-      createTool,
+      taskCreateTool,
       {
         subject: 'Implement task tools',
         description: 'Add all task management tools',
@@ -148,7 +142,7 @@ describe('task tools', () => {
 
     const taskId = (created.model as { taskId: string }).taskId;
 
-    const fetched = await executeWithContext(getTool, { taskId }, runtimeSessionId);
+    const fetched = await executeWithContext(taskGetTool, { taskId }, runtimeSessionId);
     expect(fetched.status).toBe('success');
     expect(fetched.model).toEqual(
       expect.objectContaining({
@@ -158,7 +152,7 @@ describe('task tools', () => {
     );
 
     const updated = await executeWithContext(
-      updateTool,
+      taskUpdateTool,
       {
         taskId,
         status: 'in_progress',
@@ -177,7 +171,7 @@ describe('task tools', () => {
       }),
     );
 
-    const listed = await executeWithContext(listTool, {}, runtimeSessionId);
+    const listed = await executeWithContext(taskListTool, {}, runtimeSessionId);
     expect(listed.status).toBe('success');
     expect(listed.model).toEqual([
       {
@@ -189,7 +183,14 @@ describe('task tools', () => {
       },
     ]);
 
-    const stopped = await executeWithContext(stopTool, { taskId }, runtimeSessionId);
+    const stopped = await executeWithContext(
+      taskStopTool,
+      { taskId },
+      {
+        sessionId: runtimeSessionId,
+        backgroundAgentManager: manager,
+      },
+    );
     expect(stopped.status).toBe('success');
     expect(stopped.model).toEqual(
       expect.objectContaining({
@@ -202,7 +203,7 @@ describe('task tools', () => {
     );
 
     const deleted = await executeWithContext(
-      updateTool,
+      taskUpdateTool,
       { taskId, status: 'deleted' },
       runtimeSessionId,
     );
@@ -212,7 +213,7 @@ describe('task tools', () => {
       deleted: true,
     });
 
-    const listedAfterDelete = await executeWithContext(listTool, {}, runtimeSessionId);
+    const listedAfterDelete = await executeWithContext(taskListTool, {}, runtimeSessionId);
     expect(listedAfterDelete.model).toEqual([]);
   });
 
@@ -242,8 +243,7 @@ describe('task tools', () => {
       }),
     );
 
-    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
-    const stopped = await executeWithContext(stopTool, { taskId: agentId }, {
+    const stopped = await executeWithContext(taskStopTool, { taskId: agentId }, {
       sessionId: SessionId(`runtime-${Date.now()}`),
       backgroundAgentManager: manager,
     } as never);
@@ -266,13 +266,12 @@ describe('task tools', () => {
   });
 
   it('uses the background agent manager provided by execution context', async () => {
-    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const fakeManager = {
       getAgent: vi.fn(() => ({ id: AgentId('agent-1'), status: 'running' })),
       killAgent: vi.fn(async () => true),
     };
 
-    const stopped = await executeWithContext(stopTool, { taskId: 'agent-1' }, {
+    const stopped = await executeWithContext(taskStopTool, { taskId: 'agent-1' }, {
       sessionId: SessionId(`runtime-${Date.now()}`),
       backgroundAgentManager: fakeManager,
     } as never);
@@ -283,7 +282,6 @@ describe('task tools', () => {
   });
 
   it('reports an error when a running agent belongs to another execution', async () => {
-    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const session = {
       id: AgentId('agent-owned-elsewhere'),
       status: 'running',
@@ -293,7 +291,7 @@ describe('task tools', () => {
       killAgent: vi.fn(async () => false),
     };
 
-    const stopped = await executeWithContext(stopTool, { taskId: session.id }, {
+    const stopped = await executeWithContext(taskStopTool, { taskId: session.id }, {
       sessionId: SessionId(`runtime-${Date.now()}`),
       backgroundAgentManager: fakeManager,
     } as never);
@@ -309,7 +307,6 @@ describe('task tools', () => {
   it('propagates lease loss while starting a background agent', async () => {
     const registry = new SubagentRegistry();
     registry.register(subagentConfig);
-    const taskTool = createTaskTool({ registry });
     const leaseError = new DurableExecutionLeaseError(
       'DURABLE_EXECUTION_LEASE_LOST',
       'worker is stale',
@@ -332,6 +329,7 @@ describe('task tools', () => {
         {
           sessionId: SessionId('stale-task-session'),
           bladeConfig,
+          subagentRegistry: registry,
           backgroundAgentManager: fakeManager,
         } as never,
       ),
@@ -341,7 +339,6 @@ describe('task tools', () => {
   it('propagates cancellation through a running SubagentStop file hook', async () => {
     const registry = new SubagentRegistry();
     registry.register(subagentConfig);
-    const taskTool = createTaskTool({ registry });
     const controller = new AbortController();
     const cancellation = new Error('cancel subagent stop hook');
     const started = Promise.withResolvers<void>();
@@ -373,6 +370,8 @@ describe('task tools', () => {
         bladeConfig,
         signal: controller.signal,
         contextSnapshot: { cwd: '/tmp' },
+        subagentRegistry: registry,
+        backgroundAgentManager: manager,
       } as never,
     );
     const cancellationResult = expect(execution).rejects.toBe(cancellation);
@@ -387,7 +386,6 @@ describe('task tools', () => {
   it('preserves a SubagentStop containment failure during cancellation', async () => {
     const registry = new SubagentRegistry();
     registry.register(subagentConfig);
-    const taskTool = createTaskTool({ registry });
     const controller = new AbortController();
     const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
     const stopHook = vi
@@ -416,6 +414,8 @@ describe('task tools', () => {
           bladeConfig,
           signal: controller.signal,
           contextSnapshot: { cwd: '/tmp' },
+          subagentRegistry: registry,
+          backgroundAgentManager: manager,
         } as never,
       ),
     ).rejects.toBe(containmentError);

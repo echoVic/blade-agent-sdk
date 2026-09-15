@@ -1,26 +1,22 @@
-import type { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
-import type { McpRegistry } from '../../mcp/McpRegistry.js';
-import type { MemoryManager } from '../../memory/MemoryManager.js';
-import type { SessionId } from '../../types/identifiers.js';
 import type { Tool } from '../types/tool.js';
 import { editTool, readTool, writeTool } from './file/index.js';
-import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp/index.js';
-import { createMemoryReadTool, createMemoryWriteTool } from './memory/index.js';
+import { listMcpResourcesTool, readMcpResourceTool } from './mcp/index.js';
+import { memoryReadTool, memoryWriteTool } from './memory/index.js';
 import { notebookEditTool } from './notebook/index.js';
 import { enterPlanModeTool, exitPlanModeTool } from './plan/index.js';
 import { globTool, grepTool } from './search/index.js';
 import { bashTool, killShellTool } from './shell/index.js';
 import { askUserQuestionTool, discoverToolsTool, skillTool } from './system/index.js';
 import {
-  createTaskCreateTool,
-  createTaskGetTool,
-  createTaskListTool,
-  createTaskStopTool,
-  createTaskTool,
-  createTaskUpdateTool,
+  taskCreateTool,
+  taskGetTool,
+  taskListTool,
   taskOutputTool,
+  taskStopTool,
+  taskTool,
+  taskUpdateTool,
 } from './task/index.js';
-import { createTodoWriteTool } from './todo/index.js';
+import { todoWriteTool } from './todo/index.js';
 import { webFetchTool, webSearchTool } from './web/index.js';
 
 export interface BuiltinToolGroups {
@@ -33,37 +29,22 @@ export interface BuiltinToolGroups {
   mcpResources: Tool[];
 }
 
-interface BuiltinToolGroupOptions {
-  sessionId: SessionId;
-  configDir?: string;
-  mcpRegistry?: McpRegistry;
-  memoryManager?: MemoryManager;
-  subagentRegistry: SubagentRegistry;
-}
-
-export function createBuiltinToolGroups(options: BuiltinToolGroupOptions): BuiltinToolGroups {
-  const { sessionId, configDir, mcpRegistry, memoryManager, subagentRegistry } = options;
-
+export function createBuiltinToolGroups(): BuiltinToolGroups {
   return {
     filesystem: [readTool, editTool, writeTool, notebookEditTool, globTool, grepTool],
     shell: [bashTool, killShellTool],
     web: [webFetchTool, webSearchTool],
     task: [
-      createTaskTool({ registry: subagentRegistry }),
+      taskTool,
       taskOutputTool,
-      createTaskCreateTool({ sessionId }),
-      createTaskGetTool({ sessionId }),
-      createTaskUpdateTool({ sessionId }),
-      createTaskListTool({ sessionId }),
-      createTaskStopTool({ sessionId }),
-      createTodoWriteTool({ sessionId, configDir }),
+      taskCreateTool,
+      taskGetTool,
+      taskUpdateTool,
+      taskListTool,
+      taskStopTool,
+      todoWriteTool,
     ],
-    memory: memoryManager
-      ? [
-          createMemoryReadTool({ manager: memoryManager }),
-          createMemoryWriteTool({ manager: memoryManager }),
-        ]
-      : [],
+    memory: [memoryReadTool, memoryWriteTool],
     system: [
       enterPlanModeTool,
       exitPlanModeTool,
@@ -71,9 +52,7 @@ export function createBuiltinToolGroups(options: BuiltinToolGroupOptions): Built
       discoverToolsTool,
       skillTool,
     ],
-    mcpResources: mcpRegistry
-      ? [createListMcpResourcesTool(mcpRegistry), createReadMcpResourceTool(mcpRegistry)]
-      : [],
+    mcpResources: [listMcpResourcesTool, readMcpResourceTool],
   };
 }
 

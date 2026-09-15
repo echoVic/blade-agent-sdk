@@ -55,7 +55,7 @@ export class AuthorizationStage {
       if (!invocation) {
         throw new Error(`Failed to build invocation for tool: ${state.tool.name}`);
       }
-      const toolContext = getToolContext(state.tool, state.context);
+      const toolContext = getToolContext(state.tool, state.context, state.services);
 
       const validationError = invocation.validate
         ? await this.guard.awaitPermissionCallback(

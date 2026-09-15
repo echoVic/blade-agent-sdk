@@ -7,8 +7,7 @@ import type { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import { Agent } from '../Agent.js';
 import type { BladeConfig } from '../config.js';
-import type { AgentProgress, LoopResult } from '../types.js';
-import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
+import type { AgentProgress, IBackgroundAgentManager, LoopResult } from '../types.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig } from './types.js';
 
@@ -23,7 +22,7 @@ export interface RunSubagentOptions {
   snapshot?: ContextSnapshot;
   messages?: ConversationMessage[];
   signal?: AbortSignal;
-  backgroundAgentManager?: BackgroundAgentManager;
+  backgroundAgentManager?: IBackgroundAgentManager;
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;

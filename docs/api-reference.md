@@ -44,8 +44,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `createTool` | tools | 创建 TypeBox 工具 |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
 | `getBuiltinTools` | advanced | 获取内置 Node 本地工具 |
-| `createMemoryReadTool` | advanced | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | advanced | 创建 opt-in MemoryWrite 工具 |
+| `memoryReadTool` | advanced | 静态 opt-in MemoryRead 工具 |
+| `memoryWriteTool` | advanced | 静态 opt-in MemoryWrite 工具 |
 | `tool` | advanced | 定义 MCP 工具 |
 | `createSdkMcpServer` | advanced | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
@@ -357,8 +357,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryStore` | Memory 后端抽象接口 |
 | `MemoryType` | Memory 类型（`user` / `feedback` / `project` / `reference`） |
 
-`createMemoryReadTool()` 和 `createMemoryWriteTool()` 返回完整 `Tool`，可直接
-传给 `SessionOptions.tools`。
+`memoryReadTool` 和 `memoryWriteTool` 是静态 `Tool`。通过
+`SessionOptions.memoryManager` 启用后，Session Registry 会注册这两个工具，并仅
+向它们注入指定的 Memory Manager。
 
 ### Provider
 

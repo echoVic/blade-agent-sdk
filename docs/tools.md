@@ -148,34 +148,23 @@ function toolFromDefinition<TSchema extends Type.TSchema>(
 
 ```ts
 function getBuiltinTools(opts?: {
-  sessionId?: string;
-  configDir?: string;
   mcpRegistry?: McpRegistry;
   includeMcpProtocolTools?: boolean;
-  memoryManager?: MemoryManager;
-  subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]>
 ```
 
 `getBuiltinTools()` 从 `/advanced` 导出；其 local Session 会自动注册 Coding
-Agent 工具集合。`MemoryRead` 和 `MemoryWrite` 默认不会注册，只有在显式传入
-`memoryManager` 时才会加入集合。
+Agent 工具集合。返回值包含所有静态内置工具候选；Session Registry 会跳过缺少
+声明 service 的工具。`MemoryRead` 和 `MemoryWrite` 只有在
+`SessionOptions.memoryManager` 存在时才会注册。
 直接调用返回工具的 `execute()` 会绕过 `ExecutionPipeline`。已有文件的
 `Write`/`Edit` 仍要求 `ExecutionContext.sessionId`，否则无法验证
 read-before-write，并会 fail closed。
 
 ```ts
-import {
-  FileSystemMemoryStore,
-  MemoryManager,
-  SubagentRegistry,
-  getBuiltinTools,
-} from '@blade-ai/agent-sdk/advanced';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/advanced';
 
-const tools = await getBuiltinTools({
-  memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),
-  subagentRegistry: new SubagentRegistry(),
-});
+const tools = await getBuiltinTools();
 ```
 
 ## 社区工具包约定
@@ -238,11 +227,13 @@ SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | **计划** | EnterPlanMode | readonly | non_idempotent | 进入计划模式 |
 | | ExitPlanMode | readonly | non_idempotent | 退出计划模式 |
 | **待办** | TodoWrite | readonly | idempotent | 管理待办事项 |
+| **Memory** | MemoryRead | readonly | pure | 读取配置的 Memory Store |
+| | MemoryWrite | write | idempotent | 写入配置的 Memory Store |
 | **MCP** | ListMcpResources | readonly | pure | 列出 MCP 资源（需连接 MCP） |
 | | ReadMcpResource | readonly | pure | 读取 MCP 资源（需连接 MCP） |
 
 ::: tip
-`Task` 使用当前 session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
+`Task` 使用当前 Session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，仅在配置 `SessionOptions.memoryManager` 后注册。
 :::
 
 ::: info 工具排序

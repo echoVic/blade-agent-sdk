@@ -129,10 +129,17 @@ export class ExecutionPipeline {
       this.logger,
     );
     this.hookStage = new HookStage(config.hookRuntime);
-    this.authorizationStage = new AuthorizationStage(this.guard, binder, requests, decisions, ledger, {
-      permissionConfig,
-      defaultPermissionMode,
-    });
+    this.authorizationStage = new AuthorizationStage(
+      this.guard,
+      binder,
+      requests,
+      decisions,
+      ledger,
+      {
+        permissionConfig,
+        defaultPermissionMode,
+      },
+    );
     this.confirmationStage = new ConfirmationStage(
       this.guard,
       binder,
@@ -219,10 +226,7 @@ export class ExecutionPipeline {
     }
   }
 
-  private async *executeCore(
-    request: ToolMiddlewareRequest,
-    executionId: string,
-  ): ToolExecution {
+  private async *executeCore(request: ToolMiddlewareRequest, executionId: string): ToolExecution {
     const tool = this.registry.get(request.toolName);
     if (!tool) {
       return await this.hookStage.postExecutionFor(
@@ -239,6 +243,7 @@ export class ExecutionPipeline {
       tool,
       params: request.input,
       context: request.context,
+      services: this.registry.getServices(tool.name),
       affectedPaths: [],
       needsConfirmation: false,
       confirmationReasons: [],
@@ -363,12 +368,10 @@ export class ExecutionPipeline {
       let errorResult: ToolResult = originalErrorResult;
 
       try {
-        const hookResult = await this.hookStage.postExecution(
-          state,
-          executionId,
-          errorResult,
-          { isTimeout, isInterrupt },
-        );
+        const hookResult = await this.hookStage.postExecution(state, executionId, errorResult, {
+          isTimeout,
+          isInterrupt,
+        });
         errorResult = preserveTimeoutFailure(
           this.logger,
           originalErrorResult,

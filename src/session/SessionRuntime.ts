@@ -23,14 +23,12 @@ import { SkillRegistry } from '../skills/SkillRegistry.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { SnapshotManager } from '../tools/builtin/file/SnapshotManager.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { memoryReadTool, memoryWriteTool } from '../tools/builtin/memory/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { skillTool } from '../tools/builtin/system/skill.js';
 import { TaskStore } from '../tools/builtin/task/TaskStore.js';
 import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
-import {
-  ToolCatalog,
-  type ToolSourceInfo,
-} from '../tools/catalog/ToolCatalog.js';
+import { ToolCatalog, type ToolSourceInfo } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
@@ -152,6 +150,7 @@ export class SessionRuntime {
       mcpRegistry: this.mcpRegistry,
       skillRegistry: this.skillRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
+      ...(this.options.memoryManager ? { memoryManager: this.options.memoryManager } : {}),
     };
     this.toolRegistry = new ToolRegistry(toolServices);
     this.toolCatalog = new ToolCatalog(this.toolRegistry);
@@ -282,8 +281,11 @@ export class SessionRuntime {
     this.initializeHooks();
     if (this.hostProfile === NODE_SESSION_HOST) {
       await this.registerBuiltinTools();
-    } else if (this.options.skills?.length) {
-      this.registerBuiltinToolSet([skillTool]);
+    } else {
+      this.registerBuiltinToolSet([
+        ...(this.options.skills?.length ? [skillTool] : []),
+        ...(this.options.memoryManager ? [memoryReadTool, memoryWriteTool] : []),
+      ]);
     }
     this.registerCustomTools();
     this.registerPluginTools();
@@ -461,11 +463,8 @@ export class SessionRuntime {
 
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
-      sessionId: this.sessionId,
-      configDir: this.storageRoot,
       mcpRegistry: this.mcpRegistry,
       includeMcpProtocolTools: false,
-      subagentRegistry: this.subagentRegistry,
     });
     this.registerBuiltinToolSet(builtinTools);
   }

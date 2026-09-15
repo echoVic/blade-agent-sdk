@@ -1,5 +1,4 @@
 import Type from 'typebox';
-import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
@@ -21,52 +20,52 @@ const memoryWriteSchema = Type.Union([
   }),
 ]);
 
-export function createMemoryWriteTool({ manager }: { manager: MemoryManager }) {
-  return createTool({
-    name: 'MemoryWrite',
-    displayName: 'Write Memory',
-    kind: ToolKind.Write,
-    sideEffect: 'idempotent',
-    description: {
-      short: 'Save or delete memories in the configured memory store',
-      long: `Save or delete memories in the configured memory store supplied by the SDK consumer.
+export const memoryWriteTool = createTool({
+  name: 'MemoryWrite',
+  displayName: 'Write Memory',
+  kind: ToolKind.Write,
+  sideEffect: 'idempotent',
+  services: ['memoryManager'],
+  description: {
+    short: 'Save or delete memories in the configured memory store',
+    long: `Save or delete memories in the configured memory store supplied by the SDK consumer.
 
 Operations:
 - save: Create or update a memory (upsert by name)
 - delete: Request deletion of a memory by name
 
 Memory types: user, feedback, project, reference`,
-    },
-    schema: lazySchema(() => memoryWriteSchema),
-    // biome-ignore lint/correctness/useYield: terminal-only tool execution
-    async *execute(params) {
-      switch (params.operation) {
-        case 'save': {
-          const memory = await manager.save({
-            name: params.name,
-            description: params.description,
-            type: params.type,
-            body: params.body,
-          });
-          return {
-            status: 'success',
-            model: toJsonValue(memory),
-            metadata: {
-              summary: `保存记忆: ${params.name}`,
-            },
-          };
-        }
-        case 'delete': {
-          await manager.delete(params.name);
-          return {
-            status: 'success',
-            model: { name: params.name, deleteRequested: true },
-            metadata: {
-              summary: `删除记忆: ${params.name}`,
-            },
-          };
-        }
+  },
+  schema: lazySchema(() => memoryWriteSchema),
+  // biome-ignore lint/correctness/useYield: terminal-only tool execution
+  async *execute(params, context) {
+    const manager = context.memoryManager;
+    switch (params.operation) {
+      case 'save': {
+        const memory = await manager.save({
+          name: params.name,
+          description: params.description,
+          type: params.type,
+          body: params.body,
+        });
+        return {
+          status: 'success',
+          model: toJsonValue(memory),
+          metadata: {
+            summary: `保存记忆: ${params.name}`,
+          },
+        };
       }
-    },
-  });
-}
+      case 'delete': {
+        await manager.delete(params.name);
+        return {
+          status: 'success',
+          model: { name: params.name, deleteRequested: true },
+          metadata: {
+            summary: `删除记忆: ${params.name}`,
+          },
+        };
+      }
+    }
+  },
+});

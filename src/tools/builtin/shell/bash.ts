@@ -7,11 +7,7 @@ import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import {
-  getRuntimeAccess,
-  type ExecutionContext,
-  type RuntimeAccess,
-} from '../../types/execution.js';
+import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
 import { ToolKind } from '../../behavior.js';
 import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
@@ -37,6 +33,7 @@ export const bashTool = createTool({
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
+  services: ['backgroundAgentManager'],
   requiresRuntime: true,
   interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
@@ -261,7 +258,7 @@ Before executing commands:
   },
 
   // 执行函数
-  async *execute(params, context: ExecutionContext) {
+  async *execute(params, context) {
     const { command, timeout = 30000, cwd, env, run_in_background = false } = params;
     const signal = context.signal ?? new AbortController().signal;
     const runtime = getRuntimeAccess(context);
@@ -291,7 +288,7 @@ Before executing commands:
         return executeInBackground(
           effectiveCommand,
           workDir,
-          context.backgroundAgentManager?.getOwnerSessionId?.() ??
+          context.backgroundAgentManager.getOwnerSessionId?.() ??
             context.sessionId ??
             SessionId(randomUUID()),
           env,

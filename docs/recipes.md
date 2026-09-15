@@ -270,12 +270,10 @@ console.log(`\n总 Token: ${totalTokens}`);
 
 ## Memory 系统
 
-Memory 系统是 opt-in 的。创建 Memory 工具后直接传给 Session：
+Memory 系统是 opt-in 的。向 Session 提供 `MemoryManager` 后会自动注册 Memory 工具：
 
 ```ts
 import {
-  createMemoryReadTool,
-  createMemoryWriteTool,
   FileSystemMemoryStore,
   MemoryManager,
 } from '@blade-ai/agent-sdk/advanced';
@@ -288,10 +286,7 @@ const memoryManager = new MemoryManager(
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o',
-  tools: [
-    createMemoryReadTool({ manager: memoryManager }),
-    createMemoryWriteTool({ manager: memoryManager }),
-  ],
+  memoryManager,
 });
 ```
 

@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Replace session-bound built-in tool factories with static tools and inject declared services through the tool registry.",
+  "zh-CN": "以内置静态工具替代会话绑定工厂，并通过工具注册器注入显式声明的服务。"
+}

@@ -137,12 +137,12 @@ import {
   WorkerId,
 } from '../index.js';
 import {
-  createMemoryReadTool,
-  createMemoryWriteTool,
   FileSystemMemoryStore,
   JsonlDurableEventStore,
   JsonlSessionRepository,
   MemoryManager,
+  memoryReadTool,
+  memoryWriteTool,
 } from '../node/index.js';
 
 describe('root exports', () => {
@@ -150,7 +150,7 @@ describe('root exports', () => {
     expect('getBuiltinTools' in root).toBe(false);
     expect('FileSystemMemoryStore' in root).toBe(false);
     expect('MemoryManager' in root).toBe(false);
-    expect('createMemoryReadTool' in root).toBe(false);
+    expect('memoryReadTool' in root).toBe(false);
     expect('JsonlDurableEventStore' in root).toBe(false);
     expect('JsonlSessionRepository' in root).toBe(false);
     expect('createSdkMcpServer' in root).toBe(false);
@@ -159,8 +159,8 @@ describe('root exports', () => {
   it('exports shared primitives at root and local adapters from the Node entrypoint', () => {
     expect(MemoryManager).toBeDefined();
     expect(FileSystemMemoryStore).toBeDefined();
-    expect(createMemoryReadTool).toBeDefined();
-    expect(createMemoryWriteTool).toBeDefined();
+    expect(memoryReadTool).toBeDefined();
+    expect(memoryWriteTool).toBeDefined();
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();
     expect(ToolCatalog).toBeDefined();
@@ -316,7 +316,7 @@ describe('root exports', () => {
     expectTypeOf<ProviderRegistryErrorCode>().toEqualTypeOf<
       'PROVIDER_ADAPTER_INVALID' | 'PROVIDER_ADAPTER_DUPLICATE' | 'PROVIDER_ADAPTER_NOT_FOUND'
     >();
-    expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
+    expectTypeOf<typeof memoryReadTool>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
     expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<'event' | 'caught_up'>();

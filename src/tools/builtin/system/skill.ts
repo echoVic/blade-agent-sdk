@@ -1,6 +1,6 @@
 import Type from 'typebox';
 import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
-import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/index.js';
+import { isSkillAvailableInContext } from '../../../skills/index.js';
 import type { SkillContent } from '../../../skills/types.js';
 import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
@@ -23,6 +23,7 @@ export const skillTool = createTool({
   displayName: 'Skill',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
+  services: ['skillRegistry'],
 
   schema: lazySchema(() =>
     Type.Object({
@@ -61,9 +62,7 @@ Important:
     const { skill, args } = params;
 
     // The Skill list belongs to the project this execution runs in.
-    const projectDir = getEffectiveProjectDir(context);
-    const registry =
-      context.skillRegistry ?? getSkillRegistry(projectDir ? { cwd: projectDir } : undefined);
+    const registry = context.skillRegistry;
     const skillMetadata = registry.get(skill);
 
     // 检查 skill 是否存在

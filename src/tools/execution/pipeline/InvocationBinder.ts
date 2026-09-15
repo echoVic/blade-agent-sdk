@@ -45,7 +45,7 @@ export class InvocationBinder {
     if (!invocation?.validate) {
       return undefined;
     }
-    const toolContext = getToolContext(state.tool, state.context);
+    const toolContext = getToolContext(state.tool, state.context, state.services);
     const validationError = await this.guard.awaitPermissionCallback(
       () => invocation.validate?.(toolContext),
       state.context.signal,

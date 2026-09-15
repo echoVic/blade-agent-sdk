@@ -57,12 +57,13 @@ type ToolDefinitionBaseContext = Pick<
   | 'sessionId'
   | 'messageId'
   | 'contextSnapshot'
+  | 'skillActivationPaths'
   | 'permissionMode'
   | 'confirmationHandler'
   | 'bladeConfig'
 >;
 
-type ToolDefinitionContext<
+export type ToolDefinitionContext<
   TServices extends ToolServiceName,
   TRequiresRuntime extends boolean,
 > = ToolDefinitionBaseContext &
@@ -124,7 +125,11 @@ export type ErasedToolDefinition = Omit<
   execute: (params: never, context: never) => ToolExecution<JsonValue>;
 };
 
-export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
+export interface ToolConfig<
+  TSchema extends Type.TSchema = Type.TSchema,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+> {
   name: string;
   aliases?: string[];
   displayName: string;
@@ -136,12 +141,16 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
   strict?: boolean;
   maxResultSizeChars?: number;
   interruptBehavior?: 'cancel' | 'block';
-  requiresRuntime?: boolean;
+  services?: readonly TServices[];
+  requiresRuntime?: TRequiresRuntime;
   schema: ToolSchema<TSchema>;
   description: ToolDescription;
   describe?: ToolDescriptionResolver<Type.Static<TSchema>>;
   exposure?: ToolExposureConfig;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution;
+  execute: (
+    params: Type.Static<TSchema>,
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
+  ) => ToolExecution;
   validateInput?: (
     params: Type.Static<TSchema>,
     context: ExecutionContext,
@@ -150,9 +159,7 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
     params: Type.Static<TSchema>,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (
-    params?: Type.Static<TSchema>,
-  ) => Partial<ToolBehavior> | ToolBehavior;
+  resolveBehavior?: (params?: Type.Static<TSchema>) => Partial<ToolBehavior> | ToolBehavior;
   version?: string;
   category?: string;
   tags?: string[];
@@ -171,6 +178,7 @@ export interface Tool<TParams = unknown> {
   readonly strict: boolean;
   readonly maxResultSizeChars: number;
   readonly interruptBehavior: 'cancel' | 'block';
+  readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
   readonly description: ToolDescription;
   readonly exposure: Required<ToolExposureConfig> & {

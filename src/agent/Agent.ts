@@ -31,7 +31,9 @@ import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
+import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import type { ToolServices } from '../tools/services.js';
 import type { Tool } from '../tools/types/tool.js';
 import { PermissionMode } from '../types/constants.js';
 import { SessionId } from '../types/identifiers.js';
@@ -53,6 +55,7 @@ import { TokenBudget, type TokenBudgetConfig, type TokenBudgetSnapshot } from '.
 import type {
   AgentExecutionContext,
   AgentRuntimeOptions,
+  IBackgroundAgentManager,
   LoopOptions,
   LoopResult,
   PlanApprovalResult,
@@ -66,7 +69,7 @@ export interface AgentRuntimeDeps {
   defaultContext?: RuntimeContext;
   mcpRegistry?: McpRegistry;
   subagentRegistry?: SubagentRegistry;
-  backgroundAgentManager?: BackgroundAgentManager;
+  backgroundAgentManager?: IBackgroundAgentManager;
   hookRuntime?: HookRuntime;
   providerRegistry?: ProviderRegistry;
   modelMiddleware?: readonly ModelMiddleware[];
@@ -100,8 +103,8 @@ export class Agent {
   private readonly runtimeMcpRegistry?: McpRegistry;
   private readonly ownsRuntimeMcpRegistry: boolean;
   private readonly subagentRegistry: SubagentRegistry;
-  private readonly backgroundAgentManager: BackgroundAgentManager;
-  private readonly ownsBackgroundAgentManager: boolean;
+  private readonly backgroundAgentManager: IBackgroundAgentManager;
+  private readonly ownedBackgroundAgentManager?: BackgroundAgentManager;
   private readonly hookRuntime?: HookRuntime;
   private readonly localDiscovery: boolean;
   private readonly skillsEnabled: boolean;
@@ -130,10 +133,6 @@ export class Agent {
     this.runtimeOptions = runtimeOptions;
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
-    this.executionPipeline =
-      deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
-    this.toolCatalog =
-      this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.localDiscovery = runtimeOptions.localDiscovery ?? true;
@@ -148,10 +147,10 @@ export class Agent {
     this.subagentRegistry =
       deps.subagentRegistry ??
       new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
-    this.ownsBackgroundAgentManager = deps.backgroundAgentManager === undefined;
-    this.backgroundAgentManager =
-      deps.backgroundAgentManager ??
-      BackgroundAgentManager.create(
+    if (deps.backgroundAgentManager) {
+      this.backgroundAgentManager = deps.backgroundAgentManager;
+    } else {
+      this.ownedBackgroundAgentManager = BackgroundAgentManager.create(
         this.rootLogger,
         AgentSessionStore.create(),
         undefined,
@@ -161,7 +160,13 @@ export class Agent {
         },
         deps.providerRegistry,
       );
+      this.backgroundAgentManager = this.ownedBackgroundAgentManager;
+    }
     this.hookRuntime = deps.hookRuntime;
+    this.executionPipeline =
+      deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
+    this.toolCatalog =
+      this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -517,8 +522,8 @@ export class Agent {
       ...this.activeRuns,
     ]);
     const cleanupOperations: Promise<unknown>[] = [];
-    if (this.ownsBackgroundAgentManager) {
-      cleanupOperations.push(this.backgroundAgentManager.sealCancelAndWait());
+    if (this.ownedBackgroundAgentManager) {
+      cleanupOperations.push(this.ownedBackgroundAgentManager.sealCancelAndWait());
     }
     if (this.ownsRuntimeMcpRegistry && this.runtimeMcpRegistry) {
       cleanupOperations.push(this.runtimeMcpRegistry.disconnectAll());
@@ -541,7 +546,15 @@ export class Agent {
   }
 
   private createDefaultPipeline(middleware: readonly ToolMiddleware[] = []): ExecutionPipeline {
-    const registry = new ToolRegistry();
+    const services: ToolServices = {
+      subagentRegistry: this.subagentRegistry,
+      skillRegistry: this.skillRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      ...(this.runtimeMcpRegistry ? { mcpRegistry: this.runtimeMcpRegistry } : {}),
+    };
+    const registry = new ToolRegistry(services);
+    const catalog = new ToolCatalog(registry);
+    services.discoverableCatalog = new ToolExposurePlanner(catalog);
     const permissions: PermissionsConfig = {
       ...this.config.permissions,
       ...this.runtimeOptions.permissions,
@@ -559,7 +572,7 @@ export class Agent {
       permissionHandler,
       toolTimeoutMs: this.config.toolTimeoutMs,
       middleware,
-      toolCatalog: new ToolCatalog(registry),
+      toolCatalog: catalog,
     });
   }
 
@@ -721,11 +734,8 @@ export class Agent {
 
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
-      sessionId: SessionId('default'),
-      configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,
-      subagentRegistry: this.subagentRegistry,
     });
     if (builtinTools.length === 0) {
       this.logger.debug('📦 No builtin tools available');

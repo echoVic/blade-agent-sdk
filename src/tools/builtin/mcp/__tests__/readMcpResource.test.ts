@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
+import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
+import { ToolRegistry } from '../../../registry/ToolRegistry.js';
 import { collectToolExecution } from '../../../types/result.js';
-import { createReadMcpResourceTool } from '../readMcpResource.js';
+import { readMcpResourceTool } from '../readMcpResource.js';
 
 const mockGetAllServers = vi.fn(() => new Map());
 
@@ -9,9 +11,11 @@ const mockRegistry = {
   getAllServers: mockGetAllServers,
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
-const readMcpResourceTool = createReadMcpResourceTool(mockRegistry);
-const executeReadMcpResource = (params: Parameters<typeof readMcpResourceTool.execute>[0]) =>
-  collectToolExecution(readMcpResourceTool.execute(params));
+const registry = new ToolRegistry({ mcpRegistry: mockRegistry });
+registry.register(readMcpResourceTool);
+const pipeline = new ExecutionPipeline(registry);
+const executeReadMcpResource = (params: { uri: string; serverName?: string }) =>
+  collectToolExecution(pipeline.execute(readMcpResourceTool.name, params, {}));
 
 describe('readMcpResourceTool', () => {
   beforeEach(() => {

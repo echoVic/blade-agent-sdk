@@ -4,6 +4,7 @@ import type { UserMessageContent } from '../agent/types.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
+import type { MemoryManager } from '../memory/MemoryManager.js';
 import type {
   ModelProviderOptions,
   OutputFormat,
@@ -262,6 +263,8 @@ export interface SessionOptions {
   disallowedTools?: string[];
   toolSourcePolicy?: ToolCatalogSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  /** Enables the built-in MemoryRead and MemoryWrite tools for this Session. */
+  memoryManager?: MemoryManager;
   // never 用于擦除异构工具的参数类型，不会泄漏到各工具自己的 execute 实现。
   tools?: SessionTool[];
 

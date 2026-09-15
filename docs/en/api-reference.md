@@ -371,8 +371,8 @@ Authoring and execution:
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
 | `getBuiltinTools` | Build the `/advanced` local tool set |
-| `createMemoryReadTool` | Create an opt-in memory reader (`/advanced`) |
-| `createMemoryWriteTool` | Create an opt-in memory writer (`/advanced`) |
+| `memoryReadTool` | Static opt-in memory reader (`/advanced`) |
+| `memoryWriteTool` | Static opt-in memory writer (`/advanced`) |
 
 Types:
 
@@ -452,8 +452,9 @@ Types:
 
 Memory tools are opt-in.
 
-`createMemoryReadTool()` and `createMemoryWriteTool()` return complete `Tool`
-instances that can be passed directly to `SessionOptions.tools`.
+`memoryReadTool` and `memoryWriteTool` are static `Tool` instances. Set
+`SessionOptions.memoryManager` to register them and inject that manager only into
+the tools that declare the service.
 
 ## Providers
 

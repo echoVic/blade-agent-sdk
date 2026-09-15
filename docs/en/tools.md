@@ -455,8 +455,10 @@ behavior is unchanged.
 ## Built-in tools
 
 `getBuiltinTools()` is exported by `/advanced`. Its local Session facade
-registers this local host tool set automatically; memory tools
-are only included when a `MemoryManager` is supplied explicitly.
+registers this local host tool set automatically. The returned list contains all
+static built-in candidates; the Session registry skips tools whose declared
+services are unavailable. `MemoryRead` and `MemoryWrite` are registered only
+when `SessionOptions.memoryManager` is configured.
 Calling a returned tool's `execute()` method directly bypasses the
 `ExecutionPipeline`. Existing-file `Write` and `Edit` calls still require
 `ExecutionContext.sessionId`; without it, read-before-write cannot be verified
@@ -472,6 +474,7 @@ and the operation fails closed.
 | System | `AskUserQuestion`, `DiscoverTools`, `Skill` |
 | Planning | `EnterPlanMode`, `ExitPlanMode` |
 | Todos | `TodoWrite` |
+| Memory | `MemoryRead`, `MemoryWrite` (requires `SessionOptions.memoryManager`) |
 | MCP resources | `ListMcpResources`, `ReadMcpResource` |
 
 Built-in contracts:
@@ -493,6 +496,8 @@ Built-in contracts:
 | `TaskGet`, `TaskList` | `Write` | `pure` |
 | `TaskUpdate`, `TaskStop` | `Write` | `idempotent` |
 | `TodoWrite` | `ReadOnly` | `idempotent` |
+| `MemoryRead` | `ReadOnly` | `pure` |
+| `MemoryWrite` | `Write` | `idempotent` |
 | `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion` | `ReadOnly` | `non_idempotent` |
 | `DiscoverTools` | `ReadOnly` | `idempotent` |
 | `Skill` | `Execute` | `non_idempotent` |

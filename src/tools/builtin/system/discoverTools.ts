@@ -1,7 +1,6 @@
 import Type from 'typebox';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
-import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 export const discoverToolsTool = createTool({
@@ -9,6 +8,7 @@ export const discoverToolsTool = createTool({
   displayName: 'Discover Tools',
   kind: ToolKind.ReadOnly,
   sideEffect: 'idempotent',
+  services: ['discoverableCatalog'],
   description: {
     short: 'Search the hidden tool catalog and load matching tools into this conversation',
     long: `Use this when you suspect a specialized tool exists but it is not currently exposed in the active function list.
@@ -31,20 +31,6 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     }),
   ),
   async *execute(params, context) {
-    if (!context.discoverableCatalog) {
-      return {
-        status: 'error',
-        model: 'Tool discovery is unavailable because no discoverable catalog was provided.',
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: 'Discoverable catalog is unavailable',
-        },
-        metadata: {
-          summary: '工具发现不可用',
-        },
-      };
-    }
-
     const maxResults = params.max_results ?? 5;
     const matches = context.discoverableCatalog
       .listDiscoverable({

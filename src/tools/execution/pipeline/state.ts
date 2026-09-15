@@ -2,6 +2,7 @@ import type { ToolUseId } from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { ExecutionContext } from '../../types/execution.js';
 import type { ToolBehavior } from '../../behavior.js';
+import type { ToolServices } from '../../services.js';
 import type { ToolResult } from '../../types/result.js';
 import type { Tool, ToolInvocation } from '../../types/tool.js';
 import type { FileLockLease } from '../FileLockManager.js';
@@ -18,6 +19,7 @@ export interface PipelineExecutionState {
   tool: Tool;
   params: JsonObject;
   context: ExecutionContext;
+  services: ToolServices;
   result?: ToolResult;
   invocation?: ToolInvocation;
   resolvedBehavior?: ToolBehavior;

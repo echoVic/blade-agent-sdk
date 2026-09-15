@@ -3,15 +3,8 @@ import { getErrorMessage } from '../../utils/errorUtils.js';
 import { isToolSideEffect, resolveBehavior } from '../behavior.js';
 import { toolFromDefinition } from '../core/createTool.js';
 import { searchTools } from '../search/toolSearch.js';
-import {
-  selectToolServices,
-  type ToolServices,
-} from '../services.js';
-import type {
-  ErasedToolDefinition,
-  FunctionDeclaration,
-  Tool,
-} from '../types/tool.js';
+import { selectToolServices, type ToolServices } from '../services.js';
+import type { ErasedToolDefinition, FunctionDeclaration, Tool } from '../types/tool.js';
 
 const MCP_TOOL_NAME_PREFIX = 'mcp__';
 
@@ -25,6 +18,7 @@ export class ToolRegistry {
   private aliases = new Map<string, string>();
   private categories = new Map<string, Set<string>>();
   private tags = new Map<string, Set<string>>();
+  private toolServices = new Map<string, ToolServices>();
   private sortedAllToolsCache?: Tool[];
   private sortedBuiltinToolsCache?: Tool[];
   private sortedMcpToolsCache?: Tool[];
@@ -45,7 +39,11 @@ export class ToolRegistry {
   /**
    * 注册内置工具
    */
-  register(tool: Tool): void {
+  register(tool: Tool): boolean {
+    const serviceSelection = selectToolServices(this.services, tool.services);
+    if (serviceSelection.missing.length > 0) {
+      return false;
+    }
     this.assertSideEffectContract(tool);
     if (tool.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
       throw new Error(`工具名 '${tool.name}' 使用了保留的 MCP 命名空间`);
@@ -56,9 +54,11 @@ export class ToolRegistry {
     this.assertAliasesAvailable(tool);
 
     this.tools.set(tool.name, tool);
+    this.toolServices.set(tool.name, serviceSelection.selected);
     this.registerAliases(tool);
     this.updateIndexes(tool);
     this.invalidateSortedToolCaches();
+    return true;
   }
 
   /**
@@ -87,6 +87,7 @@ export class ToolRegistry {
     const builtinTool = this.tools.get(name);
     if (builtinTool) {
       this.tools.delete(name);
+      this.toolServices.delete(name);
       this.unregisterAliases(builtinTool);
       this.removeFromIndexes(builtinTool);
       this.invalidateSortedToolCaches();
@@ -101,6 +102,7 @@ export class ToolRegistry {
     }
 
     this.mcpTools.delete(canonicalName);
+    this.toolServices.delete(canonicalName);
     this.unregisterAliases(mcpTool);
     this.removeFromIndexes(mcpTool);
     this.invalidateSortedToolCaches();
@@ -113,6 +115,11 @@ export class ToolRegistry {
   get(name: string): Tool | undefined {
     const canonicalName = this.aliases.get(name) || name;
     return this.tools.get(canonicalName) || this.mcpTools.get(canonicalName);
+  }
+
+  getServices(name: string): ToolServices {
+    const canonicalName = this.aliases.get(name) || name;
+    return this.toolServices.get(canonicalName) ?? {};
   }
 
   /**
@@ -273,6 +280,10 @@ export class ToolRegistry {
    * 注册MCP工具
    */
   registerMcpTool(tool: Tool): void {
+    const serviceSelection = selectToolServices(this.services, tool.services);
+    if (serviceSelection.missing.length > 0) {
+      return;
+    }
     this.assertSideEffectContract(tool);
     if (!tool.name.startsWith(MCP_TOOL_NAME_PREFIX)) {
       throw new Error(`MCP 工具 '${tool.name}' 必须使用保留命名空间 ${MCP_TOOL_NAME_PREFIX}`);
@@ -287,10 +298,12 @@ export class ToolRegistry {
         this.unregisterAliases(previous);
       }
       this.mcpTools.delete(tool.name);
+      this.toolServices.delete(tool.name);
     }
     this.assertAliasesAvailable(tool, 'mcp');
 
     this.mcpTools.set(tool.name, tool);
+    this.toolServices.set(tool.name, serviceSelection.selected);
     this.registerAliases(tool);
     this.updateIndexes(tool);
     this.invalidateSortedToolCaches();
@@ -331,6 +344,7 @@ export class ToolRegistry {
     for (const [name, tool] of this.mcpTools.entries()) {
       if (tool.tags.includes(serverName) || name.startsWith(legacyPrefix)) {
         this.mcpTools.delete(name);
+        this.toolServices.delete(name);
         this.unregisterAliases(tool);
         this.removeFromIndexes(tool);
         this.invalidateSortedToolCaches();

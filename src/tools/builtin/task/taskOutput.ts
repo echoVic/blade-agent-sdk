@@ -7,11 +7,10 @@
  */
 
 import Type from 'typebox';
-import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
+import type { IBackgroundAgentManager } from '../../../agent/types.js';
 import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
 import { ToolKind } from '../../behavior.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
@@ -31,6 +30,7 @@ export const taskOutputTool = createTool({
   displayName: 'Task Output',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
+  services: ['backgroundAgentManager'],
 
   schema: lazySchema(() =>
     Type.Object({
@@ -88,9 +88,9 @@ export const taskOutputTool = createTool({
   },
 
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
-  async *execute(params, context: ExecutionContext) {
+  async *execute(params, context) {
     const { task_id, block, timeout } = params;
-    const agentManager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
+    const agentManager = context.backgroundAgentManager;
 
     // 根据 task_id 前缀判断类型
     if (task_id.startsWith('bash_')) {
@@ -101,7 +101,7 @@ export const taskOutputTool = createTool({
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager && (await agentManager.getAgent(AgentId(task_id)))) {
+    if (await agentManager.getAgent(AgentId(task_id))) {
       return handleAgentOutput(AgentId(task_id), block, timeout, agentManager);
     }
 
@@ -207,7 +207,7 @@ async function handleAgentOutput(
   taskId: AgentId,
   block: boolean,
   timeout: number,
-  manager: BackgroundAgentManager,
+  manager: IBackgroundAgentManager,
 ): Promise<ToolResult> {
   // 获取会话信息
   let session = await manager.getAgent(taskId);

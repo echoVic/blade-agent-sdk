@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
-import { SessionId } from '../../../types/identifiers.js';
 import { resolveBehavior } from '../../behavior.js';
 import { createBuiltinToolGroups, flattenBuiltinToolGroups } from '../groups.js';
 
@@ -9,11 +7,12 @@ function toolNames(tools: ReturnType<typeof flattenBuiltinToolGroups>): string[]
 }
 
 describe('builtin tool groups', () => {
+  it('does not require session-scoped constructor arguments', () => {
+    expect(createBuiltinToolGroups).toHaveLength(0);
+  });
+
   it('preserves the default builtin tool boundaries and order', () => {
-    const groups = createBuiltinToolGroups({
-      sessionId: SessionId('builtin-groups'),
-      subagentRegistry: new SubagentRegistry(),
-    });
+    const groups = createBuiltinToolGroups();
 
     expect(toolNames(groups.filesystem)).toEqual([
       'Read',
@@ -35,7 +34,7 @@ describe('builtin tool groups', () => {
       'TaskStop',
       'TodoWrite',
     ]);
-    expect(groups.memory).toEqual([]);
+    expect(toolNames(groups.memory)).toEqual(['MemoryRead', 'MemoryWrite']);
     expect(toolNames(groups.system)).toEqual([
       'EnterPlanMode',
       'ExitPlanMode',
@@ -43,7 +42,7 @@ describe('builtin tool groups', () => {
       'DiscoverTools',
       'Skill',
     ]);
-    expect(groups.mcpResources).toEqual([]);
+    expect(toolNames(groups.mcpResources)).toEqual(['ListMcpResources', 'ReadMcpResource']);
 
     expect(toolNames(flattenBuiltinToolGroups(groups))).toEqual([
       'Read',
@@ -64,21 +63,20 @@ describe('builtin tool groups', () => {
       'TaskList',
       'TaskStop',
       'TodoWrite',
+      'MemoryRead',
+      'MemoryWrite',
       'EnterPlanMode',
       'ExitPlanMode',
       'AskUserQuestion',
       'DiscoverTools',
       'Skill',
+      'ListMcpResources',
+      'ReadMcpResource',
     ]);
   });
 
   it('declares an explicit interruption policy for every default builtin tool', () => {
-    const tools = flattenBuiltinToolGroups(
-      createBuiltinToolGroups({
-        sessionId: SessionId('builtin-interrupt-behavior'),
-        subagentRegistry: new SubagentRegistry(),
-      }),
-    );
+    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
 
     expect(Object.fromEntries(tools.map((tool) => [tool.name, tool.interruptBehavior]))).toEqual({
       Read: 'cancel',
@@ -99,11 +97,15 @@ describe('builtin tool groups', () => {
       TaskList: 'block',
       TaskStop: 'block',
       TodoWrite: 'block',
+      MemoryRead: 'block',
+      MemoryWrite: 'block',
       EnterPlanMode: 'block',
       ExitPlanMode: 'block',
       AskUserQuestion: 'block',
       DiscoverTools: 'block',
       Skill: 'block',
+      ListMcpResources: 'block',
+      ReadMcpResource: 'block',
     });
 
     const bash = tools.find((tool) => tool.name === 'Bash');
@@ -122,12 +124,7 @@ describe('builtin tool groups', () => {
   });
 
   it('declares an explicit side-effect contract for every default builtin tool', () => {
-    const tools = flattenBuiltinToolGroups(
-      createBuiltinToolGroups({
-        sessionId: SessionId('builtin-side-effects'),
-        subagentRegistry: new SubagentRegistry(),
-      }),
-    );
+    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
 
     expect(Object.fromEntries(tools.map((tool) => [tool.name, tool.sideEffect]))).toEqual({
       Read: 'pure',
@@ -148,11 +145,15 @@ describe('builtin tool groups', () => {
       TaskList: 'pure',
       TaskStop: 'idempotent',
       TodoWrite: 'idempotent',
+      MemoryRead: 'pure',
+      MemoryWrite: 'idempotent',
       EnterPlanMode: 'non_idempotent',
       ExitPlanMode: 'non_idempotent',
       AskUserQuestion: 'non_idempotent',
       DiscoverTools: 'idempotent',
       Skill: 'non_idempotent',
+      ListMcpResources: 'pure',
+      ReadMcpResource: 'pure',
     });
 
     const bash = tools.find((tool) => tool.name === 'Bash');
@@ -170,14 +171,14 @@ describe('builtin tool groups', () => {
     ).toMatchObject({ sideEffect: 'non_idempotent' });
 
     const webFetch = tools.find((tool) => tool.name === 'WebFetch');
-    expect(
-      resolveBehavior(webFetch, { url: 'https://example.com', method: 'GET' }),
-    ).toMatchObject({ sideEffect: 'pure' });
-    expect(
-      resolveBehavior(webFetch, { url: 'https://example.com', method: 'PUT' }),
-    ).toMatchObject({ sideEffect: 'idempotent' });
-    expect(
-      resolveBehavior(webFetch, { url: 'https://example.com', method: 'POST' }),
-    ).toMatchObject({ sideEffect: 'non_idempotent' });
+    expect(resolveBehavior(webFetch, { url: 'https://example.com', method: 'GET' })).toMatchObject({
+      sideEffect: 'pure',
+    });
+    expect(resolveBehavior(webFetch, { url: 'https://example.com', method: 'PUT' })).toMatchObject({
+      sideEffect: 'idempotent',
+    });
+    expect(resolveBehavior(webFetch, { url: 'https://example.com', method: 'POST' })).toMatchObject(
+      { sideEffect: 'non_idempotent' },
+    );
   });
 });

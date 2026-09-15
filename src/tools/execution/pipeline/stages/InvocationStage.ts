@@ -63,7 +63,7 @@ export class InvocationStage {
       ? AbortSignal.any([state.context.signal, timeoutController.signal])
       : timeoutController.signal;
     const execution = state.invocation.execute(executionSignal, {
-      ...getToolContext(state.tool, state.context),
+      ...getToolContext(state.tool, state.context, state.services),
       signal: executionSignal,
     });
 

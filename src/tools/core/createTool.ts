@@ -1,17 +1,8 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
 import type { JsonValue } from '../../types/json.js';
-import {
-  isToolSideEffect,
-  resolveBehavior,
-  type ToolBehavior,
-  ToolKind,
-} from '../behavior.js';
-import {
-  selectToolServices,
-  type ToolServiceName,
-  type ToolServices,
-} from '../services.js';
+import { isToolSideEffect, resolveBehavior, type ToolBehavior, ToolKind } from '../behavior.js';
+import { selectToolServices, type ToolServiceName, type ToolServices } from '../services.js';
 import { type ExecutionContext, getRuntimeAccess } from '../types/execution.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
 import type {
@@ -19,6 +10,7 @@ import type {
   Tool,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionContext,
   ToolDefinitionInput,
   ToolDescription,
   ToolExposureMode,
@@ -49,6 +41,7 @@ interface ToolAssembly<TParams> {
   readonly planningBehavior: ToolBehavior;
   readonly strict: boolean;
   readonly maxResultSizeChars: number;
+  readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
   readonly description: ToolDescription;
   readonly exposure: { mode: ToolExposureMode; alwaysLoad: boolean; discoveryHint: string };
@@ -90,6 +83,7 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
     strict: assembly.strict,
     maxResultSizeChars: assembly.maxResultSizeChars,
     interruptBehavior: assembly.staticBehavior.interruptBehavior,
+    services: assembly.services,
     requiresRuntime: assembly.requiresRuntime,
     description: assembly.description,
     exposure: assembly.exposure,
@@ -151,9 +145,11 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
 /**
  * 创建工具的工厂函数
  */
-export function createTool<TSchema extends Type.TSchema>(
-  config: ToolConfig<TSchema>,
-): Tool<Type.Static<TSchema>> {
+export function createTool<
+  TSchema extends Type.TSchema,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(config: ToolConfig<TSchema, TServices, TRequiresRuntime>): Tool<Type.Static<TSchema>> {
   type TParams = Type.Static<TSchema>;
   let cachedSchema: TSchema | undefined;
   let cachedInput: CompiledToolInput<TSchema> | undefined;
@@ -209,6 +205,7 @@ export function createTool<TSchema extends Type.TSchema>(
     planningBehavior,
     strict: config.strict ?? false,
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
+    services: config.services ?? [],
     requiresRuntime: config.requiresRuntime ?? false,
     description: config.description,
     exposure,
@@ -236,7 +233,10 @@ export function createTool<TSchema extends Type.TSchema>(
     execute: (params, context) =>
       config.execute(
         params,
-        createConfiguredToolContext(context, config.requiresRuntime ?? false),
+        createConfiguredToolContext<TServices, TRequiresRuntime>(
+          context,
+          config.requiresRuntime ?? false,
+        ),
       ),
     ...(validateInputFn
       ? {
@@ -302,10 +302,7 @@ export function toolFromDefinition<
   definition: ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>,
   services?: ToolServices,
 ): Tool<Type.Static<TSchema>>;
-export function toolFromDefinition(
-  definition: ErasedToolDefinition,
-  services?: ToolServices,
-): Tool;
+export function toolFromDefinition(definition: ErasedToolDefinition, services?: ToolServices): Tool;
 export function toolFromDefinition(
   definition: ErasedToolDefinition,
   services: ToolServices = {},
@@ -345,6 +342,7 @@ export function toolFromDefinition(
     planningBehavior: staticBehavior,
     strict: false,
     maxResultSizeChars: Number.POSITIVE_INFINITY,
+    services: definition.services ?? [],
     requiresRuntime,
     description,
     exposure: {
@@ -416,15 +414,18 @@ function executeErasedDefinition(
   return definition.execute.apply(undefined, [params, context] as never);
 }
 
-function createConfiguredToolContext(
+function createConfiguredToolContext<
+  TServices extends ToolServiceName,
+  TRequiresRuntime extends boolean,
+>(
   context: ExecutionContext,
   requiresRuntime: boolean,
-): ExecutionContext {
+): ToolDefinitionContext<TServices, TRequiresRuntime> {
   const { runtime: _runtime, ...base } = context;
   return Object.freeze({
     ...base,
     ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
-  });
+  }) as ToolDefinitionContext<TServices, TRequiresRuntime>;
 }
 
 function createDefinitionContext(

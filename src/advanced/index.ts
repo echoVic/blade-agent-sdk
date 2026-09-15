@@ -6,8 +6,8 @@ export {
 export * from '../execution/index.js';
 export * from '../index.js';
 export {
-  createMemoryReadTool,
-  createMemoryWriteTool,
+  memoryReadTool,
+  memoryWriteTool,
 } from '../tools/builtin/memory/index.js';
 export { getBuiltinTools } from '../tools/builtin/index.js';
 export {

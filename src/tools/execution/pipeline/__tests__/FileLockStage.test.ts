@@ -19,6 +19,7 @@ function createState(params: JsonObject): PipelineExecutionState {
     } as unknown as PipelineExecutionState['tool'],
     params,
     context: { permissionMode: PermissionMode.DEFAULT },
+    services: {},
     affectedPaths: [],
     needsConfirmation: false,
     confirmationReasons: [],
@@ -73,7 +74,9 @@ describe('FileLockStage', () => {
   });
 
   it('turns a lock rejection caused by cancellation into an aborted result', async () => {
-    vi.spyOn(FileLockManager.prototype, 'acquire').mockRejectedValue(new Error('lock wait aborted'));
+    vi.spyOn(FileLockManager.prototype, 'acquire').mockRejectedValue(
+      new Error('lock wait aborted'),
+    );
     const stage = new FileLockStage(NOOP_LOGGER, new TerminalCleanupGuard());
 
     const controller = new AbortController();

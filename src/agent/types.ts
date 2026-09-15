@@ -4,8 +4,10 @@
 
 import type { OutputFormat } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
+import type { AgentMiddlewareConfig } from '../middleware/AgentPlugin.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
+import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/execution.js';
@@ -67,7 +69,10 @@ export interface IBackgroundAgentController {
 
 export interface IBackgroundAgentManager
   extends IBackgroundAgentReader,
-    IBackgroundAgentController {}
+    IBackgroundAgentController {
+  getMiddleware?(): AgentMiddlewareConfig;
+  getProviderRegistry?(): ProviderRegistry | undefined;
+}
 
 /**
  * 子代理信息（用于 JSONL 写入）

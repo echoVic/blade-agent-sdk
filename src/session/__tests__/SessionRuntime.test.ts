@@ -12,7 +12,7 @@ import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.
 import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecutor.js';
 import { SandboxService } from '../../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
-import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
+import { memoryReadTool } from '../../tools/builtin/memory/index.js';
 import { createTool, defineTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { ToolKind } from '../../tools/behavior.js';
@@ -220,9 +220,7 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
-    const result = await collectToolExecution(
-      executionPipeline.execute('ServiceTool', {}, {}),
-    );
+    const result = await collectToolExecution(executionPipeline.execute('ServiceTool', {}, {}));
 
     expect(result.status).toBe('success');
     expect(injectedSubagentRegistry).toMatchObject({
@@ -298,6 +296,40 @@ describe('SessionRuntime', () => {
         sourceId: 'builtin',
       },
     });
+
+    await runtime.close();
+  });
+
+  it('registers memory tools for server sessions when a manager is provided', async () => {
+    const memoryManager = new MemoryManager({
+      save: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(async () => []),
+      delete: vi.fn(),
+    });
+    const runtime = new SessionRuntime(
+      SessionId('server-session-memory'),
+      createOptions({
+        allowedTools: ['MemoryRead', 'MemoryWrite'],
+        memoryManager,
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      {},
+      NOOP_LOGGER,
+      SERVER_SESSION_HOST,
+    );
+
+    await runtime.initialize();
+
+    expect(
+      runtime
+        .getToolRegistry()
+        .getAll()
+        .map((tool) => tool.name),
+    ).toEqual(['MemoryRead', 'MemoryWrite']);
 
     await runtime.close();
   });
@@ -838,12 +870,12 @@ describe('SessionRuntime', () => {
       list: vi.fn(async () => []),
       delete: vi.fn(),
     });
-    const memoryTool = createMemoryReadTool({ manager: memoryManager });
     const runtime = new SessionRuntime(
       SessionId('session-complete-tools'),
       createOptions({
         allowedTools: ['RuntimeTool', 'MemoryRead'],
-        tools: [runtimeTool, memoryTool],
+        tools: [runtimeTool],
+        memoryManager,
       }),
       {
         models: [],
@@ -856,7 +888,7 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().get('RuntimeTool')).toBe(runtimeTool);
-    expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryTool);
+    expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryReadTool);
     expect(runtime.getToolRegistry().get('RuntimeTool')?.interruptBehavior).toBe('cancel');
 
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;

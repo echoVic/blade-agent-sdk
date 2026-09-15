@@ -60,13 +60,23 @@ export function getBuiltinTools(..._args: unknown[]): never {
   return serverOnly('getBuiltinTools');
 }
 
-export function createMemoryReadTool(..._args: unknown[]): never {
-  return serverOnly('createMemoryReadTool');
-}
+export const memoryReadTool = new Proxy(
+  {},
+  {
+    get() {
+      return serverOnly('memoryReadTool');
+    },
+  },
+);
 
-export function createMemoryWriteTool(..._args: unknown[]): never {
-  return serverOnly('createMemoryWriteTool');
-}
+export const memoryWriteTool = new Proxy(
+  {},
+  {
+    get() {
+      return serverOnly('memoryWriteTool');
+    },
+  },
+);
 
 export function createSdkMcpServer(..._args: unknown[]): never {
   return serverOnly('createSdkMcpServer');

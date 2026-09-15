@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { MemoryManager } from '../../../../memory/MemoryManager.js';
 import type { MemoryStore } from '../../../../memory/MemoryStore.js';
 import type { Memory, MemoryInput } from '../../../../memory/types.js';
-import { SessionId } from '../../../../types/identifiers.js';
+import type { JsonObject } from '../../../../types/json.js';
+import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
+import { ToolRegistry } from '../../../registry/ToolRegistry.js';
 import { collectToolExecution } from '../../../types/result.js';
-import { getBuiltinTools } from '../../index.js';
-import { createMemoryReadTool, createMemoryWriteTool } from '../index.js';
+import { createBuiltinToolGroups, flattenBuiltinToolGroups } from '../../groups.js';
+import { memoryReadTool, memoryWriteTool } from '../index.js';
 
 class InMemoryStore implements MemoryStore {
   private readonly records = new Map<string, Memory>();
@@ -30,36 +32,37 @@ class InMemoryStore implements MemoryStore {
   }
 }
 
-async function executeTool<TParams>(
-  tool: ReturnType<typeof createMemoryReadTool> | ReturnType<typeof createMemoryWriteTool>,
-  params: TParams,
+async function executeTool(
+  tool: typeof memoryReadTool | typeof memoryWriteTool,
+  params: JsonObject,
+  manager: MemoryManager,
 ) {
-  return collectToolExecution(tool.build(params as never).execute(new AbortController().signal));
+  const registry = new ToolRegistry({ memoryManager: manager });
+  registry.register(tool);
+  return collectToolExecution(new ExecutionPipeline(registry).execute(tool.name, params, {}));
 }
 
 describe('memory tools', () => {
   it('does not register memory tools by default', async () => {
-    const tools = await getBuiltinTools({ sessionId: SessionId('memory-default') });
-    expect(tools.map((tool) => tool.name)).not.toEqual(
+    const registry = new ToolRegistry();
+    registry.registerAll(flattenBuiltinToolGroups(createBuiltinToolGroups()));
+    expect(registry.getAll().map((tool) => tool.name)).not.toEqual(
       expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
   it('registers memory tools only when a manager is provided', async () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const tools = await getBuiltinTools({
-      sessionId: SessionId('memory-opt-in'),
-      memoryManager: manager,
-    });
+    const registry = new ToolRegistry({ memoryManager: manager });
+    registry.registerAll(flattenBuiltinToolGroups(createBuiltinToolGroups()));
 
-    expect(tools.map((tool) => tool.name)).toEqual(
+    expect(registry.getAll().map((tool) => tool.name)).toEqual(
       expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
   it('returns summaries for list and search operations', async () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const readTool = createMemoryReadTool({ manager });
 
     await manager.save({
       name: 'project-context',
@@ -68,11 +71,15 @@ describe('memory tools', () => {
       body: 'Use session scoped subagents and opt-in memory tools.',
     });
 
-    const listResult = await executeTool(readTool, { operation: 'list' });
-    const searchResult = await executeTool(readTool, {
-      operation: 'search',
-      query: 'session scoped',
-    });
+    const listResult = await executeTool(memoryReadTool, { operation: 'list' }, manager);
+    const searchResult = await executeTool(
+      memoryReadTool,
+      {
+        operation: 'search',
+        query: 'session scoped',
+      },
+      manager,
+    );
 
     expect(listResult.model).toEqual([
       {
@@ -93,25 +100,24 @@ describe('memory tools', () => {
   });
 
   it('requires operation-specific parameters at schema level', () => {
-    const manager = new MemoryManager(new InMemoryStore());
-    const readTool = createMemoryReadTool({ manager });
-    const writeTool = createMemoryWriteTool({ manager });
-
-    expect(() => readTool.build({ operation: 'get' } as never)).toThrow();
-    expect(() => readTool.build({ operation: 'search' } as never)).toThrow();
+    expect(() => memoryReadTool.build({ operation: 'get' } as never)).toThrow();
+    expect(() => memoryReadTool.build({ operation: 'search' } as never)).toThrow();
     expect(() =>
-      writeTool.build({ operation: 'save', name: 'project-context' } as never),
+      memoryWriteTool.build({ operation: 'save', name: 'project-context' } as never),
     ).toThrow();
   });
 
   it('acknowledges delete requests without claiming a missing record was deleted', async () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const writeTool = createMemoryWriteTool({ manager });
 
-    const result = await executeTool(writeTool, {
-      operation: 'delete',
-      name: 'missing-memory',
-    });
+    const result = await executeTool(
+      memoryWriteTool,
+      {
+        operation: 'delete',
+        name: 'missing-memory',
+      },
+      manager,
+    );
 
     expect(result.status).toBe('success');
     expect(result.model).toEqual({
