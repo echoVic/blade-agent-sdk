@@ -14,6 +14,7 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
+  RuntimeAccess,
   Tool,
   ToolBehavior,
   ToolConfig,

@@ -22,7 +22,7 @@ import { PermissionMode } from '../../../types/constants.js';
 import { AgentId, SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
+import { getRuntimeAccess, type ExecutionContext } from '../../types/execution.js';
 import { ToolKind } from '../../behavior.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
@@ -187,6 +187,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
       ],
     },
     async *execute(params, context: ExecutionContext) {
+      const runtime = getRuntimeAccess(context);
       const {
         subagent_type,
         description,
@@ -274,9 +275,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           subagentSessionId,
           snapshot: context.contextSnapshot,
           signal: context.signal,
-          executionFence: context.executionFence,
-          assertExecutionLease: context.assertExecutionLease,
-          runWithExecutionLease: context.runWithExecutionLease,
+          executionFence: runtime.executionFence,
+          assertExecutionLease: runtime.assertExecutionLease,
+          runWithExecutionLease: runtime.runWithExecutionLease,
         };
 
         yield {
@@ -320,9 +321,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
               subagentSessionId,
               snapshot: context.contextSnapshot,
               signal: context.signal,
-              executionFence: context.executionFence,
-              assertExecutionLease: context.assertExecutionLease,
-              runWithExecutionLease: context.runWithExecutionLease,
+              executionFence: runtime.executionFence,
+              assertExecutionLease: runtime.assertExecutionLease,
+              runWithExecutionLease: runtime.runWithExecutionLease,
             };
 
             const continueStartTime = Date.now();
@@ -432,6 +433,7 @@ async function handleBackgroundExecution(
   subagentSessionId: AgentId,
   registry: SubagentRegistry,
 ): Promise<ToolResult> {
+  const runtime = getRuntimeAccess(context);
   if (!context.bladeConfig) {
     return {
       status: 'error',
@@ -471,9 +473,9 @@ async function handleBackgroundExecution(
     permissionMode: context.permissionMode,
     agentId: subagentSessionId,
     snapshot: context.contextSnapshot,
-    executionFence: context.executionFence,
-    assertExecutionLease: context.assertExecutionLease,
-    runWithExecutionLease: context.runWithExecutionLease,
+    executionFence: runtime.executionFence,
+    assertExecutionLease: runtime.assertExecutionLease,
+    runWithExecutionLease: runtime.runWithExecutionLease,
   });
 
   return {
@@ -509,6 +511,7 @@ async function handleResume(
   context: ExecutionContext,
   registry: SubagentRegistry,
 ): Promise<ToolResult> {
+  const runtime = getRuntimeAccess(context);
   if (!context.bladeConfig) {
     return {
       status: 'error',
@@ -576,9 +579,9 @@ async function handleResume(
     context.permissionMode,
     registry,
     description,
-    context.executionFence,
-    context.assertExecutionLease,
-    context.runWithExecutionLease,
+    runtime.executionFence,
+    runtime.assertExecutionLease,
+    runtime.runWithExecutionLease,
   );
 
   if (!newAgentId) {

@@ -11,7 +11,11 @@ import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../../typ
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ExecutionContext, ExecutionHistoryEntry } from '../types/execution.js';
+import {
+  getRuntimeAccess,
+  type ExecutionContext,
+  type ExecutionHistoryEntry,
+} from '../types/execution.js';
 import { resolveBehavior, ToolKind } from '../behavior.js';
 import { ToolErrorType, type ToolExecution, type ToolResult } from '../types/result.js';
 import {
@@ -175,13 +179,14 @@ export class ExecutionPipeline {
     const protectedContext = Object.freeze({
       ...context,
       sessionId: context.sessionId || SessionId(executionId),
+      runtime: Object.freeze(getRuntimeAccess(context)),
     });
 
     let result: ToolResult | undefined;
     let effectiveRequest: ToolMiddlewareRequest | undefined;
     let completed = false;
 
-    await protectedContext.assertExecutionLease?.();
+    await protectedContext.runtime.assertExecutionLease();
 
     try {
       const outcome = yield* this.middlewareBoundary.run({
@@ -193,7 +198,7 @@ export class ExecutionPipeline {
       result = outcome.result;
       effectiveRequest = outcome.effectiveRequest;
       this.guard.throwIfFailed();
-      await protectedContext.assertExecutionLease?.();
+      await protectedContext.runtime.assertExecutionLease();
       completed = true;
       return result;
     } catch (error) {
@@ -240,7 +245,7 @@ export class ExecutionPipeline {
       interrupted: false,
     };
 
-    await state.context.assertExecutionLease?.();
+    await getRuntimeAccess(state.context).assertExecutionLease();
 
     const resolvedBehavior = resolveBehavior(tool, request.input);
     const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
@@ -253,7 +258,7 @@ export class ExecutionPipeline {
       if (this.guard.hasPendingCleanup()) {
         return this.guard.createPendingResult();
       }
-      await state.context.assertExecutionLease?.();
+      await getRuntimeAccess(state.context).assertExecutionLease();
       this.guard.throwIfFailed();
       state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
@@ -308,7 +313,7 @@ export class ExecutionPipeline {
         yield* this.invocationStage.run(state);
       }
 
-      await state.context.assertExecutionLease?.();
+      await getRuntimeAccess(state.context).assertExecutionLease();
 
       const normalizedResult = await this.normalizer.normalize(state);
       const isTimeout =

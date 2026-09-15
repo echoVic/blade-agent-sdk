@@ -12,9 +12,9 @@ import type { DurableExecutionFence } from '../../session/events/DurableExecutio
 import type { SkillRegistry } from '../../skills/SkillRegistry.js';
 import type { PermissionMode } from '../../types/constants.js';
 import type { JsonObject } from '../../types/json.js';
+import type { ToolKind, ToolSideEffect } from '../behavior.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolKind, ToolSideEffect } from '../behavior.js';
 import type { ToolResult } from './result.js';
 
 interface QuestionOption {
@@ -112,6 +112,16 @@ export interface ToolExecutionLifecycle {
   onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
 }
 
+export interface RuntimeAccess {
+  readonly executionFence?: DurableExecutionFence;
+  readonly assertExecutionLease: () => Promise<void>;
+  readonly runWithExecutionLease: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+const allowUnfencedExecution = async (): Promise<void> => {};
+
+const runWithoutExecutionLease = async <T>(operation: () => Promise<T>): Promise<T> => operation();
+
 /**
  * 执行上下文
  */
@@ -126,11 +136,7 @@ export interface ExecutionContext {
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
-  executionFence?: DurableExecutionFence;
-  /** @internal Validates execution ownership immediately before a side effect. */
-  assertExecutionLease?: () => Promise<void>;
-  /** @internal Serializes a short persistence operation against lease takeover. */
-  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+  runtime?: Partial<RuntimeAccess>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   /** @internal Session-scoped Skill registry. */
@@ -138,6 +144,16 @@ export interface ExecutionContext {
   discoveredTools?: string[];
   /** @internal Awaited lifecycle boundary immediately before the tool side effect. */
   toolInvocationLifecycle?: ToolInvocationLifecycle;
+}
+
+export function getRuntimeAccess(context: ExecutionContext): RuntimeAccess {
+  return {
+    executionFence: context.runtime?.executionFence,
+    assertExecutionLease:
+      context.runtime?.assertExecutionLease ?? allowUnfencedExecution,
+    runWithExecutionLease:
+      context.runtime?.runWithExecutionLease ?? runWithoutExecutionLease,
+  };
 }
 
 export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {

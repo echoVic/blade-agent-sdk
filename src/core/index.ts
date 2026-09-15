@@ -99,6 +99,7 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
+  RuntimeAccess,
   ToolBehavior,
   ToolConfig,
   ToolDefinition,

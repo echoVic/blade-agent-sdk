@@ -46,6 +46,7 @@ import type {
   ProviderAdapter,
   ProviderRegistryErrorCode,
   ProviderType,
+  RuntimeAccess,
   RuntimePatch,
   SessionEventStore,
   SessionHandoffErrorCode,
@@ -271,6 +272,13 @@ describe('root exports', () => {
     >();
     expectTypeOf<ConfirmationDetails['abortSignal']>().toEqualTypeOf<AbortSignal | undefined>();
     expectTypeOf<ConfirmationHandler['requestConfirmation']>().toBeFunction();
+    expectTypeOf<RuntimeAccess['assertExecutionLease']>().toEqualTypeOf<() => Promise<void>>();
+    expectTypeOf<RuntimeAccess['executionFence']>().toEqualTypeOf<
+      DurableExecutionFence | undefined
+    >();
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('executionFence');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('assertExecutionLease');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('runWithExecutionLease');
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'
@@ -383,9 +391,6 @@ describe('root exports', () => {
     expectTypeOf<SessionPersistence>().toMatchTypeOf<SessionRepository>();
     expectTypeOf<SessionOptions['executionLease']>().toEqualTypeOf<
       DurableExecutionLeaseOptions | undefined
-    >();
-    expectTypeOf<ExecutionContext['executionFence']>().toEqualTypeOf<
-      DurableExecutionFence | undefined
     >();
     expectTypeOf<
       ReturnType<ISession['getExecutionLease']>

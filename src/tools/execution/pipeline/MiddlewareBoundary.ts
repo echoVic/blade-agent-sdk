@@ -4,7 +4,7 @@ import type { ToolMiddleware, ToolMiddlewareRequest } from '../../../middleware/
 import type { JsonObject } from '../../../types/json.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import type { ToolRegistry } from '../../registry/ToolRegistry.js';
-import type { ExecutionContext } from '../../types/execution.js';
+import { getRuntimeAccess, type ExecutionContext } from '../../types/execution.js';
 import { resolveBehavior, ToolSideEffect } from '../../behavior.js';
 import {
   ToolErrorType,
@@ -220,7 +220,7 @@ export class MiddlewareBoundary {
       resolveBehavior(tool, request.input)?.sideEffect ??
       tool?.sideEffect ??
       ToolSideEffect.NON_IDEMPOTENT;
-    await request.context.assertExecutionLease?.();
+    await getRuntimeAccess(request.context).assertExecutionLease();
     await request.context.toolInvocationLifecycle?.onExecutionStarted?.({
       input: structuredClone(request.input),
       sideEffect,

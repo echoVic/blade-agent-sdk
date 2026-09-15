@@ -139,7 +139,7 @@ describe('BackgroundShellManager handoff admission', () => {
         backgroundAgentManager: {
           getOwnerSessionId: () => rootSessionId,
         } as never,
-        executionFence,
+        runtime: { executionFence },
         contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
           capabilities: {
             filesystem: {

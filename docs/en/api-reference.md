@@ -386,6 +386,7 @@ Types:
 `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
 `ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
 `ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`, `ToolSideEffect`,
+`RuntimeAccess`,
 `ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:

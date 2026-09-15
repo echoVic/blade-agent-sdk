@@ -8,7 +8,14 @@ import type { HookRuntime } from '../../../hooks/HookRuntime.js';
 import { HookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { PermissionMode } from '../../../types/constants.js';
-import { InputId, PermissionRequestId, SessionId, TurnId } from '../../../types/identifiers.js';
+import {
+  ExecutionLeaseId,
+  FencingToken,
+  InputId,
+  PermissionRequestId,
+  SessionId,
+  TurnId,
+} from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { PermissionHandler } from '../../../types/permissions.js';
 import { readTool } from '../../builtin/file/read.js';
@@ -61,6 +68,85 @@ describe('ExecutionPipeline', () => {
     expect('getStages' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('addStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('removeStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it('groups execution ownership capabilities under runtime for tool execution', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown;
+    registerTool(
+      registry,
+      createTool({
+        name: 'RuntimeContextTool',
+        displayName: 'Runtime Context Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Observes runtime access' },
+        schema: Type.Object({}),
+        execute: (_params, context) => {
+          observedRuntime = Reflect.get(context, 'runtime');
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      }),
+    );
+
+    const executionFence = {
+      leaseId: ExecutionLeaseId('lease-1'),
+      fencingToken: FencingToken(1),
+    };
+    const assertExecutionLease = vi.fn(async () => {});
+    const runWithExecutionLease = async <T>(operation: () => Promise<T>): Promise<T> => operation();
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+
+    await executePipeline(pipeline, 'RuntimeContextTool', {}, {
+      runtime: {
+        executionFence,
+        assertExecutionLease,
+        runWithExecutionLease,
+      },
+    });
+
+    expect(observedRuntime).toEqual({
+      executionFence,
+      assertExecutionLease,
+      runWithExecutionLease,
+    });
+    expect(Object.isFrozen(observedRuntime)).toBe(true);
+  });
+
+  it('provides callable runtime boundaries without a durable execution lease', async () => {
+    const registry = new ToolRegistry();
+    let observedValue: string | undefined;
+    registerTool(
+      registry,
+      createTool({
+        name: 'InMemoryRuntimeTool',
+        displayName: 'In-memory Runtime Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Uses runtime access without a durable lease' },
+        schema: Type.Object({}),
+        execute: async function* (_params, context) {
+          const runtime = Reflect.get(context, 'runtime') as
+            | {
+                assertExecutionLease?: () => Promise<void>;
+                runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+              }
+            | undefined;
+          await runtime?.assertExecutionLease?.();
+          observedValue = await runtime?.runWithExecutionLease?.(async () => 'available');
+          return { status: 'success', model: 'ok' };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'InMemoryRuntimeTool', {}, {});
+
+    expect(observedValue).toBe('available');
   });
 
   it('enforces configured concurrency limits at the execution boundary', async () => {
@@ -408,12 +494,14 @@ describe('ExecutionPipeline', () => {
       {
         permissionMode: PermissionMode.YOLO,
         signal: controller.signal,
-        assertExecutionLease: async () => {
-          leaseCheckCount += 1;
-          if (leaseCheckCount === 3) {
-            leaseCheckStarted.resolve();
-            await releaseLeaseCheck.promise;
-          }
+        runtime: {
+          assertExecutionLease: async () => {
+            leaseCheckCount += 1;
+            if (leaseCheckCount === 3) {
+              leaseCheckStarted.resolve();
+              await releaseLeaseCheck.promise;
+            }
+          },
         },
       },
     );
@@ -2368,7 +2456,7 @@ describe('ExecutionPipeline', () => {
         {},
         {
           permissionMode: PermissionMode.YOLO,
-          assertExecutionLease,
+          runtime: { assertExecutionLease },
           toolInvocationLifecycle: {
             onExecutionStarted: async () => {},
           },
@@ -2415,7 +2503,7 @@ describe('ExecutionPipeline', () => {
         {},
         {
           permissionMode: PermissionMode.YOLO,
-          assertExecutionLease,
+          runtime: { assertExecutionLease },
           toolInvocationLifecycle: { onExecutionStarted },
         },
       ),

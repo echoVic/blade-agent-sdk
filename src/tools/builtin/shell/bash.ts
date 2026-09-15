@@ -7,7 +7,11 @@ import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
+import {
+  getRuntimeAccess,
+  type ExecutionContext,
+  type RuntimeAccess,
+} from '../../types/execution.js';
 import { ToolKind } from '../../behavior.js';
 import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
@@ -259,6 +263,7 @@ Before executing commands:
   async *execute(params, context: ExecutionContext) {
     const { command, timeout = 30000, cwd, env, run_in_background = false } = params;
     const signal = context.signal ?? new AbortController().signal;
+    const runtime = getRuntimeAccess(context);
 
     try {
       const sandboxService = getSandboxService();
@@ -290,7 +295,7 @@ Before executing commands:
             SessionId(randomUUID()),
           env,
           context.contextSnapshot?.environment,
-          context.executionFence,
+          runtime.executionFence,
         );
       }
 
@@ -380,7 +385,7 @@ function executeInBackground(
   sessionId: SessionId,
   env?: Record<string, string>,
   runtimeEnvironment?: Readonly<Record<string, string>>,
-  executionFence?: ExecutionContext['executionFence'],
+  executionFence?: RuntimeAccess['executionFence'],
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({

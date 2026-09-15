@@ -391,8 +391,10 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              throw leaseError;
+            runtime: {
+              assertExecutionLease: async () => {
+                throw leaseError;
+              },
             },
           },
         ),
@@ -432,10 +434,12 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              if (middlewareUnwound) {
-                throw leaseError;
-              }
+            runtime: {
+              assertExecutionLease: async () => {
+                if (middlewareUnwound) {
+                  throw leaseError;
+                }
+              },
             },
           },
         ),
@@ -502,11 +506,13 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              checks += 1;
-              if (checks === 3) {
-                throw boundaryError;
-              }
+            runtime: {
+              assertExecutionLease: async () => {
+                checks += 1;
+                if (checks === 3) {
+                  throw boundaryError;
+                }
+              },
             },
           },
         ),

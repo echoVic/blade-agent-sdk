@@ -1,5 +1,6 @@
 import { isSteeringInterruptSignal } from '../../../../types/abort.js';
 import { getErrorMessage, getErrorName } from '../../../../utils/errorUtils.js';
+import { getRuntimeAccess } from '../../../types/execution.js';
 import type { ToolExecution, ToolResult, ToolYield } from '../../../types/result.js';
 import { ToolErrorType } from '../../../types/result.js';
 import { createAbortedResult, createExecutionFailureResult } from '../results.js';
@@ -37,7 +38,7 @@ export class InvocationStage {
       input: structuredClone(state.params),
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
-    await state.context.assertExecutionLease?.();
+    await getRuntimeAccess(state.context).assertExecutionLease();
     this.guard.throwIfFailed();
     if (this.guard.hasPendingCleanup()) {
       state.result = this.guard.createPendingResult();

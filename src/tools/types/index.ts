@@ -9,6 +9,7 @@ export type {
   ConfirmationResponse,
   ExecutionContext,
   ExecutionHistoryEntry,
+  RuntimeAccess,
   ToolExecutionLifecycle,
   ToolExecutionStartedLifecycle,
   ToolInvocationLifecycle,

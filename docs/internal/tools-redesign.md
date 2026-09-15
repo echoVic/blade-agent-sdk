@@ -1,6 +1,6 @@
 # Tools 模块重设计方案
 
-> 状态：设计定稿；§13 第 1 步已实施
+> 状态：设计定稿；§13 第 1-2 步已实施
 > 前提：**不考虑向后兼容**（API 面可自由重塑；已持久化的 durable 字符串取值除外）
 > 依据：所有判断均基于当前代码调用点实测（见各节行号引用）
 
@@ -210,7 +210,7 @@ export class ToolRegistry {
 `signal / sessionId / messageId / contextSnapshot(→cwd) / permissionMode /
 confirmationHandler / bladeConfig`。所有 `execute(params, ctx)` 的默认签名。
 
-### 第 2 层 `ctx.runtime: RuntimeAccess`（执行期特权，`requiresRuntime` 才注入）
+### 第 2 层 `ctx.runtime: RuntimeAccess`（执行期特权）
 
 只放**执行期动态、无法构造期注入**的能力：
 
@@ -218,11 +218,14 @@ confirmationHandler / bladeConfig`。所有 `execute(params, ctx)` 的默认签�
 export interface RuntimeAccess {
   assertExecutionLease: () => Promise<void>;
   runWithExecutionLease: <T>(op: () => Promise<T>) => Promise<T>;
-  executionFence: DurableExecutionFence;
+  executionFence?: DurableExecutionFence;
 }
 ```
 
-读取者：task.ts、bash.ts。类型上普通工具**看不到**该字段。
+无 durable lease 时，两个操作分别退化为 no-op 和直接执行；只有 fence 数据可选。
+第 2 步由 Pipeline 对所有工具构造冻结的 `runtime`，旧顶层 lease/fence 字段直接
+删除；第 3 步加入 `requiresRuntime` 后再从类型上限制普通工具访问。读取者：
+task.ts、bash.ts。
 
 ### 第 3 层 构造期依赖（从 context 移除，改按需注入）→ 见第 7 节
 
@@ -436,7 +439,7 @@ defineTool(def)                          // 纯数据 + 依赖声明
 ## 13. 落地顺序（每步独立、可编译、可测）
 
 1. [x] `behavior.ts` 合并单一 `resolveBehavior` + `ToolBehavior`（字面量值保持一致）。
-2. `ExecutionContext` 三层拆分 + `RuntimeAccess` + `ctx.runtime`（双读兼容过渡）。
+2. [x] `ExecutionContext` 三层拆分 + `RuntimeAccess` + `ctx.runtime`（旧顶层字段已删除）。
 3. `ToolServiceMap` + `defineTool` 的 `services`/`requiresRuntime` 声明位 + 注册器注入。
 4. `DiscoverableCatalogView` 落地，DiscoverTools 切窄接口；从 context 删 registry/catalog。
 5. 类 A 6 工厂删除改读 `ctx.sessionId`；类 B 5 工厂改 `services`；bash/task 切 `ctx.runtime`，删 `as` 兜底。
