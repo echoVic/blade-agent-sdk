@@ -4,7 +4,6 @@ import type {
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
-import { resolveBehavior } from '../behavior.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
@@ -94,13 +93,13 @@ export class ToolExposurePlanner implements DiscoverableCatalogView {
       });
 
       if (exposureMode === 'eager') {
-        declarations.push(tool.getFunctionDeclaration());
+        declarations.push(tool.declaration);
         continue;
       }
 
       discoverableTools.push({
         name: tool.name,
-        title: tool.displayName,
+        title: tool.title,
         description: tool.description.short,
         exposureMode,
         discoveryHint: tool.exposure.discoveryHint || undefined,
@@ -163,7 +162,7 @@ export class ToolExposurePlanner implements DiscoverableCatalogView {
     deniedTools: Set<string>,
     sourcePolicy: ToolCatalogSourcePolicy | undefined,
   ): string | undefined {
-    if (permissionMode === PermissionMode.PLAN && !resolveBehavior(tool).isReadOnly) {
+    if (permissionMode === PermissionMode.PLAN && !tool.staticBehavior.isReadOnly) {
       return 'plan-mode-hidden';
     }
 

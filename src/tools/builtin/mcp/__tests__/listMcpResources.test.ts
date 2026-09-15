@@ -31,8 +31,8 @@ describe('listMcpResourcesTool', () => {
       expect(listMcpResourcesTool.name).toBe('ListMcpResources');
     });
 
-    it('should have correct displayName', () => {
-      expect(listMcpResourcesTool.displayName).toBe('List MCP Resources');
+    it('should have correct title', () => {
+      expect(listMcpResourcesTool.title).toBe('List MCP Resources');
     });
   });
 

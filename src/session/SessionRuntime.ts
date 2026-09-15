@@ -64,9 +64,9 @@ function isSdkMcpServerHandle(
 
 function isRuntimeTool(tool: SessionTool): tool is Tool {
   return (
-    typeof Reflect.get(tool, 'build') === 'function' &&
+    typeof Reflect.get(tool, 'prepare') === 'function' &&
     typeof Reflect.get(tool, 'execute') === 'function' &&
-    typeof Reflect.get(tool, 'getFunctionDeclaration') === 'function'
+    typeof Reflect.get(tool, 'declaration') === 'object'
   );
 }
 
@@ -624,7 +624,6 @@ export class SessionRuntime {
               abortSignal: request.signal,
             },
           );
-          Object.assign(request.input, hookResult.updatedInput);
           if (hookResult.decision) {
             return hookResult.decision;
           }

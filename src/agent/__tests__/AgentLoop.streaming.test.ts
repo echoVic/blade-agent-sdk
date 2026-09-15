@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelMessage } from '../../model/message.js';
+import { ToolKind } from '../../tools/behavior.js';
 import type { ToolResult } from '../../tools/types/result.js';
 import { completeToolExecution } from '../../tools/types/result.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -36,6 +37,22 @@ type BaseConfigOverrides = Partial<
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
 };
 
+function mockRuntimeTool(name: string) {
+  const behavior = {
+    kind: ToolKind.Execute,
+    sideEffect: 'non_idempotent' as const,
+    isReadOnly: false,
+    isConcurrencySafe: false,
+    isDestructive: false,
+    interruptBehavior: 'block' as const,
+  };
+  return {
+    name,
+    staticBehavior: behavior,
+    prepare: () => ({ behavior }),
+  };
+}
+
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
   const {
     prepareTurnState,
@@ -43,7 +60,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     messages = [{ role: 'user', content: 'Hi' }] as ModelMessage[],
     executionPipeline = {
       getRegistry: () => ({
-        get: (name: string) => ({ kind: 'execute', name }),
+        get: (name: string) => mockRuntimeTool(name),
       }),
       execute: vi.fn(),
     } as unknown as AgentLoopConfig['executionPipeline'],
@@ -187,7 +204,7 @@ describe('agentLoop streaming integration', () => {
           streaming: true,
           executionPipeline: {
             getRegistry: () => ({
-              get: (name: string) => ({ kind: 'execute', name }),
+              get: (name: string) => mockRuntimeTool(name),
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
@@ -272,7 +289,7 @@ describe('agentLoop streaming integration', () => {
         baseConfig({
           executionPipeline: {
             getRegistry: () => ({
-              get: (name: string) => ({ kind: 'execute', name }),
+              get: (name: string) => mockRuntimeTool(name),
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],

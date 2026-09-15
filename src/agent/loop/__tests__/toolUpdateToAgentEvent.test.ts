@@ -10,7 +10,14 @@ const toolCall: ModelToolCall = {
 };
 
 const registry = {
-  get: (name: string) => (name === 'Read' ? { kind: 'readonly' as const } : undefined),
+  get: (name: string) =>
+    name === 'Read'
+      ? {
+          staticBehavior: {
+            kind: 'readonly' as const,
+          },
+        }
+      : undefined,
 } as unknown as ToolRegistry;
 
 describe('toolUpdateToAgentEvent', () => {

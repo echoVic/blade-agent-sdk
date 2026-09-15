@@ -31,8 +31,8 @@ describe('readMcpResourceTool', () => {
       expect(readMcpResourceTool.name).toBe('ReadMcpResource');
     });
 
-    it('should have correct displayName', () => {
-      expect(readMcpResourceTool.displayName).toBe('Read MCP Resource');
+    it('should have correct title', () => {
+      expect(readMcpResourceTool.title).toBe('Read MCP Resource');
     });
   });
 

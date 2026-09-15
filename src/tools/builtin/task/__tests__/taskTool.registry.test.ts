@@ -5,7 +5,7 @@ describe('taskTool', () => {
   it('declares its runtime services instead of capturing a registry', () => {
     expect(taskTool.services).toEqual(['subagentRegistry', 'backgroundAgentManager']);
     expect(() =>
-      taskTool.build({
+      taskTool.prepare({
         subagent_type: 'session-auditor',
         description: 'Review SDK diff',
         prompt: 'Inspect the memory and subagent API changes.',

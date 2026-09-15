@@ -31,8 +31,8 @@ import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 import { ExecutionPipeline } from '../ExecutionPipeline.js';
 import { FileLockManager } from '../FileLockManager.js';
 
-function registerTool<TParams>(registry: ToolRegistry, tool: Tool<TParams>): void {
-  registry.register(tool as unknown as Tool);
+function registerTool(registry: ToolRegistry, tool: Tool): void {
+  registry.register(tool);
 }
 
 function deferred<T = void>() {
@@ -100,13 +100,18 @@ describe('ExecutionPipeline', () => {
       permissionMode: PermissionMode.YOLO,
     });
 
-    await executePipeline(pipeline, 'RuntimeContextTool', {}, {
-      runtime: {
-        executionFence,
-        assertExecutionLease,
-        runWithExecutionLease,
+    await executePipeline(
+      pipeline,
+      'RuntimeContextTool',
+      {},
+      {
+        runtime: {
+          executionFence,
+          assertExecutionLease,
+          runWithExecutionLease,
+        },
       },
-    });
+    );
 
     expect(observedRuntime).toEqual({
       executionFence,
@@ -178,7 +183,7 @@ describe('ExecutionPipeline', () => {
     expect(observedRuntime).toBeUndefined();
   });
 
-  it('enforces runtime isolation for custom Tool invocations', async () => {
+  it('enforces runtime isolation for custom Tool callbacks', async () => {
     const registry = new ToolRegistry();
     let observedRuntime: unknown = 'not-called';
     let observedValidationRuntime: unknown = 'not-called';
@@ -193,22 +198,13 @@ describe('ExecutionPipeline', () => {
     });
     registerTool(registry, {
       ...baseTool,
-      build(params) {
-        const invocation = baseTool.build(params);
-        return {
-          toolName: invocation.toolName,
-          params: invocation.params,
-          getDescription: () => invocation.getDescription(),
-          getAffectedPaths: () => invocation.getAffectedPaths(),
-          async validate(context) {
-            observedValidationRuntime = Reflect.get(context ?? {}, 'runtime');
-            return undefined;
-          },
-          execute(_signal, context) {
-            observedRuntime = Reflect.get(context ?? {}, 'runtime');
-            return completeToolExecution({ status: 'success', model: 'ok' });
-          },
-        };
+      async validate(params: JsonObject, context: ExecutionContext) {
+        observedValidationRuntime = Reflect.get(context, 'runtime');
+        return { params };
+      },
+      execute(_params: JsonObject, context: ExecutionContext = {}) {
+        observedRuntime = Reflect.get(context, 'runtime');
+        return completeToolExecution({ status: 'success', model: 'ok' });
       },
     });
 
@@ -1710,6 +1706,62 @@ describe('ExecutionPipeline', () => {
       }),
     );
     expect(executeSpy).toHaveBeenCalledWith({ mode: 'write', value: 'patched' }, expect.anything());
+  });
+
+  it('re-prepares permission updates without mutating the previous invocation', async () => {
+    const registry = new ToolRegistry();
+    let checkedParams: { value: string } | undefined;
+    let permissionParams: JsonObject | undefined;
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'ImmutableInvocationTool',
+        displayName: 'Immutable Invocation Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Immutable invocation tool' },
+        schema: Type.Object({
+          value: Type.String(),
+        }),
+        checkPermissions: (params) => {
+          checkedParams = params;
+          return { behavior: 'allow' };
+        },
+        execute: executeSpy,
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async (request) => {
+        permissionParams = request.input;
+        return {
+          behavior: 'allow',
+          updatedInput: { value: 'patched' },
+        };
+      },
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'ImmutableInvocationTool',
+      { value: 'original' },
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    expect(result).toMatchObject({ status: 'success', model: 'patched' });
+    expect(checkedParams).toEqual({ value: 'original' });
+    expect(permissionParams).toEqual({ value: 'original' });
+    expect(Object.isFrozen(permissionParams)).toBe(true);
+    expect(executeSpy).toHaveBeenCalledWith({ value: 'patched' }, expect.anything());
+    expect(executeSpy.mock.calls[0]?.[0]).not.toBe(permissionParams);
   });
 
   it('uses preparePermissionMatcher to derive permission signatures after input updates', async () => {

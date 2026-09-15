@@ -8,6 +8,7 @@ import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob
 import { NOOP_LOGGER } from '../../../../logging/Logger.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../../types/identifiers.js';
+import type { JsonObject } from '../../../../types/json.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import { collectToolExecution } from '../../../types/result.js';
 import type { Tool } from '../../../types/tool.js';
@@ -71,18 +72,13 @@ const subagentConfig = {
   description: 'Research subagent',
 };
 
-async function executeWithContext<TParams>(
-  tool: Tool<TParams>,
-  params: TParams,
+async function executeWithContext(
+  tool: Tool,
+  params: JsonObject,
   context: SessionId | Partial<ExecutionContext>,
 ) {
   return collectToolExecution(
-    tool
-      .build(params)
-      .execute(
-        new AbortController().signal,
-        typeof context === 'string' ? { sessionId: context } : context,
-      ),
+    tool.execute(params, typeof context === 'string' ? { sessionId: context } : context),
   );
 }
 
@@ -114,11 +110,11 @@ describe('task tools', () => {
   it('creates, reads, updates, lists, stops, and deletes tasks in the runtime session', async () => {
     const runtimeSessionId = SessionId(`runtime-${Date.now()}`);
 
-    expect(taskCreateTool.kind).toBe('write');
-    expect(taskGetTool.kind).toBe('write');
-    expect(taskUpdateTool.kind).toBe('write');
-    expect(taskListTool.kind).toBe('write');
-    expect(taskStopTool.kind).toBe('write');
+    expect(taskCreateTool.staticBehavior.kind).toBe('write');
+    expect(taskGetTool.staticBehavior.kind).toBe('write');
+    expect(taskUpdateTool.staticBehavior.kind).toBe('write');
+    expect(taskListTool.staticBehavior.kind).toBe('write');
+    expect(taskStopTool.staticBehavior.kind).toBe('write');
 
     const created = await executeWithContext(
       taskCreateTool,

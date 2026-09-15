@@ -15,7 +15,7 @@ export function toolUpdateToAgentEvent(
   switch (update.type) {
     case 'tool_ready': {
       const toolDef = registry.get(update.toolCall.function.name);
-      const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+      const toolKind = toolDef?.staticBehavior.kind;
       return { type: 'tool_start', toolCall: update.toolCall, toolKind };
     }
     case 'tool_result':

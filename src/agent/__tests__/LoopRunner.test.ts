@@ -53,6 +53,22 @@ interface MockToolResult {
   newMessages?: ConversationMessage[];
 }
 
+function mockRuntimeTool(name: string, kind: ToolKind = ToolKind.Execute) {
+  const behavior = {
+    kind,
+    sideEffect: kind === ToolKind.ReadOnly ? ('pure' as const) : ('non_idempotent' as const),
+    isReadOnly: kind === ToolKind.ReadOnly,
+    isConcurrencySafe: kind === ToolKind.ReadOnly,
+    isDestructive: false,
+    interruptBehavior: 'block' as const,
+  };
+  return {
+    name,
+    staticBehavior: behavior,
+    prepare: () => ({ behavior }),
+  };
+}
+
 function mockToolExecution<TArgs extends unknown[]>(
   implementation: (...args: TArgs) => Promise<MockToolResult>,
 ) {
@@ -144,7 +160,7 @@ function createMockPipeline(): ExecutionPipeline {
     getRegistry: () => ({
       getAll: () => [],
       getFunctionDeclarationsByMode: () => [],
-      get: (name: string) => ({ kind: 'execute', name }),
+      get: (name: string) => mockRuntimeTool(name),
     }),
     execute: mockToolExecution(async (toolName: string) => ({
       status: 'success',
@@ -437,7 +453,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Search', description: 'Search', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'readonly', name }),
+          get: (name: string) => mockRuntimeTool(name, ToolKind.ReadOnly),
         }),
         execute: mockToolExecution(async (toolName: string, params: Record<string, unknown>) => ({
           status: 'success',
@@ -610,7 +626,7 @@ describe('LoopRunner', () => {
             { name: 'Write', description: 'Write files', parameters: {} },
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'Skill') {
@@ -820,7 +836,7 @@ describe('LoopRunner', () => {
             { name: 'Read', description: 'Read files', parameters: {} },
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -929,7 +945,7 @@ describe('LoopRunner', () => {
         getRegistry: () => ({
           getAll: () => [readTool, discoverTool, heavyInspectTool],
           getFunctionDeclarationsByMode: () => [],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'DiscoverTools') {
@@ -1029,7 +1045,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'ModelSwitch', description: 'Switch model', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1112,7 +1128,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'LegacyTool', description: 'Legacy tool', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1195,7 +1211,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1278,7 +1294,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'error',
@@ -1374,7 +1390,7 @@ describe('LoopRunner', () => {
             { name: 'Read', description: 'Read files', parameters: {} },
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1473,7 +1489,7 @@ describe('LoopRunner', () => {
             { name: 'Write', description: 'Write files', parameters: {} },
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => {
           skillExecutions += 1;
@@ -1604,7 +1620,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1715,7 +1731,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1826,7 +1842,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -1954,7 +1970,7 @@ describe('LoopRunner', () => {
             }
             return [{ name: 'EnvTool', description: 'Inspect env', parameters: {} }];
           },
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(
           async (
@@ -2105,7 +2121,7 @@ describe('LoopRunner', () => {
             }
             return [];
           },
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async (toolName: string) => ({
           status: 'success',
@@ -2273,7 +2289,7 @@ describe('LoopRunner', () => {
             }
             return [];
           },
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(
           async (
@@ -2459,7 +2475,7 @@ describe('LoopRunner', () => {
               { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
             ];
           },
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(
           async (
@@ -2567,7 +2583,7 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [
             { name: 'Skill', description: 'Load a skill', parameters: {} },
           ],
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(async () => ({
           status: 'success',
@@ -2779,7 +2795,7 @@ describe('LoopRunner', () => {
               { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
             ];
           },
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute: mockToolExecution(
           async (

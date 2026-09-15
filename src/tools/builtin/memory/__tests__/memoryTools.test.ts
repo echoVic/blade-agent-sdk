@@ -100,10 +100,10 @@ describe('memory tools', () => {
   });
 
   it('requires operation-specific parameters at schema level', () => {
-    expect(() => memoryReadTool.build({ operation: 'get' } as never)).toThrow();
-    expect(() => memoryReadTool.build({ operation: 'search' } as never)).toThrow();
+    expect(() => memoryReadTool.prepare({ operation: 'get' } as never)).toThrow();
+    expect(() => memoryReadTool.prepare({ operation: 'search' } as never)).toThrow();
     expect(() =>
-      memoryWriteTool.build({ operation: 'save', name: 'project-context' } as never),
+      memoryWriteTool.prepare({ operation: 'save', name: 'project-context' } as never),
     ).toThrow();
   });
 

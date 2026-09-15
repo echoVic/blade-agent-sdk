@@ -26,10 +26,30 @@ import type { LoopResult } from '../types.js';
 
 type MockToolResult = ToolResult & { testEffects?: ToolEffect[] };
 
+function mockRuntimeTool(
+  name: string,
+  kind: 'execute' | 'readonly' = 'execute',
+  interruptBehavior: 'block' | 'cancel' = 'block',
+) {
+  const behavior = {
+    kind,
+    sideEffect: kind === 'readonly' ? ('pure' as const) : ('non_idempotent' as const),
+    isReadOnly: kind === 'readonly',
+    isConcurrencySafe: kind === 'readonly',
+    isDestructive: false,
+    interruptBehavior,
+  };
+  return {
+    name,
+    staticBehavior: behavior,
+    prepare: () => ({ behavior }),
+  };
+}
+
 function createMockExecutionPipeline(results?: Record<string, MockToolResult>) {
   return {
     getRegistry: () => ({
-      get: (name: string) => ({ kind: 'execute', name }),
+      get: (name: string) => mockRuntimeTool(name),
     }),
     execute: vi.fn(async function* (toolName: string) {
       const configured = results?.[toolName];
@@ -644,7 +664,7 @@ describe('agentLoop', () => {
       });
       const executionPipeline = {
         getRegistry: () => ({
-          get: (name: string) => ({ kind: 'execute', name }),
+          get: (name: string) => mockRuntimeTool(name),
         }),
         execute,
       } as unknown as AgentLoopConfig['executionPipeline'];
@@ -823,7 +843,7 @@ describe('agentLoop', () => {
 
       const pipeline = {
         getRegistry: () => ({
-          get: (_name: string) => ({ kind: 'readonly', name: _name }),
+          get: (_name: string) => mockRuntimeTool(_name, 'readonly'),
         }),
         execute: vi.fn(async function* (toolName: string) {
           executeCount++;
@@ -1983,11 +2003,7 @@ describe('agentLoop', () => {
       );
       const executionPipeline = {
         getRegistry: () => ({
-          get: (name: string) => ({
-            kind: 'execute',
-            name,
-            interruptBehavior: 'cancel',
-          }),
+          get: (name: string) => mockRuntimeTool(name, 'execute', 'cancel'),
         }),
         execute: vi.fn(async function* (
           _toolName: string,

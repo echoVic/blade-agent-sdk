@@ -1,10 +1,16 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
-import type { JsonValue } from '../../types/json.js';
+import { ToolExecutionError } from '../../errors/ToolExecutionError.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
 import { isToolSideEffect, resolveBehavior, type ToolBehavior, ToolKind } from '../behavior.js';
 import { selectToolServices, type ToolServiceName, type ToolServices } from '../services.js';
 import { type ExecutionContext, getRuntimeAccess } from '../types/execution.js';
-import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
+import {
+  type ToolExecution,
+  type ToolResult,
+  type ToolValidationError,
+  validationErrorToToolResult,
+} from '../types/result.js';
 import type {
   ErasedToolDefinition,
   Tool,
@@ -14,11 +20,11 @@ import type {
   ToolDefinitionInput,
   ToolDescription,
   ToolExposureMode,
-  ToolInvocation,
+  ToolValidationOutcome,
 } from '../types/tool.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { type CompiledToolInput, compileToolInput } from '../validation/toolInput.js';
-import { UnifiedToolInvocation } from './ToolInvocation.js';
+import { createToolInvocation, type ToolInvocation } from './ToolInvocation.js';
 
 /**
  * A tool that does not declare how a repeated execution behaves is treated as
@@ -34,12 +40,15 @@ const DEFAULT_TOOL_SIDE_EFFECT = 'non_idempotent' as const;
  */
 interface ToolAssembly<TParams> {
   readonly name: string;
-  readonly aliases?: string[];
-  readonly displayName: string;
-  readonly kind: ToolKind;
+  readonly aliases?: readonly string[];
+  readonly title: string;
   readonly staticBehavior: ToolBehavior;
-  readonly planningBehavior: ToolBehavior;
-  readonly strict: boolean;
+  readonly declaration: {
+    readonly name: string;
+    readonly description: string;
+    readonly parameters: JSONSchema7;
+    readonly strict?: boolean;
+  };
   readonly maxResultSizeChars: number;
   readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
@@ -48,98 +57,119 @@ interface ToolAssembly<TParams> {
   readonly version: string;
   readonly category?: string;
   readonly tags: string[];
-  /** Description for model-facing declarations, already formatted. */
-  readonly declarationDescription: () => string;
-  /** JSON Schema sent to the model. */
-  readonly functionSchema: () => JSONSchema7;
-  /** TypeBox schema used to validate params. */
-  readonly metadataSchema: () => unknown;
-  readonly resolveDescription: (params?: unknown) => ToolDescription;
-  readonly invocationParams: (params: unknown) => TParams;
-  /** Validation the invocation runs before the tool body, with the schema parsed. */
-  readonly invocationValidation?: (
+  readonly parse: (raw: unknown) => TParams;
+  readonly resolveBehavior: (params: TParams) => ToolBehavior;
+  readonly resolveDescription: (params: TParams) => string;
+  readonly validateInput?: (
     params: TParams,
     context: ExecutionContext,
   ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
-  /** Short description of a concrete invocation, used in confirmations. */
-  readonly invocationDescription?: (params: TParams) => string;
   readonly execute: (params: TParams, context: ExecutionContext) => ToolExecution;
-  readonly validateInput?: Tool['validateInput'];
-  readonly checkPermissions?: Tool['checkPermissions'];
-  readonly resolveBehavior?: (params?: unknown) => ToolBehavior;
-  readonly preparePermissionMatcher?: Tool['preparePermissionMatcher'];
+  readonly checkPermissions?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => ReturnType<NonNullable<Tool['checkPermissions']>>;
+  readonly preparePermissionMatcher?: (params: TParams) => {
+    signatureContent?: string;
+  };
 }
 
-function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
-  return {
+const preparedExecutors = new WeakMap<
+  Tool,
+  (params: JsonObject, context: ExecutionContext) => ToolExecution
+>();
+
+function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool {
+  const prepare = (raw: unknown): ToolInvocation => {
+    const typedParams = assembly.parse(raw);
+    const params = requireJsonObject(typedParams, assembly.name);
+    const signatureContent = assembly.preparePermissionMatcher?.(typedParams).signatureContent;
+    return createToolInvocation({
+      params,
+      behavior: assembly.resolveBehavior(typedParams),
+      affectedPaths: inferAffectedPaths(params),
+      permissionSignature: signatureContent
+        ? `${assembly.name}:${signatureContent}`
+        : assembly.name,
+      description: assembly.resolveDescription(typedParams),
+    });
+  };
+
+  const executePrepared = (params: JsonObject, context: ExecutionContext): ToolExecution => {
+    const execution = assembly.execute(assembly.parse(params), context);
+    if (!isToolExecution(execution)) {
+      throw new ToolExecutionError(assembly.name, 'execute() must return an AsyncGenerator');
+    }
+    return execution;
+  };
+  const tool: Tool = {
     name: assembly.name,
-    aliases: assembly.aliases,
-    displayName: assembly.displayName,
-    kind: assembly.kind,
-    sideEffect: assembly.staticBehavior.sideEffect,
-    isReadOnly: assembly.planningBehavior.isReadOnly,
-    isConcurrencySafe: assembly.planningBehavior.isConcurrencySafe,
-    isDestructive: assembly.planningBehavior.isDestructive,
-    strict: assembly.strict,
+    aliases: assembly.aliases ?? [],
+    title: assembly.title,
+    description: assembly.description,
+    staticBehavior: assembly.staticBehavior,
+    declaration: assembly.declaration,
     maxResultSizeChars: assembly.maxResultSizeChars,
-    interruptBehavior: assembly.staticBehavior.interruptBehavior,
     services: assembly.services,
     requiresRuntime: assembly.requiresRuntime,
-    description: assembly.description,
     exposure: assembly.exposure,
     version: assembly.version,
     category: assembly.category,
     tags: assembly.tags,
-
-    describe(params?: unknown) {
-      return assembly.resolveDescription(params);
+    prepare,
+    execute(params, context = {}) {
+      return executeWithValidation(tool, params, context);
     },
-
-    getFunctionDeclaration() {
-      return {
-        name: assembly.name,
-        description: assembly.declarationDescription(),
-        parameters: assembly.functionSchema(),
-      };
-    },
-
-    getMetadata() {
-      return {
-        name: assembly.name,
-        displayName: assembly.displayName,
-        kind: assembly.kind,
-        sideEffect: assembly.staticBehavior.sideEffect,
-        version: assembly.version,
-        category: assembly.category,
-        tags: assembly.tags,
-        description: assembly.description,
-        schema: assembly.metadataSchema(),
-      };
-    },
-
-    build(params: unknown): ToolInvocation<TParams> {
-      return new UnifiedToolInvocation<TParams>(
-        assembly.name,
-        assembly.invocationParams(params),
-        (resolvedParams, context) => assembly.execute(resolvedParams, context),
-        assembly.invocationValidation,
-        assembly.invocationDescription,
-        inferAffectedPaths,
-      );
-    },
-
-    execute(params: unknown, context: ExecutionContext = {}) {
-      const invocation = this.build(params);
-      return invocation.execute(context.signal ?? new AbortController().signal, context);
-    },
-
-    ...(assembly.validateInput ? { validateInput: assembly.validateInput } : {}),
-    ...(assembly.checkPermissions ? { checkPermissions: assembly.checkPermissions } : {}),
-    ...(assembly.resolveBehavior ? { resolveBehavior: assembly.resolveBehavior } : {}),
-    ...(assembly.preparePermissionMatcher
-      ? { preparePermissionMatcher: assembly.preparePermissionMatcher }
+    ...(assembly.validateInput
+      ? {
+          validate: async (
+            params: JsonObject,
+            context: ExecutionContext,
+          ): Promise<ToolValidationOutcome> => {
+            const typedParams = assembly.parse(params);
+            const error = await assembly.validateInput?.(typedParams, context);
+            return {
+              params: requireJsonObject(typedParams, assembly.name),
+              ...(error ? { error } : {}),
+            };
+          },
+        }
+      : {}),
+    ...(assembly.checkPermissions
+      ? {
+          checkPermissions: (params: JsonObject, context: ExecutionContext) =>
+            assembly.checkPermissions?.(assembly.parse(params), context),
+        }
       : {}),
   };
+  preparedExecutors.set(tool, executePrepared);
+  return tool;
+}
+
+export function executePreparedTool(
+  tool: Tool,
+  params: JsonObject,
+  context: ExecutionContext,
+): ToolExecution {
+  return preparedExecutors.get(tool)?.(params, context) ?? tool.execute(params, context);
+}
+
+function executeWithValidation(
+  tool: Tool,
+  raw: JsonObject,
+  context: ExecutionContext,
+): ToolExecution {
+  return (async function* () {
+    let invocation = tool.prepare(raw);
+    if (tool.validate) {
+      const outcome = await tool.validate(invocation.params, context);
+      if (outcome.error) {
+        return validationErrorToToolResult(outcome.error);
+      }
+      invocation = tool.prepare(outcome.params);
+    }
+    return yield* executePreparedTool(tool, invocation.params, context);
+  })();
 }
 
 /**
@@ -149,40 +179,17 @@ export function createTool<
   TSchema extends Type.TSchema,
   TServices extends ToolServiceName = never,
   TRequiresRuntime extends boolean = false,
->(config: ToolConfig<TSchema, TServices, TRequiresRuntime>): Tool<Type.Static<TSchema>> {
+>(config: ToolConfig<TSchema, TServices, TRequiresRuntime>): Tool {
   type TParams = Type.Static<TSchema>;
-  let cachedSchema: TSchema | undefined;
-  let cachedInput: CompiledToolInput<TSchema> | undefined;
-  let cachedStaticDescriptionText: string | undefined;
-
-  const getSchema = (): TSchema => {
-    if (!cachedSchema) {
-      cachedSchema = resolveToolSchema(config.schema);
-    }
-    return cachedSchema;
-  };
-  const getInput = (): CompiledToolInput<TSchema> => {
-    if (!cachedInput) {
-      cachedInput = compileToolInput(getSchema());
-    }
-    return cachedInput;
-  };
-
+  const schema = resolveToolSchema(config.schema);
+  const input: CompiledToolInput<TSchema> = compileToolInput(schema);
   const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
 
   if (!isToolSideEffect(config.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
-  const staticBehavior = resolveBehavior({
-    kind: config.kind,
-    sideEffect: config.sideEffect,
-    isReadOnly: config.isReadOnly,
-    isConcurrencySafe: config.isConcurrencySafe,
-    isDestructive: config.isDestructive,
-    interruptBehavior: config.interruptBehavior,
-  });
-  const planningBehavior = resolveBehavior(config);
-  if (!staticBehavior || !planningBehavior) {
+  const staticBehavior = resolveBehavior(config);
+  if (!staticBehavior) {
     throw new TypeError('Tool behavior could not be resolved');
   }
   const exposure = {
@@ -199,11 +206,14 @@ export function createTool<
   return assembleTool<TParams>({
     name: config.name,
     aliases: config.aliases,
-    displayName: config.displayName,
-    kind: config.kind,
+    title: config.displayName,
     staticBehavior,
-    planningBehavior,
-    strict: config.strict ?? false,
+    declaration: Object.freeze({
+      name: config.name,
+      description: formatToolDescription(config.description),
+      parameters: toFunctionSchema(schema),
+      ...(config.strict ? { strict: true } : {}),
+    }),
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
     services: config.services ?? [],
     requiresRuntime: config.requiresRuntime ?? false,
@@ -212,24 +222,15 @@ export function createTool<
     version: config.version || '1.0.0',
     category: config.category,
     tags: config.tags || [],
-    declarationDescription: () => {
-      if (!cachedStaticDescriptionText) {
-        cachedStaticDescriptionText = formatToolDescription(resolveDescription());
-      }
-      return cachedStaticDescriptionText;
-    },
-    functionSchema: () => toFunctionSchema(getSchema()),
-    metadataSchema: () => getSchema(),
-    resolveDescription: (params?: unknown) =>
-      resolveDescription(params === undefined ? undefined : getInput().parse(params)),
-    invocationParams: (params) => getInput().parse(params),
+    parse: (params) => input.parse(params),
+    resolveBehavior: (params) => resolveBehavior(config, params) ?? staticBehavior,
+    resolveDescription: (params) => resolveDescription(params).short,
     ...(validateInputFn
       ? {
-          invocationValidation: (params: TParams, context: ExecutionContext) =>
+          validateInput: (params: TParams, context: ExecutionContext) =>
             validateInputFn(params, context),
         }
       : {}),
-    invocationDescription: (params: TParams) => resolveDescription(params).short,
     execute: (params, context) =>
       config.execute(
         params,
@@ -238,28 +239,15 @@ export function createTool<
           config.requiresRuntime ?? false,
         ),
       ),
-    ...(validateInputFn
-      ? {
-          validateInput: (params: unknown, context: ExecutionContext) =>
-            validateInputFn(getInput().parse(params), context),
-        }
-      : {}),
     ...(checkPermissionsFn
       ? {
-          checkPermissions: (params: unknown, context: ExecutionContext) =>
-            checkPermissionsFn(getInput().parse(params), context),
+          checkPermissions: (params: TParams, context: ExecutionContext) =>
+            checkPermissionsFn(params, context),
         }
       : {}),
-    resolveBehavior: (params?: unknown) => {
-      if (params === undefined) {
-        return planningBehavior;
-      }
-      return resolveBehavior(config, getInput().parse(params)) ?? staticBehavior;
-    },
     ...(preparePermissionMatcherFn
       ? {
-          preparePermissionMatcher: (params: unknown) =>
-            preparePermissionMatcherFn(getInput().parse(params)),
+          preparePermissionMatcher: (params: TParams) => preparePermissionMatcherFn(params),
         }
       : {}),
   });
@@ -301,7 +289,7 @@ export function toolFromDefinition<
 >(
   definition: ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>,
   services?: ToolServices,
-): Tool<Type.Static<TSchema>>;
+): Tool;
 export function toolFromDefinition(definition: ErasedToolDefinition, services?: ToolServices): Tool;
 export function toolFromDefinition(
   definition: ErasedToolDefinition,
@@ -336,11 +324,13 @@ export function toolFromDefinition(
   return assembleTool<unknown>({
     name: definition.name,
     aliases: definition.aliases,
-    displayName: definition.displayName || definition.name,
-    kind,
+    title: definition.displayName || definition.name,
     staticBehavior,
-    planningBehavior: staticBehavior,
-    strict: false,
+    declaration: Object.freeze({
+      name: definition.name,
+      description: formatToolDescription(description),
+      parameters: toFunctionSchema(definition.parameters),
+    }),
     maxResultSizeChars: Number.POSITIVE_INFINITY,
     services: definition.services ?? [],
     requiresRuntime,
@@ -353,18 +343,15 @@ export function toolFromDefinition(
     version: '1.0.0',
     category: definition.category,
     tags: definition.tags || [],
-    declarationDescription: () => formatToolDescription(description),
-    functionSchema: () => toFunctionSchema(definition.parameters),
-    metadataSchema: () => definition.parameters,
-    resolveDescription: () => description,
-    invocationParams: (params) => input.parse(params),
+    parse: (params) => input.parse(params),
+    resolveBehavior: () => staticBehavior,
+    resolveDescription: () => description.short,
     execute: (params, context) =>
       executeErasedDefinition(
         definition,
         params,
         createDefinitionContext(context, serviceSelection.selected, requiresRuntime),
       ),
-    resolveBehavior: () => staticBehavior,
   });
 }
 
@@ -522,6 +509,21 @@ function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is Too
     typeof Reflect.get(value, 'next') === 'function' &&
     typeof Reflect.get(value, Symbol.asyncIterator) === 'function'
   );
+}
+
+function isToolExecution(value: unknown): value is ToolExecution {
+  return isAsyncGenerator(value);
+}
+
+function requireJsonObject(value: unknown, toolName: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new TypeError(`Tool '${toolName}' parameters must be a JSON object`);
+  }
+  return value;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** TypeBox schemas are JSON Schema values; this is their single model boundary. */

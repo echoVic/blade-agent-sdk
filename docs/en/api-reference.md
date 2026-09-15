@@ -400,6 +400,11 @@ Constants:
 `non_idempotent` when it is omitted. The resolved value determines whether a
 started tool can be replayed during durable recovery.
 
+Compiled `Tool` instances expose readonly `declaration` and `staticBehavior`
+fields. Their `prepare()` function creates an immutable invocation snapshot.
+`ToolInvocation` remains Pipeline-internal and is not exported from package
+entry points; hook or permission input updates trigger a new `prepare()` call.
+
 ## Tool catalog
 
 Runtime:

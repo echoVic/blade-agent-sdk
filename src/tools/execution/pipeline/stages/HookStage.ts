@@ -33,7 +33,10 @@ export class HookStage {
     });
 
     state.hookToolUseId = hookResult.toolUseId;
-    Object.assign(state.params, hookResult.updatedInput);
+    state.params = {
+      ...state.params,
+      ...hookResult.updatedInput,
+    };
 
     if (hookResult.action === 'abort') {
       state.result = createAbortedResult(
@@ -65,7 +68,7 @@ export class HookStage {
   ): Promise<ToolResult> {
     return await this.postExecutionFor(
       state.toolName,
-      state.params,
+      state.invocation?.params ?? state.params,
       state.context,
       result,
       executionId,

@@ -47,8 +47,8 @@ export class ToolCatalog implements ToolCatalogReadView {
     return this.registry;
   }
 
-  register<TParams>(
-    tool: Tool<TParams>,
+  register(
+    tool: Tool,
     source: ToolSourceInfo = {
       kind: 'custom',
       trustLevel: 'workspace',
@@ -62,8 +62,8 @@ export class ToolCatalog implements ToolCatalogReadView {
     return true;
   }
 
-  registerAll<TParams>(
-    tools: Tool<TParams>[],
+  registerAll(
+    tools: Tool[],
     source: ToolSourceInfo = {
       kind: 'custom',
       trustLevel: 'workspace',
@@ -90,8 +90,8 @@ export class ToolCatalog implements ToolCatalogReadView {
     return tool;
   }
 
-  registerMcpTool<TParams>(
-    tool: Tool<TParams>,
+  registerMcpTool(
+    tool: Tool,
     source: ToolSourceInfo = {
       kind: 'mcp',
       trustLevel: 'remote',

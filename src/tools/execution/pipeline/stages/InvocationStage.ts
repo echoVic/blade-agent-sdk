@@ -1,5 +1,6 @@
 import { isSteeringInterruptSignal } from '../../../../types/abort.js';
 import { getErrorMessage, getErrorName } from '../../../../utils/errorUtils.js';
+import { executePreparedTool } from '../../../core/createTool.js';
 import { getRuntimeAccess } from '../../../types/execution.js';
 import type { ToolExecution, ToolResult, ToolYield } from '../../../types/result.js';
 import { ToolErrorType } from '../../../types/result.js';
@@ -26,7 +27,8 @@ export class InvocationStage {
   ) {}
 
   async *run(state: PipelineExecutionState): AsyncGenerator<ToolYield, void, void> {
-    if (!state.invocation) {
+    const invocation = state.invocation;
+    if (!invocation) {
       state.result = createAbortedResult('Pre-execution stage failed; cannot run tool');
       return;
     }
@@ -36,8 +38,8 @@ export class InvocationStage {
     }
 
     await state.context.toolInvocationLifecycle?.onExecutionStarted?.({
-      input: structuredClone(state.params),
-      sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
+      input: structuredClone(invocation.params),
+      sideEffect: invocation.behavior.sideEffect,
     });
     await getRuntimeAccess(state.context).assertExecutionLease();
     this.guard.throwIfFailed();
@@ -62,7 +64,7 @@ export class InvocationStage {
     const executionSignal = state.context.signal
       ? AbortSignal.any([state.context.signal, timeoutController.signal])
       : timeoutController.signal;
-    const execution = state.invocation.execute(executionSignal, {
+    const execution = executePreparedTool(state.tool, invocation.params, {
       ...getToolContext(state.tool, state.context, state.services),
       signal: executionSignal,
     });

@@ -3,6 +3,7 @@ import type Type from 'typebox';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ToolBehavior, ToolKind, ToolSideEffect } from '../behavior.js';
+import type { ToolInvocation } from '../core/ToolInvocation.js';
 import type { ToolServiceMap, ToolServiceName } from '../services.js';
 import type { ExecutionContext, RuntimeAccess } from './execution.js';
 import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
@@ -11,16 +12,7 @@ export interface FunctionDeclaration {
   name: string;
   description: string;
   parameters: JSONSchema7;
-}
-
-export interface ToolInvocation<TParams = unknown> {
-  readonly toolName: string;
-  readonly params: TParams;
-
-  getDescription(): string;
-  getAffectedPaths(): string[];
-  validate?(context?: Partial<ExecutionContext>): Promise<ToolValidationError | undefined>;
-  execute(signal: AbortSignal, context?: Partial<ExecutionContext>): ToolExecution;
+  strict?: boolean;
 }
 
 export interface ToolDescription {
@@ -166,42 +158,37 @@ export interface ToolConfig<
   preparePermissionMatcher?: (params: Type.Static<TSchema>) => PreparedPermissionMatcher;
 }
 
-export interface Tool<TParams = unknown> {
+export interface ToolValidationOutcome {
+  readonly params: JsonObject;
+  readonly error?: ToolValidationError;
+}
+
+export interface Tool {
   readonly name: string;
-  readonly aliases?: string[];
-  readonly displayName: string;
-  readonly kind: ToolKind;
-  readonly sideEffect: ToolSideEffect;
-  readonly isReadOnly: boolean;
-  readonly isConcurrencySafe: boolean;
-  readonly isDestructive?: boolean;
-  readonly strict: boolean;
+  readonly aliases: readonly string[];
+  readonly title: string;
+  readonly description: ToolDescription;
+  readonly staticBehavior: ToolBehavior;
+  readonly declaration: FunctionDeclaration;
   readonly maxResultSizeChars: number;
-  readonly interruptBehavior: 'cancel' | 'block';
   readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
-  readonly description: ToolDescription;
   readonly exposure: Required<ToolExposureConfig> & {
     mode: ToolExposureMode;
   };
+  /** Removed with the remaining metadata indexes in §13 step 8. */
   readonly version: string;
   readonly category?: string;
   readonly tags: string[];
 
-  getFunctionDeclaration(): FunctionDeclaration;
-  describe(params?: unknown): ToolDescription;
-  getMetadata(): Record<string, unknown>;
-  build(params: unknown): ToolInvocation<TParams>;
-  execute(params: unknown, context?: ExecutionContext): ToolExecution;
-
-  validateInput?: (
-    params: unknown,
+  readonly prepare: (raw: unknown) => ToolInvocation;
+  readonly execute: (params: JsonObject, context?: ExecutionContext) => ToolExecution;
+  readonly validate?: (
+    params: JsonObject,
     context: ExecutionContext,
-  ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
-  checkPermissions?: (
-    params: unknown,
+  ) => Promise<ToolValidationOutcome>;
+  readonly checkPermissions?: (
+    params: JsonObject,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params?: unknown) => ToolBehavior;
-  preparePermissionMatcher?: (params: unknown) => PreparedPermissionMatcher;
 }

@@ -889,7 +889,9 @@ describe('SessionRuntime', () => {
 
     expect(runtime.getToolRegistry().get('RuntimeTool')).toBe(runtimeTool);
     expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryReadTool);
-    expect(runtime.getToolRegistry().get('RuntimeTool')?.interruptBehavior).toBe('cancel');
+    expect(runtime.getToolRegistry().get('RuntimeTool')?.staticBehavior.interruptBehavior).toBe(
+      'cancel',
+    );
 
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);

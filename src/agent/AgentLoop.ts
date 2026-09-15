@@ -574,7 +574,7 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
 
       for (const toolCall of executionPlan.calls) {
         const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
-        const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+        const toolKind = toolDef?.staticBehavior.kind;
         yield { type: 'tool_start', toolCall, toolKind };
       }
 

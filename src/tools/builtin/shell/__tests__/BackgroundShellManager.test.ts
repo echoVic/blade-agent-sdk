@@ -127,28 +127,30 @@ describe('BackgroundShellManager handoff admission', () => {
       fencingToken: FencingToken(3),
     };
     manager.openSession(rootSessionId);
-    const invocation = bashTool.build({
-      command: 'sleep 30',
-      timeout: 30_000,
-      run_in_background: true,
-    });
 
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        sessionId: childSessionId,
-        backgroundAgentManager: {
-          getOwnerSessionId: () => rootSessionId,
-        } as never,
-        runtime: { executionFence },
-        contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
-          capabilities: {
-            filesystem: {
-              roots: [tmpdir()],
-              cwd: tmpdir(),
+      bashTool.execute(
+        {
+          command: 'sleep 30',
+          timeout: 30_000,
+          run_in_background: true,
+        },
+        {
+          sessionId: childSessionId,
+          backgroundAgentManager: {
+            getOwnerSessionId: () => rootSessionId,
+          } as never,
+          runtime: { executionFence },
+          contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
+            capabilities: {
+              filesystem: {
+                roots: [tmpdir()],
+                cwd: tmpdir(),
+              },
             },
-          },
-        }),
-      }),
+          }),
+        },
+      ),
     );
 
     expect(result.status).toBe('success');

@@ -297,6 +297,7 @@ describe('createCompositePermissionHandler', () => {
     expect(result).toEqual({
       behavior: 'ask',
       message: 'Need confirmation',
+      updatedInput: { value: 'patched' },
     });
   });
 });

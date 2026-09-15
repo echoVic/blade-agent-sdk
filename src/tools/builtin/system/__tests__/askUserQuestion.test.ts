@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { JsonObject } from '../../../../types/json.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import { collectToolExecution } from '../../../types/result.js';
 import { askUserQuestionTool } from '../askUserQuestion.js';
@@ -10,12 +11,8 @@ describe('AskUserQuestion Tool', () => {
     confirmationHandler,
   });
 
-  const executeWithContext = async (
-    params: Parameters<typeof askUserQuestionTool.build>[0],
-    context: Partial<ExecutionContext>,
-  ) => {
-    const invocation = askUserQuestionTool.build(params);
-    return collectToolExecution(invocation.execute(new AbortController().signal, context));
+  const executeWithContext = async (params: JsonObject, context: Partial<ExecutionContext>) => {
+    return collectToolExecution(askUserQuestionTool.execute(params, context));
   };
 
   describe('basic properties', () => {
@@ -23,12 +20,12 @@ describe('AskUserQuestion Tool', () => {
       expect(askUserQuestionTool.name).toBe('AskUserQuestion');
     });
 
-    it('should have correct displayName', () => {
-      expect(askUserQuestionTool.displayName).toBe('Ask User Question');
+    it('should have correct title', () => {
+      expect(askUserQuestionTool.title).toBe('Ask User Question');
     });
 
     it('should have function declaration', () => {
-      const declaration = askUserQuestionTool.getFunctionDeclaration();
+      const declaration = askUserQuestionTool.declaration;
       expect(declaration.name).toBe('AskUserQuestion');
       expect(declaration.description).toBeDefined();
       expect(declaration.parameters).toBeDefined();

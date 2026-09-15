@@ -1,23 +1,11 @@
-import {
-  resolveBehavior,
-  type ToolBehavior,
-  type ToolKind,
-} from '../../tools/behavior.js';
+import { resolveBehavior, type ToolBehavior } from '../../tools/behavior.js';
+import type { Tool } from '../../tools/types/tool.js';
 import type { JsonObject } from '../../types/json.js';
 
 type InterruptBehavior = ToolBehavior['interruptBehavior'];
 
 type ToolRegistryLike = {
-  get(name: string):
-    | {
-        kind?: ToolKind;
-        isReadOnly?: boolean;
-        isConcurrencySafe?: boolean;
-        isDestructive?: boolean;
-        interruptBehavior?: InterruptBehavior;
-        resolveBehavior?: (params?: JsonObject) => Partial<ToolBehavior> | ToolBehavior;
-      }
-    | undefined;
+  get(name: string): Pick<Tool, 'staticBehavior' | 'prepare'> | undefined;
 };
 
 export function resolveToolInterruptBehavior(

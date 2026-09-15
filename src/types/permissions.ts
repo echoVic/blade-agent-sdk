@@ -45,6 +45,7 @@ export type PermissionResult =
   | {
       behavior: 'ask';
       message?: string;
+      updatedInput?: JsonObject;
     };
 
 export interface CanUseToolOptions {
@@ -272,9 +273,10 @@ export function createCompositePermissionHandler(
       behavior: 'allow',
     };
     let firstAskResult: Extract<PermissionResult, { behavior: 'ask' }> | undefined;
+    let currentRequest = request;
 
     for (const handler of activeHandlers) {
-      const result = await handler(request);
+      const result = await handler(currentRequest);
 
       if (result.behavior === 'deny') {
         return result;
@@ -282,14 +284,25 @@ export function createCompositePermissionHandler(
 
       if (result.behavior === 'ask') {
         if (strategy === 'first-wins') {
-          return result;
+          return {
+            ...result,
+            ...(mergedAllowResult.updatedInput
+              ? { updatedInput: mergedAllowResult.updatedInput }
+              : {}),
+          };
         }
         firstAskResult ??= result;
         continue;
       }
 
       if (result.updatedInput) {
-        Object.assign(request.input, result.updatedInput);
+        currentRequest = {
+          ...currentRequest,
+          input: Object.freeze({
+            ...currentRequest.input,
+            ...result.updatedInput,
+          }),
+        };
         mergedAllowResult.updatedInput = {
           ...(mergedAllowResult.updatedInput ?? {}),
           ...result.updatedInput,
@@ -308,7 +321,13 @@ export function createCompositePermissionHandler(
       }
     }
 
-    return firstAskResult ?? mergedAllowResult;
+    if (firstAskResult) {
+      return {
+        ...firstAskResult,
+        ...(mergedAllowResult.updatedInput ? { updatedInput: mergedAllowResult.updatedInput } : {}),
+      };
+    }
+    return mergedAllowResult;
   };
 }
 

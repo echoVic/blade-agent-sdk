@@ -33,6 +33,11 @@ export interface ToolBehaviorSource<TParams = unknown> {
   resolveBehavior?: (params?: TParams) => Partial<ToolBehavior> | ToolBehavior;
 }
 
+interface PreparedToolBehaviorSource<TParams = unknown> {
+  readonly staticBehavior: ToolBehavior;
+  prepare(params: TParams): { readonly behavior: ToolBehavior };
+}
+
 export function isToolSideEffect(value: unknown): value is ToolSideEffect {
   return (
     value === ToolSideEffect.PURE ||
@@ -49,19 +54,29 @@ export function isToolSideEffect(value: unknown): value is ToolSideEffect {
  * static declaration because callers may use unvalidated model input.
  */
 export function resolveBehavior<TParams>(
-  source: ToolBehaviorSource<TParams>,
+  source: ToolBehaviorSource<TParams> | PreparedToolBehaviorSource<TParams>,
   params?: TParams,
 ): ToolBehavior;
 export function resolveBehavior<TParams>(
-  source: ToolBehaviorSource<TParams> | undefined,
+  source: ToolBehaviorSource<TParams> | PreparedToolBehaviorSource<TParams> | undefined,
   params?: TParams,
 ): ToolBehavior | undefined;
 export function resolveBehavior<TParams>(
-  source: ToolBehaviorSource<TParams> | undefined,
+  source: ToolBehaviorSource<TParams> | PreparedToolBehaviorSource<TParams> | undefined,
   params?: TParams,
 ): ToolBehavior | undefined {
   if (!source) {
     return undefined;
+  }
+  if ('staticBehavior' in source) {
+    if (params === undefined) {
+      return source.staticBehavior;
+    }
+    try {
+      return source.prepare(params).behavior;
+    } catch {
+      return source.staticBehavior;
+    }
   }
 
   let resolved: Partial<ToolBehavior> = {};
@@ -76,8 +91,7 @@ export function resolveBehavior<TParams>(
   }
 
   const kind = resolved.kind ?? source.kind ?? ToolKind.Execute;
-  const sideEffect =
-    resolved.sideEffect ?? source.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT;
+  const sideEffect = resolved.sideEffect ?? source.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT;
   if (!isToolSideEffect(sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
@@ -89,7 +103,6 @@ export function resolveBehavior<TParams>(
     isConcurrencySafe:
       resolved.isConcurrencySafe ?? source.isConcurrencySafe ?? kind === ToolKind.ReadOnly,
     isDestructive: resolved.isDestructive ?? source.isDestructive ?? false,
-    interruptBehavior:
-      resolved.interruptBehavior ?? source.interruptBehavior ?? 'block',
+    interruptBehavior: resolved.interruptBehavior ?? source.interruptBehavior ?? 'block',
   };
 }

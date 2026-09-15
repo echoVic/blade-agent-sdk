@@ -19,7 +19,7 @@ describe('createMcpTool', () => {
     const tool = buildTool({ type: 'object' });
 
     expect(tool.name).toBe('mcp__test-server__schema_tool');
-    expect(tool.sideEffect).toBe('non_idempotent');
+    expect(tool.staticBehavior.sideEffect).toBe('non_idempotent');
     expect(tool.tags).toContain('mcp-server:test-server');
   });
 
@@ -35,7 +35,7 @@ describe('createMcpTool', () => {
     };
     const tool = buildTool(inputSchema);
 
-    expect(tool.getFunctionDeclaration().parameters).toEqual(inputSchema);
+    expect(tool.declaration.parameters).toEqual(inputSchema);
   });
 
   it('treats a missing MCP input schema as an empty object without warning', () => {
@@ -47,8 +47,8 @@ describe('createMcpTool', () => {
         inputSchema: undefined,
       } as never);
 
-      expect(() => tool.build({})).not.toThrow();
-      expect(tool.getFunctionDeclaration().parameters).toMatchObject({
+      expect(() => tool.prepare({})).not.toThrow();
+      expect(tool.declaration.parameters).toMatchObject({
         type: 'object',
         properties: {},
       });
@@ -77,9 +77,9 @@ describe('createMcpTool', () => {
       required: ['status', 'code'],
     });
 
-    expect(() => tool.build({ status: 'open', code: 2 })).not.toThrow();
-    expect(() => tool.build({ status: 'other', code: 2 })).toThrow();
-    expect(() => tool.build({ status: 'open', code: 4 })).toThrow();
+    expect(() => tool.prepare({ status: 'open', code: 2 })).not.toThrow();
+    expect(() => tool.prepare({ status: 'other', code: 2 })).toThrow();
+    expect(() => tool.prepare({ status: 'open', code: 4 })).toThrow();
   });
 
   it('should support nullable fields via union types', () => {
@@ -90,9 +90,9 @@ describe('createMcpTool', () => {
       },
     });
 
-    expect(() => tool.build({ note: 'hello' })).not.toThrow();
-    expect(() => tool.build({ note: null })).not.toThrow();
-    expect(() => tool.build({ note: 123 })).toThrow();
+    expect(() => tool.prepare({ note: 'hello' })).not.toThrow();
+    expect(() => tool.prepare({ note: null })).not.toThrow();
+    expect(() => tool.prepare({ note: 123 })).toThrow();
   });
 
   it('should support object schemas with additionalProperties', () => {
@@ -106,8 +106,8 @@ describe('createMcpTool', () => {
       },
     });
 
-    expect(() => tool.build({ metadata: { a: 1, b: 2 } })).not.toThrow();
-    expect(() => tool.build({ metadata: { a: 'bad' } })).toThrow();
+    expect(() => tool.prepare({ metadata: { a: 1, b: 2 } })).not.toThrow();
+    expect(() => tool.prepare({ metadata: { a: 'bad' } })).toThrow();
   });
 
   it('should resolve local $ref definitions', () => {
@@ -129,8 +129,8 @@ describe('createMcpTool', () => {
       required: ['query', 'options'],
     });
 
-    expect(() => tool.build({ query: 'hello', options: { limit: 3 } })).not.toThrow();
-    expect(() => tool.build({ query: 'hello', options: { limit: 0 } })).toThrow();
+    expect(() => tool.prepare({ query: 'hello', options: { limit: 3 } })).not.toThrow();
+    expect(() => tool.prepare({ query: 'hello', options: { limit: 0 } })).toThrow();
   });
 
   it('should fall back to record schema when encountering unsupported refs', () => {
@@ -143,7 +143,7 @@ describe('createMcpTool', () => {
         $ref: '#/definitions/missing',
       });
 
-      expect(() => tool.build({ anything: 'goes' })).not.toThrow();
+      expect(() => tool.prepare({ anything: 'goes' })).not.toThrow();
       expect(warn).toHaveBeenCalled();
     } finally {
       console.warn = originalWarn;

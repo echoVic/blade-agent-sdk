@@ -1,5 +1,6 @@
 import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
+import type { JsonObject } from '../../../../types/json.js';
 import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
 import { createTool } from '../../../core/createTool.js';
 import { ToolExposurePlanner } from '../../../exposure/ToolExposurePlanner.js';
@@ -13,37 +14,28 @@ import {
 } from '../../../types/result.js';
 import { discoverToolsTool } from '../discoverTools.js';
 
-async function executeDiscoverTools(
-  params: Parameters<typeof discoverToolsTool.build>[0],
-  context: Partial<ExecutionContext>,
-) {
+async function executeDiscoverTools(params: JsonObject, context: Partial<ExecutionContext>) {
   const events: ToolYield[] = [];
-  const result = await collectToolExecution(
-    discoverToolsTool.build(params).execute(new AbortController().signal, context),
-    (event) => {
-      events.push(event);
-    },
-  );
+  const result = await collectToolExecution(discoverToolsTool.execute(params, context), (event) => {
+    events.push(event);
+  });
   return { result, events };
 }
 
 describe('DiscoverTools tool', () => {
   it('discovers tools through a narrow catalog view', async () => {
-    const { result, events } = await executeDiscoverTools(
-      { query: 'heavy' },
-      {
-        discoverableCatalog: {
-          listDiscoverable: () => [
-            {
-              name: 'HeavyInspect',
-              title: 'Heavy Inspect',
-              description: 'Heavy inspection tool',
-              exposureMode: 'deferred',
-            },
-          ],
-        },
-      } as Partial<ExecutionContext>,
-    );
+    const { result, events } = await executeDiscoverTools({ query: 'heavy' }, {
+      discoverableCatalog: {
+        listDiscoverable: () => [
+          {
+            name: 'HeavyInspect',
+            title: 'Heavy Inspect',
+            description: 'Heavy inspection tool',
+            exposureMode: 'deferred',
+          },
+        ],
+      },
+    } as Partial<ExecutionContext>);
 
     expect(result.status).toBe('success');
     expect(events).toEqual([
@@ -123,10 +115,7 @@ describe('DiscoverTools tool', () => {
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
       {
-        discoverableCatalog: new ToolExposurePlanner(
-          registry,
-          () => new Set(['HeavyInspect']),
-        ),
+        discoverableCatalog: new ToolExposurePlanner(registry, () => new Set(['HeavyInspect'])),
       },
     );
 

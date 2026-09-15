@@ -1,6 +1,6 @@
 # Tools 模块重设计方案
 
-> 状态：设计定稿；§13 第 1-5 步已实施
+> 状态：设计定稿；§13 第 1-6 步已实施
 > 前提：**不考虑向后兼容**（API 面可自由重塑；已持久化的 durable 字符串取值除外）
 > 依据：所有判断均基于当前代码调用点实测（见各节行号引用）
 
@@ -446,7 +446,7 @@ defineTool(def)                          // 纯数据 + 依赖声明
 3. [x] `ToolServiceMap` + `defineTool` 的 `services`/`requiresRuntime` 声明位 + 注册器注入。
 4. [x] `DiscoverableCatalogView` 落地，DiscoverTools 切窄接口；从 context 删 registry/catalog。
 5. [x] 类 A 6 工厂删除改读 `ctx.sessionId`；类 B 5 工厂改 `services`；删剩余 `as` 兜底。
-6. `Tool`/`ToolInvocation` 替换胖接口；Pipeline 改吃不可变 `ToolInvocation`。
+6. [x] `Tool`/`ToolInvocation` 替换胖接口；Pipeline 改吃不可变 `ToolInvocation`。
 7. `registry.ts` 单容器，删 `ToolCatalog`；exposure 收敛为唯一 owner。
 8. 清死代码（getMetadata/version/category/tag/stats/双暴露）。
 9. 删 `createBuiltinToolGroups`，内置工具改静态数组 + `group` 字段。

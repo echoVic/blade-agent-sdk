@@ -73,6 +73,5 @@ export type {
   ToolDescriptionResolver,
   ToolExposureConfig,
   ToolExposureMode,
-  ToolInvocation,
   ToolSchema,
 } from './tool.js';

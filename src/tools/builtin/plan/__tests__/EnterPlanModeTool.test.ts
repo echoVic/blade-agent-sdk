@@ -7,13 +7,12 @@ describe('EnterPlanMode Tool', () => {
   it('passes the active tool signal to the confirmation handler', async () => {
     const controller = new AbortController();
     const requestConfirmation = vi.fn(async () => ({ approved: true }));
-    const invocation = enterPlanModeTool.build({});
 
     const result = await collectToolExecution(
-      invocation.execute(controller.signal, {
+      enterPlanModeTool.execute({}, {
         signal: controller.signal,
         confirmationHandler: { requestConfirmation },
-      } satisfies Partial<ExecutionContext>),
+      } satisfies ExecutionContext),
     );
 
     expect(requestConfirmation).toHaveBeenCalledWith(

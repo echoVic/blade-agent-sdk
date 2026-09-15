@@ -1,26 +1,40 @@
+import Type from 'typebox';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../../logging/Logger.js';
 import { PermissionMode } from '../../../../types/constants.js';
 import type { JsonObject } from '../../../../types/json.js';
 import { ToolKind, ToolSideEffect } from '../../../behavior.js';
-import { ToolErrorType } from '../../../types/result.js';
+import { createTool } from '../../../core/createTool.js';
+import { completeToolExecution, ToolErrorType } from '../../../types/result.js';
 import { FileLockManager } from '../../FileLockManager.js';
 import { FileLockStage } from '../stages/FileLockStage.js';
 import type { PipelineExecutionState } from '../state.js';
 import { TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
 
-function createState(params: JsonObject): PipelineExecutionState {
+function createState(params: JsonObject, kind: ToolKind = ToolKind.Write): PipelineExecutionState {
+  const tool = createTool({
+    name: 'Write',
+    displayName: 'Write',
+    kind,
+    sideEffect: kind === ToolKind.ReadOnly ? ToolSideEffect.PURE : ToolSideEffect.NON_IDEMPOTENT,
+    description: { short: 'Test tool' },
+    schema: Type.Unsafe<JsonObject>({
+      type: 'object',
+      additionalProperties: true,
+    }),
+    execute: () =>
+      completeToolExecution({
+        status: 'success',
+        model: 'ok',
+      }),
+  });
   return {
     toolName: 'Write',
-    tool: {
-      name: 'Write',
-      kind: ToolKind.Write,
-      sideEffect: ToolSideEffect.NON_IDEMPOTENT,
-    } as unknown as PipelineExecutionState['tool'],
+    tool,
     params,
+    invocation: tool.prepare(params),
     context: { permissionMode: PermissionMode.DEFAULT },
     services: {},
-    affectedPaths: [],
     needsConfirmation: false,
     confirmationReasons: [],
     interrupted: false,
@@ -38,25 +52,11 @@ describe('FileLockStage', () => {
       .mockResolvedValue({ release: vi.fn() } as never);
     const stage = new FileLockStage(NOOP_LOGGER, new TerminalCleanupGuard());
 
-    const readState = createState({ file_path: '/tmp/read.txt' });
-    readState.resolvedBehavior = {
-      kind: ToolKind.ReadOnly,
-      sideEffect: ToolSideEffect.PURE,
-      isReadOnly: true,
-      isConcurrencySafe: true,
-      isDestructive: false,
-    } as PipelineExecutionState['resolvedBehavior'];
+    const readState = createState({ file_path: '/tmp/read.txt' }, ToolKind.ReadOnly);
     await stage.acquire(readState);
     expect(acquire).toHaveBeenLastCalledWith('/tmp/read.txt', 'read', undefined);
 
     const writeState = createState({ notebook_path: '/tmp/notebook.ipynb' });
-    writeState.resolvedBehavior = {
-      kind: ToolKind.Write,
-      sideEffect: ToolSideEffect.NON_IDEMPOTENT,
-      isReadOnly: false,
-      isConcurrencySafe: false,
-      isDestructive: true,
-    } as PipelineExecutionState['resolvedBehavior'];
     await stage.acquire(writeState);
     expect(acquire).toHaveBeenLastCalledWith('/tmp/notebook.ipynb', 'write', undefined);
   });

@@ -13,7 +13,7 @@ import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
   describe('TypeBox contract', () => {
-    it('uses the authored schema directly for declarations and metadata', () => {
+    it('uses the authored schema directly for the declaration', () => {
       const parameters = Type.Object({
         message: Type.String({ description: 'Message to echo' }),
       });
@@ -31,8 +31,7 @@ describe('createTool', () => {
           }),
       });
 
-      expect(tool.getFunctionDeclaration().parameters).toBe(parameters);
-      expect(tool.getMetadata().schema).toBe(parameters);
+      expect(tool.declaration.parameters).toBe(parameters);
     });
 
     it('applies TypeBox defaults before callbacks receive params', async () => {
@@ -53,7 +52,7 @@ describe('createTool', () => {
           }),
       });
 
-      const result = await collectToolExecution(tool.execute({ message: 'hello' }));
+      const result = await collectToolExecution(tool.execute({ message: 'hello' }, {}));
 
       expect(result.model).toBe('hello hello');
     });
@@ -79,7 +78,7 @@ describe('createTool', () => {
         },
       });
 
-      expect(() => tool.build({ count: 0 })).toThrow(/参数验证失败/);
+      expect(() => tool.prepare({ count: 0 })).toThrow(/参数验证失败/);
       expect(callbackCount).toBe(0);
     });
 
@@ -98,8 +97,8 @@ describe('createTool', () => {
       });
       const tool = toolFromDefinition(definition);
 
-      expect(tool.getFunctionDeclaration().parameters).toBe(definition.parameters);
-      expect(() => tool.build({ query: '' })).toThrow(/参数验证失败/);
+      expect(tool.declaration.parameters).toBe(definition.parameters);
+      expect(() => tool.prepare({ query: '' })).toThrow(/参数验证失败/);
       expect(executionCount).toBe(0);
     });
   });
@@ -183,28 +182,28 @@ describe('createTool', () => {
       expect(echoTool.name).toBe('Echo');
     });
 
-    it('should have correct displayName', () => {
-      expect(echoTool.displayName).toBe('Echo Tool');
+    it('should have correct title', () => {
+      expect(echoTool.title).toBe('Echo Tool');
     });
 
     it('should have correct kind', () => {
-      expect(echoTool.kind).toBe(ToolKind.ReadOnly);
+      expect(echoTool.staticBehavior.kind).toBe(ToolKind.ReadOnly);
     });
 
     it('should expose the declared side-effect contract', () => {
-      expect(echoTool.sideEffect).toBe('pure');
+      expect(echoTool.staticBehavior.sideEffect).toBe('pure');
     });
 
     it('should be readonly for readonly kind', () => {
-      expect(echoTool.isReadOnly).toBe(true);
+      expect(echoTool.staticBehavior.isReadOnly).toBe(true);
     });
 
     it('should be concurrency safe by default', () => {
-      expect(echoTool.isConcurrencySafe).toBe(true);
+      expect(echoTool.staticBehavior.isConcurrencySafe).toBe(true);
     });
 
     it('should not be strict by default', () => {
-      expect(echoTool.strict).toBe(false);
+      expect(echoTool.declaration.strict).toBeUndefined();
     });
 
     it('should default maxResultSizeChars to infinity', () => {
@@ -212,7 +211,7 @@ describe('createTool', () => {
     });
 
     it('should default interruptBehavior to block', () => {
-      expect(echoTool.interruptBehavior).toBe('block');
+      expect(echoTool.staticBehavior.interruptBehavior).toBe('block');
     });
 
     it('should resolve default behavior from static config', () => {
@@ -227,41 +226,41 @@ describe('createTool', () => {
     });
   });
 
-  describe('getFunctionDeclaration', () => {
+  describe('declaration', () => {
     it('should return function declaration with name', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.name).toBe('Echo');
     });
 
     it('should include short description', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.description).toContain('Echoes a message');
     });
 
     it('should include long description', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.description).toContain('echoes back the provided message');
     });
 
     it('should include usage notes', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.description).toContain('Usage Notes:');
       expect(declaration.description).toContain('Use for testing');
     });
 
     it('should include important notes', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.description).toContain('Important:');
       expect(declaration.description).toContain('Do not use in production');
     });
 
     it('should have parameters schema', () => {
-      const declaration = echoTool.getFunctionDeclaration();
+      const declaration = echoTool.declaration;
       expect(declaration.parameters).toBeDefined();
       expect(declaration.parameters.type).toBe('object');
     });
 
-    it('should support lazy schemas without rebuilding them on repeated access', () => {
+    it('precomputes lazy schemas once when compiling the tool', () => {
       let schemaInitCount = 0;
       const lazyTool = createTool({
         name: 'LazyTool',
@@ -282,12 +281,8 @@ describe('createTool', () => {
           }),
       });
 
-      expect(schemaInitCount).toBe(0);
-
-      lazyTool.getFunctionDeclaration();
-      lazyTool.getMetadata();
-      lazyTool.build({ value: 'hello' });
-
+      expect(schemaInitCount).toBe(1);
+      lazyTool.prepare({ value: 'hello' });
       expect(schemaInitCount).toBe(1);
     });
 
@@ -311,37 +306,16 @@ describe('createTool', () => {
           }),
       });
 
-      expect(describedTool.getFunctionDeclaration().description).toContain(
-        'General tool description',
-      );
-      expect(describedTool.describe({ target: '/tmp/demo.txt' }).short).toBe(
-        'Inspect target: /tmp/demo.txt',
-      );
-      expect(describedTool.build({ target: '/tmp/demo.txt' }).getDescription()).toBe(
+      expect(describedTool.declaration.description).toContain('General tool description');
+      expect(describedTool.prepare({ target: '/tmp/demo.txt' }).description).toBe(
         'Inspect target: /tmp/demo.txt',
       );
     });
   });
 
-  describe('getMetadata', () => {
-    it('should return complete metadata', () => {
-      const metadata = echoTool.getMetadata();
-      expect(metadata.name).toBe('Echo');
-      expect(metadata.displayName).toBe('Echo Tool');
-      expect(metadata.kind).toBe(ToolKind.ReadOnly);
-      expect(metadata.sideEffect).toBe('pure');
-      expect(metadata.version).toBe('1.0.0');
-    });
-
-    it('should include schema', () => {
-      const metadata = echoTool.getMetadata();
-      expect(metadata.schema).toBeDefined();
-    });
-  });
-
-  describe('build', () => {
+  describe('prepare', () => {
     it('should create tool invocation with valid params', () => {
-      const invocation = echoTool.build({ message: 'Hello' });
+      const invocation = echoTool.prepare({ message: 'Hello' });
       expect(invocation).toBeDefined();
     });
 
@@ -364,13 +338,13 @@ describe('createTool', () => {
           }),
       });
 
-      const invocation = pathTool.build({
+      const invocation = pathTool.prepare({
         file_path: '/tmp/example.txt',
         backupPath: '/tmp/example.bak',
         files: ['/tmp/one.txt', '/tmp/two.txt'],
       });
 
-      expect(invocation.getAffectedPaths()).toEqual([
+      expect(invocation.affectedPaths).toEqual([
         '/tmp/example.txt',
         '/tmp/example.bak',
         '/tmp/one.txt',
@@ -380,7 +354,7 @@ describe('createTool', () => {
 
     it('should throw on invalid params', () => {
       expect(() => {
-        echoTool.build({ message: 123 } as unknown as Type.Static<typeof testSchema>);
+        echoTool.prepare({ message: 123 } as unknown as Type.Static<typeof testSchema>);
       }).toThrow();
     });
   });
@@ -388,9 +362,12 @@ describe('createTool', () => {
   describe('execute', () => {
     it('should execute with valid params', async () => {
       const events: ToolYield[] = [];
-      const result = await collectToolExecution(echoTool.execute({ message: 'Hello' }), (event) => {
-        events.push(event);
-      });
+      const result = await collectToolExecution(
+        echoTool.execute({ message: 'Hello' }, {}),
+        (event) => {
+          events.push(event);
+        },
+      );
       expect(result.status).toBe('success');
       expect(result.model).toBe('Hello');
       expect(events).toEqual([
@@ -403,7 +380,7 @@ describe('createTool', () => {
     });
 
     it('should handle count parameter', async () => {
-      const result = await collectToolExecution(echoTool.execute({ message: 'Hi', count: 3 }));
+      const result = await collectToolExecution(echoTool.execute({ message: 'Hi', count: 3 }, {}));
       expect(result.status).toBe('success');
       expect(result.model).toBe('Hi Hi Hi');
     });
@@ -431,11 +408,19 @@ describe('createTool', () => {
           }),
       });
 
-      const blocked = await collectToolExecution(guardedTool.execute({ value: 'blocked' }));
-      const allowed = await collectToolExecution(guardedTool.execute({ value: 'allowed' }));
+      const blocked = await guardedTool.validate?.(
+        guardedTool.prepare({ value: 'blocked' }).params,
+        {},
+      );
+      const allowedInput = await guardedTool.validate?.(
+        guardedTool.prepare({ value: 'allowed' }).params,
+        {},
+      );
+      const allowed = await collectToolExecution(
+        guardedTool.execute(allowedInput?.params ?? {}, {}),
+      );
 
-      expect(blocked.status).toBe('error');
-      expect(blocked.error?.message).toBe('Blocked by semantic validation');
+      expect(blocked?.error?.message).toBe('Blocked by semantic validation');
       expect(allowed.status).toBe('success');
       expect(allowed.model).toBe('allowed');
     });
@@ -460,7 +445,7 @@ describe('createTool', () => {
       });
 
       await expect(
-        collectToolExecution(tool.execute({}), () => {
+        collectToolExecution(tool.execute({}, {}), () => {
           throw new Error('consumer failed');
         }),
       ).rejects.toThrow('consumer failed');
@@ -487,7 +472,7 @@ describe('createTool', () => {
       });
 
       await expect(
-        collectToolExecution(tool.execute({}), () => {
+        collectToolExecution(tool.execute({}, {}), () => {
           throw new Error('consumer failed');
         }),
       ).rejects.toThrow('consumer failed');
@@ -507,7 +492,7 @@ describe('createTool', () => {
         })) as never,
       });
 
-      await expect(collectToolExecution(invalidTool.execute({}))).rejects.toMatchObject({
+      await expect(collectToolExecution(invalidTool.execute({}, {}))).rejects.toMatchObject({
         name: 'ToolExecutionError',
         code: 'TOOL_EXECUTION_ERROR',
         toolName: 'InvalidTool',
@@ -526,7 +511,7 @@ describe('createTool', () => {
         })) as never,
       });
 
-      await expect(collectToolExecution(invalidTool.execute({}))).rejects.toMatchObject({
+      await expect(collectToolExecution(invalidTool.execute({}, {}))).rejects.toMatchObject({
         name: 'ToolExecutionError',
         code: 'TOOL_EXECUTION_ERROR',
         toolName: 'InvalidDefinition',
@@ -579,7 +564,7 @@ describe('createTool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
-      expect(readonlyTool.isReadOnly).toBe(true);
+      expect(readonlyTool.staticBehavior.isReadOnly).toBe(true);
 
       const writeTool = createTool({
         name: 'WriteTool',
@@ -590,7 +575,7 @@ describe('createTool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
-      expect(writeTool.isReadOnly).toBe(false);
+      expect(writeTool.staticBehavior.isReadOnly).toBe(false);
     });
 
     it('should allow explicit isReadOnly override', () => {
@@ -604,7 +589,7 @@ describe('createTool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
-      expect(tool.isReadOnly).toBe(false);
+      expect(tool.staticBehavior.isReadOnly).toBe(false);
     });
 
     it('should resolve dynamic behavior from validated params', () => {
@@ -675,7 +660,7 @@ describe('createTool', () => {
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
-      expect(tool.interruptBehavior).toBe('block');
+      expect(tool.staticBehavior.interruptBehavior).toBe('block');
       expect(resolveBehavior(tool, {})).toMatchObject({
         interruptBehavior: 'block',
       });
@@ -698,11 +683,9 @@ describe('createTool', () => {
         }),
       });
 
-      expect(toolWithSignature.preparePermissionMatcher).toBeDefined();
-      expect(toolWithSignature.preparePermissionMatcher?.({ path: '/test/file.ts' })).toEqual({
-        signatureContent: '/test/file.ts',
-        abstractRule: 'read:/test/file.ts',
-      });
+      expect(toolWithSignature.prepare({ path: '/test/file.ts' }).permissionSignature).toBe(
+        'SignatureTool:/test/file.ts',
+      );
     });
   });
 
@@ -733,11 +716,7 @@ describe('createTool', () => {
         mode: 'deferred',
         discoveryHint: 'Use when searching the tool catalog.',
       });
-      expect(tool.getMetadata()).toMatchObject({
-        category: 'analysis',
-        sideEffect: 'pure',
-        tags: ['search', 'catalog'],
-      });
+      expect(tool.staticBehavior.sideEffect).toBe('pure');
     });
 
     it('treats a missing sideEffect as non-idempotent instead of rejecting the definition', () => {
@@ -761,7 +740,7 @@ describe('createTool', () => {
         },
       });
 
-      expect(tool.sideEffect).toBe('non_idempotent');
+      expect(tool.staticBehavior.sideEffect).toBe('non_idempotent');
       expect(resolveBehavior(tool)).toMatchObject({ sideEffect: 'non_idempotent' });
     });
 
@@ -776,16 +755,16 @@ describe('createTool', () => {
         },
       });
 
-      expect(tool.getFunctionDeclaration().parameters).toMatchObject({
+      expect(tool.declaration.parameters).toMatchObject({
         type: 'object',
         properties: { query: { type: 'string' } },
         required: ['query'],
       });
 
-      const accepted = await collectToolExecution(tool.execute({ query: 'blade' }));
+      const accepted = await collectToolExecution(tool.execute({ query: 'blade' }, {}));
       expect(accepted).toMatchObject({ status: 'success', model: 'query=blade' });
 
-      expect(() => tool.execute({ query: 42 })).toThrow(/query/);
+      expect(() => tool.prepare({ query: 42 })).toThrow(/query/);
     });
 
     it('wraps an async defineTool callback as a generator-backed execution', async () => {
@@ -803,7 +782,9 @@ describe('createTool', () => {
       });
       const tool = toolFromDefinition(definition);
 
-      await expect(collectToolExecution(tool.execute({ city: 'Tokyo' }))).resolves.toMatchObject({
+      await expect(
+        collectToolExecution(tool.execute({ city: 'Tokyo' }, {})),
+      ).resolves.toMatchObject({
         status: 'success',
         model: 'Tokyo: clear',
       });
@@ -820,7 +801,7 @@ describe('createTool', () => {
       });
       const tool = toolFromDefinition(definition);
 
-      await expect(collectToolExecution(tool.execute({ city: 'Tokyo' }))).resolves.toEqual({
+      await expect(collectToolExecution(tool.execute({ city: 'Tokyo' }, {}))).resolves.toEqual({
         status: 'success',
         model: { weather: 'Tokyo: clear' },
         data: { weather: 'Tokyo: clear' },
@@ -862,9 +843,7 @@ describe('createTool', () => {
       });
 
       await expect(
-        collectToolExecution(
-          tool.execute({}, { discoverableCatalog: scopedView }),
-        ),
+        collectToolExecution(tool.execute({}, { discoverableCatalog: scopedView })),
       ).resolves.toMatchObject({
         model: 'ScopedTool',
       });
@@ -885,7 +864,7 @@ describe('createTool', () => {
         },
       });
 
-      expect(() => tool.build({ message: 7 })).toThrow(/参数验证失败/);
+      expect(() => tool.prepare({ message: 7 })).toThrow(/参数验证失败/);
     });
   });
 });

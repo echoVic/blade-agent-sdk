@@ -78,7 +78,9 @@ describe('builtin tool groups', () => {
   it('declares an explicit interruption policy for every default builtin tool', () => {
     const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
 
-    expect(Object.fromEntries(tools.map((tool) => [tool.name, tool.interruptBehavior]))).toEqual({
+    expect(
+      Object.fromEntries(tools.map((tool) => [tool.name, tool.staticBehavior.interruptBehavior])),
+    ).toEqual({
       Read: 'cancel',
       Edit: 'block',
       Write: 'block',
@@ -126,16 +128,18 @@ describe('builtin tool groups', () => {
   it('declares an explicit side-effect contract for every default builtin tool', () => {
     const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
 
-    expect(Object.fromEntries(tools.map((tool) => [tool.name, tool.sideEffect]))).toEqual({
+    expect(
+      Object.fromEntries(tools.map((tool) => [tool.name, tool.staticBehavior.sideEffect])),
+    ).toEqual({
       Read: 'pure',
       Edit: 'non_idempotent',
       Write: 'idempotent',
-      NotebookEdit: 'non_idempotent',
+      NotebookEdit: 'idempotent',
       Glob: 'pure',
       Grep: 'pure',
       Bash: 'non_idempotent',
       KillShell: 'idempotent',
-      WebFetch: 'non_idempotent',
+      WebFetch: 'pure',
       WebSearch: 'pure',
       Task: 'non_idempotent',
       TaskOutput: 'non_idempotent',

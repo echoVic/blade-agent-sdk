@@ -295,7 +295,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
-| `Tool` | 内部工具接口 |
+| `Tool` | 编译后的运行时工具；声明与静态行为为只读字段，`prepare()` 生成不可变调用快照 |
 | `ToolConfig` | 工具配置 |
 | `ToolSchema` | 工具 Schema |
 | `ToolBehavior` | 工具行为配置 |
@@ -335,6 +335,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 `ToolBehavior.sideEffect` 必须显式声明并决定 started tool 是否可在恢复时重放。
 `ToolBehavior.interruptBehavior` 默认为 `block`。只有能够观察 `AbortSignal` 并可靠清理资源的工具才应声明为 `cancel`。
+`ToolInvocation` 是 Pipeline 内部类型，不从包入口导出；Hook 或权限处理器改写参数后
+会重新执行 `prepare()`。
 
 ### 工具目录
 

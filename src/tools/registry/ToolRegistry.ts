@@ -1,6 +1,6 @@
 import { PermissionMode } from '../../types/constants.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
-import { isToolSideEffect, resolveBehavior } from '../behavior.js';
+import { isToolSideEffect } from '../behavior.js';
 import { toolFromDefinition } from '../core/createTool.js';
 import { searchTools } from '../search/toolSearch.js';
 import { selectToolServices, type ToolServices } from '../services.js';
@@ -202,7 +202,7 @@ export class ToolRegistry {
    * 获取函数声明（用于LLM）
    */
   getFunctionDeclarations(): FunctionDeclaration[] {
-    return this.getAll().map((tool) => tool.getFunctionDeclaration());
+    return this.getAll().map((tool) => tool.declaration);
   }
 
   /**
@@ -211,8 +211,8 @@ export class ToolRegistry {
    */
   getReadOnlyFunctionDeclarations(): FunctionDeclaration[] {
     return this.getAll()
-      .filter((tool) => resolveBehavior(tool).isReadOnly)
-      .map((tool) => tool.getFunctionDeclaration());
+      .filter((tool) => tool.staticBehavior.isReadOnly)
+      .map((tool) => tool.declaration);
   }
 
   /**
@@ -243,7 +243,7 @@ export class ToolRegistry {
    * 获取只读工具
    */
   getReadOnlyTools(): Tool[] {
-    return this.getAll().filter((tool) => resolveBehavior(tool).isReadOnly);
+    return this.getAll().filter((tool) => tool.staticBehavior.isReadOnly);
   }
 
   /**
@@ -321,7 +321,7 @@ export class ToolRegistry {
   }
 
   private assertSideEffectContract(tool: Tool): void {
-    if (!isToolSideEffect(tool.sideEffect)) {
+    if (!tool.staticBehavior || !isToolSideEffect(tool.staticBehavior.sideEffect)) {
       throw new TypeError(
         `Tool '${tool.name}' must declare sideEffect as pure, idempotent, or non_idempotent`,
       );

@@ -164,16 +164,22 @@ advisory-only path.
 
 Heterogeneous collections use the Tool-owned `ErasedToolDefinition` boundary;
 Session does not spell `ToolDefinition<never>` directly. Compiled runtime
-Tools accept `unknown` and validate while building an invocation:
+Tools precompute model declarations and static behavior as readonly data.
+`prepare()` validates input and returns an internal immutable call snapshot:
 
 ```ts
-interface Tool<TParams = unknown> {
-  describe(params?: unknown): ToolDescription;
-  build(params: unknown): ToolInvocation<TParams>;
-  execute(params: unknown, context?: ExecutionContext): ToolExecution;
+interface Tool {
+  readonly declaration: FunctionDeclaration;
+  readonly staticBehavior: ToolBehavior;
+  prepare(raw: unknown): ToolInvocation; // internal immutable snapshot
+  execute(params: JsonObject, context?: ExecutionContext): ToolExecution;
 }
 ```
 
+`ToolInvocation` is not exported from public entry points. When hooks or
+permission handlers rewrite input, the Pipeline must call `prepare()` again
+instead of mutating an existing invocation's parameters, behavior, paths, or
+permission signature.
 Catalogs and registries do not erase parameter types through
 `as unknown as Tool`. Tool execution always terminates with `ToolResult`, while
 model-facing function declarations use `ModelToolDefinition`.

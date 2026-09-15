@@ -414,8 +414,9 @@ export class Agent {
     const tools = this.getAvailableTools();
     const toolsByKind = new Map<string, number>();
     tools.forEach((tool) => {
-      const count = toolsByKind.get(tool.kind) || 0;
-      toolsByKind.set(tool.kind, count + 1);
+      const kind = tool.staticBehavior.kind;
+      const count = toolsByKind.get(kind) || 0;
+      toolsByKind.set(kind, count + 1);
     });
     return {
       totalTools: tools.length,

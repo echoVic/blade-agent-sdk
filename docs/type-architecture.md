@@ -153,16 +153,20 @@ schema 格式转换或 advisory-only 旁路。
 
 异构工具集合通过 Tool owner 定义的 `ErasedToolDefinition` 擦除 authoring
 参数。Session 不直接写 `ToolDefinition<never>`。编译后的 runtime `Tool`
-接收 `unknown`，并在建立 invocation 时完成验证：
+把模型声明和静态行为预计算为只读字段；`prepare()` 校验输入并返回内部不可变
+调用快照：
 
 ```ts
-interface Tool<TParams = unknown> {
-  describe(params?: unknown): ToolDescription;
-  build(params: unknown): ToolInvocation<TParams>;
-  execute(params: unknown, context?: ExecutionContext): ToolExecution;
+interface Tool {
+  readonly declaration: FunctionDeclaration;
+  readonly staticBehavior: ToolBehavior;
+  prepare(raw: unknown): ToolInvocation; // internal immutable snapshot
+  execute(params: JsonObject, context?: ExecutionContext): ToolExecution;
 }
 ```
 
+`ToolInvocation` 不从公共入口导出。Hook 或权限处理器改写输入后，Pipeline 必须重新
+调用 `prepare()`，不得修改既有 invocation 的参数、行为、路径或权限签名。
 Catalog 和 Registry 不通过 `as unknown as Tool` 擦除工具参数类型。工具执行的
 最终值统一为 `ToolResult`，模型侧函数定义统一为 `ModelToolDefinition`。
 

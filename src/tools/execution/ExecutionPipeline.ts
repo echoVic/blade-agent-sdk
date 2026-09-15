@@ -244,7 +244,6 @@ export class ExecutionPipeline {
       params: request.input,
       context: request.context,
       services: this.registry.getServices(tool.name),
-      affectedPaths: [],
       needsConfirmation: false,
       confirmationReasons: [],
       interrupted: false,
@@ -253,7 +252,7 @@ export class ExecutionPipeline {
     await getRuntimeAccess(state.context).assertExecutionLease();
 
     const resolvedBehavior = resolveBehavior(tool, request.input);
-    const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
+    const toolKind = resolvedBehavior?.kind ?? tool.staticBehavior.kind ?? ToolKind.Execute;
     let concurrencyLease: ConcurrencyLease | undefined;
 
     try {

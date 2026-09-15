@@ -1,7 +1,8 @@
 import Type from 'typebox';
 import { describe, expect, it, vi } from 'vitest';
 import { PermissionMode } from '../../../types/constants.js';
-import { defineTool } from '../../core/createTool.js';
+import { createTool as createRuntimeTool, defineTool } from '../../core/createTool.js';
+import { completeToolExecution } from '../../types/result.js';
 import { ToolRegistry } from '../ToolRegistry.js';
 
 function createTool(
@@ -17,8 +18,10 @@ function createTool(
     exposure?: { mode?: 'eager' | 'deferred' | 'discoverable-only'; discoveryHint?: string };
   } = {},
 ) {
-  const description = options.description ?? name;
-  return {
+  const authoredDescription = options.description ?? name;
+  const description =
+    typeof authoredDescription === 'string' ? { short: authoredDescription } : authoredDescription;
+  return createRuntimeTool({
     name,
     aliases: options.aliases ?? [],
     displayName: options.displayName ?? name,
@@ -26,19 +29,12 @@ function createTool(
     kind: options.isReadOnly ? 'readonly' : 'execute',
     sideEffect: options.sideEffect ?? (options.isReadOnly ? 'pure' : 'non_idempotent'),
     isReadOnly: options.isReadOnly ?? false,
+    schema: Type.Object({}),
     tags: options.tags ?? [],
     category: options.category,
-    exposure: {
-      mode: options.exposure?.mode ?? 'eager',
-      alwaysLoad: false,
-      discoveryHint: options.exposure?.discoveryHint ?? '',
-    },
-    getFunctionDeclaration: () => ({
-      name,
-      description: `${name} description`,
-      parameters: {},
-    }),
-  };
+    exposure: options.exposure,
+    execute: () => completeToolExecution({ status: 'success', model: 'ok' }),
+  });
 }
 
 describe('ToolRegistry ordering', () => {
@@ -64,13 +60,13 @@ describe('ToolRegistry ordering', () => {
     expect(() =>
       registry.register({
         ...createTool('MissingContract'),
-        sideEffect: undefined,
+        staticBehavior: undefined,
       } as never),
     ).toThrow(/must declare sideEffect/);
     expect(() =>
       registry.registerMcpTool({
         ...createTool('InvalidContract'),
-        sideEffect: 'unknown',
+        staticBehavior: { sideEffect: 'unknown' },
       } as never),
     ).toThrow(/must declare sideEffect/);
   });
@@ -117,30 +113,8 @@ describe('ToolRegistry ordering', () => {
 
   it('uses behavior hints when filtering readonly declarations for plan mode', () => {
     const registry = new ToolRegistry();
-    registry.register({
-      ...createTool('HintRead'),
-      kind: 'execute',
-      isReadOnly: false,
-      resolveBehavior: () => ({
-        kind: 'readonly',
-        sideEffect: 'pure',
-        isReadOnly: true,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        interruptBehavior: 'cancel',
-      }),
-    } as never);
-    registry.register({
-      ...createTool('HintWrite', { isReadOnly: true }),
-      resolveBehavior: () => ({
-        kind: 'execute',
-        sideEffect: 'non_idempotent',
-        isReadOnly: false,
-        isConcurrencySafe: true,
-        isDestructive: false,
-        interruptBehavior: 'cancel',
-      }),
-    } as never);
+    registry.register(createTool('HintRead', { isReadOnly: true }));
+    registry.register(createTool('HintWrite'));
 
     expect(registry.getFunctionDeclarationsByMode(PermissionMode.PLAN)).toEqual([
       expect.objectContaining({ name: 'HintRead' }),
@@ -209,9 +183,9 @@ describe('ToolRegistry ordering', () => {
     expect(() => registry.register(createTool('mcp__remote__Read') as never)).toThrow(
       /保留的 MCP 命名空间/,
     );
-    expect(() =>
-      registry.registerMcpTool(createTool('Read', { tags: ['mcp'] }) as never),
-    ).toThrow(/必须使用保留命名空间/);
+    expect(() => registry.registerMcpTool(createTool('Read', { tags: ['mcp'] }) as never)).toThrow(
+      /必须使用保留命名空间/,
+    );
   });
 
   it('searches alias names alongside canonical tool metadata', () => {

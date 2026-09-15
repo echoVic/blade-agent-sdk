@@ -58,17 +58,16 @@ export class MiddlewareBoundary {
     private readonly logger: InternalLogger,
   ) {}
 
-  async *run(input: MiddlewareBoundaryInput): AsyncGenerator<ToolYield, MiddlewareBoundaryOutcome, void> {
+  async *run(
+    input: MiddlewareBoundaryInput,
+  ): AsyncGenerator<ToolYield, MiddlewareBoundaryOutcome, void> {
     const { toolName, context: protectedContext } = input;
     const initialRequest: ToolMiddlewareRequest = {
       toolName,
       input: { ...input.params },
       context: protectedContext,
     };
-    const initialBehavior = resolveBehavior(
-      this.registry.get(toolName),
-      initialRequest.input,
-    );
+    const initialBehavior = resolveBehavior(this.registry.get(toolName), initialRequest.input);
     let effectiveRequest = initialRequest;
     let delegatedExecution: ToolExecution | undefined;
     let coreStarted = false;
@@ -84,10 +83,7 @@ export class MiddlewareBoundary {
       if (request.context !== protectedContext) {
         throw new Error('Tool middleware cannot replace the execution context');
       }
-      const effectiveBehavior = resolveBehavior(
-        this.registry.get(toolName),
-        request.input,
-      );
+      const effectiveBehavior = resolveBehavior(this.registry.get(toolName), request.input);
       if (
         initialBehavior &&
         effectiveBehavior &&
@@ -218,7 +214,7 @@ export class MiddlewareBoundary {
     const tool = this.registry.get(request.toolName);
     const sideEffect =
       resolveBehavior(tool, request.input)?.sideEffect ??
-      tool?.sideEffect ??
+      tool?.staticBehavior.sideEffect ??
       ToolSideEffect.NON_IDEMPOTENT;
     await getRuntimeAccess(request.context).assertExecutionLease();
     await request.context.toolInvocationLifecycle?.onExecutionStarted?.({
