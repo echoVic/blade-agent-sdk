@@ -1,7 +1,6 @@
 import { SdkError } from '../errors/SdkError.js';
 import type { ExecutionCheckpointId, ExecutionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
-import type { CredentialRequest } from './CredentialBroker.js';
 
 export interface ExecutionResourceLimits {
   readonly cpus: number;
@@ -12,14 +11,9 @@ export interface ExecutionResourceLimits {
   readonly maxOutputBytes: number;
 }
 
-export type ExecutionNetworkPolicy =
-  | {
-      readonly mode: 'none';
-    }
-  | {
-      readonly mode: 'proxy';
-      readonly allowedHosts: readonly string[];
-    };
+export interface ExecutionNetworkPolicy {
+  readonly mode: 'none';
+}
 
 export type ExecutionWorkspaceSource =
   | {
@@ -58,7 +52,6 @@ export interface ExecutionExecRequest {
   readonly args?: readonly string[];
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string>>;
-  readonly credentials?: readonly CredentialRequest[];
   readonly timeoutMs?: number;
   readonly stdin?: string;
   readonly signal?: AbortSignal;
@@ -85,20 +78,6 @@ export interface ExecutionRestoreRequest {
   readonly checkpointId: ExecutionCheckpointId;
   readonly executionId?: ExecutionId;
   readonly signal?: AbortSignal;
-}
-
-export interface ExecutionEgressLease {
-  readonly networkName: string;
-  readonly environment: Readonly<Record<string, string>>;
-}
-
-export interface ExecutionEgressController {
-  provision(
-    executionId: ExecutionId,
-    policy: Extract<ExecutionNetworkPolicy, { mode: 'proxy' }>,
-    signal?: AbortSignal,
-  ): Promise<ExecutionEgressLease>;
-  release(executionId: ExecutionId): Promise<void>;
 }
 
 export interface ExecutionHost {
@@ -132,7 +111,6 @@ export type ExecutionHostErrorCode =
   | 'EXECUTION_NETWORK_POLICY'
   | 'EXECUTION_CHECKPOINT_NOT_FOUND'
   | 'EXECUTION_CHECKPOINT_INVALID'
-  | 'EXECUTION_CREDENTIAL_ERROR'
   | 'EXECUTION_RUNTIME_ERROR';
 
 export class ExecutionHostError extends SdkError {

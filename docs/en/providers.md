@@ -154,16 +154,21 @@ const session = await createSession({
 });
 ```
 
-The root package also exports DeepSeek-specific helpers for:
+The root package exports focused helpers for model aliases, base URL selection,
+stable cache-prefix ordering, and strict JSON Schema normalization. Direct HTTP,
+FIM, batch, long-context planning, and pricing helpers are intentionally left
+to applications or the provider SDK.
 
-- chat and FIM completions;
-- cache-prefix optimization;
-- token estimation and cost tracking;
-- long-context chunk planning;
-- batch completion summaries;
-- strict JSON Schema normalization.
+```ts
+import {
+  normalizeDeepSeekModel,
+  optimizeDeepSeekCachePrefix,
+  sanitizeDeepSeekStrictSchema,
+} from '@blade-ai/agent-sdk';
+```
 
-These helpers are lower-level APIs and do not replace the Session interface.
+These helpers support provider integration and do not replace the Session
+interface.
 
 ## OpenAI-compatible endpoints
 

@@ -14,7 +14,7 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 | Session projection | `src/session/SessionStore.ts` | `SessionState`、`SessionSnapshot`、`SessionSummary` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`、`DurableSessionProjection` |
 | Remote protocol | `src/protocol/` | `AgentCommand`、`AgentCommandResult`、`AgentServerEvent` |
-| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeCommandCommit`、`RuntimeDomainEvent`、`RuntimeEffectIntent` |
+| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeStore`、`RuntimeTenantStore`、`RuntimeStoreError` |
 | Cross-domain primitives | `src/types/` | branded identifiers、JSON、permissions、logging |
 
 `src/types/` 只承载真正跨领域的基础契约。业务配置、消息和事件不能放入
@@ -79,7 +79,6 @@ Provider 提示放在 `providerOptions` 中。只有不参与 SDK 控制流的�
 | `SessionStreamEvent` | Session 调用方消费的流 | 否 | 否 |
 | `SessionState` | 对话消息和输入投影 | 是 | 否 |
 | `DurableEventEnvelope` | 确定性恢复 journal | 是 | 否 |
-| `RuntimeDomainEvent` | 原子 runtime transaction | 是 | 否 |
 | `AgentServerEvent` | AgentClient/AgentServer 协议 | 可重放 | 是 |
 
 转换应发生在边界实现中。内部事件不能直接伪装成协议事件，协议 `data` 也不能以
@@ -111,8 +110,7 @@ interface SessionEventStore {
 
 `SessionId`、`MessageId`、`ToolUseId`、`CommandId`、`EventId`、
 `EventSequence`、`ExecutionLeaseId`、`ExecutionId`、`ExecutionCheckpointId`
-和 `CredentialLeaseId` 等均为 branded types。它们阻止不同 ID
-在结构相同的情况下被误传。
+等均为 branded types。它们阻止不同 ID 在结构相同的情况下被误传。
 
 ```ts
 const sessionId = SessionId(rawSessionId);

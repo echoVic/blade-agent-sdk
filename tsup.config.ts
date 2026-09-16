@@ -22,7 +22,6 @@ export default defineConfig({
     'cli/create-blade-agent': 'src/cli/create-blade-agent.ts',
     'protocol/index': 'src/protocol/index.ts',
     'server/infra': 'src/server/infra.ts',
-    'server/otel': 'src/server/otel.ts',
     'server/postgres': 'src/server/postgres.ts',
   },
   format: ['esm'],

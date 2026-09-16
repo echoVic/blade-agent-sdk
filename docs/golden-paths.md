@@ -50,9 +50,8 @@ PostgreSQL 读取，因此任何后继进程看到的是同一个恢复边界。
 若测试执行中断且结果未知，则停止并要求核验。示例使用单个 API 进程，不提供 API
 故障切换，也不保证任意工具恰好执行一次。
 
-同一 smoke 还会验证无需鉴权的 `/v1/runtime/readyz`，以及使用本地 operator
-令牌访问的、按租户隔离的 `/v1/runtime/metrics`。只有 Worker ready 且队列指标
-反映已完成的 Session 时，验收才会通过。
+同一 smoke 还会验证后继 Worker 的本地 readiness 快照；只有恢复后的 Worker
+ready 时验收才会通过。
 
 ## 生成独立项目
 

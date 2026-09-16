@@ -15,7 +15,7 @@ owner directly, while package entry points only assemble public contracts.
 | Session projection | `src/session/SessionStore.ts` | `SessionState`, `SessionSnapshot`, `SessionSummary` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`, `DurableSessionProjection` |
 | Remote protocol | `src/protocol/` | `AgentCommand`, `AgentCommandResult`, `AgentServerEvent` |
-| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeCommandCommit`, `RuntimeDomainEvent`, `RuntimeEffectIntent` |
+| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeStore`, `RuntimeTenantStore`, `RuntimeStoreError` |
 | Cross-domain primitives | `src/types/` | branded identifiers, JSON, permissions, logging |
 
 `src/types/` contains only genuinely cross-domain primitives. Business
@@ -84,7 +84,6 @@ Event types remain separate because their lifecycles differ:
 | `SessionStreamEvent` | Stream consumed by a Session caller | No | No |
 | `SessionState` | Conversation and input projection | Yes | No |
 | `DurableEventEnvelope` | Deterministic recovery journal | Yes | No |
-| `RuntimeDomainEvent` | Atomic runtime transaction | Yes | No |
 | `AgentServerEvent` | AgentClient/AgentServer protocol | Replayable | Yes |
 
 Conversion belongs at boundary implementations. An internal event must not be
@@ -119,7 +118,7 @@ interface SessionEventStore {
 
 `SessionId`, `MessageId`, `ToolUseId`, `CommandId`, `EventId`,
 `EventSequence`, `ExecutionLeaseId`, `ExecutionId`, `ExecutionCheckpointId`,
-and `CredentialLeaseId` are branded types. Structurally similar identifiers
+and related identifiers are branded types. Structurally similar identifiers
 therefore cannot be passed to the wrong API.
 
 ```ts

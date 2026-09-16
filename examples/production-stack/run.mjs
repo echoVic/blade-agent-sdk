@@ -7,10 +7,7 @@ import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import {
-  AgentRuntimeOperations,
-  AgentServer,
-} from '@blade-ai/agent-sdk/server/infra';
+import { AgentServer } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
 import { RepositoryState } from './RepositoryState.mjs';
 import { reconcilePendingWork } from './RepositoryReconcile.mjs';
@@ -35,7 +32,6 @@ let workerConfig;
 let repositoryState;
 const ownedContainers = new Set();
 let agent;
-let operations;
 let httpServer;
 let composeStarted = false;
 let cleanupStarted = false;
@@ -289,7 +285,7 @@ try {
       };
     },
   });
-  // Each session gets a git-worktree of this disposable fixture; the SDK checkout is untouched.
+  // Each session imports this fixture revision into an isolated tmpfs workspace.
   const repositoryPath = join(temporaryRoot, 'repository');
   await cp(join(root, 'fixture'), repositoryPath, { recursive: true });
   await execFileAsync('git', ['init', '--quiet', repositoryPath]);
@@ -313,20 +309,6 @@ try {
   if (reconciled.enqueuedSubmissions || reconciled.republishedOutcomes || reconciled.alreadyPublished) {
     process.stdout.write(`Reconciled on startup: ${JSON.stringify(reconciled)}\n`);
   }
-  operations = new AgentRuntimeOperations({
-    store,
-    workers: () => [worker],
-    authorize(request) {
-      if (request.headers.get('authorization') !== 'Bearer local-demo') {
-        return null;
-      }
-      return {
-        tenantId,
-        subject: 'local-operator',
-      };
-    },
-  });
-
   await build({
     entryPoints: [join(webRoot, 'client.js')],
     outfile: join(generated, 'client.js'),
@@ -367,9 +349,7 @@ try {
           ...(body ? { body } : {}),
         },
       );
-      const upstream = url.pathname.startsWith('/v1/runtime/')
-        ? await operations.handle(upstreamRequest)
-        : await agent.handle(upstreamRequest);
+      const upstream = await agent.handle(upstreamRequest);
       response.writeHead(upstream.status, Object.fromEntries(upstream.headers));
       if (!upstream.body) {
         response.end();

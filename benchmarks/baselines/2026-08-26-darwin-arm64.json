@@ -7,8 +7,7 @@
   },
   "sampleSize": {
     "sessions": 100,
-    "events": 1000,
-    "effects": 100
+    "events": 1000
   },
   "metrics": {
     "storeInitializationMs": 77.04,
@@ -16,7 +15,6 @@
     "sessionThroughputPerSecond": 106.48,
     "sessionCompletionDurationMs": 939.16,
     "recoveryDurationMs": 14.67,
-    "eventLossRate": 0,
-    "nonIdempotentDuplicateRate": 0
+    "eventLossRate": 0
   }
 }

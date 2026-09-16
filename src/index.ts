@@ -124,45 +124,17 @@ export {
 } from './runtime/index.js';
 export type { SandboxSettings } from './sandbox/config.js';
 export type {
-  DeepSeekBatchChatCompletionItem,
-  DeepSeekBatchChatCompletionOptions,
-  DeepSeekBatchChatCompletionResult,
-  DeepSeekBatchChatCompletionSummary,
   DeepSeekCacheOptimizationOptions,
-  DeepSeekChatCompletionOptions,
-  DeepSeekChatCompletionResponse,
-  DeepSeekChatMessage,
-  DeepSeekCostBreakdown,
-  DeepSeekCostSnapshot,
-  DeepSeekFimCompletionOptions,
-  DeepSeekFimCompletionResponse,
-  DeepSeekLongContextChunk,
-  DeepSeekLongContextOptions,
-  DeepSeekLongContextPlan,
-  DeepSeekPricing,
   DeepSeekProviderOptions,
 } from './services/deepseek.js';
 export {
-  calculateDeepSeekCost,
-  createDeepSeekBatchChatCompletions,
-  createDeepSeekChatCompletion,
-  createDeepSeekFimCompletion,
-  createDeepSeekLongContextChunks,
-  createDeepSeekLongContextMessages,
-  createDeepSeekLongContextPlan,
-  createDeepSeekTokenBudgetCostConfig,
   DEEPSEEK_BETA_BASE_URL,
   DEEPSEEK_DEFAULT_BASE_URL,
   DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_DEFAULT_PRICING,
-  DeepSeekCostTracker,
-  estimateDeepSeekTokens,
-  getDeepSeekPricing,
   normalizeDeepSeekModel,
   optimizeDeepSeekCachePrefix,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
-  summarizeDeepSeekBatchChatCompletions,
 } from './services/deepseek.js';
 export type { ProviderAdapter } from './services/ProviderRegistry.js';
 export { ProviderRegistry } from './services/ProviderRegistry.js';
@@ -261,7 +233,6 @@ export {
 export {
   AgentId,
   CommandId,
-  CredentialLeaseId,
   EventId,
   EventSequence,
   ExecutionCheckpointId,

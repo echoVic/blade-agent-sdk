@@ -85,7 +85,7 @@ Runtime Store conformance framework and its duplicate `/server/testing`
 package entrypoint were deleted instead of shipping test infrastructure as a
 runtime API.
 
-### Task 4: Consolidate server and PostgreSQL runtimes
+### Task 4: Consolidate server and PostgreSQL runtimes [COMPLETED]
 
 Merge repeated SQL transaction, lease, state-transition, payload, and row
 mapping code across the two PostgreSQL runtimes and server stores.
@@ -97,6 +97,17 @@ Acceptance:
   methods.
 - No server production file over 900 LOC.
 - Production LOC reduction target: at least 5,000 additional lines.
+
+Result: production TypeScript is **64,259 LOC**, down **5,111 lines** in this
+task and **19,546 lines** from baseline. PostgreSQL now shares one context,
+event-stream implementation, execution-lease owner, row decoder, and
+tenant-scoped adapter. Runtime schema v5 stores one Session projection and two
+explicit event streams, with no generic domain-event, outbox, checkpoint, or
+legacy migration subsystem. Server HTTP and recovery cursor policy have focused
+owners; every server production file is below 900 lines. The parallel runtime
+operations surface, bundled OpenTelemetry adapters, unsupported DeepSeek
+request helpers, and obsolete effect fault benchmarks were deleted rather than
+carried as compatibility APIs.
 
 ### Task 5: Flatten agent and session orchestration
 

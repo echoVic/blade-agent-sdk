@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Consolidate the PostgreSQL, Worker, and Docker runtimes around current Session execution; remove the generic outbox runtime, operations facade, bundled OpenTelemetry adapters, orphaned credential and egress abstractions, and unsupported DeepSeek request helpers.",
+  "zh-CN": "围绕当前 Session 执行合并 PostgreSQL、Worker 与 Docker runtime；移除通用 outbox runtime、运维 facade、内置 OpenTelemetry adapter、无 owner 的凭据与网络出口抽象，以及不再支持的 DeepSeek 请求辅助 API。"
+}

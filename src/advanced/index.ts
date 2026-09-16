@@ -41,13 +41,6 @@ export {
   SandboxService,
 } from '../sandbox/index.js';
 export {
-  EffectDispatcher,
-  type EffectDispatcherMetrics,
-  type EffectDispatcherOptions,
-  type RuntimeEffectHandler,
-  type RuntimeEffectHandlerContext,
-} from '../server/EffectDispatcher.js';
-export {
   type ExecutionCheckpointPolicy,
   type ExecutionHostSessionPlan,
   ExecutionHostSessionRunner,

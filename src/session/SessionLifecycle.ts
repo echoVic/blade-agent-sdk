@@ -3,7 +3,10 @@ import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import type { RequestAbortReason } from './ActiveRequestController.js';
 import { DurableExecutionLease } from './events/DurableExecutionLease.js';
-import { DurableExecutionLeaseError } from './events/DurableExecutionLeaseStore.js';
+import {
+  DurableExecutionLeaseError,
+  isExecutionLeaseFailure,
+} from './events/DurableExecutionLeaseStore.js';
 import type { SessionDurability } from './SessionDurability.js';
 import { NODE_SESSION_HOST } from './SessionHostProfile.js';
 import type { SessionRequestCoordinator } from './SessionRequestCoordinator.js';
@@ -335,11 +338,14 @@ export class SessionLifecycle {
     if (!closeState.alreadyClosed) {
       this.state.logger.debug(`[Session] Closed session ${this.state.sessionId}`);
     }
-    if (closeErrors.length === 1) {
-      throw closeErrors[0];
+    const reportableErrors = this.state.executionLeaseFailure
+      ? closeErrors.filter((error) => !isExecutionLeaseFailure(error))
+      : closeErrors;
+    if (reportableErrors.length === 1) {
+      throw reportableErrors[0];
     }
-    if (closeErrors.length > 1) {
-      throw new AggregateError(closeErrors, 'Session close failed in multiple phases');
+    if (reportableErrors.length > 1) {
+      throw new AggregateError(reportableErrors, 'Session close failed in multiple phases');
     }
   }
 

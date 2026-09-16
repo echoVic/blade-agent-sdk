@@ -75,11 +75,8 @@ function createStore(sessionClaim: RuntimeSessionClaim) {
     recoverExpiredWork: vi.fn(async () => ({
       offlineWorkers: 0,
       suspendedSessions: 0,
-      requeuedEffects: 0,
-      uncertainEffects: 0,
       abandonedCommands: 0,
     })),
-    claimEffects: vi.fn(async () => []),
     claimSession: vi.fn(async () => {
       const result = nextClaim;
       nextClaim = null;
@@ -531,18 +528,14 @@ describe('AgentWorker', () => {
     const store = createStore(sessionClaim);
     const heartbeatError = new Error('heartbeat unavailable');
     const recoveryError = new Error('recovery unavailable');
-    const effectError = new Error('effect claim unavailable');
     vi.mocked(store.heartbeatWorker)
       .mockRejectedValueOnce(heartbeatError)
       .mockResolvedValue(workerRecord('active'));
     vi.mocked(store.recoverExpiredWork).mockRejectedValueOnce(recoveryError).mockResolvedValue({
       offlineWorkers: 0,
       suspendedSessions: 0,
-      requeuedEffects: 0,
-      uncertainEffects: 0,
       abandonedCommands: 0,
     });
-    vi.mocked(store.claimEffects).mockRejectedValueOnce(effectError).mockResolvedValue([]);
     const onError = vi.fn();
     const worker = new AgentWorker({
       store,
@@ -554,7 +547,6 @@ describe('AgentWorker', () => {
           return { status: 'completed' };
         },
       },
-      effectHandlers: [],
       heartbeatIntervalMs: 10,
       workerTtlMs: 500,
       sessionLeaseTtlMs: 500,
@@ -567,13 +559,11 @@ describe('AgentWorker', () => {
     await vi.waitFor(() => {
       expect(vi.mocked(store.heartbeatWorker).mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(vi.mocked(store.recoverExpiredWork).mock.calls.length).toBeGreaterThanOrEqual(2);
-      expect(vi.mocked(store.claimEffects).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
 
     expect(worker.getSnapshot().status).toBe('running');
     expect(onError).toHaveBeenCalledWith(heartbeatError);
     expect(onError).toHaveBeenCalledWith(recoveryError);
-    expect(onError).toHaveBeenCalledWith(effectError);
     await worker.shutdown();
   });
 

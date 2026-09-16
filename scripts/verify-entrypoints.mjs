@@ -102,7 +102,6 @@ const browserAdvancedOutput = run(process.execPath, [
     'try { m.getBuiltinTools(); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
     'try { new m.JsonlSessionRepository("."); } catch (error) { console.log(error.message); }',
-    'try { new m.DockerExecutionHost(); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(
@@ -126,12 +125,6 @@ assertIncludes(
   'server-only for JsonlSessionRepository',
   'browser advanced Session repository stub',
 );
-assertIncludes(
-  browserAdvancedOutput,
-  'server-only for DockerExecutionHost',
-  'browser advanced execution host stub',
-);
-
 const browserInfraOutput = run(process.execPath, [
   '--conditions=browser',
   '-e',
@@ -163,7 +156,7 @@ const subpathOutput = run(process.execPath, [
     "const infra = await import('@blade-ai/agent-sdk/server/infra');",
     "console.log('root', typeof root.createAgent, typeof root.defineTool, typeof root.composeMiddleware, root.PROVIDER_TYPES.length);",
     "console.log('browser', typeof browser.AgentClient, typeof browser.AgentResponse, browser.AGENT_PROTOCOL_VERSION);",
-    "console.log('advanced', typeof advanced.createSession, typeof advanced.createServerSession, typeof advanced.getBuiltinTools, typeof advanced.JsonlDurableEventStore, typeof advanced.DockerExecutionHost, typeof advanced.EffectDispatcher, typeof advanced.SdkSessionRunner);",
+    "console.log('advanced', typeof advanced.createSession, typeof advanced.createServerSession, typeof advanced.getBuiltinTools, typeof advanced.JsonlDurableEventStore, typeof advanced.SdkSessionRunner);",
     "console.log('infra', typeof infra.AgentServer, typeof infra.AgentWorker, typeof infra.InMemoryAgentServerStore, typeof infra.RuntimeStoreError, infra.RUNTIME_SESSION_STATES.length);",
     "console.log('boundaries', 'createAgent' in infra, 'createSession' in infra, 'EffectDispatcher' in infra, 'PostgresRuntimeStore' in infra, 'OpenTelemetryAgentServerTelemetry' in infra);",
   ].join(' '),
@@ -172,7 +165,7 @@ assertIncludes(subpathOutput, 'root function function function 6', 'root entrypo
 assertIncludes(subpathOutput, 'browser function function 1', 'browser entrypoint');
 assertIncludes(
   subpathOutput,
-  'advanced function function function function function function function',
+  'advanced function function function function function',
   'advanced entrypoint',
 );
 assertIncludes(

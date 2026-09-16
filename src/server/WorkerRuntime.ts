@@ -5,7 +5,6 @@ import type {
 } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
-import type { RuntimeEffectRecord, RuntimeEffectStatus } from './RuntimeStore.js';
 
 export const RUNTIME_SESSION_STATES = [
   'queued',
@@ -22,30 +21,6 @@ export const RUNTIME_WORKER_STATUSES = ['active', 'draining', 'offline'] as cons
 
 export type RuntimeSessionState = (typeof RUNTIME_SESSION_STATES)[number];
 export type RuntimeWorkerStatus = (typeof RUNTIME_WORKER_STATUSES)[number];
-export type RuntimeEffectExecutionMode = 'idempotent' | 'at_most_once';
-
-export interface RuntimeQueueMetrics {
-  readonly collectedAt: string;
-  readonly tenantId?: string;
-  readonly sessions: {
-    readonly counts: Readonly<Record<RuntimeSessionState, number>>;
-    readonly claimable: number;
-    readonly oldestClaimableAt?: string;
-    readonly oldestClaimableAgeMs?: number;
-  };
-  readonly effects: {
-    readonly counts: Readonly<Record<RuntimeEffectStatus, number>>;
-    readonly claimable: number;
-    readonly oldestClaimableAt?: string;
-    readonly oldestClaimableAgeMs?: number;
-  };
-  readonly workers: {
-    readonly counts: Readonly<Record<RuntimeWorkerStatus, number>>;
-    readonly capacity: number;
-    readonly activeSessions: number;
-    readonly availableCapacity: number;
-  };
-}
 
 export interface RuntimeWorkerRegistration {
   readonly workerId: WorkerId;
@@ -107,13 +82,6 @@ export interface RuntimeSessionSettlement {
 export interface RuntimeRecoveryResult {
   readonly offlineWorkers: number;
   readonly suspendedSessions: number;
-  readonly requeuedEffects: number;
-  readonly uncertainEffects: number;
-  /**
-   * Commands abandoned because they were sealed without a result for longer than
-   * the abandonment window. Their callers receive `COMMAND_ABANDONED` and must
-   * reconcile the effect themselves; the command is never re-executed.
-   */
   readonly abandonedCommands: number;
 }
 
@@ -124,51 +92,10 @@ export interface RuntimeRecoveryResult {
  */
 export const SEALED_COMMAND_ABANDON_AFTER_MS = 30 * 60 * 1_000;
 
-export interface RuntimeEffectLease {
-  readonly tenantId: string;
-  readonly sessionId: SessionId;
-  readonly effectId: string;
-  readonly workerId: WorkerId;
-  readonly leaseId: ExecutionLeaseId;
-  readonly fencingToken: FencingToken;
-  readonly expiresAt: string;
-}
-
-export interface RuntimeEffectClaimOptions {
-  readonly workerId: WorkerId;
-  readonly leaseId?: ExecutionLeaseId;
-  readonly tenantId?: string;
-  readonly ttlMs: number;
-  readonly limit?: number;
-}
-
-export interface RuntimeEffectClaim extends RuntimeEffectRecord {
-  readonly status: 'claimed';
-  readonly workerId: WorkerId;
-  readonly leaseId: ExecutionLeaseId;
-  readonly fencingToken: FencingToken;
-  readonly leaseExpiresAt: string;
-}
-
-export interface RuntimeEffectFailureOptions {
-  readonly retryAt?: string;
-}
-
-export type RuntimeEffectReconciliation =
-  | {
-      readonly status: 'completed';
-      readonly result?: JsonObject;
-    }
-  | {
-      readonly status: 'failed';
-      readonly error: JsonObject;
-    };
-
 export interface WorkerRuntimeStore {
   registerWorker(registration: RuntimeWorkerRegistration): Promise<RuntimeWorkerRecord>;
   heartbeatWorker(workerId: WorkerId, ttlMs: number): Promise<RuntimeWorkerRecord>;
   drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord>;
-  getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null>;
   enqueueSession(
     tenantId: string,
     sessionId: SessionId,
@@ -198,33 +125,9 @@ export interface WorkerRuntimeStore {
     lease: DurableExecutionLease,
     metadata?: JsonObject,
   ): Promise<RuntimeSessionRoute>;
-  preemptSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: {
-      readonly reason?: JsonObject;
-      readonly requeue?: boolean;
-    },
-  ): Promise<RuntimeSessionRoute>;
   getSessionRoute(tenantId: string, sessionId: SessionId): Promise<RuntimeSessionRoute | null>;
   listWorkerSessions(workerId: WorkerId): Promise<readonly RuntimeSessionRoute[]>;
-  getQueueMetrics?(tenantId?: string): Promise<RuntimeQueueMetrics>;
   recoverExpiredWork(): Promise<RuntimeRecoveryResult>;
-  claimEffects(options: RuntimeEffectClaimOptions): Promise<readonly RuntimeEffectClaim[]>;
-  renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord>;
-  startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord>;
-  completeEffect(lease: RuntimeEffectLease, result?: JsonObject): Promise<RuntimeEffectRecord>;
-  failEffect(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-    options?: RuntimeEffectFailureOptions,
-  ): Promise<RuntimeEffectRecord>;
-  markEffectUncertain(lease: RuntimeEffectLease, error: JsonObject): Promise<RuntimeEffectRecord>;
-  reconcileEffect(
-    tenantId: string,
-    effectId: string,
-    outcome: RuntimeEffectReconciliation,
-  ): Promise<RuntimeEffectRecord>;
 }
 
 export type WorkerRuntimeErrorCode =
@@ -232,10 +135,7 @@ export type WorkerRuntimeErrorCode =
   | 'WORKER_NOT_FOUND'
   | 'WORKER_UNAVAILABLE'
   | 'SESSION_ROUTE_NOT_FOUND'
-  | 'SESSION_STATE_CONFLICT'
-  | 'EFFECT_NOT_FOUND'
-  | 'EFFECT_LEASE_LOST'
-  | 'EFFECT_RETRY_NOT_ALLOWED';
+  | 'SESSION_STATE_CONFLICT';
 
 export class WorkerRuntimeError extends SdkError {
   // biome-ignore lint/complexity/noUselessConstructor: narrows the public error-code contract
@@ -273,31 +173,4 @@ export function assertRuntimeSessionTransition(
       `Runtime Session cannot transition from ${from} to ${to}`,
     );
   }
-}
-
-export function effectLease(effect: RuntimeEffectRecord): RuntimeEffectLease {
-  if (
-    !effect.workerId ||
-    !effect.leaseId ||
-    effect.fencingToken === undefined ||
-    !effect.leaseExpiresAt
-  ) {
-    throw new WorkerRuntimeError(
-      'EFFECT_LEASE_LOST',
-      `Effect ${effect.tenantId}/${effect.effectId} has no active lease`,
-    );
-  }
-  return {
-    tenantId: effect.tenantId,
-    sessionId: effect.sessionId,
-    effectId: effect.effectId,
-    workerId: effect.workerId,
-    leaseId: effect.leaseId,
-    fencingToken: effect.fencingToken,
-    expiresAt: effect.leaseExpiresAt,
-  };
-}
-
-export function isTerminalRuntimeEffectStatus(status: RuntimeEffectStatus): boolean {
-  return status === 'completed' || status === 'failed' || status === 'uncertain';
 }

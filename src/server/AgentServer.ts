@@ -9,24 +9,29 @@ import {
   type AgentPrincipal,
   type AgentProtocolCapabilities,
   AgentProtocolError,
-  type AgentProtocolErrorCode,
   type AgentServerEvent,
   type AgentServerScope,
   type AgentSessionDescriptor,
   parseAgentCommand,
 } from '../protocol/index.js';
 import { canonicalJson } from '../session/events/canonicalJson.js';
-import { hasHistoryGap, type SessionHistoryProgress } from '../session/historyProgress.js';
 import type { PendingSessionInput, SessionOptions } from '../session/types.js';
 import {
   CommandId,
   type CommandId as CommandIdType,
   type RequestId,
-  SessionId,
+  type SessionId,
 } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorName } from '../utils/errorUtils.js';
 import { toJsonValue } from '../utils/jsonValue.js';
+import {
+  jsonResponse,
+  parseRouteSessionId,
+  protocolStatus,
+  validPrincipalSubject,
+} from './AgentHttp.js';
+import { type RecoveryCursor, resolveRecoveryCursor } from './AgentRecoveryCursor.js';
 import {
   type AgentServerSessionRecord,
   type AgentServerStore,
@@ -46,22 +51,10 @@ import {
 } from './TenantAdmissionController.js';
 
 const DEFAULT_COMMAND_LEASE_TTL_MS = 30_000;
-/**
- * How many trailing events a recovery snapshot inspects to find the last
- * completed request. The window bounds the work one `session.read` performs on a
- * long Session; anything it does not cover is replayed rather than skipped.
- */
-const RECOVERY_TAIL_EVENTS = 500;
-/**
- * How many trailing windows a recovery snapshot may scan for the last completed
- * request. The search is bounded, but a miss never turns into a skipped range.
- */
-const RECOVERY_SCAN_WINDOWS = 4;
 const DEFAULT_EVENT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 const PRINCIPAL_TENANT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const SESSION_ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9._:-]{0,255}$/;
 const AGENT_SERVER_SCOPES = new Set<AgentServerScope>([
   'session:create',
   'session:read',
@@ -69,39 +62,6 @@ const AGENT_SERVER_SCOPES = new Set<AgentServerScope>([
   'session:admin',
   'permission:resolve',
 ]);
-
-function isValidPrincipalSubject(subject: string): boolean {
-  return (
-    subject.length >= 1 &&
-    subject.length <= 256 &&
-    subject === subject.trim() &&
-    Array.from(subject).every((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return codePoint >= 0x20 && codePoint !== 0x7f;
-    })
-  );
-}
-
-function parseRouteSessionId(encoded: string): SessionId {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(encoded);
-  } catch (error) {
-    throw new AgentProtocolError(
-      'INVALID_COMMAND',
-      'Session identifier is not valid URL encoding',
-      400,
-      false,
-      undefined,
-      undefined,
-      { cause: error },
-    );
-  }
-  if (!SESSION_ID_PATTERN.test(decoded)) {
-    throw new AgentProtocolError('INVALID_COMMAND', 'Session identifier is invalid', 400);
-  }
-  return SessionId(decoded);
-}
 
 function toSessionDescriptor(record: AgentServerSessionRecord): AgentSessionDescriptor {
   return {
@@ -160,44 +120,6 @@ function requiredScopes(command: AgentCommand): readonly AgentServerScope[] {
     default:
       return ['session:write'];
   }
-}
-
-function statusForCode(code: AgentProtocolErrorCode): number {
-  switch (code) {
-    case 'UNAUTHENTICATED':
-      return 401;
-    case 'FORBIDDEN':
-      return 403;
-    case 'SESSION_NOT_FOUND':
-    case 'PERMISSION_NOT_FOUND':
-      return 404;
-    case 'SESSION_CONFLICT':
-    case 'COMMAND_CONFLICT':
-    case 'COMMAND_IN_PROGRESS':
-    case 'COMMAND_ABANDONED':
-    case 'STALE_CURSOR':
-      return 409;
-    case 'RATE_LIMITED':
-      return 429;
-    case 'OVERLOADED':
-      return 503;
-    case 'PROTOCOL_VERSION_UNSUPPORTED':
-    case 'INVALID_COMMAND':
-      return 400;
-    default:
-      return 500;
-  }
-}
-
-function json(data: unknown, status = 200, headers?: Record<string, string>): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      ...headers,
-    },
-  });
 }
 
 export class AgentServer {
@@ -432,11 +354,11 @@ export class AgentServer {
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === `${this.basePath}/healthz`) {
-      return json({ status: 'ok' });
+      return jsonResponse({ status: 'ok' });
     }
     if (request.method === 'GET' && url.pathname === `${this.basePath}/readyz`) {
       const health = await this.store.healthCheck();
-      return json(
+      return jsonResponse(
         { status: health.ready ? 'ready' : 'not_ready', ...health.details },
         health.ready ? 200 : 503,
       );
@@ -470,7 +392,11 @@ export class AgentServer {
           !result.ok && result.error.retryAfterMs
             ? { 'retry-after': String(Math.ceil(result.error.retryAfterMs / 1000)) }
             : undefined;
-        return json(result, result.ok ? 200 : statusForCode(result.error.code), retryHeaders);
+        return jsonResponse(
+          result,
+          result.ok ? 200 : protocolStatus(result.error.code),
+          retryHeaders,
+        );
       } catch (error) {
         return this.errorResponse('invalid', error);
       }
@@ -493,7 +419,7 @@ export class AgentServer {
       }
     }
 
-    return json(
+    return jsonResponse(
       {
         protocolVersion: AGENT_PROTOCOL_VERSION,
         commandId: CommandId('routing'),
@@ -538,19 +464,17 @@ export class AgentServer {
         return this.success(command.commandId, { session: toSessionDescriptor(session) });
       }
       case AgentCommandType.SESSION_READ: {
-        // The event-log head is observed *before* the snapshot is taken. A request
-        // that completes after this point produced no messages the snapshot can
-        // contain, so it must not move the recovery boundary.
-        const headBeforeRead = await this.readEventStreamHead(
+        const snapshotHead = await this.store.getLatestEventSequence?.(
           principal.tenantId,
           command.data.sessionId,
         );
         const result = await this.sessionExecutor.read(context, command.data);
-        const recoveryCursor = await this.resolveRecoveryCursor(
+        const recoveryCursor = await resolveRecoveryCursor(
+          this.store,
           principal.tenantId,
           command.data.sessionId,
-          result,
-          headBeforeRead,
+          result.historyProgress,
+          snapshotHead ?? null,
         );
         return this.success(command.commandId, {
           ...result,
@@ -640,169 +564,6 @@ export class AgentServer {
     }
   }
 
-  private async readEventStreamHead(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<number | null> {
-    if (!this.store.getEventStreamRange) {
-      return null;
-    }
-    try {
-      const range = await this.store.getEventStreamRange(tenantId, sessionId);
-      return range ? Number(range.headSequence) : null;
-    } catch {
-      // The caller still has the conservative fallback; a failed head read must
-      // not turn a readable session into a failed one.
-      return null;
-    }
-  }
-
-  /**
-   * The cursor a reconnecting client should resume the event stream from.
-   *
-   * A cursor is only safe when everything up to it is *already* in the snapshot's
-   * messages. The message projection trails the event log while a request streams -
-   * content deltas are published before the assistant message is written - so a
-   * cursor equal to the head would let a refreshing client skip output it never
-   * received.
-   *
-   * The boundary is therefore taken from the snapshot itself whenever the
-   * projection recorded one: `historyProgress.coveredRequestId` names the newest
-   * request whose content the projection holds, and this method only has to find
-   * that request in the log. The snapshot and the cursor can then never disagree,
-   * no matter what completes between the two reads.
-   */
-  private async resolveRecoveryCursor(
-    tenantId: string,
-    sessionId: SessionId,
-    read: { readonly historyProgress?: SessionHistoryProgress },
-    headBeforeRead?: number | null,
-  ): Promise<RecoveryCursor> {
-    const progress = read.historyProgress;
-    // The projection's own boundary. It is committed with the messages it
-    // describes, so a request that finishes after the snapshot was read cannot
-    // move it.
-    const coveredRequestId = progress?.coveredRequestId;
-    if (coveredRequestId) {
-      const boundary = await this.findRequestBoundary(
-        tenantId,
-        sessionId,
-        coveredRequestId,
-        headBeforeRead,
-      );
-      if (boundary !== null) {
-        // A recorded gap means content the log streamed never reached the
-        // transcript, so replaying from here cannot make the history whole.
-        return { cursor: boundary, incomplete: hasHistoryGap(progress) };
-      }
-      // The covered request is not in the retained window: fall through and let
-      // the caller replay more rather than less.
-    }
-    // A recorded gap means the transcript is missing content the event log already
-    // streamed, so no boundary after it may be used. Replay what the log still
-    // holds, and say so when that is only part of the history.
-    if (hasHistoryGap(progress)) {
-      const range = this.store.getEventStreamRange
-        ? await this.store.getEventStreamRange(tenantId, sessionId)
-        : null;
-      if (!range) {
-        return { cursor: 0, incomplete: true };
-      }
-      return {
-        cursor: range.firstSequence - 1,
-        incomplete: range.firstSequence > 1,
-      };
-    }
-    if (!this.store.getEventStreamRange) {
-      // A store without the retained-range capability cannot be given a safe
-      // cursor: the head is not one, because the snapshot's messages may lag it.
-      // Replay from the beginning when the log is readable from there, and say so
-      // when even that is impossible instead of pretending the head is safe.
-      try {
-        await this.store.readEvents(tenantId, sessionId, { after: 0, limit: 1 });
-      } catch {
-        return { incomplete: true };
-      }
-      return { cursor: 0, incomplete: false };
-    }
-    const range = await this.store.getEventStreamRange(tenantId, sessionId);
-    if (!range) {
-      return { incomplete: false };
-    }
-    // Only events that existed before the snapshot was read may form the
-    // boundary: anything appended after it may describe messages the snapshot
-    // does not hold yet.
-    let windowEnd =
-      headBeforeRead === null || headBeforeRead === undefined
-        ? range.headSequence
-        : Math.min(range.headSequence, headBeforeRead);
-    for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
-      const windowStart = Math.max(range.firstSequence, windowEnd - RECOVERY_TAIL_EVENTS + 1);
-      const page = await this.store.readEvents(tenantId, sessionId, {
-        after: windowStart - 1,
-        limit: RECOVERY_TAIL_EVENTS,
-      });
-      // The page may run past the window; only events that existed before the
-      // snapshot was read are allowed to form the boundary.
-      const boundary = [...page.events]
-        .reverse()
-        .find((event) => Number(event.sequence) <= windowEnd && isCompletedRequestEvent(event));
-      if (boundary) {
-        return { cursor: boundary.sequence, incomplete: false };
-      }
-      if (windowStart <= range.firstSequence) {
-        break;
-      }
-      windowEnd = windowStart - 1;
-    }
-    // Nothing completed within the scanned range: replay everything retained.
-    return { cursor: range.firstSequence - 1, incomplete: false };
-  }
-
-  /**
-   * The newest event of one request, which is the boundary the projection covers.
-   *
-   * Bounded by `headBeforeRead` for the same reason the fallback scan is: events
-   * appended after the snapshot was read may describe messages it does not hold.
-   */
-  private async findRequestBoundary(
-    tenantId: string,
-    sessionId: SessionId,
-    requestId: RequestId,
-    headBeforeRead?: number | null,
-  ): Promise<number | null> {
-    if (!this.store.getEventStreamRange) {
-      return null;
-    }
-    const range = await this.store.getEventStreamRange(tenantId, sessionId);
-    if (!range) {
-      return null;
-    }
-    const limit =
-      headBeforeRead === null || headBeforeRead === undefined
-        ? range.headSequence
-        : Math.min(range.headSequence, headBeforeRead);
-    let windowEnd = limit;
-    for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
-      const windowStart = Math.max(range.firstSequence, windowEnd - RECOVERY_TAIL_EVENTS + 1);
-      const page = await this.store.readEvents(tenantId, sessionId, {
-        after: windowStart - 1,
-        limit: RECOVERY_TAIL_EVENTS,
-      });
-      const match = [...page.events]
-        .reverse()
-        .find((event) => event.requestId === requestId && Number(event.sequence) <= limit);
-      if (match) {
-        return Number(match.sequence);
-      }
-      if (windowStart <= range.firstSequence) {
-        break;
-      }
-      windowEnd = windowStart - 1;
-    }
-    return null;
-  }
-
   /**
    * The authoritative recovery facts for one Session.
    *
@@ -878,7 +639,7 @@ export class AgentServer {
       typeof principal?.tenantId !== 'string' ||
       typeof principal.subject !== 'string' ||
       !PRINCIPAL_TENANT_ID_PATTERN.test(principal.tenantId) ||
-      !isValidPrincipalSubject(principal.subject) ||
+      !validPrincipalSubject(principal.subject) ||
       !Array.isArray(principal.scopes) ||
       principal.scopes.some((scope) => !AGENT_SERVER_SCOPES.has(scope))
     ) {
@@ -1069,9 +830,9 @@ export class AgentServer {
               new AgentProtocolError('INVALID_COMMAND', 'Command validation failed', 400),
             )
           : this.failure(typedCommandId, error);
-    return json(
+    return jsonResponse(
       failure,
-      error instanceof AgentProtocolError ? error.status : statusForCode(failure.error.code),
+      error instanceof AgentProtocolError ? error.status : protocolStatus(failure.error.code),
     );
   }
 
@@ -1107,25 +868,4 @@ export class AgentServer {
       ),
     ]);
   }
-}
-
-/** The resume cursor for a reconnecting client, or why one cannot be given. */
-interface RecoveryCursor {
-  readonly cursor?: number;
-  readonly incomplete: boolean;
-}
-
-/**
- * Whether an event closes a request.
- *
- * The terminal `result` of a request is published only after that request's
- * transcript writes are done, so it is the newest sequence the message projection
- * is known to cover. Events after it belong to a request that may still be
- * streaming and must be replayed.
- */
-function isCompletedRequestEvent(event: AgentServerEvent): boolean {
-  if (event.type !== 'session.stream') {
-    return false;
-  }
-  return (event.data as { type?: unknown } | undefined)?.type === 'result';
 }

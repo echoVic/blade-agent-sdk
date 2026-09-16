@@ -9,7 +9,7 @@ export interface AgentWorkerErrorMetric {
 
 /**
  * Observational worker telemetry. Implementations must not throw into the
- * worker lifecycle or retain Session input, effect payload, or credentials.
+ * worker lifecycle or retain Session input or credentials.
  */
 export interface AgentWorkerTelemetry {
   recordSnapshot(snapshot: AgentWorkerSnapshot): void;

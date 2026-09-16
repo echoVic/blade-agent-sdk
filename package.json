@@ -46,11 +46,6 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/server/postgres.js"
     },
-    "./server/otel": {
-      "types": "./dist/server/otel.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/server/otel.js"
-    },
     "./package.json": {
       "default": "./package.json"
     }
@@ -124,7 +119,6 @@
     "@ai-sdk/azure": "^3.0.54",
     "@ai-sdk/deepseek": "^2.0.29",
     "@ai-sdk/google": "^3.0.64",
-    "@opentelemetry/api": "^1.9.0",
     "@vscode/ripgrep": "^1.17.0",
     "fs-native-extensions": "1.5.0",
     "pg": "8.23.0"
@@ -140,9 +134,6 @@
       "optional": true
     },
     "@ai-sdk/google": {
-      "optional": true
-    },
-    "@opentelemetry/api": {
       "optional": true
     },
     "@vscode/ripgrep": {
@@ -186,7 +177,6 @@
     "@ai-sdk/deepseek": "^2.0.29",
     "@ai-sdk/google": "^3.0.64",
     "@biomejs/biome": "^2.4.12",
-    "@opentelemetry/api": "^1.9.0",
     "@types/json-schema": "^7.0.15",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^22.15.0",

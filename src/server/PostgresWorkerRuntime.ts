@@ -1,40 +1,11 @@
-import { nanoid } from 'nanoid';
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { DurableEventOperationOptions } from '../session/events/DurableEventStore.js';
-import {
-  type DurableExecutionFence,
-  type DurableExecutionLease,
-  type DurableExecutionLeaseAcquireOptions,
-  DurableExecutionLeaseError,
-} from '../session/events/DurableExecutionLeaseStore.js';
-import {
-  CommandId,
-  ExecutionLeaseId,
-  FencingToken,
-  SessionId,
-  WorkerId,
-} from '../types/identifiers.js';
+import type { DurableExecutionLease } from '../session/events/DurableExecutionLeaseStore.js';
+import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
-import {
-  type PostgresContext,
-  postgresInteger,
-  postgresJsonObject,
-  postgresTimestamp,
-  quotePostgresIdentifier,
-} from './PostgresContext.js';
-import type { RuntimeEffectRecord, RuntimeEffectStatus } from './RuntimeStore.js';
-import { RUNTIME_EFFECT_STATUSES } from './RuntimeStore.js';
+import { postgresInteger, postgresJsonObject, postgresTimestamp } from './PostgresContext.js';
+import { PostgresExecutionLeases } from './PostgresExecutionLeases.js';
 import {
   assertRuntimeSessionTransition,
-  RUNTIME_SESSION_STATES,
-  RUNTIME_WORKER_STATUSES,
-  type RuntimeEffectClaim,
-  type RuntimeEffectClaimOptions,
-  type RuntimeEffectExecutionMode,
-  type RuntimeEffectFailureOptions,
-  type RuntimeEffectLease,
-  type RuntimeEffectReconciliation,
-  type RuntimeQueueMetrics,
   type RuntimeRecoveryResult,
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
@@ -43,7 +14,6 @@ import {
   type RuntimeSessionState,
   type RuntimeWorkerRecord,
   type RuntimeWorkerRegistration,
-  type RuntimeWorkerStatus,
   SEALED_COMMAND_ABANDON_AFTER_MS,
   WorkerRuntimeError,
   type WorkerRuntimeStore,
@@ -85,69 +55,6 @@ interface SessionRouteRow extends QueryResultRow {
   failure: unknown | null;
 }
 
-interface ExecutionLeaseRow extends QueryResultRow {
-  tenant_id: string;
-  session_id: string;
-  fencing_token: string | number;
-  lease_id: string;
-  owner_id: string;
-  acquired_at: Date | string;
-  renewed_at: Date | string;
-  expires_at: Date | string;
-  released_at: Date | string | null;
-  active: boolean;
-}
-
-export interface PostgresEffectRow extends QueryResultRow {
-  tenant_id: string;
-  session_id: string;
-  command_id: string;
-  effect_id: string;
-  effect_type: string;
-  payload: unknown;
-  idempotency_key: string;
-  execution_mode: RuntimeEffectExecutionMode;
-  status: RuntimeEffectStatus;
-  attempts: number;
-  available_at: Date | string;
-  created_at: Date | string;
-  worker_id: string | null;
-  lease_id: string | null;
-  fencing_token: string | number;
-  lease_expires_at: Date | string | null;
-  started_at: Date | string | null;
-  completed_at: Date | string | null;
-  result: unknown | null;
-  error: unknown | null;
-}
-
-interface MetricCountRow extends QueryResultRow {
-  metric_state: string;
-  metric_count: string | number;
-}
-
-interface ClaimableMetricRow extends QueryResultRow {
-  claimable: string | number;
-  oldest_claimable_at: Date | string | null;
-  collected_at: Date | string;
-}
-
-interface WorkerMetricRow extends QueryResultRow {
-  active_workers: string | number;
-  draining_workers: string | number;
-  offline_workers: string | number;
-  capacity: string | number;
-  active_sessions: string | number;
-}
-
-interface ConstraintRow extends QueryResultRow {
-  conname: string;
-}
-
-function ageMs(collectedAt: string, oldestAt: string): number {
-  return Math.max(0, Date.parse(collectedAt) - Date.parse(oldestAt));
-}
-
 function assertJsonObject(value: unknown, label: string): void {
   try {
     postgresJsonObject(value, label);
@@ -180,18 +87,11 @@ function assertPriority(priority: number): void {
   }
 }
 
-function assertLimit(limit: number): void {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-    throw new WorkerRuntimeError('WORKER_INVALID', 'Effect claim limit must be between 1 and 100');
-  }
-}
-
-export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
-  constructor(protected readonly db: PostgresContext) {}
-
-  abstract initialize(): Promise<void>;
-
-  async createWorkerSchema(client: PoolClient, previousSchemaVersion: number): Promise<void> {
+export abstract class PostgresWorkerRuntime
+  extends PostgresExecutionLeases
+  implements WorkerRuntimeStore
+{
+  async createWorkerSchema(client: PoolClient): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS ${this.db.table('workers')} (
         worker_id TEXT PRIMARY KEY,
@@ -247,120 +147,7 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
       CREATE INDEX IF NOT EXISTS ${this.db.prefix}_session_routes_worker_idx
         ON ${this.db.table('session_routes')} (worker_id, state, lease_expires_at);
-
-      ALTER TABLE ${this.db.table('outbox')}
-        ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'idempotent',
-        ADD COLUMN IF NOT EXISTS worker_id TEXT,
-        ADD COLUMN IF NOT EXISTS lease_id TEXT,
-        ADD COLUMN IF NOT EXISTS fencing_token BIGINT NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
-
-      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_outbox_claim_idx
-        ON ${this.db.table('outbox')} (
-          status, available_at, tenant_id, created_at, effect_id
-        );
     `);
-    if (previousSchemaVersion === 1) {
-      const constraints = await client.query<ConstraintRow>(
-        `SELECT DISTINCT constraint_row.conname
-           FROM pg_constraint constraint_row
-           JOIN LATERAL unnest(constraint_row.conkey)
-             AS column_number(attnum) ON TRUE
-           JOIN pg_attribute attribute
-             ON attribute.attrelid = constraint_row.conrelid
-            AND attribute.attnum = column_number.attnum
-          WHERE constraint_row.conrelid = $1::regclass
-            AND constraint_row.contype = 'c'
-            AND attribute.attname = ANY($2::text[])`,
-        [this.db.table('outbox'), ['status', 'execution_mode']],
-      );
-      for (const constraint of constraints.rows) {
-        await client.query(
-          `ALTER TABLE ${this.db.table('outbox')}
-             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
-        );
-      }
-      await client.query(`
-        ALTER TABLE ${this.db.table('outbox')}
-          ADD CONSTRAINT ${this.db.prefix}_outbox_status_check CHECK (
-            status IN (
-              'pending', 'claimed', 'executing',
-              'completed', 'failed', 'uncertain'
-            )
-          );
-
-        ALTER TABLE ${this.db.table('outbox')}
-          ADD CONSTRAINT ${this.db.prefix}_outbox_execution_mode_check CHECK (
-            execution_mode IN ('idempotent', 'at_most_once')
-          );
-      `);
-    }
-    if (previousSchemaVersion < 3) {
-      const constraints = await client.query<ConstraintRow>(
-        `SELECT DISTINCT constraint_row.conname
-           FROM pg_constraint constraint_row
-           JOIN LATERAL unnest(constraint_row.conkey)
-             AS column_number(attnum) ON TRUE
-           JOIN pg_attribute attribute
-             ON attribute.attrelid = constraint_row.conrelid
-            AND attribute.attnum = column_number.attnum
-          WHERE constraint_row.conrelid = $1::regclass
-            AND constraint_row.contype = 'c'
-            AND attribute.attname = 'state'`,
-        [this.db.table('session_routes')],
-      );
-      for (const constraint of constraints.rows) {
-        await client.query(
-          `ALTER TABLE ${this.db.table('session_routes')}
-             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
-        );
-      }
-      await client.query(`
-        ALTER TABLE ${this.db.table('session_routes')}
-          ADD CONSTRAINT ${this.db.prefix}_session_routes_state_check CHECK (
-            state IN (
-              'queued', 'provisioning', 'running', 'waiting_approval',
-              'suspended', 'idle', 'completed', 'failed'
-            )
-          );
-      `);
-    }
-    if (previousSchemaVersion < 4) {
-      // Commands sealed before a side-effect boundary need a terminal state for the
-      // case where the process never reported a result, otherwise the same
-      // commandId answers `in_progress` forever.
-      await client.query(`
-        ALTER TABLE ${this.db.table('commands')}
-          ADD COLUMN IF NOT EXISTS abandon_reason TEXT;
-      `);
-      const constraints = await client.query<ConstraintRow>(
-        `SELECT DISTINCT constraint_row.conname
-           FROM pg_constraint constraint_row
-           JOIN LATERAL unnest(constraint_row.conkey)
-             AS column_number(attnum) ON TRUE
-           JOIN pg_attribute attribute
-             ON attribute.attrelid = constraint_row.conrelid
-            AND attribute.attnum = column_number.attnum
-          WHERE constraint_row.conrelid = $1::regclass
-            AND constraint_row.contype = 'c'
-            AND attribute.attname = 'status'`,
-        [this.db.table('commands')],
-      );
-      for (const constraint of constraints.rows) {
-        await client.query(
-          `ALTER TABLE ${this.db.table('commands')}
-             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
-        );
-      }
-      await client.query(`
-        ALTER TABLE ${this.db.table('commands')}
-          ADD CONSTRAINT ${this.db.prefix}_commands_status_check CHECK (
-            status IN ('claimed', 'sealed', 'completed', 'abandoned')
-          );
-      `);
-    }
   }
 
   async registerWorker(registration: RuntimeWorkerRegistration): Promise<RuntimeWorkerRecord> {
@@ -369,7 +156,7 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     assertTtl(registration.ttlMs);
     assertJsonObject(registration.metadata ?? {}, 'Worker metadata');
     await this.initialize();
-    await this.db.client().query(
+    const result = await this.db.client().query<WorkerRow>(
       `INSERT INTO ${this.db.table('workers')} (
          worker_id, status, capacity, metadata, registered_at,
          last_heartbeat_at, lease_expires_at, draining_at
@@ -383,7 +170,8 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
          metadata = EXCLUDED.metadata,
          last_heartbeat_at = NOW(),
          lease_expires_at = EXCLUDED.lease_expires_at,
-         draining_at = NULL`,
+         draining_at = NULL
+       RETURNING *, 0::int AS active_sessions, TRUE AS heartbeat_active`,
       [
         registration.workerId,
         registration.capacity,
@@ -391,19 +179,19 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
         registration.ttlMs,
       ],
     );
-    return this.requireWorker(registration.workerId);
+    return this.workerRecord(result.rows[0]);
   }
 
   async heartbeatWorker(workerId: WorkerId, ttlMs: number): Promise<RuntimeWorkerRecord> {
     this.assertWorkerId(workerId);
     assertTtl(ttlMs);
     await this.initialize();
-    const result = await this.db.client().query(
+    const result = await this.db.client().query<WorkerRow>(
       `UPDATE ${this.db.table('workers')}
           SET last_heartbeat_at = NOW(),
               lease_expires_at = NOW() + ($2 * INTERVAL '1 millisecond')
         WHERE worker_id = $1 AND status IN ('active', 'draining')
-        RETURNING worker_id`,
+        RETURNING *, 0::int AS active_sessions, TRUE AS heartbeat_active`,
       [workerId, ttlMs],
     );
     if (result.rowCount !== 1) {
@@ -412,45 +200,24 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
         `Worker ${workerId} is not registered or is offline`,
       );
     }
-    return this.requireWorker(workerId);
+    return this.workerRecord(result.rows[0]);
   }
 
   async drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
     this.assertWorkerId(workerId);
     await this.initialize();
-    const result = await this.db.client().query(
+    const result = await this.db.client().query<WorkerRow>(
       `UPDATE ${this.db.table('workers')}
           SET status = 'draining',
               draining_at = COALESCE(draining_at, NOW())
         WHERE worker_id = $1 AND status <> 'offline'
-        RETURNING worker_id`,
+        RETURNING *, 0::int AS active_sessions, TRUE AS heartbeat_active`,
       [workerId],
     );
     if (result.rowCount !== 1) {
       throw new WorkerRuntimeError('WORKER_NOT_FOUND', `Worker ${workerId} was not found`);
     }
-    return this.requireWorker(workerId);
-  }
-
-  async getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null> {
-    this.assertWorkerId(workerId);
-    await this.initialize();
-    const result = await this.db.client().query<WorkerRow>(
-      `SELECT worker_id, status, capacity, metadata, registered_at,
-              last_heartbeat_at, lease_expires_at, draining_at,
-              (
-                SELECT COUNT(*)::int
-                  FROM ${this.db.table('session_routes')} routes
-                 WHERE routes.worker_id = workers.worker_id
-                   AND routes.state = ANY($2::text[])
-                   AND routes.lease_expires_at > NOW()
-              ) AS active_sessions
-         FROM ${this.db.table('workers')} workers
-        WHERE worker_id = $1`,
-      [workerId, ACTIVE_SESSION_STATES],
-    );
-    const row = result.rows[0];
-    return row ? this.workerRecord(row) : null;
+    return this.workerRecord(result.rows[0]);
   }
 
   async enqueueSession(
@@ -645,73 +412,11 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     },
   ): Promise<RuntimeSessionRoute> {
     this.assertTenantSession(tenantId, lease.sessionId);
-    if (transition.metadata) {
-      assertJsonObject(transition.metadata, 'Session transition metadata');
-    }
-    if (transition.failure) {
-      assertJsonObject(transition.failure, 'Session transition failure');
-    }
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-      const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
-      if (!current) {
-        throw new WorkerRuntimeError(
-          'SESSION_ROUTE_NOT_FOUND',
-          `Session route ${tenantId}/${lease.sessionId} was not found`,
-        );
-      }
-      if (current.state !== transition.expectedState) {
-        throw new WorkerRuntimeError(
-          'SESSION_STATE_CONFLICT',
-          `Expected Session ${lease.sessionId} in ${transition.expectedState}, ` +
-            `but found ${current.state}`,
-        );
-      }
-      assertRuntimeSessionTransition(current.state, transition.state);
-      const terminal =
-        transition.state === 'idle' ||
-        transition.state === 'completed' ||
-        transition.state === 'failed' ||
-        transition.state === 'suspended';
-      const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.db.table('session_routes')}
-            SET state = $5,
-                worker_id = CASE WHEN $6 THEN NULL ELSE worker_id END,
-                lease_id = CASE WHEN $6 THEN NULL ELSE lease_id END,
-                lease_expires_at = CASE WHEN $6 THEN NULL ELSE lease_expires_at END,
-                metadata = COALESCE($7::jsonb, metadata),
-                failure = $8::jsonb,
-                updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-            AND lease_id = $3 AND fencing_token = $4
-          RETURNING *`,
-        [
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-          transition.state,
-          terminal,
-          transition.metadata ? JSON.stringify(transition.metadata) : null,
-          transition.failure ? JSON.stringify(transition.failure) : null,
-        ],
-      );
-      const row = updated.rows[0];
-      if (!row) {
-        throw this.leaseLost(lease);
-      }
-      if (terminal) {
-        await this.releaseExecutionLeaseRow(
-          client,
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-        );
-      }
-      return this.routeRecord(row);
+    this.assertRoutePayload(transition.metadata, transition.failure);
+    return this.changeSession(tenantId, lease, transition.state, {
+      expectedState: transition.expectedState,
+      metadata: transition.metadata,
+      failure: transition.failure,
     });
   }
 
@@ -721,87 +426,17 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     settlement: RuntimeSessionSettlement,
   ): Promise<RuntimeSessionRoute> {
     this.assertTenantSession(tenantId, lease.sessionId);
-    if (settlement.metadata) {
-      assertJsonObject(settlement.metadata, 'Session settlement metadata');
-    }
-    if (settlement.failure) {
-      assertJsonObject(settlement.failure, 'Session settlement failure');
-    }
+    this.assertRoutePayload(settlement.metadata, settlement.failure);
     if (settlement.state === 'failed' && !settlement.failure) {
       throw new WorkerRuntimeError(
         'WORKER_INVALID',
         'Failed Session settlement requires failure details',
       );
     }
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
-      const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
-      if (!current) {
-        throw new WorkerRuntimeError(
-          'SESSION_ROUTE_NOT_FOUND',
-          `Session route ${tenantId}/${lease.sessionId} was not found`,
-        );
-      }
-      const sameLease =
-        persistedLease?.lease_id === lease.leaseId &&
-        persistedLease.owner_id === lease.ownerId &&
-        postgresInteger(persistedLease.fencing_token) === lease.fencingToken;
-      if (current.state === settlement.state && sameLease) {
-        return this.routeRecord(current);
-      }
-      const wasHandedOff =
-        current.state === 'suspended' && persistedLease?.released_at !== null && sameLease;
-      if (!wasHandedOff) {
-        await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-      }
-      assertRuntimeSessionTransition(current.state, settlement.state);
-      const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.db.table('session_routes')}
-            SET state = $5,
-                worker_id = NULL,
-                lease_id = NULL,
-                lease_expires_at = NULL,
-                metadata = COALESCE($6::jsonb, metadata),
-                failure = $7::jsonb,
-                updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-            AND fencing_token = $4
-            AND (
-              (lease_id = $3)
-              OR (
-                state = 'suspended'
-                AND lease_id IS NULL
-                AND $8::boolean
-              )
-            )
-          RETURNING *`,
-        [
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-          settlement.state,
-          settlement.metadata ? JSON.stringify(settlement.metadata) : null,
-          settlement.failure ? JSON.stringify(settlement.failure) : null,
-          wasHandedOff,
-        ],
-      );
-      const row = updated.rows[0];
-      if (!row) {
-        throw this.leaseLost(lease);
-      }
-      if (!persistedLease?.released_at) {
-        await this.releaseExecutionLeaseRow(
-          client,
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-        );
-      }
-      return this.routeRecord(row);
+    return this.changeSession(tenantId, lease, settlement.state, {
+      allowReleased: true,
+      metadata: settlement.metadata,
+      failure: settlement.failure,
     });
   }
 
@@ -811,134 +446,90 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     metadata?: JsonObject,
   ): Promise<RuntimeSessionRoute> {
     this.assertTenantSession(tenantId, lease.sessionId);
-    if (metadata) {
-      assertJsonObject(metadata, 'Session handoff metadata');
-    }
+    this.assertRoutePayload(metadata);
+    return this.changeSession(tenantId, lease, 'suspended', {
+      allowReleased: true,
+      metadata,
+    });
+  }
+
+  private async changeSession(
+    tenantId: string,
+    lease: DurableExecutionLease,
+    state: RuntimeSessionState,
+    options: {
+      expectedState?: RuntimeSessionState;
+      allowReleased?: boolean;
+      metadata?: JsonObject;
+      failure?: JsonObject;
+    },
+  ): Promise<RuntimeSessionRoute> {
     await this.initialize();
     return this.db.transaction(async (client) => {
       await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
-      const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
-      if (!current) {
+      const [route, persisted] = await Promise.all([
+        this.loadRoute(client, tenantId, lease.sessionId, true),
+        this.loadExecutionLease(client, tenantId, lease.sessionId, true),
+      ]);
+      if (!route) {
         throw new WorkerRuntimeError(
           'SESSION_ROUTE_NOT_FOUND',
           `Session route ${tenantId}/${lease.sessionId} was not found`,
         );
       }
-      if (
-        persistedLease?.released_at &&
-        persistedLease.lease_id === lease.leaseId &&
-        postgresInteger(persistedLease.fencing_token) === lease.fencingToken &&
-        current.state === 'suspended'
-      ) {
-        if (!metadata) {
-          return this.routeRecord(current);
-        }
-        const replayed = await client.query<SessionRouteRow>(
-          `UPDATE ${this.db.table('session_routes')}
-              SET metadata = $3::jsonb, updated_at = NOW()
-            WHERE tenant_id = $1 AND session_id = $2
-            RETURNING *`,
-          [tenantId, lease.sessionId, JSON.stringify(metadata)],
-        );
-        return this.routeRecord(replayed.rows[0]);
+      const sameLease =
+        persisted?.lease_id === lease.leaseId &&
+        persisted.owner_id === lease.ownerId &&
+        postgresInteger(persisted.fencing_token) === lease.fencingToken;
+      const replay = options.allowReleased && sameLease && persisted.released_at !== null;
+      if (!replay) {
+        await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
       }
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-      if (!ACTIVE_SESSION_STATES.includes(current.state)) {
+      if (options.expectedState && route.state !== options.expectedState) {
         throw new WorkerRuntimeError(
           'SESSION_STATE_CONFLICT',
-          `Session ${lease.sessionId} cannot hand off from ${current.state}`,
+          `Expected Session ${lease.sessionId} in ${options.expectedState}, but found ${route.state}`,
         );
       }
-      const updated = await client.query<SessionRouteRow>(
+      assertRuntimeSessionTransition(route.state, state);
+      const terminal = ['idle', 'completed', 'failed', 'suspended'].includes(state);
+      const result = await client.query<SessionRouteRow>(
         `UPDATE ${this.db.table('session_routes')}
-            SET state = 'suspended',
-                worker_id = NULL,
-                lease_id = NULL,
-                lease_expires_at = NULL,
-                metadata = COALESCE($5::jsonb, metadata),
+            SET state = $5,
+                worker_id = CASE WHEN $6 THEN NULL ELSE worker_id END,
+                lease_id = CASE WHEN $6 THEN NULL ELSE lease_id END,
+                lease_expires_at = CASE WHEN $6 THEN NULL ELSE lease_expires_at END,
+                metadata = COALESCE($7::jsonb, metadata),
+                failure = COALESCE($8::jsonb, failure),
                 updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-            AND lease_id = $3 AND fencing_token = $4
+          WHERE tenant_id = $1 AND session_id = $2 AND fencing_token = $4
+            AND (lease_id = $3 OR ($9 AND lease_id IS NULL))
           RETURNING *`,
         [
           tenantId,
           lease.sessionId,
           lease.leaseId,
           lease.fencingToken,
-          metadata ? JSON.stringify(metadata) : null,
+          state,
+          terminal,
+          options.metadata ? JSON.stringify(options.metadata) : null,
+          options.failure ? JSON.stringify(options.failure) : null,
+          replay,
         ],
       );
-      if (!updated.rows[0]) {
+      if (!result.rows[0]) {
         throw this.leaseLost(lease);
       }
-      await this.releaseExecutionLeaseRow(
-        client,
-        tenantId,
-        lease.sessionId,
-        lease.leaseId,
-        lease.fencingToken,
-      );
-      return this.routeRecord(updated.rows[0]);
-    });
-  }
-
-  async preemptSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options: {
-      readonly reason?: JsonObject;
-      readonly requeue?: boolean;
-    } = {},
-  ): Promise<RuntimeSessionRoute> {
-    this.assertTenantSession(tenantId, sessionId);
-    if (options.reason) {
-      assertJsonObject(options.reason, 'Session preemption reason');
-    }
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
-      const current = await this.loadRoute(client, tenantId, sessionId, true);
-      if (!current) {
-        throw new WorkerRuntimeError(
-          'SESSION_ROUTE_NOT_FOUND',
-          `Session route ${tenantId}/${sessionId} was not found`,
-        );
-      }
-      if (current.state === 'completed' || current.state === 'failed') {
-        throw new WorkerRuntimeError(
-          'SESSION_STATE_CONFLICT',
-          `Terminal Session ${sessionId} cannot be preempted`,
-        );
-      }
-      if (current.lease_id) {
+      if (terminal && !replay) {
         await this.releaseExecutionLeaseRow(
           client,
           tenantId,
-          sessionId,
-          ExecutionLeaseId(current.lease_id),
-          FencingToken(postgresInteger(current.fencing_token)),
+          lease.sessionId,
+          lease.leaseId,
+          lease.fencingToken,
         );
       }
-      const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.db.table('session_routes')}
-            SET state = $3,
-                worker_id = NULL,
-                lease_id = NULL,
-                lease_expires_at = NULL,
-                queued_at = CASE WHEN $3 = 'queued' THEN NOW() ELSE queued_at END,
-                failure = $4::jsonb,
-                updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-          RETURNING *`,
-        [
-          tenantId,
-          sessionId,
-          options.requeue ? 'queued' : 'suspended',
-          options.reason ? JSON.stringify(options.reason) : null,
-        ],
-      );
-      return this.routeRecord(updated.rows[0]);
+      return this.routeRecord(result.rows[0]);
     });
   }
 
@@ -961,168 +552,11 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertWorkerId(workerId);
     await this.initialize();
     const result = await this.db.client().query<SessionRouteRow>(
-      `SELECT *
-         FROM ${this.db.table('session_routes')}
-        WHERE worker_id = $1
-        ORDER BY updated_at ASC, tenant_id ASC, session_id ASC`,
+      `SELECT * FROM ${this.db.table('session_routes')}
+        WHERE worker_id = $1 ORDER BY updated_at, tenant_id, session_id`,
       [workerId],
     );
     return result.rows.map((row) => this.routeRecord(row));
-  }
-
-  async getQueueMetrics(tenantId?: string): Promise<RuntimeQueueMetrics> {
-    if (tenantId !== undefined && !tenantId.trim()) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId must not be empty');
-    }
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      const sessionCountsResult = await client.query<MetricCountRow>(
-        `SELECT state AS metric_state, COUNT(*) AS metric_count
-           FROM ${this.db.table('session_routes')}
-          WHERE ($1::text IS NULL OR tenant_id = $1)
-          GROUP BY state`,
-        [tenantId ?? null],
-      );
-      const sessionClaimableResult = await client.query<ClaimableMetricRow>(
-        `SELECT COUNT(*) AS claimable,
-                MIN(queued_at) AS oldest_claimable_at,
-                NOW() AS collected_at
-           FROM ${this.db.table('session_routes')}
-          WHERE state IN ('queued', 'suspended')
-            AND worker_id IS NULL
-            AND ($1::text IS NULL OR tenant_id = $1)`,
-        [tenantId ?? null],
-      );
-      const effectCountsResult = await client.query<MetricCountRow>(
-        `SELECT status AS metric_state, COUNT(*) AS metric_count
-           FROM ${this.db.table('outbox')}
-          WHERE ($1::text IS NULL OR tenant_id = $1)
-          GROUP BY status`,
-        [tenantId ?? null],
-      );
-      const effectClaimableResult = await client.query<ClaimableMetricRow>(
-        `SELECT COUNT(*) AS claimable,
-                MIN(available_at) AS oldest_claimable_at,
-                NOW() AS collected_at
-           FROM ${this.db.table('outbox')}
-          WHERE status = 'pending'
-            AND available_at <= NOW()
-            AND ($1::text IS NULL OR tenant_id = $1)`,
-        [tenantId ?? null],
-      );
-      const workerResult = await client.query<WorkerMetricRow>(
-        `WITH effective_workers AS (
-           SELECT worker_id,
-                  CASE
-                    WHEN lease_expires_at <= NOW() THEN 'offline'
-                    ELSE status
-                  END AS status,
-                  capacity
-             FROM ${this.db.table('workers')}
-         ),
-         active_sessions AS (
-           SELECT worker_id,
-                  COUNT(*) AS count
-             FROM ${this.db.table('session_routes')}
-            WHERE state = ANY($1::text[])
-              AND worker_id IS NOT NULL
-              AND lease_expires_at > NOW()
-            GROUP BY worker_id
-         )
-         SELECT COUNT(*) FILTER (WHERE status = 'active') AS active_workers,
-                COUNT(*) FILTER (WHERE status = 'draining') AS draining_workers,
-                COUNT(*) FILTER (WHERE status = 'offline') AS offline_workers,
-                COALESCE(
-                  SUM(capacity) FILTER (WHERE status = 'active'),
-                  0
-                ) AS capacity,
-                COALESCE(
-                  SUM(COALESCE(active_sessions.count, 0))
-                    FILTER (WHERE status = 'active'),
-                  0
-                ) AS active_sessions
-           FROM effective_workers
-           LEFT JOIN active_sessions USING (worker_id)`,
-        [ACTIVE_SESSION_STATES],
-      );
-
-      const sessionCounts = Object.fromEntries(
-        RUNTIME_SESSION_STATES.map((state) => [state, 0]),
-      ) as Record<RuntimeSessionState, number>;
-      for (const row of sessionCountsResult.rows) {
-        if (!RUNTIME_SESSION_STATES.includes(row.metric_state as RuntimeSessionState)) {
-          throw new WorkerRuntimeError(
-            'WORKER_INVALID',
-            `PostgreSQL returned an unknown Session state: ${row.metric_state}`,
-          );
-        }
-        sessionCounts[row.metric_state as RuntimeSessionState] = postgresInteger(row.metric_count);
-      }
-
-      const effectCounts = Object.fromEntries(
-        RUNTIME_EFFECT_STATUSES.map((status) => [status, 0]),
-      ) as Record<RuntimeEffectStatus, number>;
-      for (const row of effectCountsResult.rows) {
-        if (!RUNTIME_EFFECT_STATUSES.includes(row.metric_state as RuntimeEffectStatus)) {
-          throw new WorkerRuntimeError(
-            'WORKER_INVALID',
-            `PostgreSQL returned an unknown Effect status: ${row.metric_state}`,
-          );
-        }
-        effectCounts[row.metric_state as RuntimeEffectStatus] = postgresInteger(row.metric_count);
-      }
-
-      const workerCounts = Object.fromEntries(
-        RUNTIME_WORKER_STATUSES.map((status) => [status, 0]),
-      ) as Record<RuntimeWorkerStatus, number>;
-      workerCounts.active = postgresInteger(workerResult.rows[0]?.active_workers ?? 0);
-      workerCounts.draining = postgresInteger(workerResult.rows[0]?.draining_workers ?? 0);
-      workerCounts.offline = postgresInteger(workerResult.rows[0]?.offline_workers ?? 0);
-      const capacity = postgresInteger(workerResult.rows[0]?.capacity ?? 0);
-      const activeSessions = postgresInteger(workerResult.rows[0]?.active_sessions ?? 0);
-      const sessionClaimable = sessionClaimableResult.rows[0];
-      const effectClaimable = effectClaimableResult.rows[0];
-      const collectedAt = postgresTimestamp(
-        sessionClaimable?.collected_at ?? new Date().toISOString(),
-      );
-      const oldestSessionAt = sessionClaimable?.oldest_claimable_at
-        ? postgresTimestamp(sessionClaimable.oldest_claimable_at)
-        : undefined;
-      const oldestEffectAt = effectClaimable?.oldest_claimable_at
-        ? postgresTimestamp(effectClaimable.oldest_claimable_at)
-        : undefined;
-
-      return {
-        collectedAt,
-        ...(tenantId ? { tenantId } : {}),
-        sessions: {
-          counts: sessionCounts,
-          claimable: postgresInteger(sessionClaimable?.claimable ?? 0),
-          ...(oldestSessionAt
-            ? {
-                oldestClaimableAt: oldestSessionAt,
-                oldestClaimableAgeMs: ageMs(collectedAt, oldestSessionAt),
-              }
-            : {}),
-        },
-        effects: {
-          counts: effectCounts,
-          claimable: postgresInteger(effectClaimable?.claimable ?? 0),
-          ...(oldestEffectAt
-            ? {
-                oldestClaimableAt: oldestEffectAt,
-                oldestClaimableAgeMs: ageMs(collectedAt, oldestEffectAt),
-              }
-            : {}),
-        },
-        workers: {
-          counts: workerCounts,
-          capacity,
-          activeSessions,
-          availableCapacity: Math.max(0, capacity - activeSessions),
-        },
-      };
-    });
   }
 
   async recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
@@ -1171,47 +605,6 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
             )`,
         [ACTIVE_SESSION_STATES],
       );
-      const uncertainEffects = await client.query(
-        `UPDATE ${this.db.table('outbox')} effects
-            SET status = 'uncertain',
-                completed_at = NOW(),
-                error = COALESCE(
-                  error,
-                  '{"reason":"worker_lease_expired_after_start"}'::jsonb
-                )
-          WHERE status = 'executing'
-            AND execution_mode = 'at_most_once'
-            AND (
-              lease_expires_at <= NOW()
-              OR EXISTS (
-                SELECT 1
-                  FROM ${this.db.table('workers')} workers
-                 WHERE workers.worker_id = effects.worker_id
-                   AND workers.status = 'offline'
-              )
-            )`,
-      );
-      const requeuedEffects = await client.query(
-        `UPDATE ${this.db.table('outbox')} effects
-            SET status = 'pending',
-                worker_id = NULL,
-                lease_id = NULL,
-                lease_expires_at = NULL,
-                available_at = NOW()
-          WHERE (
-            status = 'claimed'
-            OR (status = 'executing' AND execution_mode = 'idempotent')
-          )
-            AND (
-              lease_expires_at <= NOW()
-              OR EXISTS (
-                SELECT 1
-                  FROM ${this.db.table('workers')} workers
-                 WHERE workers.worker_id = effects.worker_id
-                   AND workers.status = 'offline'
-              )
-            )`,
-      );
       // A command sealed before its side effect and never completed would answer
       // `in_progress` forever. Its lease cannot expire (sealing sets no deadline),
       // so the only safe resolution is to abandon it after a generous window and
@@ -1230,477 +623,9 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
       return {
         offlineWorkers: offlineWorkers.rowCount ?? 0,
         suspendedSessions: suspendedSessions.rowCount ?? 0,
-        requeuedEffects: requeuedEffects.rowCount ?? 0,
-        uncertainEffects: uncertainEffects.rowCount ?? 0,
         abandonedCommands: abandonedCommands.rowCount ?? 0,
       };
     });
-  }
-
-  async claimEffects(options: RuntimeEffectClaimOptions): Promise<readonly RuntimeEffectClaim[]> {
-    this.assertWorkerId(options.workerId);
-    assertTtl(options.ttlMs);
-    const limit = options.limit ?? 10;
-    assertLimit(limit);
-    if (options.leaseId !== undefined && !options.leaseId.trim()) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'Effect leaseId must not be empty');
-    }
-    if (options.tenantId !== undefined && !options.tenantId.trim()) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId must not be empty');
-    }
-    await this.initialize();
-    await this.recoverExpiredWork();
-    return this.db.transaction(async (client) => {
-      await this.lockAvailableWorker(client, options.workerId);
-      const leaseId = options.leaseId ?? ExecutionLeaseId(nanoid());
-      const result = await client.query<PostgresEffectRow>(
-        `WITH candidates AS (
-           SELECT tenant_id, effect_id
-             FROM ${this.db.table('outbox')}
-            WHERE status = 'pending'
-              AND available_at <= NOW()
-              AND ($1::text IS NULL OR tenant_id = $1)
-            ORDER BY available_at ASC, created_at ASC, tenant_id ASC, effect_id ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT $2
-         )
-         UPDATE ${this.db.table('outbox')} effects
-            SET status = 'claimed',
-                worker_id = $3,
-                lease_id = $4,
-                fencing_token = effects.fencing_token + 1,
-                lease_expires_at = NOW() + ($5 * INTERVAL '1 millisecond')
-           FROM candidates
-          WHERE effects.tenant_id = candidates.tenant_id
-            AND effects.effect_id = candidates.effect_id
-         RETURNING effects.*`,
-        [options.tenantId ?? null, limit, options.workerId, leaseId, options.ttlMs],
-      );
-      return result.rows.map((row) => this.effectClaim(row));
-    });
-  }
-
-  async renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord> {
-    assertTtl(ttlMs);
-    await this.initialize();
-    const result = await this.db.client().query<PostgresEffectRow>(
-      `UPDATE ${this.db.table('outbox')} effects
-          SET lease_expires_at = NOW() + ($6 * INTERVAL '1 millisecond')
-         FROM ${this.db.table('workers')} workers
-        WHERE effects.tenant_id = $1
-          AND effects.effect_id = $2
-          AND effects.worker_id = $3
-          AND effects.lease_id = $4
-          AND effects.fencing_token = $5
-          AND effects.status IN ('claimed', 'executing')
-          AND effects.lease_expires_at > NOW()
-          AND workers.worker_id = effects.worker_id
-          AND workers.status IN ('active', 'draining')
-          AND workers.lease_expires_at > NOW()
-        RETURNING effects.*`,
-      [lease.tenantId, lease.effectId, lease.workerId, lease.leaseId, lease.fencingToken, ttlMs],
-    );
-    return this.requireEffectMutation(result.rows[0], lease);
-  }
-
-  async startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord> {
-    await this.initialize();
-    const result = await this.db.client().query<PostgresEffectRow>(
-      `UPDATE ${this.db.table('outbox')} effects
-          SET status = 'executing',
-              attempts = attempts + 1,
-              started_at = COALESCE(started_at, NOW())
-         FROM ${this.db.table('workers')} workers
-        WHERE effects.tenant_id = $1
-          AND effects.effect_id = $2
-          AND effects.worker_id = $3
-          AND effects.lease_id = $4
-          AND effects.fencing_token = $5
-          AND effects.status = 'claimed'
-          AND effects.lease_expires_at > NOW()
-          AND workers.worker_id = effects.worker_id
-          AND workers.status IN ('active', 'draining')
-          AND workers.lease_expires_at > NOW()
-        RETURNING effects.*`,
-      [lease.tenantId, lease.effectId, lease.workerId, lease.leaseId, lease.fencingToken],
-    );
-    return this.requireEffectMutation(result.rows[0], lease);
-  }
-
-  async completeEffect(
-    lease: RuntimeEffectLease,
-    result?: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
-    assertJsonObject(result ?? {}, 'Effect result');
-    await this.initialize();
-    const updated = await this.db.client().query<PostgresEffectRow>(
-      `UPDATE ${this.db.table('outbox')}
-          SET status = 'completed',
-              result = $6::jsonb,
-              error = NULL,
-              completed_at = NOW()
-        WHERE tenant_id = $1
-          AND effect_id = $2
-          AND worker_id = $3
-          AND lease_id = $4
-          AND fencing_token = $5
-          AND status = 'executing'
-        RETURNING *`,
-      [
-        lease.tenantId,
-        lease.effectId,
-        lease.workerId,
-        lease.leaseId,
-        lease.fencingToken,
-        JSON.stringify(result ?? {}),
-      ],
-    );
-    return this.requireEffectMutation(updated.rows[0], lease);
-  }
-
-  async failEffect(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-    options: RuntimeEffectFailureOptions = {},
-  ): Promise<RuntimeEffectRecord> {
-    assertJsonObject(error, 'Effect error');
-    if (options.retryAt !== undefined && !Number.isFinite(Date.parse(options.retryAt))) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'Effect retryAt must be an ISO timestamp');
-    }
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      const current = await client.query<PostgresEffectRow>(
-        `SELECT *
-           FROM ${this.db.table('outbox')}
-          WHERE tenant_id = $1 AND effect_id = $2
-          FOR UPDATE`,
-        [lease.tenantId, lease.effectId],
-      );
-      const row = current.rows[0];
-      this.assertEffectLease(row, lease, 'executing');
-      if (options.retryAt !== undefined && row.execution_mode !== 'idempotent') {
-        throw new WorkerRuntimeError(
-          'EFFECT_RETRY_NOT_ALLOWED',
-          `At-most-once effect ${lease.effectId} cannot be retried`,
-        );
-      }
-      const retry = options.retryAt !== undefined;
-      const updated = await client.query<PostgresEffectRow>(
-        `UPDATE ${this.db.table('outbox')}
-            SET status = $6,
-                error = $7::jsonb,
-                available_at = CASE WHEN $6 = 'pending' THEN $8 ELSE available_at END,
-                worker_id = CASE WHEN $6 = 'pending' THEN NULL ELSE worker_id END,
-                lease_id = CASE WHEN $6 = 'pending' THEN NULL ELSE lease_id END,
-                lease_expires_at = CASE WHEN $6 = 'pending' THEN NULL ELSE lease_expires_at END,
-                completed_at = CASE WHEN $6 = 'failed' THEN NOW() ELSE NULL END
-          WHERE tenant_id = $1
-            AND effect_id = $2
-            AND worker_id = $3
-            AND lease_id = $4
-            AND fencing_token = $5
-          RETURNING *`,
-        [
-          lease.tenantId,
-          lease.effectId,
-          lease.workerId,
-          lease.leaseId,
-          lease.fencingToken,
-          retry ? 'pending' : 'failed',
-          JSON.stringify(error),
-          options.retryAt ?? null,
-        ],
-      );
-      return this.requireEffectMutation(updated.rows[0], lease);
-    });
-  }
-
-  async markEffectUncertain(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
-    assertJsonObject(error, 'Effect uncertainty');
-    await this.initialize();
-    const updated = await this.db.client().query<PostgresEffectRow>(
-      `UPDATE ${this.db.table('outbox')}
-          SET status = 'uncertain',
-              error = $6::jsonb,
-              completed_at = NOW()
-        WHERE tenant_id = $1
-          AND effect_id = $2
-          AND worker_id = $3
-          AND lease_id = $4
-          AND fencing_token = $5
-          AND status = 'executing'
-        RETURNING *`,
-      [
-        lease.tenantId,
-        lease.effectId,
-        lease.workerId,
-        lease.leaseId,
-        lease.fencingToken,
-        JSON.stringify(error),
-      ],
-    );
-    return this.requireEffectMutation(updated.rows[0], lease);
-  }
-
-  async reconcileEffect(
-    tenantId: string,
-    effectId: string,
-    outcome: RuntimeEffectReconciliation,
-  ): Promise<RuntimeEffectRecord> {
-    if (!tenantId.trim() || !effectId.trim()) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId and effectId must not be empty');
-    }
-    if (outcome.status === 'completed') {
-      assertJsonObject(outcome.result ?? {}, 'Effect reconciliation result');
-    } else {
-      assertJsonObject(outcome.error, 'Effect reconciliation error');
-    }
-    await this.initialize();
-    const result = await this.db.client().query<PostgresEffectRow>(
-      `UPDATE ${this.db.table('outbox')}
-          SET status = $3,
-              result = $4::jsonb,
-              error = $5::jsonb,
-              completed_at = NOW()
-        WHERE tenant_id = $1 AND effect_id = $2
-          AND status = 'uncertain'
-        RETURNING *`,
-      [
-        tenantId,
-        effectId,
-        outcome.status,
-        outcome.status === 'completed' ? JSON.stringify(outcome.result ?? {}) : null,
-        outcome.status === 'failed' ? JSON.stringify(outcome.error) : null,
-      ],
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new WorkerRuntimeError(
-        'EFFECT_NOT_FOUND',
-        `Uncertain effect ${tenantId}/${effectId} was not found`,
-      );
-    }
-    return this.effectRecord(row);
-  }
-
-  async requiresExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options: DurableEventOperationOptions = {},
-  ): Promise<boolean> {
-    this.assertTenantSession(tenantId, sessionId);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    const result = await this.db.client().query(
-      `SELECT 1
-         FROM ${this.db.table('execution_leases')}
-        WHERE tenant_id = $1 AND session_id = $2`,
-      [tenantId, sessionId],
-    );
-    options.signal?.throwIfAborted();
-    return result.rowCount === 1;
-  }
-
-  async acquireExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options: DurableExecutionLeaseAcquireOptions,
-  ): Promise<DurableExecutionLease> {
-    this.assertTenantSession(tenantId, sessionId);
-    this.assertLeaseIdentity(sessionId, options);
-    assertTtl(options.ttlMs);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
-      const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
-      if (
-        current?.active &&
-        (current.lease_id !== options.leaseId || current.owner_id !== options.ownerId)
-      ) {
-        throw new DurableExecutionLeaseError(
-          'DURABLE_EXECUTION_LEASE_CONFLICT',
-          `Session ${sessionId} is leased by worker ${current.owner_id}`,
-          {
-            sessionId,
-            leaseId: options.leaseId,
-            fencingToken: FencingToken(postgresInteger(current.fencing_token)),
-            activeLease: this.executionLease(current),
-          },
-        );
-      }
-      const reusesActiveLease =
-        current?.active === true &&
-        current.lease_id === options.leaseId &&
-        current.owner_id === options.ownerId;
-      const fencingToken =
-        reusesActiveLease && current
-          ? FencingToken(postgresInteger(current.fencing_token))
-          : this.nextFencingToken(sessionId, current ? postgresInteger(current.fencing_token) : 0);
-      return this.upsertExecutionLease(
-        client,
-        tenantId,
-        sessionId,
-        options,
-        fencingToken,
-        reusesActiveLease && current ? postgresTimestamp(current.acquired_at) : undefined,
-      );
-    });
-  }
-
-  async renewExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    ttlMs: number,
-    options: DurableEventOperationOptions = {},
-  ): Promise<DurableExecutionLease> {
-    this.assertTenantSession(tenantId, lease.sessionId);
-    this.assertLeaseIdentity(lease.sessionId, lease);
-    assertTtl(ttlMs);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-      const result = await client.query<ExecutionLeaseRow>(
-        `UPDATE ${this.db.table('execution_leases')}
-            SET renewed_at = NOW(),
-                expires_at = NOW() + ($5 * INTERVAL '1 millisecond')
-          WHERE tenant_id = $1 AND session_id = $2
-            AND lease_id = $3 AND fencing_token = $4
-          RETURNING *`,
-        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, ttlMs],
-      );
-      const renewed = result.rows[0];
-      if (!renewed) {
-        throw this.leaseLost(lease);
-      }
-      await client.query(
-        `UPDATE ${this.db.table('session_routes')}
-            SET lease_expires_at = $5, updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-            AND lease_id = $3 AND fencing_token = $4`,
-        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, renewed.expires_at],
-      );
-      options.signal?.throwIfAborted();
-      return this.executionLease(renewed);
-    });
-  }
-
-  async assertExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options: DurableEventOperationOptions = {},
-  ): Promise<void> {
-    this.assertTenantSession(tenantId, lease.sessionId);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    await this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-    });
-    options.signal?.throwIfAborted();
-  }
-
-  async assertExecutionFenceWithClient(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    fence: DurableExecutionFence | undefined,
-  ): Promise<void> {
-    await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
-    const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
-    if (!current) {
-      if (fence) {
-        throw this.leaseLost({ ...fence, sessionId });
-      }
-      return;
-    }
-    if (!fence) {
-      throw new DurableExecutionLeaseError(
-        'DURABLE_EXECUTION_LEASE_REQUIRED',
-        `Session ${sessionId} requires an execution lease`,
-        {
-          sessionId,
-          ...(current.active ? { activeLease: this.executionLease(current) } : {}),
-        },
-      );
-    }
-    await this.assertExecutionLeaseWithClient(client, tenantId, { ...fence, sessionId }, true);
-  }
-
-  async withExecutionLease<T>(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    operation: () => Promise<T>,
-    options: DurableEventOperationOptions = {},
-  ): Promise<T> {
-    this.assertTenantSession(tenantId, lease.sessionId);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    return this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
-      options.signal?.throwIfAborted();
-      const result = await operation();
-      options.signal?.throwIfAborted();
-      return result;
-    });
-  }
-
-  async releaseExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options: DurableEventOperationOptions = {},
-  ): Promise<void> {
-    this.assertTenantSession(tenantId, lease.sessionId);
-    options.signal?.throwIfAborted();
-    await this.initialize();
-    await this.db.transaction(async (client) => {
-      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const current = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
-      if (
-        current?.released_at &&
-        current.lease_id === lease.leaseId &&
-        postgresInteger(current.fencing_token) === lease.fencingToken
-      ) {
-        return;
-      }
-      await this.assertExecutionLeaseWithClient(client, tenantId, lease, false);
-      await this.releaseExecutionLeaseRow(
-        client,
-        tenantId,
-        lease.sessionId,
-        lease.leaseId,
-        lease.fencingToken,
-      );
-      await client.query(
-        `UPDATE ${this.db.table('session_routes')}
-            SET state = CASE
-                  WHEN state = ANY($5::text[]) THEN 'suspended'
-                  ELSE state
-                END,
-                worker_id = NULL,
-                lease_id = NULL,
-                lease_expires_at = NULL,
-                updated_at = NOW()
-          WHERE tenant_id = $1 AND session_id = $2
-            AND lease_id = $3 AND fencing_token = $4`,
-        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, ACTIVE_SESSION_STATES],
-      );
-    });
-    options.signal?.throwIfAborted();
-  }
-
-  private async requireWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
-    const worker = await this.getWorker(workerId);
-    if (!worker) {
-      throw new WorkerRuntimeError('WORKER_NOT_FOUND', `Worker ${workerId} was not found`);
-    }
-    return worker;
   }
 
   private async lockAvailableWorker(
@@ -1744,139 +669,6 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     return result.rows[0] ?? null;
   }
 
-  private async loadExecutionLease(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    forUpdate: boolean,
-  ): Promise<ExecutionLeaseRow | null> {
-    const result = await client.query<ExecutionLeaseRow>(
-      `SELECT *,
-              released_at IS NULL AND expires_at > NOW() AS active
-         FROM ${this.db.table('execution_leases')}
-        WHERE tenant_id = $1 AND session_id = $2
-        ${forUpdate ? 'FOR UPDATE' : ''}`,
-      [tenantId, sessionId],
-    );
-    return result.rows[0] ?? null;
-  }
-
-  private async upsertExecutionLease(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    options: DurableExecutionLeaseAcquireOptions,
-    fencingToken: FencingToken,
-    acquiredAt?: string,
-  ): Promise<DurableExecutionLease> {
-    const result = await client.query<ExecutionLeaseRow>(
-      `INSERT INTO ${this.db.table('execution_leases')} (
-         tenant_id, session_id, fencing_token, lease_id, owner_id,
-         acquired_at, renewed_at, expires_at, released_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), NOW(),
-         NOW() + ($7 * INTERVAL '1 millisecond'), NULL
-       )
-       ON CONFLICT (tenant_id, session_id) DO UPDATE SET
-         fencing_token = EXCLUDED.fencing_token,
-         lease_id = EXCLUDED.lease_id,
-         owner_id = EXCLUDED.owner_id,
-         acquired_at = EXCLUDED.acquired_at,
-         renewed_at = EXCLUDED.renewed_at,
-         expires_at = EXCLUDED.expires_at,
-         released_at = NULL
-       RETURNING *`,
-      [
-        tenantId,
-        sessionId,
-        fencingToken,
-        options.leaseId,
-        options.ownerId,
-        acquiredAt ?? null,
-        options.ttlMs,
-      ],
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        `Execution lease for Session ${sessionId} was not stored`,
-      );
-    }
-    return this.executionLease(row);
-  }
-
-  private async assertExecutionLeaseWithClient(
-    client: PoolClient,
-    tenantId: string,
-    lease: DurableExecutionFence & {
-      readonly sessionId: SessionId;
-      readonly ownerId?: WorkerId;
-    },
-    requireUnexpired: boolean,
-  ): Promise<ExecutionLeaseRow> {
-    const current = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
-    if (
-      !current ||
-      current.released_at !== null ||
-      current.lease_id !== lease.leaseId ||
-      postgresInteger(current.fencing_token) !== lease.fencingToken ||
-      (lease.ownerId !== undefined && current.owner_id !== lease.ownerId) ||
-      (requireUnexpired && !current.active)
-    ) {
-      throw this.leaseLost(lease);
-    }
-    return current;
-  }
-
-  private async releaseExecutionLeaseRow(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    leaseId: ExecutionLeaseId,
-    fencingToken: FencingToken,
-  ): Promise<void> {
-    await client.query(
-      `UPDATE ${this.db.table('execution_leases')}
-          SET released_at = COALESCE(released_at, NOW())
-        WHERE tenant_id = $1 AND session_id = $2
-          AND lease_id = $3 AND fencing_token = $4`,
-      [tenantId, sessionId, leaseId, fencingToken],
-    );
-  }
-
-  private assertEffectLease(
-    row: PostgresEffectRow | undefined,
-    lease: RuntimeEffectLease,
-    status: RuntimeEffectStatus,
-  ): asserts row is PostgresEffectRow {
-    if (
-      !row ||
-      row.worker_id !== lease.workerId ||
-      row.lease_id !== lease.leaseId ||
-      postgresInteger(row.fencing_token) !== lease.fencingToken ||
-      row.status !== status
-    ) {
-      throw new WorkerRuntimeError(
-        row ? 'EFFECT_LEASE_LOST' : 'EFFECT_NOT_FOUND',
-        `Effect lease ${lease.tenantId}/${lease.effectId} is not active`,
-      );
-    }
-  }
-
-  private requireEffectMutation(
-    row: PostgresEffectRow | undefined,
-    lease: RuntimeEffectLease,
-  ): RuntimeEffectRecord {
-    if (!row) {
-      throw new WorkerRuntimeError(
-        'EFFECT_LEASE_LOST',
-        `Effect lease ${lease.tenantId}/${lease.effectId} is not active`,
-      );
-    }
-    return this.effectRecord(row);
-  }
-
   private workerRecord(row: WorkerRow): RuntimeWorkerRecord {
     return {
       workerId: WorkerId(row.worker_id),
@@ -1915,128 +707,14 @@ export abstract class PostgresWorkerRuntime implements WorkerRuntimeStore {
     };
   }
 
-  private executionLease(row: ExecutionLeaseRow): DurableExecutionLease {
-    return {
-      sessionId: SessionId(row.session_id),
-      leaseId: ExecutionLeaseId(row.lease_id),
-      ownerId: WorkerId(row.owner_id),
-      fencingToken: FencingToken(postgresInteger(row.fencing_token)),
-      acquiredAt: postgresTimestamp(row.acquired_at),
-      renewedAt: postgresTimestamp(row.renewed_at),
-      expiresAt: postgresTimestamp(row.expires_at),
-    };
-  }
-
-  protected effectRecord(row: PostgresEffectRow): RuntimeEffectRecord {
-    return {
-      tenantId: row.tenant_id,
-      sessionId: SessionId(row.session_id),
-      commandId: CommandId(row.command_id),
-      effectId: row.effect_id,
-      type: row.effect_type,
-      payload: postgresJsonObject(row.payload),
-      idempotencyKey: row.idempotency_key,
-      executionMode: row.execution_mode,
-      status: row.status,
-      attempts: row.attempts,
-      availableAt: postgresTimestamp(row.available_at),
-      createdAt: postgresTimestamp(row.created_at),
-      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
-      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(postgresInteger(row.fencing_token) > 0
-        ? { fencingToken: FencingToken(postgresInteger(row.fencing_token)) }
-        : {}),
-      ...(row.lease_expires_at ? { leaseExpiresAt: postgresTimestamp(row.lease_expires_at) } : {}),
-      ...(row.started_at ? { startedAt: postgresTimestamp(row.started_at) } : {}),
-      ...(row.completed_at ? { completedAt: postgresTimestamp(row.completed_at) } : {}),
-      ...(row.result ? { result: postgresJsonObject(row.result) } : {}),
-      ...(row.error ? { error: postgresJsonObject(row.error) } : {}),
-    };
-  }
-
-  private effectClaim(row: PostgresEffectRow): RuntimeEffectClaim {
-    const record = this.effectRecord(row);
-    if (
-      record.status !== 'claimed' ||
-      !record.workerId ||
-      !record.leaseId ||
-      record.fencingToken === undefined ||
-      !record.leaseExpiresAt
-    ) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        `Claimed effect ${record.effectId} is missing lease fields`,
-      );
-    }
-    return {
-      ...record,
-      status: 'claimed',
-      workerId: record.workerId,
-      leaseId: record.leaseId,
-      fencingToken: record.fencingToken,
-      leaseExpiresAt: record.leaseExpiresAt,
-    };
-  }
-
-  private leaseLost(
-    lease: DurableExecutionFence & {
-      readonly sessionId: SessionId;
-      readonly ownerId?: WorkerId;
-    },
-  ): DurableExecutionLeaseError {
-    return new DurableExecutionLeaseError(
-      'DURABLE_EXECUTION_LEASE_LOST',
-      `Execution lease ${lease.leaseId} is not active for Session ${lease.sessionId}`,
-      {
-        sessionId: lease.sessionId,
-        leaseId: lease.leaseId,
-        fencingToken: lease.fencingToken,
-      },
-    );
-  }
-
-  private nextFencingToken(sessionId: SessionId, current: number): FencingToken {
-    const next = current + 1;
-    if (!Number.isSafeInteger(next) || next < 1) {
-      throw new DurableExecutionLeaseError(
-        'DURABLE_EXECUTION_LEASE_INVALID',
-        `Execution lease fencing token is exhausted for Session ${sessionId}`,
-        { sessionId },
-      );
-    }
-    return FencingToken(next);
-  }
-
   private assertWorkerId(workerId: WorkerId): void {
     if (!workerId.trim()) {
       throw new WorkerRuntimeError('WORKER_INVALID', 'workerId must not be empty');
     }
   }
 
-  private assertTenantSession(tenantId: string, sessionId: SessionId): void {
-    if (!tenantId.trim() || !sessionId.trim()) {
-      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId and sessionId must not be empty');
-    }
-  }
-
-  private assertLeaseIdentity(
-    sessionId: SessionId,
-    lease: {
-      readonly sessionId?: SessionId;
-      readonly leaseId: ExecutionLeaseId;
-      readonly ownerId: WorkerId;
-    },
-  ): void {
-    if (
-      !lease.leaseId.trim() ||
-      !lease.ownerId.trim() ||
-      (lease.sessionId !== undefined && lease.sessionId !== sessionId)
-    ) {
-      throw new DurableExecutionLeaseError(
-        'DURABLE_EXECUTION_LEASE_INVALID',
-        `Invalid execution lease identity for Session ${sessionId}`,
-        { sessionId, leaseId: lease.leaseId },
-      );
-    }
+  private assertRoutePayload(metadata?: JsonObject, failure?: JsonObject): void {
+    if (metadata) assertJsonObject(metadata, 'Session route metadata');
+    if (failure) assertJsonObject(failure, 'Session route failure');
   }
 }

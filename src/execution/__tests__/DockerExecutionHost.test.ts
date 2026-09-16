@@ -1,202 +1,184 @@
-import { describe, expect, it, vi } from 'vitest';
-import { ExecutionId } from '../../types/identifiers.js';
-import { DockerExecutionHost, type DockerExecutionHostOptions } from '../DockerExecutionHost.js';
-import type { ExecutionProvisionRequest, ExecutionResourceLimits } from '../ExecutionHost.js';
+import { execFile } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ExecutionCheckpointId, ExecutionId } from '../../types/identifiers.js';
+import { DockerExecutionHost } from '../DockerExecutionHost.js';
 
-const pinnedImage = `example.invalid/agent@sha256:${'a'.repeat(64)}`;
-const resources: ExecutionResourceLimits = {
+const execFileAsync = promisify(execFile);
+const roots: string[] = [];
+const image = `example.invalid/agent@sha256:${'a'.repeat(64)}`;
+const resources = {
   cpus: 0.5,
   memoryBytes: 64 * 1024 * 1024,
-  diskBytes: 16 * 1024 * 1024,
-  pids: 64,
+  diskBytes: 8 * 1024 * 1024,
+  pids: 16,
   runtimeMs: 30_000,
-  maxOutputBytes: 1024 * 1024,
+  maxOutputBytes: 8 * 1024,
 };
 
-function request(overrides: Partial<ExecutionProvisionRequest> = {}): ExecutionProvisionRequest {
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function fixture(): Promise<{
+  host: DockerExecutionHost;
+  root: string;
+  log: string;
+}> {
+  const root = await mkdtemp(join(tmpdir(), 'blade-docker-host-'));
+  roots.push(root);
+  const log = join(root, 'runtime.jsonl');
+  const runtime = join(root, 'runtime.mjs');
+  await writeFile(
+    runtime,
+    `#!/usr/bin/env node
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+if (args[0] === 'exec' && args.includes('hang')) {
+  setTimeout(() => undefined, 60_000);
+} else if (args[0] === 'cp' && args[1]?.includes(':/workspace/.')) {
+  mkdirSync(args[2], { recursive: true });
+  writeFileSync(join(args[2], 'checkpoint.txt'), 'checkpoint');
+}
+`,
+  );
+  await chmod(runtime, 0o755);
   return {
-    image: pinnedImage,
-    workspace: { kind: 'empty' },
-    resources,
-    network: { mode: 'none' },
-    ...overrides,
+    host: new DockerExecutionHost({
+      runtimeBinary: runtime,
+      rootDirectory: join(root, 'executions'),
+      checkpointDirectory: join(root, 'checkpoints'),
+    }),
+    root,
+    log,
   };
 }
 
-describe('DockerExecutionHost reclaim', () => {
-  it('cleans up an execution it never provisioned, by identity alone', async () => {
-    // A successor process has no record of its predecessor's container, which is
-    // exactly the case the host must still be able to clean up.
-    const host = new DockerExecutionHost({ runtimeBinary: '/definitely/missing/docker' });
-    const calls: string[][] = [];
-    const runProcess = vi.fn(async (_binary: string, args: readonly string[]) => {
-      calls.push([...args]);
-      // `rm` fails, and the follow-up inspect reports the container is gone, which
-      // is the idempotent case: nothing left to remove, no error.
-      return args[0] === 'rm'
-        ? { exitCode: 1, stdout: '', stderr: 'No such container' }
-        : { exitCode: 1, stdout: '', stderr: 'Error: No such object' };
-    });
-    (host as unknown as { runProcess: typeof runProcess }).runProcess = runProcess;
-
-    await expect(host.reclaim(ExecutionId('docker-reclaim-absent'))).resolves.toBeUndefined();
-    expect(calls[0]).toEqual(['rm', '-f', '-v', 'blade-execution-docker-reclaim-absent']);
+async function provision(
+  host: DockerExecutionHost,
+  executionId: string,
+  workspace: { kind: 'empty' } | { kind: 'git-worktree'; repositoryPath: string; revision: string },
+) {
+  return host.provision({
+    executionId: ExecutionId(executionId),
+    image,
+    workspace,
+    resources,
+    network: { mode: 'none' },
   });
+}
 
-  it('surfaces a cleanup failure instead of reporting success', async () => {
-    const host = new DockerExecutionHost({ runtimeBinary: '/definitely/missing/docker' });
-    const runProcess = vi.fn(async () => ({
-      exitCode: 1,
-      stdout: '',
-      stderr: 'permission denied while trying to connect to the Docker daemon',
-    }));
-    (host as unknown as { runProcess: typeof runProcess }).runProcess = runProcess;
+describe('DockerExecutionHost', () => {
+  it('imports a Git revision into a bounded tmpfs workspace', async () => {
+    const { host, root, log } = await fixture();
+    const repository = join(root, 'repository');
+    await mkdir(repository);
+    await execFileAsync('git', ['init', '--quiet', repository]);
+    await writeFile(join(repository, 'README.md'), 'fixture\n');
+    await execFileAsync('git', ['-C', repository, 'add', '.']);
+    await execFileAsync('git', [
+      '-C',
+      repository,
+      '-c',
+      'user.name=Blade Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture',
+    ]);
+    const { stdout } = await execFileAsync('git', ['-C', repository, 'rev-parse', 'HEAD']);
 
-    await expect(host.reclaim(ExecutionId('docker-reclaim-denied'))).rejects.toThrow(
-      /could not be removed/,
+    await provision(host, 'git-source', {
+      kind: 'git-worktree',
+      repositoryPath: repository,
+      revision: stdout.trim(),
+    });
+
+    const calls = (await readFile(log, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[]);
+    const create = calls.find(([command]) => command === 'create');
+    expect(create).toContain('--tmpfs');
+    expect(create).toContain(
+      `/workspace:rw,nosuid,nodev,noexec,size=${resources.diskBytes},uid=65532,gid=65532,mode=0700`,
     );
-  });
-});
-
-describe('DockerExecutionHost validation', () => {
-  it('requires a numeric, non-root uid and gid', () => {
-    for (const containerUser of ['root', '1000', '0:1000', '1000:0', 'user:group']) {
-      expect(() => new DockerExecutionHost({ containerUser })).toThrow(/numeric uid:gid/);
-    }
+    expect(create?.some((value) => value.startsWith('type=bind'))).toBe(false);
+    expect(calls.some(([command, flag]) => command === 'exec' && flag === '-i')).toBe(true);
   });
 
-  it('rejects mutable image tags before contacting the runtime', async () => {
-    const host = new DockerExecutionHost({
-      runtimeBinary: '/definitely/missing/docker',
-    });
+  it('terminates the execution when a command times out', async () => {
+    const { host, log } = await fixture();
+    const handle = await provision(host, 'timeout', { kind: 'empty' });
 
     await expect(
-      host.provision(
-        request({
-          image: 'alpine:latest',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_INVALID_REQUEST',
+      host.exec(handle.executionId, { command: 'hang', timeoutMs: 10 }),
+    ).rejects.toMatchObject({ code: 'EXECUTION_TIMEOUT' });
+
+    const calls = (await readFile(log, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[]);
+    expect(calls.some(([command, flag]) => command === 'rm' && flag === '-f')).toBe(true);
+    await expect(host.exec(handle.executionId, { command: 'true' })).rejects.toMatchObject({
+      code: 'EXECUTION_NOT_FOUND',
     });
   });
 
-  it.each([
-    'GITHUB_TOKEN',
-    'APIKEY',
-    'MYTOKEN',
-    'KEY_API',
-  ])('rejects likely long-lived secret name %s in persistent environments', async (name) => {
-    const host = new DockerExecutionHost({
-      runtimeBinary: '/definitely/missing/docker',
-    });
+  it('rejects a malformed checkpoint manifest', async () => {
+    const { host, root } = await fixture();
+    const checkpointId = ExecutionCheckpointId('checkpoint-invalid');
+    const directory = join(root, 'checkpoints', checkpointId);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'manifest.json'), '{}');
 
-    await expect(
-      host.provision(
-        request({
-          environment: {
-            [name]: 'long-lived-value',
-          },
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_INVALID_REQUEST',
+    await expect(host.restore({ checkpointId })).rejects.toMatchObject({
+      code: 'EXECUTION_CHECKPOINT_INVALID',
     });
   });
 
-  it.each([
-    ['cpus', 0],
-    ['memoryBytes', 1024],
-    ['diskBytes', 1024],
-    ['pids', 0],
-    ['runtimeMs', 0],
-    ['maxOutputBytes', 0],
-  ] satisfies ReadonlyArray<
-    readonly [keyof ExecutionResourceLimits, number]
-  >)('rejects an invalid %s limit before contacting the runtime', async (name, value) => {
-    const host = new DockerExecutionHost({
-      runtimeBinary: '/definitely/missing/docker',
+  it('records checkpoint size and restores its workspace', async () => {
+    const { host, log } = await fixture();
+    const handle = await provision(host, 'checkpoint-source', { kind: 'empty' });
+
+    const checkpoint = await host.checkpoint(handle.executionId, { requestId: 'request-1' });
+    const restored = await host.restore({
+      checkpointId: checkpoint.checkpointId,
+      executionId: ExecutionId('checkpoint-restored'),
     });
 
-    await expect(
-      host.provision(
-        request({
-          resources: {
-            ...resources,
-            [name]: value,
-          },
-        }),
+    expect(checkpoint.sizeBytes).toBeGreaterThan(0);
+    expect(checkpoint.metadata).toEqual({ requestId: 'request-1' });
+    expect(restored.metadata).toEqual({ requestId: 'request-1' });
+    const calls = (await readFile(log, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[]);
+    expect(
+      calls.some(
+        ([command, flag, , , , , container]) =>
+          command === 'exec' &&
+          flag === '-i' &&
+          container === 'blade-execution-checkpoint-restored',
       ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_RESOURCE_LIMIT',
-    });
+    ).toBe(true);
   });
 
-  it('fails closed when proxy egress has no controller', async () => {
-    const host = new DockerExecutionHost({
-      runtimeBinary: '/definitely/missing/docker',
-    });
+  it('removes local ownership when reclaiming an execution', async () => {
+    const { host } = await fixture();
+    const handle = await provision(host, 'reclaim', { kind: 'empty' });
 
-    await expect(
-      host.provision(
-        request({
-          network: {
-            mode: 'proxy',
-            allowedHosts: ['api.example.com'],
-          },
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_NETWORK_POLICY',
-    });
-  });
+    await host.reclaim(handle.executionId);
 
-  it.each([
-    [[]],
-    [['.example.com']],
-    [['example.com', 'EXAMPLE.COM']],
-    [['https://example.com']],
-  ] as const)('rejects invalid proxy host allowlists: %j', async (allowedHosts) => {
-    const options: DockerExecutionHostOptions = {
-      runtimeBinary: '/definitely/missing/docker',
-      egressController: {
-        async provision() {
-          throw new Error('not reached');
-        },
-        async release() {},
-      },
-    };
-    const host = new DockerExecutionHost(options);
-
-    await expect(
-      host.provision(
-        request({
-          network: {
-            mode: 'proxy',
-            allowedHosts,
-          },
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_NETWORK_POLICY',
-    });
-  });
-
-  it('rejects non-JSON metadata before contacting the runtime', async () => {
-    const host = new DockerExecutionHost({
-      runtimeBinary: '/definitely/missing/docker',
-    });
-    const metadata: Record<string, unknown> = {};
-    metadata.self = metadata;
-
-    await expect(
-      host.provision(
-        request({
-          metadata: metadata as never,
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'EXECUTION_INVALID_REQUEST',
+    await expect(host.exec(handle.executionId, { command: 'true' })).rejects.toMatchObject({
+      code: 'EXECUTION_NOT_FOUND',
     });
   });
 });

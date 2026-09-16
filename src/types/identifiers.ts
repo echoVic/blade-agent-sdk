@@ -23,7 +23,6 @@ export type ExecutionLeaseId = Identifier<string, 'ExecutionLeaseId'>;
 export type FencingToken = Identifier<number, 'FencingToken'>;
 export type ExecutionId = Identifier<string, 'ExecutionId'>;
 export type ExecutionCheckpointId = Identifier<string, 'ExecutionCheckpointId'>;
-export type CredentialLeaseId = Identifier<string, 'CredentialLeaseId'>;
 export type TraceId = Identifier<string, 'TraceId'>;
 export type SpanId = Identifier<string, 'SpanId'>;
 export type TraceEventId = Identifier<string, 'TraceEventId'>;
@@ -49,7 +48,6 @@ export const FencingToken = (value: number): FencingToken => value as FencingTok
 export const ExecutionId = (value: string): ExecutionId => value as ExecutionId;
 export const ExecutionCheckpointId = (value: string): ExecutionCheckpointId =>
   value as ExecutionCheckpointId;
-export const CredentialLeaseId = (value: string): CredentialLeaseId => value as CredentialLeaseId;
 export const TraceId = (value: string): TraceId => value as TraceId;
 export const SpanId = (value: string): SpanId => value as SpanId;
 export const TraceEventId = (value: string): TraceEventId => value as TraceEventId;

@@ -142,7 +142,7 @@ runtime is a shared multi-tenant service and storage is injected explicitly.
 - Low-level Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
 - Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
 - Durable recovery: lease-fenced execution ownership, controlled worker handoff, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
-- Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, `ExecutionHostSessionRunner`, and a durable `EffectDispatcher`
+- Execution plane: `AgentWorker`, the injectable `SessionRunner` contract, `SdkSessionRunner`, and `ExecutionHostSessionRunner`
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: async-function and AsyncGenerator authoring, TypeBox schemas, capability-grouped built-ins, MCP tools, typed progress/effects, and the `blade-tool-*` package convention
@@ -239,7 +239,6 @@ import {
   AgentWorker,
 } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 ```
 
 - Root: `createAgent`, `defineTool`, middleware, model contracts, constants, and public types
@@ -249,9 +248,10 @@ import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/ot
 - `/advanced`: low-level local/server Sessions, `SessionRunner`, execution hosts, and Node adapters
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
-and `/tools` compatibility aliases have been removed. Optional PostgreSQL and
-OpenTelemetry adapters retain `/server/postgres` and `/server/otel` so importing
-`/server/infra` does not require their peer dependencies.
+and `/tools` compatibility aliases have been removed. The optional PostgreSQL
+adapter lives at `/server/postgres`, so importing `/server/infra` does not
+require `pg`. Server and Worker telemetry are explicit interfaces; applications
+may connect them to any observability backend.
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
@@ -265,12 +265,11 @@ This starts PostgreSQL, `AgentServer`, `AgentWorker` running a real SDK
 Session, and an isolated Docker repository workspace with a browser approval
 step. See [Runnable golden paths](./examples/README.md).
 
-PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node enhancements
-are opt-in peers:
+PostgreSQL, non-bundled provider adapters, and native Node enhancements are
+opt-in peers:
 
 ```bash
 pnpm add pg                         # PostgresRuntimeStore from /server/postgres
-pnpm add @opentelemetry/api         # telemetry adapters from /server/otel
 pnpm add @ai-sdk/anthropic          # provider: anthropic
 pnpm add fs-native-extensions        # cross-process Node JSONL locks
 ```

@@ -2,9 +2,7 @@
   "schemaVersion": 1,
   "minimumSampleSize": {
     "sessions": 100,
-    "events": 1000,
-    "effects": 100,
-    "crashPoints": 4
+    "events": 1000
   },
   "thresholds": {
     "storeInitializationMs": {
@@ -23,9 +21,6 @@
       "maximum": 1000
     },
     "eventLossRate": {
-      "maximum": 0
-    },
-    "nonIdempotentDuplicateRate": {
       "maximum": 0
     },
     "processTerminationMs": {
@@ -48,15 +43,6 @@
     },
     "fullRecoveryRtoMs": {
       "maximum": 15000
-    },
-    "faultInjectionPassRate": {
-      "minimum": 1
-    },
-    "faultInjectionDuplicateRate": {
-      "maximum": 0
-    },
-    "maximumFaultRecoveryRtoMs": {
-      "maximum": 5000
     }
   }
 }

@@ -159,15 +159,10 @@ export async function runProductionSmoke({ baseUrl, store, state, tenantId, laun
   const afterCancel = await task(cancelledSession, 'Fix the greeting and run tests.');
   assert.match(afterCancel.output, /pass/i);
 
-  const [readyResponse, metricsResponse] = await Promise.all([
-    fetch(`${baseUrl}/v1/runtime/readyz`, { signal: budget }),
-    fetch(`${baseUrl}/v1/runtime/metrics`, { signal: budget, headers: { authorization: 'Bearer local-demo' } }),
-  ]);
-  assert.ok(readyResponse.ok && metricsResponse.ok);
-  const health = await readyResponse.json();
-  const metrics = await metricsResponse.json();
+  const worker = getWorker();
+  assert.equal(worker?.health?.ready, true, 'The replacement Worker must be ready');
   await Promise.all([session.close({ signal: budget }), approvalSession.close({ signal: budget }), deniedSession.close({ signal: budget }), cancelledSession.close({ signal: budget })]);
   return { sessionId: session.sessionId, firstResultMs, output: first.output,
     recovery: first, secondTurn: second, approvalRecovery, denied, cancelled, afterCancel,
-    operations: { health, queue: metrics.queue }, worker: getWorker() };
+    worker };
 }

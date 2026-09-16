@@ -18,17 +18,11 @@ server profile 不会根据 `storagePath` 隐式访问本机文件。需要恢�
 
 ## 创建服务端
 
-OpenTelemetry adapter 是按需 peer；使用时先安装
-`@opentelemetry/api`，再从 `/server/otel` 导入。
-
 ```ts
 import {
   AgentServer,
   type AgentPrincipal,
 } from '@blade-ai/agent-sdk/server/infra';
-import {
-  OpenTelemetryAgentServerTelemetry,
-} from '@blade-ai/agent-sdk/server/otel';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
@@ -65,7 +59,6 @@ const server = new AgentServer({
     };
   },
   requirePersistentSessions: true,
-  telemetry: new OpenTelemetryAgentServerTelemetry(),
 });
 
 // Mount this Fetch-compatible handler in the HTTP runtime.
@@ -285,7 +278,7 @@ SSE 使用 pull-based `ReadableStream`，每次 pull 最多写一个 frame，
 | Port | 事实范围 |
 |------|---------|
 | `SessionRepository` | transcript state/messages 的只读 projection、fork 与 list |
-| `SessionEventStore` | transcript domain event append |
+| `SessionEventStore` | transcript projection 原子写入 |
 | `AgentServerStore` | tenant Session records、command 幂等、远程 event replay |
 | `DurableEventStore` | Request/Turn/model/tool 生命周期 journal 与恢复 |
 
@@ -315,16 +308,10 @@ SDK 附带的 `InMemoryAgentServerStore` 只用于单进程和测试。它不提
 完成。审批以 tenant、Session、审批者 `subject` 和 `permissionRequestId` 四元组
 隔离，并在超时、请求 abort、Session close 或 server close 时取消。
 
-`OpenTelemetryAgentServerTelemetry` 记录：
-
-- `blade.agent.server.commands`
-- `blade.agent.server.command.duration`
-- `blade.agent.server.events`
-- `blade.agent.server.command` span
-
-默认 metric/span 不包含 prompt、工具参数、Provider credential、subject 或
-tenant ID。只有 `includeTenantAttributes: true` 会把 tenant ID 写入 attributes。
-`auditSink` 收到 command 元数据和结果，不接收输入 payload。
+`AgentServerTelemetry` 是显式注入端口，提供 `recordCommand()`、
+`recordEvent()` 与 `writeAudit()`。SDK 不绑定具体 telemetry backend；应用应在
+该端口接入 OpenTelemetry 或现有监控系统。回调只接收 command/event 元数据与
+结果状态，不接收 prompt、工具参数或 Provider credential。
 
 ## 生产检查
 

@@ -6,10 +6,10 @@ default `createAgent()` facade. Lower-level Session APIs live under
 components under `/server/infra`.
 
 `/server/infra` targets Node.js server processes, not edge runtimes.
-PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
-enhancements are optional peers. PostgreSQL and OTel use dedicated adapter
-subpaths so canonical entrypoints do not load absent peers. Some packages can
-still be present transitively through base dependencies.
+PostgreSQL, non-bundled provider adapters, and native Node enhancements are
+optional peers. PostgreSQL uses a dedicated adapter subpath so canonical
+entrypoints do not load an absent peer. Some packages can still be present
+transitively through base dependencies.
 
 The package also ships the `create-blade-agent` executable. Its
 `--preset <local|web|production>` option selects the generated project
@@ -25,12 +25,13 @@ JavaScript package export.
 | `@blade-ai/agent-sdk/browser` | Browser and Node.js | `AgentClient`, protocol schemas, parsers, events, and constants |
 | `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Wire protocol schemas and parsers |
 | `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, and Runtime Store contracts |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | `PostgresRuntimeStore` adapter |
 | `@blade-ai/agent-sdk/advanced` | Node.js | Local/server Sessions, `SessionRunner`, execution hosts, and Node adapters |
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
-and `/tools` compatibility aliases have been removed. Optional PostgreSQL and
-OTel adapters retain `/server/postgres` and
-`/server/otel` so canonical imports do not force-load peer dependencies.
+and `/tools` compatibility aliases have been removed. The optional PostgreSQL
+adapter lives at `/server/postgres`, so canonical imports do not force-load
+`pg`.
 The package is ESM-only. Browser calls to server-only APIs resolve to explicit
 stubs.
 
@@ -120,8 +121,6 @@ Runtime:
 - `SdkSessionRunner`
 - `ExecutionHostSessionRunner`
 - `AgentWorker`
-- `AgentRuntimeOperations`
-- `EffectDispatcher`
 - `AgentClient`
 - `RemoteAgentSession`
 - `InMemoryAgentServerStore`
@@ -150,36 +149,25 @@ Types:
 - `RuntimeStore`
 - `RuntimeTenantStore`
 - `RUNTIME_STORE_SCHEMA_VERSION`
-- `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION`
-- `RuntimeCommandCommit`
-- `RuntimeCommitResult`
-- `RuntimeDomainEvent`
-- `RuntimeDomainEventDraft`
-- `RuntimeDomainEventPage`
-- `RuntimeEffectIntent`
-- `RuntimeEffectRecord`
-- `RuntimeEffectStatus`
 - `RuntimeWorkerRecord`
 - `RuntimeWorkerRegistration`
 - `RuntimeSessionRoute`
 - `RuntimeSessionClaim`
+- `RuntimeSessionClaimOptions`
 - `RuntimeSessionState`
-- `RuntimeEffectClaim`
-- `RuntimeEffectLease`
-- `RuntimeEffectExecutionMode`
-- `RuntimeEffectReconciliation`
-- `RuntimeQueueMetrics`
-- `RuntimeEffectHandler`
-- `RuntimeEffectHandlerContext`
-- `RetryableRuntimeEffectError`
-- `UncertainRuntimeEffectError`
+- `RuntimeSessionTransition`
+- `RuntimeSessionSettlement`
+- `RuntimeRecoveryResult`
 - `SessionRunner`
 - `SessionRunnerContext`
 - `SessionRunResult`
 - `WorkerRuntimeStore`
 - `WorkerRuntimeError`
-- `RuntimeProjectionCheckpoint`
-- `RuntimeProjectionRecord`
+- `AgentWorkerHealth`
+- `AgentWorkerMetrics`
+- `AgentWorkerSnapshot`
+- `AgentWorkerTelemetry`
+- `AgentWorkerErrorMetric`
 - `AgentCommandClaim`
 - `AgentServerSessionRecord`
 - `AgentServerTelemetry`
@@ -198,9 +186,10 @@ Types:
 - `AgentInitializationData`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
+
 `PostgresRuntimeStore` is exported by `/server/postgres`.
-`OpenTelemetryAgentServerTelemetry` and
-`OpenTelemetryAgentWorkerTelemetry` are exported by `/server/otel`.
+`AgentServerTelemetry` and `AgentWorkerTelemetry` are injection ports exported
+by `/server/infra`; the SDK does not bind them to a specific backend.
 
 See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 [Worker Runtime](./worker-runtime), and
@@ -210,12 +199,10 @@ See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 
 Runtime:
 
-- `EphemeralCredentialBroker`
 - `ExecutionHostError`
 - `DockerExecutionHost` (`/advanced`)
 - `ExecutionId`
 - `ExecutionCheckpointId`
-- `CredentialLeaseId`
 
 Types:
 
@@ -229,14 +216,6 @@ Types:
 - `ExecutionResourceLimits`
 - `ExecutionNetworkPolicy`
 - `ExecutionWorkspaceSource`
-- `ExecutionEgressController`
-- `ExecutionEgressLease`
-- `CredentialBroker`
-- `CredentialIssuer`
-- `CredentialRequest`
-- `CredentialLease`
-- `CredentialIssueContext`
-- `IssuedCredential`
 - `ExecutionHostErrorCode`
 - `DockerExecutionHostOptions` (`/advanced`)
 
@@ -620,37 +599,17 @@ Types:
 
 Functions and constants:
 
-- `calculateDeepSeekCost`
-- `createDeepSeekBatchChatCompletions`
-- `createDeepSeekChatCompletion`
-- `createDeepSeekFimCompletion`
-- `createDeepSeekLongContextChunks`
-- `createDeepSeekLongContextMessages`
-- `createDeepSeekLongContextPlan`
-- `createDeepSeekTokenBudgetCostConfig`
-- `estimateDeepSeekTokens`
-- `getDeepSeekPricing`
 - `normalizeDeepSeekModel`
 - `optimizeDeepSeekCachePrefix`
 - `resolveDeepSeekBaseUrl`
 - `sanitizeDeepSeekStrictSchema`
-- `summarizeDeepSeekBatchChatCompletions`
 - `DEEPSEEK_BETA_BASE_URL`
 - `DEEPSEEK_DEFAULT_BASE_URL`
 - `DEEPSEEK_DEFAULT_MODEL`
-- `DEEPSEEK_DEFAULT_PRICING`
-- `DeepSeekCostTracker`
 
 Types:
 
-`DeepSeekBatchChatCompletionItem`, `DeepSeekBatchChatCompletionOptions`,
-`DeepSeekBatchChatCompletionResult`, `DeepSeekBatchChatCompletionSummary`,
-`DeepSeekCacheOptimizationOptions`, `DeepSeekChatCompletionOptions`,
-`DeepSeekChatCompletionResponse`, `DeepSeekChatMessage`,
-`DeepSeekCostBreakdown`, `DeepSeekCostSnapshot`,
-`DeepSeekFimCompletionOptions`, `DeepSeekFimCompletionResponse`,
-`DeepSeekLongContextChunk`, `DeepSeekLongContextOptions`,
-`DeepSeekLongContextPlan`, `DeepSeekPricing`, and `DeepSeekProviderOptions`.
+`DeepSeekCacheOptimizationOptions` and `DeepSeekProviderOptions`.
 
 ## Errors
 

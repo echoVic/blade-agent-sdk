@@ -19,7 +19,6 @@ describe('package entrypoints', () => {
         './package.json',
         './protocol',
         './server/infra',
-        './server/otel',
         './server/postgres',
       ].sort(),
     );
@@ -52,11 +51,6 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/server/postgres.js',
       },
-      './server/otel': {
-        types: './dist/server/otel.d.ts',
-        browser: './dist/browser/server-only-stub.js',
-        import: './dist/server/otel.js',
-      },
     });
   });
 
@@ -68,7 +62,6 @@ describe('package entrypoints', () => {
       'src/browser/server-only-stub.ts',
       'src/protocol/index.ts',
       'src/server/infra.ts',
-      'src/server/otel.ts',
       'src/server/postgres.ts',
       'src/node/index.ts',
     ]) {
@@ -114,7 +107,7 @@ describe('package entrypoints', () => {
     expect(browser.ToolUseId('tool-call-1')).toBe('tool-call-1');
     expect(browser.ExecutionId('execution-1')).toBe('execution-1');
     expect(browser.ExecutionCheckpointId('checkpoint-1')).toBe('checkpoint-1');
-    expect(browser.CredentialLeaseId('credential-1')).toBe('credential-1');
+    expect('CredentialLeaseId' in browser).toBe(false);
     expect(browser.AgentClient).toBeTypeOf('function');
     expect(browser.AgentResponse).toBeTypeOf('function');
     expect(browser.AGENT_PROTOCOL_VERSION).toBe(1);
@@ -134,14 +127,10 @@ describe('package entrypoints', () => {
     expect(() => new serverOnly.PostgresRuntimeStore()).toThrow(
       /server-only.*PostgresRuntimeStore/,
     );
-    expect(() => new serverOnly.DockerExecutionHost()).toThrow(/server-only.*DockerExecutionHost/);
-    expect(() => new serverOnly.EphemeralCredentialBroker()).toThrow(
-      /server-only.*EphemeralCredentialBroker/,
-    );
+    expect('EphemeralCredentialBroker' in serverOnly).toBe(false);
     expect(() => new serverOnly.ExecutionHostError()).toThrow(/server-only.*ExecutionHostError/);
     expect(() => new serverOnly.WorkerRuntimeError()).toThrow(/server-only.*WorkerRuntimeError/);
-    expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(3);
-    expect(serverOnly.RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION).toBe(1);
+    expect(serverOnly.RUNTIME_STORE_SCHEMA_VERSION).toBe(5);
     expect(serverOnly.RUNTIME_SESSION_STATES).toEqual([
       'queued',
       'provisioning',
@@ -156,7 +145,6 @@ describe('package entrypoints', () => {
       /server-only.*InProcessSessionExecutor/,
     );
     expect(() => new serverOnly.AgentWorker()).toThrow(/server-only.*AgentWorker/);
-    expect(() => new serverOnly.EffectDispatcher()).toThrow(/server-only.*EffectDispatcher/);
     expect(() => new serverOnly.ExecutionHostSessionRunner()).toThrow(
       /server-only.*ExecutionHostSessionRunner/,
     );
@@ -167,19 +155,15 @@ describe('package entrypoints', () => {
     const advanced = await import('../advanced/index.js');
     const infra = await import('../server/infra.js');
     const node = await import('../node/index.js');
-    const otel = await import('../server/otel.js');
     const postgres = await import('../server/postgres.js');
 
     expect(root.createAgent).toBeTypeOf('function');
     expect(advanced.createSession).toBe(node.createSession);
     expect(advanced.createNodeSession).toBe(node.createSession);
     expect(advanced.createServerSession).toBe(root.createSession);
-    expect(advanced.DockerExecutionHost).toBe(node.DockerExecutionHost);
-    expect(advanced.EffectDispatcher).toBeTypeOf('function');
     expect(infra.AgentServer).toBeTypeOf('function');
     expect(infra.AgentWorker).toBeTypeOf('function');
     expect(postgres.PostgresRuntimeStore).toBeTypeOf('function');
-    expect(otel.OpenTelemetryAgentServerTelemetry).toBeTypeOf('function');
     expect('createAgent' in infra).toBe(false);
     expect('createSession' in infra).toBe(false);
     expect('EffectDispatcher' in infra).toBe(false);
@@ -190,7 +174,7 @@ describe('package entrypoints', () => {
     expect(infra.InProcessSessionExecutor).toBeTypeOf('function');
     expect(advanced.SdkSessionRunner).toBeTypeOf('function');
     expect(advanced.ExecutionHostSessionRunner).toBeTypeOf('function');
-    expect(advanced.EphemeralCredentialBroker).toBeTypeOf('function');
+    expect('EphemeralCredentialBroker' in advanced).toBe(false);
     expect(advanced.ExecutionHostError).toBeTypeOf('function');
     expect(infra.WorkerRuntimeError).toBeTypeOf('function');
     expect(infra.RUNTIME_SESSION_STATES).toEqual([
@@ -204,8 +188,6 @@ describe('package entrypoints', () => {
       'failed',
     ]);
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
-    expect(node.DockerExecutionHost).toBeTypeOf('function');
-    expect(node.EphemeralCredentialBroker).toBe(advanced.EphemeralCredentialBroker);
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');
   });

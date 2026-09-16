@@ -7,14 +7,14 @@
 ```ts
 import {
   DockerExecutionHost,
-  EphemeralCredentialBroker,
   type ExecutionHost,
   ExecutionId,
 } from '@blade-ai/agent-sdk/advanced';
 ```
 
-`DockerExecutionHost` 是 Node.js 参考实现。每次 provision 都创建独立临时目录、
-可选 Git worktree staging 和独立 OCI 容器。
+`DockerExecutionHost` 是 Node.js 参考实现。每次 provision 都创建独立、有界
+tmpfs workspace 和 OCI 容器。workspace 可以为空，也可以从一个本地 Git revision
+导入。
 
 ## 生命周期
 
@@ -68,90 +68,35 @@ const restored = await host.restore({
 |------|----------|
 | CPU | Docker `NanoCpus` |
 | 内存 | `Memory` 与相同值的 `MemorySwap` |
-| 磁盘 | 从同一预算切分的 `/workspace` 匿名 tmpfs volume、`/tmp` 与 `/dev/shm` |
+| 磁盘 | `diskBytes` 限制的 `/workspace` tmpfs |
 | PID | `PidsLimit` |
-| 运行时长 | host deadline、容器内自终止 deadline 和 `--rm` |
+| 运行时长 | host deadline、容器内 `sleep` deadline 和 `--rm` |
 | 输出 | stdout/stderr 合计字节上限 |
-| 网络 | `network` 是必填项；`mode: 'none'` 时容器不接入任何网络，proxy 模式只接受 `ExecutionEgressController` 创建的隔离网络 |
+| 网络 | Docker 参考实现只接受 `mode: 'none'` |
 
 容器同时使用只读 rootfs、`no-new-privileges`、numeric non-root user 和
-`cap-drop=ALL`，不重新添加 capability。provision 完成前会反向读取 Docker
-`inspect`；任何限制没有实际生效都会 fail-closed。
+`cap-drop=ALL`，不重新添加 capability。
 
 镜像默认必须使用不可变 `sha256` digest。参考实现要求镜像提供 `/bin/sh`、
-`sleep`、`cat`、`rm` 和 `tar`。镜像中存在疑似长期凭据的环境变量时，
-provision 会被拒绝。
+`sleep` 和 `tar`。
 
-Git worktree 是宿主侧的临时 staging。文件复制到有界 tmpfs 后，容器内会删除
-worktree 的 `.git` 控制文件，避免泄露宿主仓库路径；宿主 worktree 在 provision
-返回前移除。容器 workspace 因此是指定 revision 的隔离快照，不是宿主仓库的
-可写挂载。
+Git workspace 使用 `git archive` 读取指定 revision，再以容器内 non-root user
+解包到 tmpfs。它不创建 worktree、不复制 `.git`，也不把宿主目录 bind mount
+进容器。
 
 ## 网络出口
 
-`none` 是默认且完整断网。`proxy` 模式必须注入控制器：
-
-```ts
-const egressController: ExecutionEgressController = {
-  async provision(executionId, policy) {
-    const networkName = await createIsolatedProxyNetwork(
-      executionId,
-      policy.allowedHosts,
-    );
-    return {
-      networkName,
-      environment: {
-        HTTPS_PROXY: 'http://proxy.internal:8080',
-      },
-    };
-  },
-  async release(executionId) {
-    await removeIsolatedProxyNetwork(executionId);
-  },
-};
-```
-
-`DockerExecutionHost` 负责验证并连接控制器返回的专用网络；域名 allowlist 的
-DNS、IP、TLS 和 CONNECT enforcement 由控制器负责。`none`、`host`、`bridge`
-等保留网络不能作为 proxy lease。代理 URL 不允许内嵌用户名或密码。
-
-## 短期凭据
-
-长期 secret 不得通过 provision 或普通 exec environment 传入。用
-`CredentialBroker` 为单次 command 签发短期凭据：
-
-```ts
-const credentialBroker = new EphemeralCredentialBroker({
-  github: {
-    environmentVariable: 'GITHUB_EPHEMERAL_TOKEN',
-    async issue({ audience, scopes, expiresBy }) {
-      return issueGitHubToken({ audience, scopes, expiresBy });
-    },
-  },
-});
-
-const host = new DockerExecutionHost({ credentialBroker });
-await host.exec(executionId, {
-  command: 'git',
-  args: ['fetch', 'origin'],
-  credentials: [{
-    name: 'github',
-    audience: 'github.com',
-    scopes: ['contents:read'],
-  }],
-});
-```
-
-环境变量名由 issuer 固定，调用方不能指定。凭据值只进入单个 `docker exec`
-子进程的环境，不进入 CLI 参数、容器配置、checkpoint 或长期 Agent 环境。
-stdout/stderr 中的原值会被遮蔽。command 结束或 lease 到期后执行 revoke；
-issuer 返回超过请求 TTL 的凭据会被拒绝。
+`DockerExecutionHost` 只支持完整断网的 `mode: 'none'`。需要代理或域名
+allowlist 时应使用应用自有的执行边界；SDK 的 `ExecutionHost` 契约不声明该
+能力，参考实现也不会静默降级为普通 Docker 网络。普通环境变量名称不能疑似
+包含 token、secret、password、API key 或 credential。
 
 ## Checkpoint 边界
 
-Docker 参考实现暂停主容器，通过 Docker daemon 复制 workspace volume，并写入
-版本化 manifest。restore 会重新执行完整 provision 校验，再通过有界 tar stream
-把 workspace 放入新容器。checkpoint 不包含进程、内存、网络连接或凭据。
+Docker 参考实现使用每个 execution 的 mutex 阻止 checkpoint 与 exec 并发，
+通过 Docker daemon 复制 workspace 并写入经过 schema 校验的版本化 manifest。
+restore 会重新执行完整 provision 校验，再通过有界 tar stream 把 workspace
+放入新容器。checkpoint 不包含进程、内存、网络连接或凭据。
 
 默认 checkpoint 位于本机 `checkpointDirectory`，适合单机恢复和交接。跨 worker
 调度必须实现共享 `ExecutionHost`，或把 checkpoint 上传到受控对象存储；不要把

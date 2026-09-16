@@ -6,8 +6,8 @@
 服务端部署组件统一从 `/server/infra` 导入。
 
 `/server/infra` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
-OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
-部分依赖仍可能由基础依赖间接安装。
+非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；部分依赖仍
+可能由基础依赖间接安装。
 
 包还提供 `create-blade-agent` 可执行文件。它通过
 `--preset <local|web|production>` 选择生成项目的拓扑，`--verify` 负责安装后
@@ -22,12 +22,12 @@ package export；通过 npm bin 调用。
 | `@blade-ai/agent-sdk/browser` | Browser-safe / Node | `AgentClient`、协议 schema、解析器、事件和常量 |
 | `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | wire protocol schema 与解析器 |
 | `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker 与 Runtime Store 契约 |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | `PostgresRuntimeStore` adapter |
 | `@blade-ai/agent-sdk/advanced` | Node.js | local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter |
 
 旧 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
-`/tools` compatibility alias 已删除。可选 PostgreSQL 与 OTel adapter 保留
-`/server/postgres` 和
-`/server/otel`，避免 canonical 入口强制加载 peer dependency。
+`/tools` compatibility alias 已删除。可选 PostgreSQL adapter 位于
+`/server/postgres`，避免 canonical 入口强制加载 `pg`。
 
 ## 函数
 
@@ -59,7 +59,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `composeMiddleware` | root | 组合通用洋葱 middleware |
 | `definePlugin` | root | 定义声明式 Agent 插件 |
 | `wrapModelService` | root | 使用模型 middleware 包装 `ModelService` |
-| `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
+| `normalizeDeepSeekModel` 等 | root | DeepSeek 模型、base URL、缓存前缀和 strict schema 辅助函数 |
 | `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
 | `getErrorMessage` 等 | root | 安全提取未知错误信息 |
 
@@ -82,15 +82,11 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SdkSessionRunner` | advanced | 在 worker fencing 下恢复并执行 durable SDK Session |
 | `ExecutionHostSessionRunner` | advanced | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
 | `AgentWorker` | server/infra | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
-| `AgentRuntimeOperations` | server/infra | 受鉴权的 runtime health、queue metrics 与 uncertain effect reconciliation |
-| `EffectDispatcher` | advanced | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server/infra | 单进程控制面参考 Store；不用于多实例生产部署 |
-| `PostgresRuntimeStore` | server/postgres | 共享 command、event、outbox、projection 和 Session persistence |
-| `RuntimeStoreError` | server/infra | Runtime transaction 的稳定错误类型 |
+| `PostgresRuntimeStore` | server/postgres | 共享 command、event、Session 状态、路由和 lease persistence |
+| `RuntimeStoreError` | server/infra | Runtime Store 的稳定错误类型 |
 | `TenantAdmissionController` | server/infra | 每 tenant 并发、队列和固定窗口限流 |
-| `OpenTelemetryAgentServerTelemetry` | server/otel | 默认不采集 payload 的 metric、trace 与 audit adapter |
-| `OpenTelemetryAgentWorkerTelemetry` | server/otel | 默认不采集 payload 的 Worker readiness、吞吐、恢复和 effect metric adapter |
 | `JsonlSessionRepository` | advanced | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
@@ -136,7 +132,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
 | `SessionRepository` | transcript 的只读 projection 端口 |
-| `SessionEventStore` | transcript domain event append 端口 |
+| `SessionEventStore` | transcript projection 原子写入端口 |
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
@@ -181,19 +177,14 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
 | `agentInitializationDataSchema` | strict initialize response schema |
 | `RuntimeStore` / `RuntimeTenantStore` | 共享 authority 与 tenant-scoped Session/durable adapter |
-| `RUNTIME_STORE_SCHEMA_VERSION` / `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION` | 数据库 schema 与 domain event schema 版本 |
-| `RuntimeCommandCommit` / `RuntimeCommitResult` | 原子 command、event、effect、projection transaction |
-| `RuntimeDomainEvent` / `RuntimeDomainEventDraft` / `RuntimeDomainEventPage` | Runtime domain event stream |
-| `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
-| `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
+| `RUNTIME_STORE_SCHEMA_VERSION` | PostgreSQL schema 版本 |
 | `RuntimeWorkerRecord` / `RuntimeWorkerRegistration` | worker heartbeat、容量与 drain 状态 |
-| `RuntimeQueueMetrics` / `AgentWorkerHealth` | tenant backlog、Worker capacity 与本地 readiness 快照 |
-| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、含可重入 `idle` 的八态状态机与 execution lease |
-| `RuntimeEffectClaim` / `RuntimeEffectLease` / `RuntimeEffectExecutionMode` / `RuntimeEffectReconciliation` | effect 领取、fencing、at-most-once 与人工对账语义 |
-| `RuntimeEffectHandler` / `RuntimeEffectHandlerContext` | 类型化 outbox effect handler |
-| `RetryableRuntimeEffectError` / `UncertainRuntimeEffectError` | 显式声明 effect 可重试或结果未知 |
+| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionClaimOptions` | Session 路由、领取与 execution lease |
+| `RuntimeSessionState` / `RuntimeSessionTransition` / `RuntimeSessionSettlement` | 含可重入 `idle` 的八态状态机与 fenced 更新 |
+| `RuntimeRecoveryResult` | 过期 worker、Session 与 sealed command 恢复结果 |
+| `AgentWorkerHealth` / `AgentWorkerMetrics` / `AgentWorkerSnapshot` | Worker readiness、吞吐和运行快照 |
+| `AgentWorkerTelemetry` / `AgentWorkerErrorMetric` | 可注入的 Worker 遥测端口 |
 | `SessionRunner` / `SessionRunnerContext` / `SessionRunResult` | 单个 fenced Session 的执行边界 |
-| `AgentRuntimeOperationsOptions` / `RuntimeOperationsPrincipal` | 运维 HTTP 面、鉴权与 tenant scope 配置 |
 | `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
 完整部署约束见 [Server Runtime](./server-runtime) 和
 [Runtime Store](./runtime-store)，worker 调度见
@@ -209,12 +200,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ExecutionExecRequest` / `ExecutionExecResult` | 单次 command 输入与有界输出 |
 | `ExecutionCheckpoint` / `ExecutionRestoreRequest` | workspace checkpoint 与恢复输入 |
 | `ExecutionResourceLimits` / `ExecutionNetworkPolicy` / `ExecutionWorkspaceSource` | CPU、内存、磁盘、PID、运行时、输出、网络及 workspace 约束 |
-| `ExecutionEgressController` / `ExecutionEgressLease` | proxy allowlist 的外部 enforcement 端口 |
-| `CredentialBroker` / `CredentialIssuer` / `CredentialRequest` / `CredentialLease` | 单次 command 的短期凭据签发与撤销 |
-| `CredentialIssueContext` / `IssuedCredential` | issuer 输入和有明确过期时间的签发结果 |
-| `EphemeralCredentialBroker` | TTL 校验、失败回滚和自动撤销的参考 broker |
 | `ExecutionHostError` / `ExecutionHostErrorCode` | 稳定的执行边界错误 |
-| `ExecutionId` / `ExecutionCheckpointId` / `CredentialLeaseId` | 执行、checkpoint 和凭据 lease 的 branded ID |
+| `ExecutionId` / `ExecutionCheckpointId` | 执行与 checkpoint 的 branded ID |
 | `DockerExecutionHost` / `DockerExecutionHostOptions` | `/advanced` 导出的 Docker 参考实现 |
 
 ### Durable Events
@@ -501,45 +488,17 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 函数与运行时值：
 
-- `calculateDeepSeekCost`
-- `createDeepSeekBatchChatCompletions`
-- `createDeepSeekChatCompletion`
-- `createDeepSeekFimCompletion`
-- `createDeepSeekLongContextChunks`
-- `createDeepSeekLongContextMessages`
-- `createDeepSeekLongContextPlan`
-- `createDeepSeekTokenBudgetCostConfig`
-- `estimateDeepSeekTokens`
-- `getDeepSeekPricing`
 - `normalizeDeepSeekModel`
 - `optimizeDeepSeekCachePrefix`
 - `resolveDeepSeekBaseUrl`
 - `sanitizeDeepSeekStrictSchema`
-- `summarizeDeepSeekBatchChatCompletions`
 - `DEEPSEEK_BETA_BASE_URL`
 - `DEEPSEEK_DEFAULT_BASE_URL`
 - `DEEPSEEK_DEFAULT_MODEL`
-- `DEEPSEEK_DEFAULT_PRICING`
-- `DeepSeekCostTracker`
 
 类型：
 
-- `DeepSeekBatchChatCompletionItem`
-- `DeepSeekBatchChatCompletionOptions`
-- `DeepSeekBatchChatCompletionResult`
-- `DeepSeekBatchChatCompletionSummary`
 - `DeepSeekCacheOptimizationOptions`
-- `DeepSeekChatCompletionOptions`
-- `DeepSeekChatCompletionResponse`
-- `DeepSeekChatMessage`
-- `DeepSeekCostBreakdown`
-- `DeepSeekCostSnapshot`
-- `DeepSeekFimCompletionOptions`
-- `DeepSeekFimCompletionResponse`
-- `DeepSeekLongContextChunk`
-- `DeepSeekLongContextOptions`
-- `DeepSeekLongContextPlan`
-- `DeepSeekPricing`
 - `DeepSeekProviderOptions`
 
 ### 工具错误

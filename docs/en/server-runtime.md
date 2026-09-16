@@ -19,17 +19,11 @@ A resumable Session requires an explicitly supplied `sessionRepository` and
 
 ## Create a server
 
-The OpenTelemetry adapter is an opt-in peer. Install
-`@opentelemetry/api` and import the adapter from `/server/otel`.
-
 ```ts
 import {
   AgentServer,
   type AgentPrincipal,
 } from '@blade-ai/agent-sdk/server/infra';
-import {
-  OpenTelemetryAgentServerTelemetry,
-} from '@blade-ai/agent-sdk/server/otel';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
@@ -66,7 +60,6 @@ const server = new AgentServer({
     };
   },
   requirePersistentSessions: true,
-  telemetry: new OpenTelemetryAgentServerTelemetry(),
 });
 
 // Mount this Fetch-compatible handler in the HTTP runtime.
@@ -318,7 +311,7 @@ window, `STALE_CURSOR` tells the client to reload Session state.
 | Port | Source of truth |
 |------|-----------------|
 | `SessionRepository` | Read-only transcript state/message projection, fork, and list |
-| `SessionEventStore` | Transcript domain event appends |
+| `SessionEventStore` | Atomic transcript projection updates |
 | `AgentServerStore` | Tenant Session records, command idempotency, and remote event replay |
 | `DurableEventStore` | Request, Turn, model, and tool lifecycle journal and recovery |
 
@@ -352,17 +345,11 @@ Tool confirmation is published as `permission.requested` and completed with a
 approver `subject`, and `permissionRequestId`, and are cancelled on timeout,
 request abort, Session close, or server close.
 
-`OpenTelemetryAgentServerTelemetry` records:
-
-- `blade.agent.server.commands`
-- `blade.agent.server.command.duration`
-- `blade.agent.server.events`
-- `blade.agent.server.command` spans
-
-Metrics and spans omit prompts, tool arguments, provider credentials, subjects,
-and tenant IDs by default. Only `includeTenantAttributes: true` emits a tenant
-attribute. The `auditSink` receives command metadata and outcomes, never input
-payloads.
+`AgentServerTelemetry` is an explicit injection port with `recordCommand()`,
+`recordEvent()`, and `writeAudit()`. The SDK does not bind a telemetry backend;
+applications can connect the port to OpenTelemetry or an existing monitoring
+system. Callbacks receive command and event metadata plus outcome state, never
+prompts, tool arguments, or provider credentials.
 
 ## Production checklist
 

@@ -10,7 +10,6 @@ import { ExecutionLeaseId, type SessionId, type WorkerId } from '../types/identi
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
 import type { AgentWorkerTelemetry } from './AgentWorkerTelemetry.js';
-import { EffectDispatcher, type RuntimeEffectHandler } from './EffectDispatcher.js';
 import type { RuntimeStore } from './RuntimeStore.js';
 import type { RuntimeSessionClaim, RuntimeSessionRoute } from './WorkerRuntime.js';
 
@@ -43,7 +42,6 @@ export interface AgentWorkerSnapshot {
   readonly health?: AgentWorkerHealth;
   readonly activeSessionIds: readonly SessionId[];
   readonly metrics: AgentWorkerMetrics;
-  readonly effectMetrics?: ReturnType<EffectDispatcher['getMetrics']>;
   readonly failure?: JsonObject;
 }
 
@@ -66,7 +64,6 @@ export interface AgentWorkerOptions {
   readonly capacity: number;
   readonly sessionRunner: SessionRunner;
   readonly executionHost?: SessionRunnerContext['executionHost'];
-  readonly effectHandlers?: readonly RuntimeEffectHandler[];
   readonly tenantId?: string;
   readonly metadata?: JsonObject;
   readonly workerTtlMs?: number;
@@ -74,7 +71,6 @@ export interface AgentWorkerOptions {
   readonly heartbeatIntervalMs?: number;
   readonly pollIntervalMs?: number;
   readonly recoveryIntervalMs?: number;
-  readonly effectClaimLimit?: number;
   readonly telemetry?: AgentWorkerTelemetry;
   readonly onSnapshot?: (snapshot: AgentWorkerSnapshot) => void;
   readonly onError?: (error: unknown) => void;
@@ -130,7 +126,7 @@ function isFatalWorkerStateError(error: unknown): boolean {
 }
 
 /**
- * Supervises durable Session claims and effect delivery for one worker.
+ * Supervises durable Session claims for one worker.
  *
  * AgentWorker is intentionally transport-free. AgentServer remains the
  * control plane, while this class owns the execution-plane lifecycle.
@@ -141,7 +137,6 @@ export class AgentWorker {
   private readonly heartbeatIntervalMs: number;
   private readonly pollIntervalMs: number;
   private readonly recoveryIntervalMs: number;
-  private readonly effectDispatcher?: EffectDispatcher;
   private readonly activeSessions = new Map<string, ActiveSession>();
   private readonly controller = new AbortController();
   private status: AgentWorkerStatus = 'idle';
@@ -180,18 +175,6 @@ export class AgentWorker {
     }
     if (this.heartbeatIntervalMs >= this.sessionLeaseTtlMs) {
       throw new RangeError('heartbeatIntervalMs must be less than sessionLeaseTtlMs');
-    }
-    if (options.effectHandlers) {
-      this.effectDispatcher = new EffectDispatcher({
-        store: options.store,
-        workerId: options.workerId,
-        handlers: options.effectHandlers,
-        leaseTtlMs: this.sessionLeaseTtlMs,
-        pollIntervalMs: this.pollIntervalMs,
-        claimLimit: options.effectClaimLimit,
-        tenantId: options.tenantId,
-        onError: (error) => this.reportError(error),
-      });
     }
   }
 
@@ -247,7 +230,6 @@ export class AgentWorker {
         elapsedMs,
         completedSessionsPerSecond: elapsedMs === 0 ? 0 : settled / (elapsedMs / 1000),
       },
-      ...(this.effectDispatcher ? { effectMetrics: this.effectDispatcher.getMetrics() } : {}),
       ...(this.failure ? { failure: structuredClone(this.failure) } : {}),
     };
   }
@@ -279,7 +261,6 @@ export class AgentWorker {
       this.sessionLoop(this.controller.signal),
       this.workerHeartbeatLoop(this.controller.signal),
       this.recoveryLoop(this.controller.signal),
-      ...(this.effectDispatcher ? [this.effectLoop(this.controller.signal)] : []),
     ];
     this.completion = this.supervise(loops);
     void this.completion.catch(() => undefined);
@@ -680,34 +661,6 @@ export class AgentWorker {
           throw error;
         }
       });
-    }
-  }
-
-  private async effectLoop(signal: AbortSignal): Promise<void> {
-    if (!this.effectDispatcher) {
-      return;
-    }
-    while (!signal.aborted) {
-      if (this.status === 'draining') {
-        return;
-      }
-      let count = 0;
-      try {
-        count = await this.effectDispatcher.runOnce(signal);
-      } catch (error) {
-        if (isFatalWorkerStateError(error)) {
-          throw error;
-        }
-        this.reportError(error);
-      }
-      this.publishSnapshot();
-      if (count === 0) {
-        await abortableDelay(this.pollIntervalMs, signal).catch((error) => {
-          if (!signal.aborted) {
-            throw error;
-          }
-        });
-      }
     }
   }
 
