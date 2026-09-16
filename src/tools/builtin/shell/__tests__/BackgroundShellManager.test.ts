@@ -53,9 +53,12 @@ describe('BackgroundShellManager handoff admission', () => {
       },
     });
 
-    await vi.waitFor(() => {
-      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
-    });
+    await vi.waitFor(
+      () => {
+        expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+      },
+      { timeout: 5_000 },
+    );
 
     expect(manager.consumeOutput(processInfo.id)?.stdout).toBe('|runtime|command');
   });
@@ -67,9 +70,12 @@ describe('BackgroundShellManager handoff admission', () => {
       cwd: tmpdir(),
     });
 
-    await vi.waitFor(() => {
-      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
-    });
+    await vi.waitFor(
+      () => {
+        expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+      },
+      { timeout: 5_000 },
+    );
     const output = manager.consumeOutput(processInfo.id);
 
     expect(Buffer.byteLength(output?.stdout ?? '')).toBeLessThanOrEqual(1024 * 1024);

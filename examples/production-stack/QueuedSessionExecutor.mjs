@@ -35,6 +35,7 @@ export class QueuedSessionExecutor {
       sessionRepository: persistence,
       sessionEventStore: persistence,
       durableEventStore: persistence,
+      durableExecutionLeaseStore: persistence,
       executionLease: {
         ownerId: `production-api-${process.pid}`,
         leaseId: `accept-${randomUUID()}`,

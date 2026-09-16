@@ -175,6 +175,7 @@ describe('production QueuedSessionExecutor', () => {
       sessionRepository: test.tenantStore,
       sessionEventStore: test.tenantStore,
       durableEventStore: test.tenantStore,
+      durableExecutionLeaseStore: test.tenantStore,
       executionLease: { ownerId: `production-api-${process.pid}`, leaseId: expect.any(String), ttlMs: 15_000 },
     });
     expect(test.handles[0]?.stream).not.toHaveBeenCalled();
