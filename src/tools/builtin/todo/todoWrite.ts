@@ -1,8 +1,8 @@
 import Type from 'typebox';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
@@ -15,6 +15,7 @@ import { TodoItemSchema } from './types.js';
  */
 export const todoWriteTool = createTool({
   name: 'TodoWrite',
+  group: 'task',
   displayName: 'Todo Write',
   kind: ToolKind.ReadOnly,
   sideEffect: 'idempotent',
@@ -148,10 +149,6 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
       };
     }
   },
-
-  version: '1.0.0',
-  category: 'TODO tools',
-  tags: ['todo', 'task', 'management', 'planning'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: `${params.todos.length} todos`,

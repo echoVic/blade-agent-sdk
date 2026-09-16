@@ -4,9 +4,9 @@ import type { MemoryStore } from '../../../../memory/MemoryStore.js';
 import type { Memory, MemoryInput } from '../../../../memory/types.js';
 import type { JsonObject } from '../../../../types/json.js';
 import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import { collectToolExecution } from '../../../types/result.js';
-import { createBuiltinToolGroups, flattenBuiltinToolGroups } from '../../groups.js';
+import { builtinTools } from '../../index.js';
 import { memoryReadTool, memoryWriteTool } from '../index.js';
 
 class InMemoryStore implements MemoryStore {
@@ -38,14 +38,14 @@ async function executeTool(
   manager: MemoryManager,
 ) {
   const registry = new ToolRegistry({ memoryManager: manager });
-  registry.register(tool);
+  registry.register(tool, BUILTIN_TOOL_SOURCE);
   return collectToolExecution(new ExecutionPipeline(registry).execute(tool.name, params, {}));
 }
 
 describe('memory tools', () => {
   it('does not register memory tools by default', async () => {
     const registry = new ToolRegistry();
-    registry.registerAll(flattenBuiltinToolGroups(createBuiltinToolGroups()));
+    registry.registerAll(builtinTools, BUILTIN_TOOL_SOURCE);
     expect(registry.getAll().map((tool) => tool.name)).not.toEqual(
       expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
@@ -54,7 +54,7 @@ describe('memory tools', () => {
   it('registers memory tools only when a manager is provided', async () => {
     const manager = new MemoryManager(new InMemoryStore());
     const registry = new ToolRegistry({ memoryManager: manager });
-    registry.registerAll(flattenBuiltinToolGroups(createBuiltinToolGroups()));
+    registry.registerAll(builtinTools, BUILTIN_TOOL_SOURCE);
 
     expect(registry.getAll().map((tool) => tool.name)).toEqual(
       expect.arrayContaining(['MemoryRead', 'MemoryWrite']),

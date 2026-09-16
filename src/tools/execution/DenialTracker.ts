@@ -65,8 +65,6 @@ export class DenialTracker {
   toSummary(): string {
     const records = this.list();
     if (records.length === 0) return '(no denied operations)';
-    return records
-      .map((r) => `- ${r.signature} (denied ${r.count}x: ${r.reason})`)
-      .join('\n');
+    return records.map((r) => `- ${r.signature} (denied ${r.count}x: ${r.reason})`).join('\n');
   }
 }

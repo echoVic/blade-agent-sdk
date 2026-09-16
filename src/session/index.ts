@@ -7,6 +7,18 @@ export {
 export type { ProviderAdapter } from '../services/ProviderRegistry.js';
 export { ProviderRegistry } from '../services/ProviderRegistry.js';
 export * from './events/core.js';
+export {
+  coveredRequestOf,
+  hasHistoryGap,
+  mergeHistoryProgress,
+  type SessionHistoryProgress,
+} from './historyProgress.js';
+export {
+  type HistoryRepairOptions,
+  type HistoryRepairReason,
+  type HistoryRepairResult,
+  repairSessionHistory,
+} from './historyRepair.js';
 export type { ForkOptions, ResumeOptions } from './Session.js';
 export { createSession, forkSession, prompt, resumeSession } from './Session.js';
 export type {
@@ -22,18 +34,6 @@ export type {
   SessionRepositorySubagentRef,
 } from './SessionRepository.js';
 export { isSessionEventStore } from './SessionRepository.js';
-export {
-  coveredRequestOf,
-  hasHistoryGap,
-  mergeHistoryProgress,
-  type SessionHistoryProgress,
-} from './historyProgress.js';
-export {
-  repairSessionHistory,
-  type HistoryRepairOptions,
-  type HistoryRepairReason,
-  type HistoryRepairResult,
-} from './historyRepair.js';
 export {
   parseSessionStreamEvent,
   sessionStreamEventSchema,

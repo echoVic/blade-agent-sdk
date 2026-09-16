@@ -21,7 +21,7 @@ import type { PermissionHandler } from '../../../types/permissions.js';
 import { ToolKind } from '../../behavior.js';
 import { readTool } from '../../builtin/file/read.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolRegistry } from '../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
 import type { ToolResult, ToolYield } from '../../types/result.js';
 import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
@@ -32,7 +32,7 @@ import { ExecutionPipeline } from '../ExecutionPipeline.js';
 import { FileLockManager } from '../FileLockManager.js';
 
 function registerTool(registry: ToolRegistry, tool: Tool): void {
-  registry.register(tool);
+  registry.register(tool, BUILTIN_TOOL_SOURCE);
 }
 
 function deferred<T = void>() {

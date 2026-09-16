@@ -3,9 +3,9 @@ import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime
 import { isSkillAvailableInContext } from '../../../skills/index.js';
 import type { SkillContent } from '../../../skills/types.js';
 import { HookEvent } from '../../../types/constants.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -20,6 +20,7 @@ import { lazySchema } from '../../validation/lazySchema.js';
  */
 export const skillTool = createTool({
   name: 'Skill',
+  group: 'system',
   displayName: 'Skill',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',

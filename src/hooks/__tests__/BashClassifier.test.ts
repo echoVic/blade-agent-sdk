@@ -29,9 +29,8 @@ describe('BashClassifier', () => {
     expect(BashClassifier.classify('eval "$COMMAND"').category).toBe('destructive');
     expect(BashClassifier.classify('sh -c "$COMMAND"').category).toBe('destructive');
     expect(
-      BashClassifier.classify(
-        `node -e "require('fs').writeFileSync('/tmp/output.txt', 'x')"`,
-      ).category,
+      BashClassifier.classify(`node -e "require('fs').writeFileSync('/tmp/output.txt', 'x')"`)
+        .category,
     ).toBe('write');
   });
 

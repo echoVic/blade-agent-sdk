@@ -47,17 +47,11 @@ describe('Matcher', () => {
     });
 
     it('rejects unsafe or oversized regular expressions', () => {
+      expect(matcher.matches({ tools: '(a+)+$' }, { toolName: `${'a'.repeat(10_000)}!` })).toBe(
+        false,
+      );
       expect(
-        matcher.matches(
-          { tools: '(a+)+$' },
-          { toolName: `${'a'.repeat(10_000)}!` },
-        ),
-      ).toBe(false);
-      expect(
-        matcher.matches(
-          { tools: `^${'a'.repeat(300)}$` },
-          { toolName: 'a'.repeat(300) },
-        ),
+        matcher.matches({ tools: `^${'a'.repeat(300)}$` }, { toolName: 'a'.repeat(300) }),
       ).toBe(false);
     });
 

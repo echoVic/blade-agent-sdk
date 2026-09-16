@@ -6,7 +6,7 @@ import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SkillRegistry } from '../../../../skills/SkillRegistry.js';
 import { SessionId } from '../../../../types/identifiers.js';
 import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import { collectToolExecution, type ToolYield } from '../../../types/result.js';
 import { skillTool } from '../skill.js';
@@ -27,7 +27,7 @@ async function executeSkill(
   skillRegistry: SkillRegistry,
 ) {
   const registry = new ToolRegistry({ skillRegistry });
-  registry.register(skillTool);
+  registry.register(skillTool, BUILTIN_TOOL_SOURCE);
   const events: ToolYield[] = [];
   const result = await collectToolExecution(
     new ExecutionPipeline(registry).execute(skillTool.name, params, context),

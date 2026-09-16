@@ -18,7 +18,6 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
-import { resolveMcpServerName } from '../mcp/toolSource.js';
 import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import type { ToolMiddleware } from '../middleware/ToolMiddleware.js';
 import type { ModelMessage } from '../model/message.js';
@@ -29,10 +28,9 @@ import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { getSkillRegistry } from '../skills/index.js';
 import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
-import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
-import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ToolServices } from '../tools/services.js';
 import type { Tool } from '../tools/types/tool.js';
 import { PermissionMode } from '../types/constants.js';
@@ -97,7 +95,6 @@ export class Agent {
   private runtimeOptions: AgentRuntimeOptions;
   private isInitialized = false;
   private executionPipeline: ExecutionPipeline;
-  private readonly toolCatalog: ToolCatalog;
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
@@ -165,8 +162,6 @@ export class Agent {
     this.hookRuntime = deps.hookRuntime;
     this.executionPipeline =
       deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
-    this.toolCatalog =
-      this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -554,8 +549,7 @@ export class Agent {
       ...(this.runtimeMcpRegistry ? { mcpRegistry: this.runtimeMcpRegistry } : {}),
     };
     const registry = new ToolRegistry(services);
-    const catalog = new ToolCatalog(registry);
-    services.discoverableCatalog = new ToolExposurePlanner(catalog);
+    services.discoverableCatalog = new ToolExposurePlanner(registry);
     const permissions: PermissionsConfig = {
       ...this.config.permissions,
       ...this.runtimeOptions.permissions,
@@ -573,7 +567,6 @@ export class Agent {
       permissionHandler,
       toolTimeoutMs: this.config.toolTimeoutMs,
       middleware,
-      toolCatalog: catalog,
     });
   }
 
@@ -742,11 +735,7 @@ export class Agent {
       this.logger.debug('📦 No builtin tools available');
       return;
     }
-    this.toolCatalog.registerAll(builtinTools, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    this.executionPipeline.getRegistry().registerAll(builtinTools, BUILTIN_TOOL_SOURCE);
 
     if (this.runtimeManaged || !this.runtimeMcpRegistry) {
       return;
@@ -772,14 +761,15 @@ export class Agent {
       }
     }
 
-    const mcpTools = await this.runtimeMcpRegistry.getAvailableToolsByServerNames(
+    const mcpTools = await this.runtimeMcpRegistry.getAvailableToolEntriesByServerNames(
       Array.from(targetServerNames),
     );
-    for (const tool of mcpTools) {
-      this.toolCatalog.registerMcpTool(tool, {
+    for (const { tool, serverName } of mcpTools) {
+      this.executionPipeline.getRegistry().registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveMcpServerName(tool),
+        sourceId: serverName,
+        serverName,
       });
     }
   }

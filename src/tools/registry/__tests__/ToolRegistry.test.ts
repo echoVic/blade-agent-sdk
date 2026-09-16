@@ -1,43 +1,64 @@
 import Type from 'typebox';
-import { describe, expect, it, vi } from 'vitest';
-import { PermissionMode } from '../../../types/constants.js';
-import { createTool as createRuntimeTool, defineTool } from '../../core/createTool.js';
+import { describe, expect, it } from 'vitest';
+import { createTool, defineTool } from '../../core/createTool.js';
 import { completeToolExecution } from '../../types/result.js';
-import { ToolRegistry } from '../ToolRegistry.js';
+import { ToolRegistry, type ToolSourceInfo } from '../ToolRegistry.js';
 
-function createTool(
+const BUILTIN_SOURCE = {
+  kind: 'builtin',
+  trustLevel: 'trusted',
+  sourceId: 'builtin',
+} as const;
+
+const CUSTOM_SOURCE = {
+  kind: 'custom',
+  trustLevel: 'workspace',
+  sourceId: 'test',
+} as const;
+
+function mcpSource(serverName: string): ToolSourceInfo & { kind: 'mcp' } {
+  return {
+    kind: 'mcp',
+    trustLevel: 'remote',
+    sourceId: serverName,
+    serverName,
+  };
+}
+
+function createRuntimeTool(
   name: string,
   options: {
-    isReadOnly?: boolean;
-    tags?: string[];
-    aliases?: string[];
-    sideEffect?: 'pure' | 'idempotent' | 'non_idempotent';
-    displayName?: string;
-    description?: string | { short: string; long?: string };
-    category?: string;
-    exposure?: { mode?: 'eager' | 'deferred' | 'discoverable-only'; discoveryHint?: string };
+    readonly aliases?: string[];
+    readonly isReadOnly?: boolean;
   } = {},
 ) {
-  const authoredDescription = options.description ?? name;
-  const description =
-    typeof authoredDescription === 'string' ? { short: authoredDescription } : authoredDescription;
-  return createRuntimeTool({
+  return createTool({
     name,
-    aliases: options.aliases ?? [],
-    displayName: options.displayName ?? name,
-    description,
+    aliases: options.aliases,
+    displayName: name,
     kind: options.isReadOnly ? 'readonly' : 'execute',
-    sideEffect: options.sideEffect ?? (options.isReadOnly ? 'pure' : 'non_idempotent'),
-    isReadOnly: options.isReadOnly ?? false,
+    sideEffect: options.isReadOnly ? 'pure' : 'non_idempotent',
+    description: { short: name },
     schema: Type.Object({}),
-    tags: options.tags ?? [],
-    category: options.category,
-    exposure: options.exposure,
     execute: () => completeToolExecution({ status: 'success', model: 'ok' }),
   });
 }
 
-describe('ToolRegistry ordering', () => {
+describe('ToolRegistry', () => {
+  it('owns tool source metadata in the registry entry', () => {
+    const registry = new ToolRegistry();
+    const tool = createRuntimeTool('Read', { isReadOnly: true });
+
+    registry.register(tool, BUILTIN_SOURCE);
+
+    expect(registry.entries()).toEqual([
+      {
+        tool,
+        source: BUILTIN_SOURCE,
+      },
+    ]);
+  });
+
   it('skips definitions when a declared service is unavailable', () => {
     const registry = new ToolRegistry();
     const definition = defineTool({
@@ -50,190 +71,103 @@ describe('ToolRegistry ordering', () => {
       },
     });
 
-    expect(registry.registerDefinition(definition)).toBeUndefined();
+    expect(registry.registerDefinition(definition, CUSTOM_SOURCE)).toBeUndefined();
     expect(registry.has('MemoryBackedTool')).toBe(false);
   });
 
   it('rejects tools without a valid side-effect contract', () => {
     const registry = new ToolRegistry();
+    const invalidTool = {
+      ...createRuntimeTool('MissingContract'),
+      staticBehavior: undefined,
+    };
 
-    expect(() =>
-      registry.register({
-        ...createTool('MissingContract'),
-        staticBehavior: undefined,
-      } as never),
-    ).toThrow(/must declare sideEffect/);
-    expect(() =>
-      registry.registerMcpTool({
-        ...createTool('InvalidContract'),
-        staticBehavior: { sideEffect: 'unknown' },
-      } as never),
-    ).toThrow(/must declare sideEffect/);
+    expect(() => registry.register(invalidTool as never, CUSTOM_SOURCE)).toThrow(
+      /must declare sideEffect/,
+    );
   });
 
-  it('is a plain registry instead of exposing EventEmitter APIs', () => {
+  it('sorts non-MCP entries before MCP entries by name', () => {
     const registry = new ToolRegistry();
+    registry.register(createRuntimeTool('Write'), BUILTIN_SOURCE);
+    registry.register(createRuntimeTool('Read', { isReadOnly: true }), BUILTIN_SOURCE);
+    registry.registerMcpTool(createRuntimeTool('mcp__z__search'), mcpSource('z'));
+    registry.registerMcpTool(createRuntimeTool('mcp__a__browser'), mcpSource('a'));
 
-    expect('on' in (registry as unknown as Record<string, unknown>)).toBe(false);
-    expect('emit' in (registry as unknown as Record<string, unknown>)).toBe(false);
-  });
-
-  it('stably sorts builtin tools before MCP tools by name', () => {
-    const registry = new ToolRegistry();
-    registry.register(createTool('Write') as never);
-    registry.register(createTool('Read', { isReadOnly: true }) as never);
-    registry.registerMcpTool(createTool('mcp__z__search', { tags: ['mcp'] }) as never);
-    registry.registerMcpTool(createTool('mcp__a__browser', { tags: ['mcp'] }) as never);
-
-    expect(registry.getFunctionDeclarationsByMode()).toEqual([
-      expect.objectContaining({ name: 'Read' }),
-      expect.objectContaining({ name: 'Write' }),
-      expect.objectContaining({ name: 'mcp__a__browser' }),
-      expect.objectContaining({ name: 'mcp__z__search' }),
+    expect(registry.getAll().map((tool) => tool.name)).toEqual([
+      'Read',
+      'Write',
+      'mcp__a__browser',
+      'mcp__z__search',
     ]);
   });
 
-  it('keeps the same stable ordering in plan mode after readonly filtering', () => {
+  it('resolves aliases and removes them with the canonical entry', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('Write') as never);
-    registry.register(createTool('Glob', { isReadOnly: true }) as never);
-    registry.registerMcpTool(
-      createTool('mcp__z__docs', { isReadOnly: true, tags: ['mcp'] }) as never,
-    );
-    registry.registerMcpTool(
-      createTool('mcp__a__api', { isReadOnly: true, tags: ['mcp'] }) as never,
+    registry.register(
+      createRuntimeTool('Read', { aliases: ['FileRead', 'OpenFile'] }),
+      BUILTIN_SOURCE,
     );
 
-    expect(registry.getFunctionDeclarationsByMode(PermissionMode.PLAN)).toEqual([
-      expect.objectContaining({ name: 'Glob' }),
-      expect.objectContaining({ name: 'mcp__a__api' }),
-      expect.objectContaining({ name: 'mcp__z__docs' }),
-    ]);
-  });
-
-  it('uses behavior hints when filtering readonly declarations for plan mode', () => {
-    const registry = new ToolRegistry();
-    registry.register(createTool('HintRead', { isReadOnly: true }));
-    registry.register(createTool('HintWrite'));
-
-    expect(registry.getFunctionDeclarationsByMode(PermissionMode.PLAN)).toEqual([
-      expect.objectContaining({ name: 'HintRead' }),
-    ]);
-  });
-
-  it('caches sorted tool lists until registry contents change', () => {
-    const registry = new ToolRegistry();
-    registry.register(createTool('Write') as never);
-    registry.register(createTool('Read', { isReadOnly: true }) as never);
-    registry.registerMcpTool(createTool('mcp__z__search', { tags: ['mcp'] }) as never);
-
-    const sortSpy = vi.spyOn(
-      registry as unknown as { getSortedTools: (tools: unknown[]) => unknown[] },
-      'getSortedTools',
-    );
-
-    registry.getAll();
-    registry.getAll();
-    registry.getBuiltinTools();
-    registry.getBuiltinTools();
-    registry.getMcpTools();
-    registry.getMcpTools();
-
-    expect(sortSpy).toHaveBeenCalledTimes(3);
-
-    registry.registerMcpTool(createTool('mcp__a__browser', { tags: ['mcp'] }) as never);
-    registry.getAll();
-    registry.getBuiltinTools();
-    registry.getMcpTools();
-
-    expect(sortSpy).toHaveBeenCalledTimes(6);
-  });
-
-  it('resolves tools by alias and removes alias mappings on unregister', () => {
-    const registry = new ToolRegistry();
-    registry.register(createTool('Read', { aliases: ['FileRead', 'OpenFile'] }) as never);
-
-    expect(registry.get('Read')?.name).toBe('Read');
     expect(registry.get('FileRead')?.name).toBe('Read');
-    expect(registry.has('OpenFile')).toBe(true);
-
-    registry.unregister('Read');
-
-    expect(registry.get('FileRead')).toBeUndefined();
-    expect(registry.has('OpenFile')).toBe(false);
+    expect(registry.unregister('OpenFile')).toBe(true);
+    expect(registry.has('Read')).toBe(false);
+    expect(registry.has('FileRead')).toBe(false);
   });
 
-  it('rejects alias collisions with existing tool names or aliases', () => {
+  it('rejects alias collisions', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('Read', { aliases: ['FileRead'] }) as never);
+    registry.register(createRuntimeTool('Read', { aliases: ['FileRead'] }), BUILTIN_SOURCE);
 
     expect(() =>
-      registry.register(createTool('OtherTool', { aliases: ['Read'] }) as never),
+      registry.register(createRuntimeTool('OtherTool', { aliases: ['Read'] }), CUSTOM_SOURCE),
     ).toThrow(/别名|冲突/);
-
     expect(() =>
-      registry.register(createTool('ThirdTool', { aliases: ['FileRead'] }) as never),
+      registry.register(createRuntimeTool('ThirdTool', { aliases: ['FileRead'] }), CUSTOM_SOURCE),
     ).toThrow(/别名|冲突/);
   });
 
-  it('enforces the MCP namespace in both registration directions', () => {
+  it('enforces the MCP namespace from structured source metadata', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('Read') as never);
 
-    expect(() => registry.register(createTool('mcp__remote__Read') as never)).toThrow(
+    expect(() => registry.register(createRuntimeTool('mcp__remote__Read'), CUSTOM_SOURCE)).toThrow(
       /保留的 MCP 命名空间/,
     );
-    expect(() => registry.registerMcpTool(createTool('Read', { tags: ['mcp'] }) as never)).toThrow(
+    expect(() => registry.registerMcpTool(createRuntimeTool('Read'), mcpSource('remote'))).toThrow(
       /必须使用保留命名空间/,
     );
   });
 
-  it('searches alias names alongside canonical tool metadata', () => {
+  it('replaces MCP entries during server refresh', () => {
     const registry = new ToolRegistry();
-    registry.register(createTool('Read', { aliases: ['FileRead'] }) as never);
+    const original = createRuntimeTool('mcp__docs__Search');
+    const replacement = createRuntimeTool('mcp__docs__Search', {
+      aliases: ['DocsSearch'],
+    });
 
-    expect(registry.search('fileread').map((tool) => tool.name)).toEqual(['Read']);
+    registry.registerMcpTool(original, mcpSource('docs'));
+    registry.registerMcpTool(replacement, mcpSource('docs'));
+
+    expect(registry.get('mcp__docs__Search')).toBe(replacement);
+    expect(registry.get('DocsSearch')).toBe(replacement);
   });
 
-  it('prioritizes exact name and alias matches ahead of looser description hits', () => {
+  it('removes MCP tools by structured server ownership', () => {
     const registry = new ToolRegistry();
-    registry.register(
-      createTool('Inspect', {
-        aliases: ['Scan'],
-        description: { short: 'Inspect project files' },
-      }) as never,
-    );
-    registry.register(
-      createTool('ProjectAnalyzer', {
-        description: { short: 'Runs a scan over the project' },
-      }) as never,
-    );
+    const tool = createRuntimeTool('mcp__docs_api__Search');
+    registry.registerMcpTool(tool, mcpSource('docs api'));
 
-    expect(registry.search('scan').map((tool) => tool.name)).toEqual([
-      'Inspect',
-      'ProjectAnalyzer',
-    ]);
+    expect(registry.removeMcpTools('docs api')).toBe(1);
+    expect(registry.has(tool.name)).toBe(false);
   });
 
-  it('indexes discovery hints and long descriptions for deferred tool search', () => {
+  it('does not expose search, stats, or declaration filtering APIs', () => {
     const registry = new ToolRegistry();
-    registry.register(
-      createTool('HeavyInspect', {
-        description: {
-          short: 'Heavy inspection tool',
-          long: 'Performs exhaustive repository inspection for architecture review.',
-        },
-        exposure: {
-          mode: 'deferred',
-          discoveryHint: 'Use for architecture review or deep repository inspection.',
-        },
-        tags: ['analysis'],
-        category: 'inspection',
-      }) as never,
-    );
 
-    expect(registry.search('architecture review').map((tool) => tool.name)).toEqual([
-      'HeavyInspect',
-    ]);
+    expect('search' in registry).toBe(false);
+    expect('getStats' in registry).toBe(false);
+    expect('getByCategory' in registry).toBe(false);
+    expect('getByTag' in registry).toBe(false);
+    expect('getFunctionDeclarationsByMode' in registry).toBe(false);
   });
 });

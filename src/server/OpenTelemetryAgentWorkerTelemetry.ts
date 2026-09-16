@@ -1,4 +1,4 @@
-import { metrics, type Attributes, type Meter } from '@opentelemetry/api';
+import { type Attributes, type Meter, metrics } from '@opentelemetry/api';
 import type { AgentWorkerSnapshot } from './AgentWorker.js';
 import type { AgentWorkerErrorMetric, AgentWorkerTelemetry } from './AgentWorkerTelemetry.js';
 

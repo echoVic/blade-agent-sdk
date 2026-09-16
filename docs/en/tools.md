@@ -1,12 +1,8 @@
 # Tools
 
-The SDK exposes three tool authoring APIs:
-
-| API | Schema | Use |
-|-----|--------|-----|
-| `defineTool()` | TypeBox | Lightweight typed definitions accepted by Session |
-| `createTool()` | TypeBox | Full inference, runtime validation, and interruption policy |
-| `toolFromDefinition()` | TypeBox | Convert a definition into the internal `Tool` interface |
+The SDK exposes `defineTool()` as its only custom-tool authoring API. It uses a
+TypeBox parameter schema and returns a `ToolDefinition` accepted directly by
+Agent and Session.
 
 Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
 `defineTool()` also accepts a regular async function and wraps its return value.
@@ -95,46 +91,6 @@ const delegated = defineTool({
 declared service, it does not register the tool. Undeclared services are not
 exposed, and ordinary tools receive no `runtime` property.
 
-## createTool
-
-```ts
-import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import Type from 'typebox';
-
-const deploy = createTool({
-  name: 'Deploy',
-  displayName: 'Deploy',
-  kind: ToolKind.Execute,
-  sideEffect: ToolSideEffect.NON_IDEMPOTENT,
-  description: {
-    short: 'Deploy an application',
-    long: 'Deploy a tested build to staging or production.',
-    important: ['Production requires explicit approval.'],
-  },
-  schema: Type.Object({
-    environment: Type.Enum(['staging', 'production']),
-    version: Type.String(),
-  }),
-  interruptBehavior: 'block',
-  async *execute(params) {
-    yield {
-      kind: 'progress',
-      message: 'Deploying',
-      data: params,
-    };
-    return {
-      status: 'success',
-      model: `Deployed ${params.version} to ${params.environment}`,
-      display: { summary: `Deployment completed: ${params.environment}` },
-    };
-  },
-});
-```
-
-`createTool()` returns a complete `Tool` that can be passed directly to
-`SessionOptions.tools`. Session preserves the instance instead of adapting it,
-so validation, behavior, and interruption settings remain intact.
-
 ## Streaming contract
 
 ```ts
@@ -160,11 +116,10 @@ type ToolExecution<TData extends JsonValue = JsonValue> =
   AsyncGenerator<ToolYield, ToolResult<TData>, void>;
 ```
 
-`createTool()` and directly constructed `ToolDefinition` values must still
-return a generator. Use `completeToolExecution(result)` to wrap a terminal
-result. `defineTool()` performs that wrapping for regular async functions.
-Use `collectToolExecution(execution)` when a consumer only needs the return
-value.
+`defineTool()` accepts both regular async functions and async generators. It
+wraps regular async functions as `ToolExecution`; use an async generator when
+the tool emits intermediate events. Use `collectToolExecution(execution)` when
+a consumer only needs the return value.
 
 ## ToolResult
 
@@ -262,26 +217,11 @@ Before publishing, a tool package must:
 
 ## Interruption
 
-`interruptBehavior` controls a tool when a `priority: 'now'` input arrives:
+`interruptBehavior` controls a tool when a `priority: 'now'` input arrives.
+Public `defineTool()` definitions use the conservative `block` default:
 
 - `block` is the default. The tool completes before steering is applied.
 - `cancel` is for tools that observe `context.signal` and reliably release resources.
-
-```ts
-const tool = createTool({
-  // ...
-  sideEffect: ToolSideEffect.IDEMPOTENT,
-  interruptBehavior: 'cancel',
-  async *execute(params, context) {
-    context.signal?.throwIfAborted();
-    try {
-      return await run(params, context.signal);
-    } finally {
-      await releaseResources();
-    }
-  },
-});
-```
 
 Explicit `session.abort()` and `session.close()` are request-level cancellation and are not blocked by `interruptBehavior: 'block'`.
 Both methods wait for active tool cleanup, so custom tools must honor the
@@ -315,14 +255,14 @@ grant and cancellation happen in the same turn, the pipeline rechecks the
 signal and releases every acquired lease before returning the cancellation
 result.
 
-`interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
-`defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
-`cancel` when a custom Session tool can safely stop for a `now` input.
+`defineTool()` / `ToolDefinition` does not expose `interruptBehavior`. Custom
+tools must still observe `context.signal` and clean up promptly during explicit
+`session.abort()` or `session.close()`.
 
 ## Side-effect contract
 
-Every `ToolDefinition`, `ToolConfig`, and complete `Tool` must explicitly
-declare `sideEffect`:
+Every tool should declare an accurate `sideEffect`. A `ToolDefinition` that
+omits it is treated conservatively as `non_idempotent`:
 
 - `pure`: does not mutate external state and can be replayed during recovery.
 - `idempotent`: repeating the same invocation reaches the same intended state
@@ -351,9 +291,10 @@ interface ToolDefinition<
   parameters: TSchema;
   sideEffect?: ToolSideEffect;
   kind?: ToolKind;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   exposure?: ToolExposureConfig;
+  services?: readonly ToolServiceName[];
+  requiresRuntime?: boolean;
   execute(
     params: Type.Static<TSchema>,
     context: ExecutionContext,
@@ -365,22 +306,20 @@ interface ToolDefinition<
 
 ```ts
 interface ExecutionContext {
-  userId?: string;
   sessionId?: SessionId;
   messageId?: MessageId;
   contextSnapshot?: ContextSnapshot;
-  skillActivationPaths?: string[];
   signal?: AbortSignal;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: IBackgroundAgentManager;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
-  discoveredTools?: string[];
-  toolInvocationLifecycle?: ToolInvocationLifecycle; // injected by the runtime
 }
 ```
+
+Session services named in `services` are added to the authoring context on
+demand. Setting `requiresRuntime: true` also provides readonly
+`context.runtime`; registry, exposure-planning, and durable lifecycle
+capabilities are not handed directly to tools.
 
 ```ts
 interface ConfirmationDetails {

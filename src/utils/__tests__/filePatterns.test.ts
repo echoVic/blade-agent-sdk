@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_EXCLUDE_DIRS,
-  FileFilter,
-} from '../filePatterns.js';
+import { DEFAULT_EXCLUDE_DIRS, FileFilter } from '../filePatterns.js';
 
 describe('filePatterns', () => {
   describe('DEFAULT_EXCLUDE_DIRS', () => {
@@ -136,5 +133,4 @@ describe('filePatterns', () => {
       });
     });
   });
-
 });

@@ -1,18 +1,7 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ExecutionId } from '../../types/identifiers.js';
-import {
-  DockerExecutionHost,
-  type DockerExecutionHostOptions,
-} from '../DockerExecutionHost.js';
-import type {
-  ExecutionProvisionRequest,
-  ExecutionResourceLimits,
-} from '../ExecutionHost.js';
+import { DockerExecutionHost, type DockerExecutionHostOptions } from '../DockerExecutionHost.js';
+import type { ExecutionProvisionRequest, ExecutionResourceLimits } from '../ExecutionHost.js';
 
 const pinnedImage = `example.invalid/agent@sha256:${'a'.repeat(64)}`;
 const resources: ExecutionResourceLimits = {
@@ -24,9 +13,7 @@ const resources: ExecutionResourceLimits = {
   maxOutputBytes: 1024 * 1024,
 };
 
-function request(
-  overrides: Partial<ExecutionProvisionRequest> = {},
-): ExecutionProvisionRequest {
+function request(overrides: Partial<ExecutionProvisionRequest> = {}): ExecutionProvisionRequest {
   return {
     image: pinnedImage,
     workspace: { kind: 'empty' },
@@ -73,15 +60,8 @@ describe('DockerExecutionHost reclaim', () => {
 
 describe('DockerExecutionHost validation', () => {
   it('requires a numeric, non-root uid and gid', () => {
-    for (const containerUser of [
-      'root',
-      '1000',
-      '0:1000',
-      '1000:0',
-      'user:group',
-    ]) {
-      expect(() => new DockerExecutionHost({ containerUser }))
-        .toThrow(/numeric uid:gid/);
+    for (const containerUser of ['root', '1000', '0:1000', '1000:0', 'user:group']) {
+      expect(() => new DockerExecutionHost({ containerUser })).toThrow(/numeric uid:gid/);
     }
   });
 
@@ -90,29 +70,39 @@ describe('DockerExecutionHost validation', () => {
       runtimeBinary: '/definitely/missing/docker',
     });
 
-    await expect(host.provision(request({
-      image: 'alpine:latest',
-    }))).rejects.toMatchObject({
+    await expect(
+      host.provision(
+        request({
+          image: 'alpine:latest',
+        }),
+      ),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_INVALID_REQUEST',
     });
   });
 
-  it.each(['GITHUB_TOKEN', 'APIKEY', 'MYTOKEN', 'KEY_API'])(
-    'rejects likely long-lived secret name %s in persistent environments',
-    async (name) => {
+  it.each([
+    'GITHUB_TOKEN',
+    'APIKEY',
+    'MYTOKEN',
+    'KEY_API',
+  ])('rejects likely long-lived secret name %s in persistent environments', async (name) => {
     const host = new DockerExecutionHost({
       runtimeBinary: '/definitely/missing/docker',
     });
 
-    await expect(host.provision(request({
-      environment: {
-        [name]: 'long-lived-value',
-      },
-    }))).rejects.toMatchObject({
+    await expect(
+      host.provision(
+        request({
+          environment: {
+            [name]: 'long-lived-value',
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_INVALID_REQUEST',
     });
-    },
-  );
+  });
 
   it.each([
     ['cpus', 0],
@@ -123,35 +113,40 @@ describe('DockerExecutionHost validation', () => {
     ['maxOutputBytes', 0],
   ] satisfies ReadonlyArray<
     readonly [keyof ExecutionResourceLimits, number]
-  >)(
-    'rejects an invalid %s limit before contacting the runtime',
-    async (name, value) => {
-      const host = new DockerExecutionHost({
-        runtimeBinary: '/definitely/missing/docker',
-      });
+  >)('rejects an invalid %s limit before contacting the runtime', async (name, value) => {
+    const host = new DockerExecutionHost({
+      runtimeBinary: '/definitely/missing/docker',
+    });
 
-      await expect(host.provision(request({
-        resources: {
-          ...resources,
-          [name]: value,
-        },
-      }))).rejects.toMatchObject({
-        code: 'EXECUTION_RESOURCE_LIMIT',
-      });
-    },
-  );
+    await expect(
+      host.provision(
+        request({
+          resources: {
+            ...resources,
+            [name]: value,
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'EXECUTION_RESOURCE_LIMIT',
+    });
+  });
 
   it('fails closed when proxy egress has no controller', async () => {
     const host = new DockerExecutionHost({
       runtimeBinary: '/definitely/missing/docker',
     });
 
-    await expect(host.provision(request({
-      network: {
-        mode: 'proxy',
-        allowedHosts: ['api.example.com'],
-      },
-    }))).rejects.toMatchObject({
+    await expect(
+      host.provision(
+        request({
+          network: {
+            mode: 'proxy',
+            allowedHosts: ['api.example.com'],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_NETWORK_POLICY',
     });
   });
@@ -173,12 +168,16 @@ describe('DockerExecutionHost validation', () => {
     };
     const host = new DockerExecutionHost(options);
 
-    await expect(host.provision(request({
-      network: {
-        mode: 'proxy',
-        allowedHosts,
-      },
-    }))).rejects.toMatchObject({
+    await expect(
+      host.provision(
+        request({
+          network: {
+            mode: 'proxy',
+            allowedHosts,
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_NETWORK_POLICY',
     });
   });
@@ -190,9 +189,13 @@ describe('DockerExecutionHost validation', () => {
     const metadata: Record<string, unknown> = {};
     metadata.self = metadata;
 
-    await expect(host.provision(request({
-      metadata: metadata as never,
-    }))).rejects.toMatchObject({
+    await expect(
+      host.provision(
+        request({
+          metadata: metadata as never,
+        }),
+      ),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_INVALID_REQUEST',
     });
   });

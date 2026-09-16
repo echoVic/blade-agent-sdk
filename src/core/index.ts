@@ -2,18 +2,10 @@
 // Keep this entry free of Node-only runtime imports.
 
 export type { UserMessageContent } from '../agent/UserMessageContent.js';
-export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 export type { ProviderRegistryErrorCode } from '../errors/ProviderRegistryError.js';
+export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 export type { McpServerConfig } from '../mcp/config.js';
 export * from '../middleware/index.js';
-export {
-  CONVERSATION_MESSAGE_SOURCES,
-  isBuiltinProviderType,
-  isConversationMessageSource,
-  normalizeModelUsage,
-  PROVIDER_TYPES,
-  resolveModelIdentity
-} from '../model/index.js';
 export type {
   BuiltinProviderType,
   ConversationMessage,
@@ -42,7 +34,15 @@ export type {
   ProviderConnectionConfig,
   ProviderType,
   QuerySource,
-  TokenUsage
+  TokenUsage,
+} from '../model/index.js';
+export {
+  CONVERSATION_MESSAGE_SOURCES,
+  isBuiltinProviderType,
+  isConversationMessageSource,
+  normalizeModelUsage,
+  PROVIDER_TYPES,
+  resolveModelIdentity,
 } from '../model/index.js';
 export type {
   AgentTrace,
@@ -52,7 +52,7 @@ export type {
   TraceSink,
   TraceSpan,
   TraceSpanKind,
-  TraceStatus
+  TraceStatus,
 } from '../observability/index.js';
 export * from '../protocol/index.js';
 export type {
@@ -66,11 +66,11 @@ export type {
   RuntimePatchScope,
   RuntimePatchSkillInfo,
   RuntimeToolDiscoveryPatch,
-  RuntimeToolPolicyPatch
+  RuntimeToolPolicyPatch,
 } from '../runtime/index.js';
 export type { SandboxSettings } from '../sandbox/config.js';
-export { ProviderRegistry } from '../services/ProviderRegistry.js';
 export type { ProviderAdapter } from '../services/ProviderRegistry.js';
+export { ProviderRegistry } from '../services/ProviderRegistry.js';
 export * from '../session/events/core.js';
 export type {
   PersistedToolUse,
@@ -82,41 +82,31 @@ export type {
   SessionRepositoryMessageMetadata,
   SessionRepositoryStorageStats,
   SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef
+  SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
-export { InputPriority } from '../session/types.js';
 export type {
   InputSubmission,
   PendingSessionInput,
   SendOptions,
   SessionOptions,
   SessionStreamEvent,
-  StreamOptions
+  StreamOptions,
 } from '../session/types.js';
+export { InputPriority } from '../session/types.js';
 export { ToolKind, ToolSideEffect } from '../tools/behavior.js';
-export type {
-  DiscoverableCatalogView,
-  DiscoverableToolInfo
-} from '../tools/exposure/index.js';
+export { defineTool } from '../tools/core/createTool.js';
 export type { ToolServiceMap, ToolServiceName } from '../tools/services.js';
-export {
-  collectToolExecution,
-  completeToolExecution,
-  ToolErrorType
-} from '../tools/types/index.js';
 export type {
+  BuiltinToolGroup,
   ConfirmationDetails,
   ConfirmationHandler,
   ConfirmationResponse,
   ExecutionContext,
-  FunctionDeclaration,
   RuntimeAccess,
   ToolBehavior,
-  ToolConfig,
   ToolDefinition,
   ToolDefinitionInput,
   ToolDescription,
-  ToolDescriptionResolver,
   ToolDisplayContent,
   ToolEffect,
   ToolEffectYield,
@@ -133,16 +123,20 @@ export type {
   ToolProgress,
   ToolResult,
   ToolScheduledLifecycle,
-  ToolSchema,
   ToolSettledLifecycle,
-  ToolYield
+  ToolYield,
+} from '../tools/types/index.js';
+export {
+  collectToolExecution,
+  completeToolExecution,
+  ToolErrorType,
 } from '../tools/types/index.js';
 export {
   HookEvent,
   MessageRole,
   PermissionDecision,
   PermissionMode,
-  SessionStreamEventType
+  SessionStreamEventType,
 } from '../types/constants.js';
 export {
   AgentId,
@@ -167,7 +161,7 @@ export {
   TraceEventId,
   TraceId,
   TurnId,
-  WorkerId
+  WorkerId,
 } from '../types/identifiers.js';
 export type { JsonObject, JsonValue } from '../types/json.js';
 export type {
@@ -178,5 +172,5 @@ export type {
   PermissionResult,
   PermissionRuleValue,
   PermissionsConfig,
-  PermissionUpdate
+  PermissionUpdate,
 } from '../types/permissions.js';

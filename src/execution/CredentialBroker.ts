@@ -1,8 +1,5 @@
 import { nanoid } from 'nanoid';
-import type {
-  CredentialLeaseId,
-  ExecutionId,
-} from '../types/identifiers.js';
+import type { CredentialLeaseId, ExecutionId } from '../types/identifiers.js';
 import { CredentialLeaseId as toCredentialLeaseId } from '../types/identifiers.js';
 import { ExecutionHostError } from './ExecutionHost.js';
 
@@ -59,10 +56,7 @@ export class EphemeralCredentialBroker implements CredentialBroker {
   private readonly issuers: Readonly<Record<string, CredentialIssuer>>;
   private readonly maxTtlMs: number;
 
-  constructor(
-    issuers: Readonly<Record<string, CredentialIssuer>>,
-    maxTtlMs = 5 * 60 * 1000,
-  ) {
+  constructor(issuers: Readonly<Record<string, CredentialIssuer>>, maxTtlMs = 5 * 60 * 1000) {
     if (!Number.isSafeInteger(maxTtlMs) || maxTtlMs < 1) {
       throw new ExecutionHostError(
         'EXECUTION_CREDENTIAL_ERROR',
@@ -102,11 +96,7 @@ export class EphemeralCredentialBroker implements CredentialBroker {
     signal?: AbortSignal,
   ): Promise<CredentialLease> {
     signal?.throwIfAborted();
-    if (
-      !Number.isSafeInteger(ttlMs)
-      || ttlMs < 1
-      || ttlMs > this.maxTtlMs
-    ) {
+    if (!Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > this.maxTtlMs) {
       throw new ExecutionHostError(
         'EXECUTION_CREDENTIAL_ERROR',
         `Credential ttlMs must be between 1 and ${this.maxTtlMs}`,
@@ -147,10 +137,10 @@ export class EphemeralCredentialBroker implements CredentialBroker {
         });
         signal?.throwIfAborted();
         if (
-          !credential
-          || typeof credential !== 'object'
-          || typeof credential.value !== 'string'
-          || typeof credential.expiresAt !== 'string'
+          !credential ||
+          typeof credential !== 'object' ||
+          typeof credential.value !== 'string' ||
+          typeof credential.expiresAt !== 'string'
         ) {
           throw new ExecutionHostError(
             'EXECUTION_CREDENTIAL_ERROR',
@@ -160,10 +150,10 @@ export class EphemeralCredentialBroker implements CredentialBroker {
         issued.push(credential);
         const credentialExpiry = Date.parse(credential.expiresAt);
         if (
-          !credential.value
-          || !Number.isFinite(credentialExpiry)
-          || credentialExpiry <= Date.now()
-          || credentialExpiry > expiresByMs
+          !credential.value ||
+          !Number.isFinite(credentialExpiry) ||
+          credentialExpiry <= Date.now() ||
+          credentialExpiry > expiresByMs
         ) {
           throw new ExecutionHostError(
             'EXECUTION_CREDENTIAL_ERROR',
@@ -187,9 +177,12 @@ export class EphemeralCredentialBroker implements CredentialBroker {
       expiresAt: new Date(leaseExpiryMs).toISOString(),
       environment: Object.freeze({ ...environment }),
     };
-    const expiryTimer = setTimeout(() => {
-      void this.release(leaseId).catch(() => undefined);
-    }, Math.max(1, leaseExpiryMs - Date.now()));
+    const expiryTimer = setTimeout(
+      () => {
+        void this.release(leaseId).catch(() => undefined);
+      },
+      Math.max(1, leaseExpiryMs - Date.now()),
+    );
     expiryTimer.unref?.();
     this.active.set(leaseId, {
       publicLease,
@@ -209,22 +202,22 @@ export class EphemeralCredentialBroker implements CredentialBroker {
     const results = await this.revokeAll(lease.issued);
     const failed = results.find((result) => result.status === 'rejected');
     if (failed?.status === 'rejected') {
-      throw new ExecutionHostError(
-        'EXECUTION_CREDENTIAL_ERROR',
-        'Credential revocation failed',
-        { cause: failed.reason },
-      );
+      throw new ExecutionHostError('EXECUTION_CREDENTIAL_ERROR', 'Credential revocation failed', {
+        cause: failed.reason,
+      });
     }
   }
 
   private revokeAll(
     issued: readonly IssuedCredential[],
   ): Promise<readonly PromiseSettledResult<void>[]> {
-    return Promise.allSettled(issued.map(async (credential) => {
-      if (typeof credential.revoke === 'function') {
-        await credential.revoke();
-      }
-    }));
+    return Promise.allSettled(
+      issued.map(async (credential) => {
+        if (typeof credential.revoke === 'function') {
+          await credential.revoke();
+        }
+      }),
+    );
   }
 
   private assertRequest(request: CredentialRequest): void {
@@ -235,11 +228,9 @@ export class EphemeralCredentialBroker implements CredentialBroker {
       );
     }
     if (
-      request.scopes
-      && (
-        request.scopes.some((scope) => !scope.trim())
-        || new Set(request.scopes).size !== request.scopes.length
-      )
+      request.scopes &&
+      (request.scopes.some((scope) => !scope.trim()) ||
+        new Set(request.scopes).size !== request.scopes.length)
     ) {
       throw new ExecutionHostError(
         'EXECUTION_CREDENTIAL_ERROR',

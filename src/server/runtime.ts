@@ -1,4 +1,16 @@
 export {
+  AgentRuntimeOperations,
+  type AgentRuntimeOperationsOptions,
+  type RuntimeEffectOperationRecord,
+  type RuntimeOperationsAction,
+  RuntimeOperationsError,
+  type RuntimeOperationsErrorCode,
+  type RuntimeOperationsHealth,
+  type RuntimeOperationsPrincipal,
+  type RuntimeOperationsWorker,
+  type RuntimeUncertainEffect,
+} from './AgentRuntimeOperations.js';
+export {
   AgentServer,
   type AgentServerOptions,
 } from './AgentServer.js';
@@ -15,18 +27,6 @@ export type {
   AgentServerEventMetric,
   AgentServerTelemetry,
 } from './AgentServerTelemetry.js';
-export {
-  AgentRuntimeOperations,
-  type AgentRuntimeOperationsOptions,
-  type RuntimeEffectOperationRecord,
-  type RuntimeOperationsAction,
-  RuntimeOperationsError,
-  type RuntimeOperationsErrorCode,
-  type RuntimeOperationsHealth,
-  type RuntimeOperationsPrincipal,
-  type RuntimeOperationsWorker,
-  type RuntimeUncertainEffect,
-} from './AgentRuntimeOperations.js';
 export {
   AgentWorker,
   type AgentWorkerHealth,
@@ -68,8 +68,8 @@ export {
   type SessionExecutorReadResult,
 } from './SessionExecutor.js';
 export {
-  type TenantAdmissionLimits,
   TenantAdmissionController,
+  type TenantAdmissionLimits,
 } from './TenantAdmissionController.js';
 export {
   assertRuntimeSessionTransition,
@@ -95,7 +95,7 @@ export {
   type RuntimeWorkerRecord,
   type RuntimeWorkerRegistration,
   type RuntimeWorkerStatus,
+  WorkerRuntimeError,
   type WorkerRuntimeErrorCode,
   type WorkerRuntimeStore,
-  WorkerRuntimeError,
 } from './WorkerRuntime.js';

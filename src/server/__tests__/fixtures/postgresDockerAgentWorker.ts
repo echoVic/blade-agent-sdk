@@ -16,18 +16,18 @@ const [
 ] = process.argv.slice(2);
 
 if (
-  !connectionString
-  || !schema
-  || !tablePrefix
-  || !rawWorkerId
-  || !image
-  || !rootDirectory
-  || !checkpointDirectory
-  || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)
+  !connectionString ||
+  !schema ||
+  !tablePrefix ||
+  !rawWorkerId ||
+  !image ||
+  !rootDirectory ||
+  !checkpointDirectory ||
+  !/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)
 ) {
   process.stderr.write(
-    'Usage: postgresDockerAgentWorker.ts <url> <schema> <prefix> '
-      + '<worker> <image> <root-directory> <checkpoint-directory>\n',
+    'Usage: postgresDockerAgentWorker.ts <url> <schema> <prefix> ' +
+      '<worker> <image> <root-directory> <checkpoint-directory>\n',
   );
   process.exit(2);
 }
@@ -82,10 +82,10 @@ async function main(): Promise<void> {
     const routes = await store.listWorkerSessions(WorkerId(rawWorkerId));
     const metadata = routes[0]?.metadata.bladeExecution;
     if (
-      typeof metadata === 'object'
-      && metadata !== null
-      && !Array.isArray(metadata)
-      && typeof metadata.checkpointId === 'string'
+      typeof metadata === 'object' &&
+      metadata !== null &&
+      !Array.isArray(metadata) &&
+      typeof metadata.checkpointId === 'string'
     ) {
       writeSync(
         process.stdout.fd,
@@ -99,9 +99,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  writeSync(
-    process.stderr.fd,
-    `${error instanceof Error ? error.stack : String(error)}\n`,
-  );
+  writeSync(process.stderr.fd, `${error instanceof Error ? error.stack : String(error)}\n`);
   process.exit(1);
 });

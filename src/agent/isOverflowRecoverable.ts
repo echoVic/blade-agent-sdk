@@ -14,8 +14,10 @@ function hasLegacyOverflowMessage(error: unknown): boolean {
   }
 
   const message = error.message.toLowerCase();
-  return CONTEXT_OVERFLOW_PATTERNS.some((pattern) => message.includes(pattern))
-    || (message.includes('413') && message.includes('payload'));
+  return (
+    CONTEXT_OVERFLOW_PATTERNS.some((pattern) => message.includes(pattern)) ||
+    (message.includes('413') && message.includes('payload'))
+  );
 }
 
 function getErrorCause(error: unknown): unknown {

@@ -1,50 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { resolveBehavior } from '../../behavior.js';
-import { createBuiltinToolGroups, flattenBuiltinToolGroups } from '../groups.js';
+import type { BuiltinToolGroup, Tool } from '../../types/tool.js';
+import { builtinTools } from '../index.js';
 
-function toolNames(tools: ReturnType<typeof flattenBuiltinToolGroups>): string[] {
+function toolNames(tools: readonly Tool[]): string[] {
   return tools.map((tool) => tool.name);
 }
 
 describe('builtin tool groups', () => {
-  it('does not require session-scoped constructor arguments', () => {
-    expect(createBuiltinToolGroups).toHaveLength(0);
-  });
-
-  it('preserves the default builtin tool boundaries and order', () => {
-    const groups = createBuiltinToolGroups();
-
-    expect(toolNames(groups.filesystem)).toEqual([
-      'Read',
-      'Edit',
-      'Write',
-      'NotebookEdit',
-      'Glob',
-      'Grep',
-    ]);
-    expect(toolNames(groups.shell)).toEqual(['Bash', 'KillShell']);
-    expect(toolNames(groups.web)).toEqual(['WebFetch', 'WebSearch']);
-    expect(toolNames(groups.task)).toEqual([
-      'Task',
-      'TaskOutput',
-      'TaskCreate',
-      'TaskGet',
-      'TaskUpdate',
-      'TaskList',
-      'TaskStop',
-      'TodoWrite',
-    ]);
-    expect(toolNames(groups.memory)).toEqual(['MemoryRead', 'MemoryWrite']);
-    expect(toolNames(groups.system)).toEqual([
-      'EnterPlanMode',
-      'ExitPlanMode',
-      'AskUserQuestion',
-      'DiscoverTools',
-      'Skill',
-    ]);
-    expect(toolNames(groups.mcpResources)).toEqual(['ListMcpResources', 'ReadMcpResource']);
-
-    expect(toolNames(flattenBuiltinToolGroups(groups))).toEqual([
+  it('preserves the default builtin tool order', () => {
+    expect(toolNames(builtinTools)).toEqual([
       'Read',
       'Edit',
       'Write',
@@ -75,11 +40,38 @@ describe('builtin tool groups', () => {
     ]);
   });
 
-  it('declares an explicit interruption policy for every default builtin tool', () => {
-    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
+  it('declares one group for every default builtin tool', () => {
+    const toolsByGroup = Object.groupBy(builtinTools, (tool) => tool.group as BuiltinToolGroup);
 
     expect(
-      Object.fromEntries(tools.map((tool) => [tool.name, tool.staticBehavior.interruptBehavior])),
+      Object.fromEntries(
+        Object.entries(toolsByGroup).map(([group, tools]) => [group, toolNames(tools ?? [])]),
+      ),
+    ).toEqual({
+      filesystem: ['Read', 'Edit', 'Write', 'NotebookEdit', 'Glob', 'Grep'],
+      shell: ['Bash', 'KillShell'],
+      web: ['WebFetch', 'WebSearch'],
+      task: [
+        'Task',
+        'TaskOutput',
+        'TaskCreate',
+        'TaskGet',
+        'TaskUpdate',
+        'TaskList',
+        'TaskStop',
+        'TodoWrite',
+      ],
+      memory: ['MemoryRead', 'MemoryWrite'],
+      system: ['EnterPlanMode', 'ExitPlanMode', 'AskUserQuestion', 'DiscoverTools', 'Skill'],
+      'mcp-resources': ['ListMcpResources', 'ReadMcpResource'],
+    });
+  });
+
+  it('declares an explicit interruption policy for every default builtin tool', () => {
+    expect(
+      Object.fromEntries(
+        builtinTools.map((tool) => [tool.name, tool.staticBehavior.interruptBehavior]),
+      ),
     ).toEqual({
       Read: 'cancel',
       Edit: 'block',
@@ -110,7 +102,7 @@ describe('builtin tool groups', () => {
       ReadMcpResource: 'block',
     });
 
-    const bash = tools.find((tool) => tool.name === 'Bash');
+    const bash = builtinTools.find((tool) => tool.name === 'Bash');
     expect(
       resolveBehavior(bash, {
         command: 'sleep 10',
@@ -126,10 +118,8 @@ describe('builtin tool groups', () => {
   });
 
   it('declares an explicit side-effect contract for every default builtin tool', () => {
-    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups());
-
     expect(
-      Object.fromEntries(tools.map((tool) => [tool.name, tool.staticBehavior.sideEffect])),
+      Object.fromEntries(builtinTools.map((tool) => [tool.name, tool.staticBehavior.sideEffect])),
     ).toEqual({
       Read: 'pure',
       Edit: 'non_idempotent',
@@ -160,7 +150,7 @@ describe('builtin tool groups', () => {
       ReadMcpResource: 'pure',
     });
 
-    const bash = tools.find((tool) => tool.name === 'Bash');
+    const bash = builtinTools.find((tool) => tool.name === 'Bash');
     expect(
       resolveBehavior(bash, {
         command: 'git status',
@@ -174,7 +164,7 @@ describe('builtin tool groups', () => {
       }),
     ).toMatchObject({ sideEffect: 'non_idempotent' });
 
-    const webFetch = tools.find((tool) => tool.name === 'WebFetch');
+    const webFetch = builtinTools.find((tool) => tool.name === 'WebFetch');
     expect(resolveBehavior(webFetch, { url: 'https://example.com', method: 'GET' })).toMatchObject({
       sideEffect: 'pure',
     });

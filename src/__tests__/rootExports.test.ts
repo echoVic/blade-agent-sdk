@@ -4,11 +4,10 @@ import type {
   AgentMiddlewareConfig,
   AgentPlugin,
   BuiltinProviderType,
+  BuiltinToolGroup,
   ConfirmationDetails,
   ConfirmationHandler,
   ConversationMessage,
-  DiscoverableCatalogView,
-  DiscoverableToolInfo,
   DurableAcceptedRequestRecovery,
   DurableCommandCommitOptions,
   DurableCommandEventDraft,
@@ -57,7 +56,6 @@ import type {
   SessionPersistence,
   SessionRepository,
   SessionTool,
-  ToolCatalogEntry,
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
@@ -81,19 +79,17 @@ import * as root from '../index.js';
 import {
   AGENT_PROTOCOL_VERSION,
   AgentCommandType,
-  collectToolExecution,
   CommandId,
+  CredentialLeaseId,
+  collectToolExecution,
   completeToolExecution,
   composeMiddleware,
-  CredentialLeaseId,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
-  definePlugin,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
   DURABLE_EXECUTION_LEASE_FORMAT,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
-  durableEventCursor,
   DurableEventStoreTimeoutError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
@@ -106,6 +102,9 @@ import {
   DurableSessionRecoveryCoordinator,
   DurableSessionRecoveryError,
   DurableSessionRecoveryRequiredError,
+  definePlugin,
+  defineTool,
+  durableEventCursor,
   EventId,
   EventSequence,
   ExecutionCheckpointId,
@@ -119,9 +118,9 @@ import {
   ModelAttemptId,
   ModelTimeoutError,
   PermissionRequestId,
-  projectDurableSession,
   ProviderRegistry,
   ProviderRegistryError,
+  projectDurableSession,
   RequestId,
   SessionDurableRecorderError,
   SessionHandoffError,
@@ -130,7 +129,6 @@ import {
   SubagentExecutor,
   SubagentRegistry,
   ToolAttemptId,
-  ToolCatalog,
   ToolErrorType,
   ToolSideEffect,
   TurnId,
@@ -156,6 +154,13 @@ describe('root exports', () => {
     expect('createSdkMcpServer' in root).toBe(false);
   });
 
+  it('exposes defineTool as the only tool authoring function', () => {
+    expect(defineTool).toBeTypeOf('function');
+    expect('createTool' in root).toBe(false);
+    expect('toolFromDefinition' in root).toBe(false);
+    expect('ToolCatalog' in root).toBe(false);
+  });
+
   it('exports shared primitives at root and local adapters from the Node entrypoint', () => {
     expect(MemoryManager).toBeDefined();
     expect(FileSystemMemoryStore).toBeDefined();
@@ -163,7 +168,6 @@ describe('root exports', () => {
     expect(memoryWriteTool).toBeDefined();
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();
-    expect(ToolCatalog).toBeDefined();
     expect(collectToolExecution).toBeTypeOf('function');
     expect(completeToolExecution).toBeTypeOf('function');
     expect(composeMiddleware).toBeTypeOf('function');
@@ -287,11 +291,9 @@ describe('root exports', () => {
     expectTypeOf<ExecutionContext>().not.toHaveProperty('toolCatalog');
     expectTypeOf<ExecutionContext>().not.toHaveProperty('discoveredTools');
     expectTypeOf<ToolServiceName>().toEqualTypeOf<keyof ToolServiceMap>();
-    expectTypeOf<DiscoverableCatalogView['listDiscoverable']>().toBeFunction();
-    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('get');
-    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('register');
-    expectTypeOf<DiscoverableCatalogView>().not.toHaveProperty('unregister');
-    expectTypeOf<DiscoverableToolInfo['name']>().toEqualTypeOf<string>();
+    expectTypeOf<BuiltinToolGroup>().toEqualTypeOf<
+      'filesystem' | 'shell' | 'web' | 'task' | 'memory' | 'system' | 'mcp-resources'
+    >();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'
@@ -421,9 +423,6 @@ describe('root exports', () => {
     expect(SessionHandoffError).toBeDefined();
     expectTypeOf<ReturnType<ISession['subscribeDurableEvents']>>().toEqualTypeOf<
       Promise<DurableEventSubscription>
-    >();
-    expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
-      'builtin' | 'custom' | 'mcp' | 'session'
     >();
     expectTypeOf<ToolExecutionUpdate['type']>().toEqualTypeOf<
       | 'tool_ready'

@@ -1,10 +1,11 @@
 import Type from 'typebox';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 export const discoverToolsTool = createTool({
   name: 'DiscoverTools',
+  group: 'system',
   displayName: 'Discover Tools',
   kind: ToolKind.ReadOnly,
   sideEffect: 'idempotent',

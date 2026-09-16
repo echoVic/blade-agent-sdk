@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { assertSessionExecutorReadResult } from '../testing/index.js';
+import type { PendingSessionInput } from '../../session/types.js';
 import { CommandId, type InputId, RequestId, type SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
-import type { PendingSessionInput } from '../../session/types.js';
 import {
   InProcessSessionExecutor,
   type SessionExecutorCommandContext,
 } from '../SessionExecutor.js';
+import { assertSessionExecutorReadResult } from '../testing/index.js';
 
 const tenantId = 'tenant-read-boundary';
 const principal = {
@@ -142,14 +142,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       authenticate: () => principal,
     });
 
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-recovery'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-recovery'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
 
     // Three events: the recovery cursor must be the latest one, not the first.
     for (const data of [
@@ -166,12 +169,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-recovery'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-recovery'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     // Route state, load state, pending inputs and the event cursor must all be
@@ -202,14 +208,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-streaming'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-streaming'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
 
     // One finished request, then content that is still streaming: the assistant
     // message is written only when the turn completes, so `messages` cannot carry
@@ -228,15 +237,19 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-streaming'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-streaming'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
-    const data = (read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } })
-      .data;
+    const data = (
+      read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } }
+    ).data;
     // The projection is behind the log, which is exactly why the cursor stops at
     // the last completed request instead of at the head.
     expect(data.messages).toEqual([]);
@@ -245,8 +258,9 @@ describe('AgentServer session.read recovery snapshot', () => {
     const replay = await store.readEvents(principal.tenantId, sessionId, {
       after: data.recovery.lastEventSequence,
     });
-    expect(replay.events.map((event) => (event.data as { delta?: string }).delta))
-      .toEqual(['still streaming']);
+    expect(replay.events.map((event) => (event.data as { delta?: string }).delta)).toEqual([
+      'still streaming',
+    ]);
   });
 
   it('replays the whole retained log when no request has completed yet', async () => {
@@ -269,14 +283,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-first-turn'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-first-turn'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     for (const data of [
       { type: 'content', delta: 'only output so far', sessionId },
       { type: 'content', delta: 'more output', sessionId },
@@ -290,12 +307,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-first-turn'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-first-turn'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
     expect(recovery.lastEventSequence).toBe(0);
@@ -335,7 +355,11 @@ describe('AgentServer session.read recovery snapshot', () => {
               sessionId: args[1].sessionId,
               occurredAt: new Date().toISOString(),
               type: 'session.stream',
-              data: { type: 'content', delta: 'appended during read', sessionId: args[1].sessionId },
+              data: {
+                type: 'content',
+                delta: 'appended during read',
+                sessionId: args[1].sessionId,
+              },
             });
             return await target.read(...args);
           };
@@ -348,14 +372,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: racingExecutor as never,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-race'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-race'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     for (const data of [
       { type: 'content', delta: 'finished', sessionId },
       { type: 'result', subtype: 'success', content: 'done', sessionId },
@@ -369,12 +396,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-race'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-race'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
     // Events appended while the snapshot loaded are replayed: the cursor stops at
@@ -383,8 +413,9 @@ describe('AgentServer session.read recovery snapshot', () => {
     const replay = await store.readEvents(principal.tenantId, sessionId, {
       after: recovery.lastEventSequence,
     });
-    expect(replay.events.map((event) => (event.data as { delta?: string }).delta))
-      .toEqual(['appended during read']);
+    expect(replay.events.map((event) => (event.data as { delta?: string }).delta)).toEqual([
+      'appended during read',
+    ]);
   });
 
   it('replays from the retained window when a long log holds no completed request', async () => {
@@ -409,14 +440,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-retained'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-retained'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     for (const delta of ['one', 'two', 'three', 'four', 'five']) {
       await store.appendEvent(principal.tenantId, sessionId, {
         protocolVersion: 1,
@@ -427,12 +461,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-retained'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-retained'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
     const range = await store.getEventStreamRange(principal.tenantId, sessionId);
@@ -466,14 +503,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-long-stream'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-long-stream'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     // One request, 600 events, still streaming: more than one scan window, and no
     // completed request anywhere in the log.
     for (let index = 1; index <= 600; index += 1) {
@@ -486,15 +526,19 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-long-stream'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-long-stream'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
-    const data = (read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } })
-      .data;
+    const data = (
+      read as { data: { messages: unknown[]; recovery: { lastEventSequence: number } } }
+    ).data;
     expect(data.messages).toEqual([]);
     // Nothing in the snapshot covers this output, so the cursor must replay all of
     // it - never the part that happened to fall outside the scan window.
@@ -527,14 +571,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-deep-boundary'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-deep-boundary'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     // The completed request is more than one window behind the head.
     await store.appendEvent(principal.tenantId, sessionId, {
       protocolVersion: 1,
@@ -553,12 +600,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-deep-boundary'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-deep-boundary'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: { lastEventSequence: number } } }).data.recovery;
     // The scan widens until it finds the boundary, so the client replays only the
@@ -586,14 +636,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-no-range'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-no-range'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
     for (const delta of ['kept one', 'kept two']) {
       await store.appendEvent(principal.tenantId, sessionId, {
         protocolVersion: 1,
@@ -604,14 +657,18 @@ describe('AgentServer session.read recovery snapshot', () => {
       });
     }
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-no-range'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-no-range'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
-    const data = (read as { data: { messages: unknown[]; recovery: Record<string, unknown> } }).data;
+    const data = (read as { data: { messages: unknown[]; recovery: Record<string, unknown> } })
+      .data;
     expect(data.messages).toEqual([]);
     // The head would be 2, which would skip both content events; without the
     // capability the store gets the conservative start instead.
@@ -644,21 +701,27 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-trimmed'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-trimmed'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-trimmed'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-trimmed'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     expect(recovery.recoveryIncomplete).toBe(true);
@@ -685,14 +748,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-covered'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-covered'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
 
     // Two requests: the first is fully in the transcript, the second is still
     // streaming, so its messages are not.
@@ -714,7 +780,10 @@ describe('AgentServer session.read recovery snapshot', () => {
     // The projection states the boundary it covers. The cursor must come from it,
     // so the two can never disagree.
     const innerRead = executor.read.bind(executor);
-    executor.read = (async (ctx: SessionExecutorCommandContext, data: { sessionId: SessionId }) => ({
+    executor.read = (async (
+      ctx: SessionExecutorCommandContext,
+      data: { sessionId: SessionId },
+    ) => ({
       ...(await innerRead(ctx, data)),
       historyProgress: {
         state: 'complete',
@@ -723,12 +792,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       },
     })) as typeof executor.read;
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-covered'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-covered'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     // The newest event of the covered request - not the head, which belongs to a
@@ -756,14 +828,17 @@ describe('AgentServer session.read recovery snapshot', () => {
       sessionExecutor: executor,
       authenticate: () => principal,
     });
-    const created = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-create-race'),
-      type: 'session.create',
-      data: { metadata: { origin: 'test' } },
-    } as never, principal);
-    const sessionId = (created as { data: { session: { sessionId: SessionId } } })
-      .data.session.sessionId;
+    const created = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-create-race'),
+        type: 'session.create',
+        data: { metadata: { origin: 'test' } },
+      } as never,
+      principal,
+    );
+    const sessionId = (created as { data: { session: { sessionId: SessionId } } }).data.session
+      .sessionId;
 
     for (const data of [
       { type: 'content', delta: 'first', sessionId },
@@ -793,12 +868,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       return innerRead(ctx, data);
     }) as typeof executor.read;
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-race'),
-      type: 'session.read',
-      data: { sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-race'),
+        type: 'session.read',
+        data: { sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     expect(recovery.lastEventSequence).toBe(3);
@@ -822,12 +900,15 @@ describe('AgentServer session.read recovery snapshot', () => {
       authenticate: () => principal,
     });
 
-    const read = await server.execute({
-      protocolVersion: 1,
-      commandId: CommandId('command-read-recovery-unloaded'),
-      type: 'session.read',
-      data: { sessionId: created.sessionId },
-    } as never, principal);
+    const read = await server.execute(
+      {
+        protocolVersion: 1,
+        commandId: CommandId('command-read-recovery-unloaded'),
+        type: 'session.read',
+        data: { sessionId: created.sessionId },
+      } as never,
+      principal,
+    );
 
     const recovery = (read as { data: { recovery: Record<string, unknown> } }).data.recovery;
     expect(recovery.sessionLoaded).toBe(false);

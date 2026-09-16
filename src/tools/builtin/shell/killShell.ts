@@ -1,14 +1,15 @@
 import Type from 'typebox';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 
 export const killShellTool = createTool({
   name: 'KillShell',
+  group: 'shell',
   displayName: '终止后台 Shell',
   kind: ToolKind.Execute,
   sideEffect: 'idempotent',
@@ -75,10 +76,6 @@ export const killShellTool = createTool({
       metadata: { ...result, summary: `终止 Shell ${params.shell_id}` },
     };
   },
-
-  version: '1.0.0',
-  category: '命令工具',
-  tags: ['bash', 'shell', 'terminate'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: params.shell_id,

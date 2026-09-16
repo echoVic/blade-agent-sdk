@@ -50,9 +50,7 @@ describe('Tool type ownership', () => {
       services: ['subagentRegistry'] as const,
       requiresRuntime: true,
       async execute(_params, context) {
-        expectTypeOf(context.subagentRegistry).toEqualTypeOf<
-          ToolServiceMap['subagentRegistry']
-        >();
+        expectTypeOf(context.subagentRegistry).toEqualTypeOf<ToolServiceMap['subagentRegistry']>();
         expectTypeOf(context.runtime).toEqualTypeOf<RuntimeAccess>();
         // @ts-expect-error memoryManager was not declared.
         context.memoryManager;
@@ -108,6 +106,24 @@ describe('Tool type ownership', () => {
     }
     expect(toolTypes).not.toMatch(/from ['"]zod['"]/);
     expect(toolTypes).toMatch(/Type\.Static/);
+  });
+
+  it('keeps legacy and runtime-only tool contracts out of the root entrypoint', () => {
+    const publicAuthoringEntrypoints = [
+      'src/index.ts',
+      'src/core/index.ts',
+      'src/tools/index.ts',
+    ].map((entrypoint) => readFileSync(resolve(entrypoint), 'utf8'));
+
+    for (const source of publicAuthoringEntrypoints) {
+      expect(source).not.toMatch(/export\s*\{[^}]*\bcreateTool\b/s);
+      expect(source).not.toMatch(/export\s*\{[^}]*\btoolFromDefinition\b/s);
+      expect(source).not.toMatch(/\bToolConfig\b/);
+      expect(source).not.toMatch(/\bFunctionDeclaration\b/);
+      expect(source).not.toMatch(/^\s*Tool,\s*$/m);
+      expect(source).not.toMatch(/\bToolDescriptionResolver\b/);
+      expect(source).not.toMatch(/\bToolSchema\b/);
+    }
   });
 
   it('keeps TypeBox compilation and erasure boundaries free of ad hoc casts', () => {

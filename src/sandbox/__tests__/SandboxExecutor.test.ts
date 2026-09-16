@@ -86,8 +86,7 @@ describe('SandboxExecutor', () => {
     it('needs both an enabled policy and platform support', () => {
       const executor = getSandboxExecutor();
       // Platform capability is the shared fact; the policy is the caller's.
-      expect(executor.canUseSandbox({ enabled: true }))
-        .toBe(executor.getCapabilities().available);
+      expect(executor.canUseSandbox({ enabled: true })).toBe(executor.getCapabilities().available);
     });
   });
 

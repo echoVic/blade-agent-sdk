@@ -1,12 +1,12 @@
 import { lookup } from 'node:dns';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { Agent as UndiciAgent } from 'undici';
 import Type from 'typebox';
+import { Agent as UndiciAgent } from 'undici';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { WebFetchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -174,6 +174,7 @@ function createSafeDispatcher(policy: WebFetchSecurityPolicy): UndiciAgent {
  */
 export const webFetchTool = createTool({
   name: 'WebFetch',
+  group: 'web',
   displayName: 'Web Fetch',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
@@ -455,10 +456,6 @@ Usage notes:
       };
     }
   },
-
-  version: '2.0.0',
-  category: '网络工具',
-  tags: ['web', 'http', 'fetch', 'request', 'api'],
 
   preparePermissionMatcher: (params) => {
     let signatureContent: string;

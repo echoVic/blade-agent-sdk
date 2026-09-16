@@ -16,14 +16,14 @@ import { ActiveRequestController } from '../../session/ActiveRequestController.j
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
-import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
-import { ToolKind } from '../../tools/behavior.js';
 import type { ToolResult } from '../../tools/types/result.js';
 import { completeToolExecution } from '../../tools/types/result.js';
+import type { Tool } from '../../tools/types/tool.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
 import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import type { BladeConfig } from '../config.js';
@@ -53,19 +53,36 @@ interface MockToolResult {
   newMessages?: ConversationMessage[];
 }
 
-function mockRuntimeTool(name: string, kind: ToolKind = ToolKind.Execute) {
-  const behavior = {
-    kind,
-    sideEffect: kind === ToolKind.ReadOnly ? ('pure' as const) : ('non_idempotent' as const),
-    isReadOnly: kind === ToolKind.ReadOnly,
-    isConcurrencySafe: kind === ToolKind.ReadOnly,
-    isDestructive: false,
-    interruptBehavior: 'block' as const,
-  };
-  return {
+function mockRuntimeTool(name: string, kind: ToolKind = ToolKind.Execute): Tool {
+  return createTool({
     name,
-    staticBehavior: behavior,
-    prepare: () => ({ behavior }),
+    displayName: name,
+    kind,
+    sideEffect: kind === ToolKind.ReadOnly ? 'pure' : 'non_idempotent',
+    description: { short: name },
+    schema: Type.Object({}),
+    execute: () => completeToolExecution({ status: 'success', model: '' }),
+  });
+}
+
+function createMockRegistry(
+  tools: readonly (Tool | string)[] | (() => readonly (Tool | string)[]) = [],
+): Pick<ToolRegistry, 'entries' | 'get'> {
+  const resolveTools = typeof tools === 'function' ? tools : () => tools;
+  let resolvedTools: readonly Tool[] = [];
+
+  return {
+    entries: () => {
+      resolvedTools = resolveTools().map((tool) =>
+        typeof tool === 'string' ? mockRuntimeTool(tool) : tool,
+      );
+      return resolvedTools.map((tool) => ({
+        tool,
+        source: BUILTIN_TOOL_SOURCE,
+      }));
+    },
+    get: (name: string) =>
+      resolvedTools.find((tool) => tool.name === name) ?? mockRuntimeTool(name),
   };
 }
 
@@ -156,12 +173,7 @@ function createMockModelManager(
 
 function createMockPipeline(): ExecutionPipeline {
   return {
-    getCatalog: () => undefined,
-    getRegistry: () => ({
-      getAll: () => [],
-      getFunctionDeclarationsByMode: () => [],
-      get: (name: string) => mockRuntimeTool(name),
-    }),
+    getRegistry: () => createMockRegistry(),
     execute: mockToolExecution(async (toolName: string) => ({
       status: 'success',
       model: `Result of ${toolName}`,
@@ -447,14 +459,7 @@ describe('LoopRunner', () => {
         switchModelIfNeeded: vi.fn(async () => {}),
       } as unknown as ModelManager;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Search', description: 'Search', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name, ToolKind.ReadOnly),
-        }),
+        getRegistry: () => createMockRegistry([mockRuntimeTool('Search', ToolKind.ReadOnly)]),
         execute: mockToolExecution(async (toolName: string, params: Record<string, unknown>) => ({
           status: 'success',
           model: `${toolName}:${String(params.query)}`,
@@ -618,16 +623,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Read', description: 'Read files', parameters: {} },
-            { name: 'Write', description: 'Write files', parameters: {} },
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Read', 'Write', 'Skill']),
         execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'Skill') {
             return {
@@ -681,9 +677,8 @@ describe('LoopRunner', () => {
     it('applies toolSourcePolicy when exposing tools for a turn', () => {
       const mm = createMockModelManager();
       const registry = new ToolRegistry();
-      const catalog = new ToolCatalog(registry);
 
-      catalog.register(
+      registry.register(
         createTool({
           name: 'BuiltinRead',
           displayName: 'Builtin Read',
@@ -697,14 +692,10 @@ describe('LoopRunner', () => {
               model: 'builtin',
             }),
         }),
-        {
-          kind: 'builtin',
-          trustLevel: 'trusted',
-          sourceId: 'builtin',
-        },
+        BUILTIN_TOOL_SOURCE,
       );
 
-      catalog.registerMcpTool(
+      registry.registerMcpTool(
         createTool({
           name: 'mcp__remote-server__RemoteRead',
           displayName: 'Remote Read',
@@ -722,12 +713,12 @@ describe('LoopRunner', () => {
           kind: 'mcp',
           trustLevel: 'remote',
           sourceId: 'remote-server',
+          serverName: 'remote-server',
         },
       );
 
       const pipeline = {
         getRegistry: () => registry,
-        getCatalog: () => catalog,
         execute: mockToolExecution(async (toolName: string) => ({
           status: 'success',
           model: `Result of ${toolName}`,
@@ -829,15 +820,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Read', description: 'Read files', parameters: {} },
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Read', 'Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -941,12 +924,7 @@ describe('LoopRunner', () => {
       });
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [readTool, discoverTool, heavyInspectTool],
-          getFunctionDeclarationsByMode: () => [],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry([readTool, discoverTool, heavyInspectTool]),
         execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'DiscoverTools') {
             return {
@@ -1039,14 +1017,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'ModelSwitch', description: 'Switch model', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['ModelSwitch']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Model switched',
@@ -1122,14 +1093,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'LegacyTool', description: 'Legacy tool', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['LegacyTool']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Legacy result',
@@ -1205,14 +1169,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Legacy skill result',
@@ -1288,14 +1245,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'error',
           model: 'failed',
@@ -1383,15 +1333,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Read', description: 'Read files', parameters: {} },
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Read', 'Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -1481,16 +1423,7 @@ describe('LoopRunner', () => {
 
       let skillExecutions = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Read', description: 'Read files', parameters: {} },
-            { name: 'Write', description: 'Write files', parameters: {} },
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Read', 'Write', 'Skill']),
         execute: mockToolExecution(async () => {
           skillExecutions += 1;
 
@@ -1614,14 +1547,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -1725,14 +1651,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -1836,14 +1755,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -1960,18 +1872,14 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => {
+        getRegistry: () =>
+          createMockRegistry(() => {
             callCount += 1;
             if (callCount === 1) {
-              return [{ name: 'Skill', description: 'Load a skill', parameters: {} }];
+              return ['Skill'];
             }
-            return [{ name: 'EnvTool', description: 'Inspect env', parameters: {} }];
-          },
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+            return ['EnvTool'];
+          }),
         execute: mockToolExecution(
           async (
             toolName: string,
@@ -2108,21 +2016,17 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => {
+        getRegistry: () =>
+          createMockRegistry(() => {
             callCount += 1;
             if (callCount === 1) {
-              return [{ name: 'PatchA', description: 'Patch A', parameters: {} }];
+              return ['PatchA'];
             }
             if (callCount === 2) {
-              return [{ name: 'PatchB', description: 'Patch B', parameters: {} }];
+              return ['PatchB'];
             }
             return [];
-          },
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+          }),
         execute: mockToolExecution(async (toolName: string) => ({
           status: 'success',
           model: `${toolName} applied`,
@@ -2273,24 +2177,20 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => {
+        getRegistry: () =>
+          createMockRegistry(() => {
             callCount += 1;
             if (callCount === 1) {
-              return [{ name: 'PatchEnvA', description: 'Patch env A', parameters: {} }];
+              return ['PatchEnvA'];
             }
             if (callCount === 2) {
-              return [{ name: 'PatchEnvB', description: 'Patch env B', parameters: {} }];
+              return ['PatchEnvB'];
             }
             if (callCount === 3) {
-              return [{ name: 'EnvTool', description: 'Inspect env', parameters: {} }];
+              return ['EnvTool'];
             }
             return [];
-          },
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+          }),
         execute: mockToolExecution(
           async (
             toolName: string,
@@ -2457,26 +2357,14 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => {
+        getRegistry: () =>
+          createMockRegistry(() => {
             callCount += 1;
             if (callCount === 1) {
-              return [
-                {
-                  name: 'BrowserBootstrap',
-                  description: 'Bootstrap browser context',
-                  parameters: {},
-                },
-              ];
+              return ['BrowserBootstrap'];
             }
-            return [
-              { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
-            ];
-          },
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+            return ['BrowserInspect'];
+          }),
         execute: mockToolExecution(
           async (
             toolName: string,
@@ -2577,14 +2465,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => [
-            { name: 'Skill', description: 'Load a skill', parameters: {} },
-          ],
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+        getRegistry: () => createMockRegistry(['Skill']),
         execute: mockToolExecution(async () => ({
           status: 'success',
           model: 'Skill activated',
@@ -2777,26 +2658,14 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
-        getCatalog: () => undefined,
-        getRegistry: () => ({
-          getAll: () => [],
-          getFunctionDeclarationsByMode: () => {
+        getRegistry: () =>
+          createMockRegistry(() => {
             callCount += 1;
             if (callCount === 1) {
-              return [
-                {
-                  name: 'BrowserBootstrap',
-                  description: 'Bootstrap browser context',
-                  parameters: {},
-                },
-              ];
+              return ['BrowserBootstrap'];
             }
-            return [
-              { name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} },
-            ];
-          },
-          get: (name: string) => mockRuntimeTool(name),
-        }),
+            return ['BrowserInspect'];
+          }),
         execute: mockToolExecution(
           async (
             toolName: string,

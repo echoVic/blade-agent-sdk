@@ -263,9 +263,7 @@ export function check(filePath: string): SensitiveFileCheckResult {
         isSensitive: true,
         level: pattern.level,
         matchedPattern:
-          pattern.pattern instanceof RegExp
-            ? pattern.pattern.source
-            : pattern.pattern,
+          pattern.pattern instanceof RegExp ? pattern.pattern.source : pattern.pattern,
         reason: pattern.description,
       };
     }
@@ -277,9 +275,7 @@ export function check(filePath: string): SensitiveFileCheckResult {
         isSensitive: true,
         level: pathPattern.level,
         matchedPattern:
-          pathPattern.path instanceof RegExp
-            ? pathPattern.path.source
-            : pathPattern.path,
+          pathPattern.path instanceof RegExp ? pathPattern.path.source : pathPattern.path,
         reason: pathPattern.description,
       };
     }
@@ -308,7 +304,7 @@ export function checkMultiple(filePaths: string[]): Map<string, SensitiveFileChe
  */
 export function filterSensitive(
   filePaths: string[],
-  minLevel: SensitivityLevel = SensitivityLevel.LOW
+  minLevel: SensitivityLevel = SensitivityLevel.LOW,
 ): Array<{ path: string; result: SensitiveFileCheckResult }> {
   const levelOrder = {
     [SensitivityLevel.HIGH]: 3,
@@ -325,9 +321,7 @@ export function filterSensitive(
     }))
     .filter(
       ({ result }) =>
-        result.isSensitive &&
-        result.level &&
-        levelOrder[result.level] >= minLevelValue
+        result.isSensitive && result.level && levelOrder[result.level] >= minLevelValue,
     );
 }
 

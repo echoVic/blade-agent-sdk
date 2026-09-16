@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  summarizeRuntimePatchApplications,
-  type RuntimePatchApplication,
-} from '../index.js';
+import { type RuntimePatchApplication, summarizeRuntimePatchApplications } from '../index.js';
 
 describe('RuntimePatch', () => {
   it('summarizes prompt append layers in application order', () => {

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MatchStrategy,
-  unescapeString,
-  flexibleMatch,
-} from '../editCorrector.js';
+import { flexibleMatch, MatchStrategy, unescapeString } from '../editCorrector.js';
 
 describe('editCorrector', () => {
   describe('unescapeString', () => {

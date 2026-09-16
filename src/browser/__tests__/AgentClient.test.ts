@@ -123,11 +123,13 @@ describe('AgentClient events', () => {
       retryBaseDelayMs: 0,
     });
 
-    await expect((async () => {
-      for await (const _event of client.events(sessionId)) {
-        // drain
-      }
-    })()).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
+    await expect(
+      (async () => {
+        for await (const _event of client.events(sessionId)) {
+          // drain
+        }
+      })(),
+    ).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
   });
 
   it('rejects an oversized complete frame even when its delimiter arrives in the same chunk', async () => {
@@ -137,9 +139,15 @@ describe('AgentClient events', () => {
     const oversized = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
-          new TextEncoder().encode(`data: ${JSON.stringify(
-            event(1, 'session.stream', { type: 'content', delta: 'x'.repeat(5 * 1024 * 1024), sessionId }),
-          )}\r\n\r\n`),
+          new TextEncoder().encode(
+            `data: ${JSON.stringify(
+              event(1, 'session.stream', {
+                type: 'content',
+                delta: 'x'.repeat(5 * 1024 * 1024),
+                sessionId,
+              }),
+            )}\r\n\r\n`,
+          ),
         );
       },
     });
@@ -162,11 +170,13 @@ describe('AgentClient events', () => {
       retryBaseDelayMs: 0,
     });
 
-    await expect((async () => {
-      for await (const _event of client.events(sessionId)) {
-        // drain
-      }
-    })()).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
+    await expect(
+      (async () => {
+        for await (const _event of client.events(sessionId)) {
+          // drain
+        }
+      })(),
+    ).rejects.toMatchObject({ protocolCode: 'STREAM_FRAME_TOO_LARGE' });
   });
 
   it('stops after the configured number of clean disconnects', async () => {
@@ -308,8 +318,9 @@ describe('AgentClient commands', () => {
     ): Promise<Response> {
       receiver = this;
       const request = new Request(input, init);
-      return request.json().then((body) =>
-        initializeResponse((body as { commandId: string }).commandId));
+      return request
+        .json()
+        .then((body) => initializeResponse((body as { commandId: string }).commandId));
     };
     const client = new AgentClient({
       baseUrl: 'https://agent.test/v1/agent',

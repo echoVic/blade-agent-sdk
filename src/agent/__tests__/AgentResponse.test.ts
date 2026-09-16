@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AgentResponse } from '../AgentResponse.js';
-import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import type { SessionStreamEvent } from '../../session/types.js';
+import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
+import { AgentResponse } from '../AgentResponse.js';
 
-async function* events(
-  values: readonly SessionStreamEvent[],
-): AsyncGenerator<SessionStreamEvent> {
+async function* events(values: readonly SessionStreamEvent[]): AsyncGenerator<SessionStreamEvent> {
   yield* values;
 }
 

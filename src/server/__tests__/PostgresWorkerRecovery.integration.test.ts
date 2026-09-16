@@ -1,20 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
-import {
-  CommandId,
-  ExecutionLeaseId,
-  SessionId,
-  WorkerId,
-} from '../../types/identifiers.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CommandId, ExecutionLeaseId, SessionId, WorkerId } from '../../types/identifiers.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { effectLease } from '../WorkerRuntime.js';
 
@@ -34,11 +23,7 @@ const workerPath = join(
   'fixtures/postgresEffectWorker.ts',
 );
 
-type CrashPoint =
-  | 'after_claim'
-  | 'after_start'
-  | 'after_side_effect'
-  | 'after_complete';
+type CrashPoint = 'after_claim' | 'after_start' | 'after_side_effect' | 'after_complete';
 
 interface RunningChild {
   readonly child: ChildProcessWithoutNullStreams;
@@ -90,9 +75,9 @@ function startWorker(
         resolve();
         return;
       }
-      reject(new Error(
-        `Worker exited unexpectedly (${String(code)}/${String(signal)}): ${stderr}`,
-      ));
+      reject(
+        new Error(`Worker exited unexpectedly (${String(code)}/${String(signal)}): ${stderr}`),
+      );
     });
   });
   void closed.catch(() => undefined);
@@ -104,9 +89,11 @@ function startWorker(
         const expected = `checkpoint:${marker}\n`;
         const timeout = setTimeout(() => {
           listeners.delete(check);
-          reject(new Error(
-            `Timed out waiting for ${expected.trim()}; stdout=${stdout}; stderr=${stderr}`,
-          ));
+          reject(
+            new Error(
+              `Timed out waiting for ${expected.trim()}; stdout=${stdout}; stderr=${stderr}`,
+            ),
+          );
         }, 15_000);
         const check = () => {
           if (!stdout.includes(expected)) {
@@ -150,8 +137,7 @@ describePostgres('Postgres worker crash recovery', () => {
     for (const running of children) {
       running.child.kill('SIGKILL');
     }
-    await Promise.all(Array.from(children, ({ closed }) =>
-      closed.catch(() => undefined)));
+    await Promise.all(Array.from(children, ({ closed }) => closed.catch(() => undefined)));
     if (pool) {
       await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await pool.end();
@@ -187,22 +173,19 @@ describePostgres('Postgres worker crash recovery', () => {
             data: {},
           },
         },
-        effects: [{
-          effectId,
-          type: 'non-idempotent-test',
-          payload: { crashPoint },
-          idempotencyKey: `key-${suffix}`,
-          executionMode: 'at_most_once',
-        }],
+        effects: [
+          {
+            effectId,
+            type: 'non-idempotent-test',
+            payload: { crashPoint },
+            idempotencyKey: `key-${suffix}`,
+            executionMode: 'at_most_once',
+          },
+        ],
       });
 
       const childWorkerId = `worker-child-${suffix}`;
-      const running = startWorker(
-        tenantId,
-        effectId,
-        childWorkerId,
-        crashPoint,
-      );
+      const running = startWorker(tenantId, effectId, childWorkerId, crashPoint);
       children.add(running);
       await running.waitFor(crashPoint);
       const closed = running.closed;

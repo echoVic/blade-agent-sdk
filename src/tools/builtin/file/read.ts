@@ -2,9 +2,9 @@ import { basename, extname } from 'node:path';
 import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { ReadMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
@@ -25,6 +25,7 @@ export function truncateTextLine(line: string, maxCodePoints = 2000): string {
  */
 export const readTool = createTool({
   name: 'Read',
+  group: 'filesystem',
   displayName: 'File Read',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
@@ -270,10 +271,6 @@ export const readTool = createTool({
       };
     }
   },
-
-  version: '2.0.0',
-  category: '文件操作',
-  tags: ['file', 'io', 'read'],
 
   preparePermissionMatcher: (params) => {
     const ext = extname(params.file_path);

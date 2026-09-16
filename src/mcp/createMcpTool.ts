@@ -1,12 +1,12 @@
 import Type from 'typebox';
-import type { JsonObject } from '../types/json.js';
-import { createTool } from '../tools/core/createTool.js';
 import { ToolKind } from '../tools/behavior.js';
+import { createTool } from '../tools/core/createTool.js';
 import { ToolErrorType } from '../tools/types/result.js';
 import { compileToolInput } from '../tools/validation/toolInput.js';
+import type { JsonObject } from '../types/json.js';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
-import { createMcpServerTag, createMcpToolName } from './toolSource.js';
+import { createMcpToolName } from './toolSource.js';
 import type { McpToolDefinition } from './types.js';
 
 /**
@@ -51,8 +51,6 @@ export function createMcpTool(
         'Executes external tools; user confirmation required',
       ],
     },
-    category: 'MCP tool',
-    tags: ['mcp', 'external', serverName, createMcpServerTag(serverName)],
 
     // biome-ignore lint/correctness/useYield: terminal-only tool execution
     async *execute(params, _context) {

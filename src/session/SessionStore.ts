@@ -1,18 +1,11 @@
+import * as fs from 'node:fs/promises';
 import { JSONLStore, JSONLStoreError } from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
-import * as fs from 'node:fs/promises';
-import {
-  type ConversationMessage,
-  isConversationMessageSource,
-} from '../model/conversation.js';
-import type {
-  ModelContent,
-  ModelMessage,
-  ModelToolCall,
-} from '../model/message.js';
+import { type ConversationMessage, isConversationMessageSource } from '../model/conversation.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { MessageRole } from '../types/constants.js';
 import {

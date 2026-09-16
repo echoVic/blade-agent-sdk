@@ -41,7 +41,9 @@ export function createAbortedResult(
  * Refuse to start another tool while an earlier callback or tool execution is
  * still cleaning up: ownership of that work is no longer provable.
  */
-export function createPendingCleanupResult(source: 'permission callback' | 'tool execution'): ToolResult {
+export function createPendingCleanupResult(
+  source: 'permission callback' | 'tool execution',
+): ToolResult {
   const label = source === 'permission callback' ? 'A permission callback' : 'A tool execution';
   return createExecutionFailureResult(
     `${label} is still cleaning up; refusing to start another tool`,

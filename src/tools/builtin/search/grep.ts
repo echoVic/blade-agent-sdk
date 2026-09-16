@@ -14,9 +14,9 @@ import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { GrepMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
@@ -628,6 +628,7 @@ function parseContentLine(line: string): GrepMatch | null {
  */
 export const grepTool = createTool({
   name: 'Grep',
+  group: 'filesystem',
   displayName: '内容搜索',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
@@ -999,10 +1000,6 @@ export const grepTool = createTool({
       };
     }
   },
-
-  version: '3.0.0',
-  category: '搜索工具',
-  tags: ['search', 'grep', 'ripgrep', 'regex', 'text', 'fallback'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: params.pattern,

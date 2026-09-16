@@ -15,9 +15,9 @@ import {
 } from '../protocol/index.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import {
+  type DurableEventOperationOptions,
   DurableEventSequenceConflictError,
   DurableEventStoreError,
-  type DurableEventOperationOptions,
 } from '../session/events/DurableEventStore.js';
 import type {
   DurableExecutionLease,
@@ -26,14 +26,15 @@ import type {
 import { parseDurableEventDraft, parseDurableEventEnvelope } from '../session/events/schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
-  DurableEventType,
   type DurableEventAppendOptions,
   type DurableEventAppendResult,
   type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventPage,
   type DurableEventReadOptions,
+  DurableEventType,
 } from '../session/events/types.js';
+import { mergeHistoryProgress, type SessionHistoryProgress } from '../session/historyProgress.js';
 import type {
   PersistedToolUse,
   SessionRepositoryCompactionMetadata,
@@ -60,9 +61,9 @@ import {
   WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
-import { mergeHistoryProgress, type SessionHistoryProgress } from '../session/historyProgress.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
+import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
 import {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
@@ -77,7 +78,6 @@ import {
   RuntimeStoreError,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
-import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
 import type {
   RuntimeEffectClaim,
   RuntimeEffectClaimOptions,
@@ -423,8 +423,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       options.maxDomainEventsPerSession ?? DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION;
     this.maxTranscriptEventsPerSession =
       options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
-    this.maxSessionsPerTenant =
-      options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
+    this.maxSessionsPerTenant = options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
     this.workerRuntime = new PostgresWorkerRuntime(
       this.pool,
       this.schema,
@@ -528,9 +527,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
       if (row?.status === 'abandoned') {
         return {
           status: 'abandoned',
-          reason: typeof row.abandon_reason === 'string'
-            ? row.abandon_reason
-            : 'This command was abandoned after sealing',
+          reason:
+            typeof row.abandon_reason === 'string'
+              ? row.abandon_reason
+              : 'This command was abandoned after sealing',
         };
       }
       const now = Date.now();
@@ -850,10 +850,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (!Number.isSafeInteger(sequence) || typeof eventId !== 'string') {
       return;
     }
-    await this.writeIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, {
-      eventId: EventId(eventId),
-      sequence: EventSequence(sequence),
-    }, payload);
+    await this.writeIdempotencyRecord(
+      client,
+      tenantId,
+      sessionId,
+      idempotencyKey,
+      {
+        eventId: EventId(eventId),
+        sequence: EventSequence(sequence),
+      },
+      payload,
+    );
   }
 
   private async writeIdempotencyRecord(
@@ -910,12 +917,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<AgentServerEvent | null> {
     await this.initialize();
     return this.transaction(async (client) => {
-      const payload = await this.readIdempotencyRecord(
-        client,
-        tenantId,
-        sessionId,
-        idempotencyKey,
-      );
+      const payload = await this.readIdempotencyRecord(client, tenantId, sessionId, idempotencyKey);
       return payload ? parseAgentServerEvent(payload) : null;
     });
   }
@@ -1133,16 +1135,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
   }
 
-  registerWorker(
-    registration: RuntimeWorkerRegistration,
-  ): Promise<RuntimeWorkerRecord> {
+  registerWorker(registration: RuntimeWorkerRegistration): Promise<RuntimeWorkerRecord> {
     return this.workerRuntime.registerWorker(registration);
   }
 
-  heartbeatWorker(
-    workerId: WorkerId,
-    ttlMs: number,
-  ): Promise<RuntimeWorkerRecord> {
+  heartbeatWorker(workerId: WorkerId, ttlMs: number): Promise<RuntimeWorkerRecord> {
     return this.workerRuntime.heartbeatWorker(workerId, ttlMs);
   }
 
@@ -1165,9 +1162,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.workerRuntime.enqueueSession(tenantId, sessionId, options);
   }
 
-  claimSession(
-    options: RuntimeSessionClaimOptions,
-  ): Promise<RuntimeSessionClaim | null> {
+  claimSession(options: RuntimeSessionClaimOptions): Promise<RuntimeSessionClaim | null> {
     return this.workerRuntime.claimSession(options);
   }
 
@@ -1184,11 +1179,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     lease: DurableExecutionLease,
     transition: RuntimeSessionTransition,
   ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.transitionSession(
-      tenantId,
-      lease,
-      transition,
-    );
+    return this.workerRuntime.transitionSession(tenantId, lease, transition);
   }
 
   settleSession(
@@ -1196,11 +1187,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     lease: DurableExecutionLease,
     settlement: RuntimeSessionSettlement,
   ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.settleSession(
-      tenantId,
-      lease,
-      settlement,
-    );
+    return this.workerRuntime.settleSession(tenantId, lease, settlement);
   }
 
   handoffSession(
@@ -1222,16 +1209,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.workerRuntime.preemptSession(tenantId, sessionId, options);
   }
 
-  getSessionRoute(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<RuntimeSessionRoute | null> {
+  getSessionRoute(tenantId: string, sessionId: SessionId): Promise<RuntimeSessionRoute | null> {
     return this.workerRuntime.getSessionRoute(tenantId, sessionId);
   }
 
-  listWorkerSessions(
-    workerId: WorkerId,
-  ): Promise<readonly RuntimeSessionRoute[]> {
+  listWorkerSessions(workerId: WorkerId): Promise<readonly RuntimeSessionRoute[]> {
     return this.workerRuntime.listWorkerSessions(workerId);
   }
 
@@ -1243,16 +1225,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.workerRuntime.recoverExpiredWork();
   }
 
-  claimEffects(
-    options: RuntimeEffectClaimOptions,
-  ): Promise<readonly RuntimeEffectClaim[]> {
+  claimEffects(options: RuntimeEffectClaimOptions): Promise<readonly RuntimeEffectClaim[]> {
     return this.workerRuntime.claimEffects(options);
   }
 
-  renewEffectLease(
-    lease: RuntimeEffectLease,
-    ttlMs: number,
-  ): Promise<RuntimeEffectRecord> {
+  renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord> {
     return this.workerRuntime.renewEffectLease(lease, ttlMs);
   }
 
@@ -1260,10 +1237,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.workerRuntime.startEffect(lease);
   }
 
-  completeEffect(
-    lease: RuntimeEffectLease,
-    result?: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
+  completeEffect(lease: RuntimeEffectLease, result?: JsonObject): Promise<RuntimeEffectRecord> {
     return this.workerRuntime.completeEffect(lease, result);
   }
 
@@ -1275,10 +1249,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     return this.workerRuntime.failEffect(lease, error, options);
   }
 
-  markEffectUncertain(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
+  markEffectUncertain(lease: RuntimeEffectLease, error: JsonObject): Promise<RuntimeEffectRecord> {
     return this.workerRuntime.markEffectUncertain(lease, error);
   }
 
@@ -1295,11 +1266,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     options?: DurableEventOperationOptions,
   ): Promise<boolean> {
-    return this.workerRuntime.requiresExecutionLease(
-      tenantId,
-      sessionId,
-      options,
-    );
+    return this.workerRuntime.requiresExecutionLease(tenantId, sessionId, options);
   }
 
   acquireExecutionLease(
@@ -1307,11 +1274,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     options: DurableExecutionLeaseAcquireOptions,
   ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.acquireExecutionLease(
-      tenantId,
-      sessionId,
-      options,
-    );
+    return this.workerRuntime.acquireExecutionLease(tenantId, sessionId, options);
   }
 
   renewExecutionLease(
@@ -1320,12 +1283,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     ttlMs: number,
     options?: DurableEventOperationOptions,
   ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.renewExecutionLease(
-      tenantId,
-      lease,
-      ttlMs,
-      options,
-    );
+    return this.workerRuntime.renewExecutionLease(tenantId, lease, ttlMs, options);
   }
 
   assertExecutionLease(
@@ -1342,12 +1300,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     operation: () => Promise<T>,
     options?: DurableEventOperationOptions,
   ): Promise<T> {
-    return this.workerRuntime.withExecutionLease(
-      tenantId,
-      lease,
-      operation,
-      options,
-    );
+    return this.workerRuntime.withExecutionLease(tenantId, lease, operation, options);
   }
 
   releaseExecutionLease(
@@ -1355,11 +1308,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     lease: DurableExecutionLease,
     options?: DurableEventOperationOptions,
   ): Promise<void> {
-    return this.workerRuntime.releaseExecutionLease(
-      tenantId,
-      lease,
-      options,
-    );
+    return this.workerRuntime.releaseExecutionLease(tenantId, lease, options);
   }
 
   async appendDurableEvents(
@@ -1394,12 +1343,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         sessionId,
         options.executionFence,
       );
-      const previousSequence = await this.currentHead(
-        client,
-        tenantId,
-        sessionId,
-        'durable',
-      );
+      const previousSequence = await this.currentHead(client, tenantId, sessionId, 'durable');
       if (
         options.expectedLastSequence !== undefined &&
         options.expectedLastSequence !== previousSequence
@@ -1542,10 +1486,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         state.historyProgress = options.clearGap
           ? // The repair closed the gap, so the failed state no longer blocks the
             // merge - but the boundary still cannot regress.
-            mergeHistoryProgress(
-              current ? { ...current, state: 'complete' } : undefined,
-              next,
-            )
+            mergeHistoryProgress(current ? { ...current, state: 'complete' } : undefined, next)
           : mergeHistoryProgress(current, next);
       },
     );
@@ -1981,9 +1922,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
            FROM ${this.table('metadata')}
           WHERE key = 'schema_version'`,
       );
-      const previousSchemaVersion = storedVersion.rows[0]
-        ? Number(storedVersion.rows[0].value)
-        : 1;
+      const previousSchemaVersion = storedVersion.rows[0] ? Number(storedVersion.rows[0].value) : 1;
       if (
         previousSchemaVersion !== 1 &&
         previousSchemaVersion !== 2 &&
@@ -2034,20 +1973,15 @@ export class PostgresRuntimeStore implements RuntimeStore {
         await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
         return result;
       } catch (error) {
-        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
+        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => undefined);
         throw error;
       }
     }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await this.transactionContext.run(
-        client,
-        () => operation(client),
-      );
+      const result = await this.transactionContext.run(client, () => operation(client));
       await client.query('COMMIT');
       return result;
     } catch (error) {
@@ -2452,9 +2386,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       ...(asNumber(row.fencing_token) > 0
         ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
         : {}),
-      ...(row.lease_expires_at
-        ? { leaseExpiresAt: asIso(row.lease_expires_at) }
-        : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
       ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
       ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
       ...(row.result ? { result: asJsonObject(row.result) } : {}),
@@ -2789,10 +2721,7 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     return this.runtime.loadSessionState(this.tenantId, sessionId);
   }
 
-  saveHistoryProgress(
-    sessionId: SessionId,
-    progress: SessionHistoryProgress,
-  ): Promise<void> {
+  saveHistoryProgress(sessionId: SessionId, progress: SessionHistoryProgress): Promise<void> {
     return this.runtime.saveHistoryProgress(this.tenantId, sessionId, progress);
   }
 
@@ -2907,22 +2836,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     sessionId: SessionId,
     options?: DurableEventOperationOptions,
   ): Promise<boolean> {
-    return this.runtime.requiresExecutionLease(
-      this.tenantId,
-      sessionId,
-      options,
-    );
+    return this.runtime.requiresExecutionLease(this.tenantId, sessionId, options);
   }
 
   acquireExecutionLease(
     sessionId: SessionId,
     options: DurableExecutionLeaseAcquireOptions,
   ): Promise<DurableExecutionLease> {
-    return this.runtime.acquireExecutionLease(
-      this.tenantId,
-      sessionId,
-      options,
-    );
+    return this.runtime.acquireExecutionLease(this.tenantId, sessionId, options);
   }
 
   renewExecutionLease(
@@ -2930,23 +2851,14 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     ttlMs: number,
     options?: DurableEventOperationOptions,
   ): Promise<DurableExecutionLease> {
-    return this.runtime.renewExecutionLease(
-      this.tenantId,
-      lease,
-      ttlMs,
-      options,
-    );
+    return this.runtime.renewExecutionLease(this.tenantId, lease, ttlMs, options);
   }
 
   assertExecutionLease(
     lease: DurableExecutionLease,
     options?: DurableEventOperationOptions,
   ): Promise<void> {
-    return this.runtime.assertExecutionLease(
-      this.tenantId,
-      lease,
-      options,
-    );
+    return this.runtime.assertExecutionLease(this.tenantId, lease, options);
   }
 
   withExecutionLease<T>(
@@ -2954,22 +2866,13 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
     operation: () => Promise<T>,
     options?: DurableEventOperationOptions,
   ): Promise<T> {
-    return this.runtime.withExecutionLease(
-      this.tenantId,
-      lease,
-      operation,
-      options,
-    );
+    return this.runtime.withExecutionLease(this.tenantId, lease, operation, options);
   }
 
   releaseExecutionLease(
     lease: DurableExecutionLease,
     options?: DurableEventOperationOptions,
   ): Promise<void> {
-    return this.runtime.releaseExecutionLease(
-      this.tenantId,
-      lease,
-      options,
-    );
+    return this.runtime.releaseExecutionLease(this.tenantId, lease, options);
   }
 }

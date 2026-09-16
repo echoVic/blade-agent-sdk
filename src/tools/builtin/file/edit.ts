@@ -2,9 +2,9 @@ import { basename, extname } from 'node:path';
 import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { EditErrorMetadata, EditMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
@@ -21,6 +21,7 @@ import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
  */
 export const editTool = createTool({
   name: 'Edit',
+  group: 'filesystem',
   displayName: 'File Edit',
   kind: ToolKind.Write,
   sideEffect: 'non_idempotent',
@@ -354,10 +355,6 @@ export const editTool = createTool({
       };
     }
   },
-
-  version: '2.0.0',
-  category: '文件操作',
-  tags: ['file', 'edit', 'replace', 'modify'],
 
   preparePermissionMatcher: (params) => {
     const ext = extname(params.file_path);

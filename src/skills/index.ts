@@ -27,13 +27,13 @@
  * ```
  */
 
-export { injectSkillsMetadata } from './injectSkillsMetadata.js';
-export { discoverSkills, getSkillRegistry, SkillRegistry } from './SkillRegistry.js';
 export {
   collectSkillActivationPaths,
   filterSkillsByActivation,
   isSkillAvailableInContext,
 } from './activation.js';
+export { injectSkillsMetadata } from './injectSkillsMetadata.js';
+export { discoverSkills, getSkillRegistry, SkillRegistry } from './SkillRegistry.js';
 export type {
   SkillActivationContext,
   SkillDefinition,

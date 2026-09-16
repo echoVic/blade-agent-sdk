@@ -27,8 +27,8 @@ export function assertSessionExecutorReadResult(
   }
   if (typeof result.loaded !== 'boolean') {
     throw new Error(
-      `${label} must report \`loaded\`; without it a caller cannot tell an empty `
-      + 'projection from an unknown one',
+      `${label} must report \`loaded\`; without it a caller cannot tell an empty ` +
+        'projection from an unknown one',
     );
   }
   const unknownKeys = Object.keys(result).filter(

@@ -180,10 +180,7 @@ describe('FileAccessTracker', () => {
       await tracker.recordFileRead(testFile, SessionId('session-1'));
       await writeFile(testFile, 'changed content');
 
-      const result = await tracker.checkExternalModification(
-        testFile,
-        SessionId('session-1'),
-      );
+      const result = await tracker.checkExternalModification(testFile, SessionId('session-1'));
 
       expect(result.isExternal).toBe(true);
     });

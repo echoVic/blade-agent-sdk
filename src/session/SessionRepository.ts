@@ -12,13 +12,13 @@ import {
   ToolUseId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
+import type { SessionHistoryProgress } from './historyProgress.js';
 import type {
   SessionSnapshot,
   SessionState,
   SessionStore,
   SessionSummary,
 } from './SessionStore.js';
-import type { SessionHistoryProgress } from './historyProgress.js';
 import type { PersistedPendingInput } from './transcript.js';
 
 export interface SessionRepositorySubagentInfo {
@@ -132,10 +132,7 @@ export interface SessionEventStore {
    * Optional: a backend that cannot persist it makes the SDK fall back to a
    * conservative recovery cursor rather than claiming the history is whole.
    */
-  saveHistoryProgress?(
-    sessionId: SessionId,
-    progress: SessionHistoryProgress,
-  ): Promise<void>;
+  saveHistoryProgress?(sessionId: SessionId, progress: SessionHistoryProgress): Promise<void>;
   /**
    * Close a recorded gap after the transcript was verified or rebuilt. Only the
    * repair path calls this: ordinary progress writes never clear a gap.

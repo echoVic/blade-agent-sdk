@@ -1,8 +1,8 @@
 import Type from 'typebox';
 import type { Memory } from '../../../memory/types.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -34,6 +34,7 @@ function toMemorySummary(memory: Memory) {
 
 export const memoryReadTool = createTool({
   name: 'MemoryRead',
+  group: 'memory',
   displayName: 'Read Memory',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',

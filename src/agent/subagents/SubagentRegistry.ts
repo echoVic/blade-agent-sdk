@@ -9,12 +9,7 @@ import { mapClaudeCodePermissionMode } from './types.js';
 /**
  * 配置来源类型
  */
-type ConfigSource =
-  | 'builtin'
-  | 'user'
-  | 'project'
-  | 'session'
-  | 'plugin';
+type ConfigSource = 'builtin' | 'user' | 'project' | 'session' | 'plugin';
 
 type FileConfigSource = Exclude<ConfigSource, 'plugin' | 'session'>;
 
@@ -88,9 +83,7 @@ export class SubagentRegistry {
     const descriptions = subagents.map((config) => {
       // 工具列表：空数组表示所有工具
       const toolsStr =
-        !config.tools || config.tools.length === 0
-          ? 'All tools'
-          : config.tools.join(', ');
+        !config.tools || config.tools.length === 0 ? 'All tools' : config.tools.join(', ');
 
       return `- ${config.name}: ${config.description} (Tools: ${toolsStr})`;
     });
@@ -135,9 +128,7 @@ export class SubagentRegistry {
     const content = fs.readFileSync(filePath, 'utf-8');
 
     // 解析 YAML frontmatter（支持 \r\n 和 \n）
-    const frontmatterMatch = content.match(
-      /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/
-    );
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
     if (!frontmatterMatch) {
       throw new Error(`No YAML frontmatter found in ${filePath}`);
     }
@@ -181,9 +172,7 @@ export class SubagentRegistry {
    * @param value - 逗号分隔字符串或数组
    * @returns 字符串数组，如果输入为空则返回 undefined
    */
-  private parseStringOrArray(
-    value: string | string[] | undefined
-  ): string[] | undefined {
+  private parseStringOrArray(value: string | string[] | undefined): string[] | undefined {
     if (!value) {
       return undefined;
     }
@@ -215,7 +204,7 @@ export class SubagentRegistry {
    */
   loadFromStandardLocations(
     projectDir: string | undefined = this.projectDir,
-    storageRoot?: string
+    storageRoot?: string,
   ): number {
     // 1. 加载内置配置
     this.loadBuiltinAgents();
@@ -247,11 +236,14 @@ export class SubagentRegistry {
    */
   loadBuiltinAgents(): void {
     for (const agent of builtinAgents) {
-      this.register({
-        ...agent,
-        model: agent.model || 'inherit', // 默认继承父 Agent 模型
-        source: 'builtin',
-      }, { override: true });
+      this.register(
+        {
+          ...agent,
+          model: agent.model || 'inherit', // 默认继承父 Agent 模型
+          source: 'builtin',
+        },
+        { override: true },
+      );
     }
     this.logger.debug(`Loaded ${builtinAgents.length} builtin subagents`);
   }

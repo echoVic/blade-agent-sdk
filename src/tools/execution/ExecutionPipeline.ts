@@ -9,14 +9,13 @@ import { SessionId } from '../../types/identifiers.js';
 import type { JsonObject } from '../../types/json.js';
 import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
-import type { ToolCatalog } from '../catalog/ToolCatalog.js';
+import { resolveBehavior, ToolKind } from '../behavior.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import {
-  getRuntimeAccess,
   type ExecutionContext,
   type ExecutionHistoryEntry,
+  getRuntimeAccess,
 } from '../types/execution.js';
-import { resolveBehavior, ToolKind } from '../behavior.js';
 import { ToolErrorType, type ToolExecution, type ToolResult } from '../types/result.js';
 import {
   type ConcurrencyLease,
@@ -32,12 +31,12 @@ import { PermissionRequestFactory } from './pipeline/PermissionRequestFactory.js
 import { ResultNormalizer } from './pipeline/ResultNormalizer.js';
 import { createExecutionFailureResult, preserveTimeoutFailure } from './pipeline/results.js';
 import { createSignalAbortResult } from './pipeline/signalAbort.js';
-import type { PipelineExecutionState } from './pipeline/state.js';
 import { AuthorizationStage } from './pipeline/stages/AuthorizationStage.js';
 import { ConfirmationStage } from './pipeline/stages/ConfirmationStage.js';
 import { FileLockStage } from './pipeline/stages/FileLockStage.js';
 import { HookStage } from './pipeline/stages/HookStage.js';
 import { InvocationStage } from './pipeline/stages/InvocationStage.js';
+import type { PipelineExecutionState } from './pipeline/state.js';
 import { isTerminalCleanupFailure, TerminalCleanupGuard } from './pipeline/TerminalCleanupGuard.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 600_000;
@@ -84,7 +83,6 @@ export class ExecutionPipeline {
   private readonly maxHistorySize: number;
   private readonly toolTimeoutMs: number;
   private readonly logger: InternalLogger;
-  private readonly toolCatalog?: ToolCatalog;
   private readonly guard = new TerminalCleanupGuard();
   private readonly approvalLedger: ApprovalLedger;
   private readonly scheduler: ConcurrencyScheduler;
@@ -102,7 +100,6 @@ export class ExecutionPipeline {
   ) {
     this.maxHistorySize = config.maxHistorySize || 1000;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
-    this.toolCatalog = config.toolCatalog;
     this.scheduler =
       config.scheduler ??
       (config.concurrencyLimits
@@ -155,10 +152,6 @@ export class ExecutionPipeline {
     );
     this.fileLockStage = new FileLockStage(this.logger, this.guard);
     this.invocationStage = new InvocationStage(this.toolTimeoutMs, this.guard);
-  }
-
-  getCatalog(): ToolCatalog | undefined {
-    return this.toolCatalog;
   }
 
   hasPendingExecutionCleanup(): boolean {
@@ -498,7 +491,6 @@ export interface ExecutionPipelineConfig {
   toolTimeoutMs?: number;
   scheduler?: ConcurrencyScheduler;
   concurrencyLimits?: ConcurrencyLimits;
-  toolCatalog?: ToolCatalog;
   middleware?: readonly ToolMiddleware[];
 }
 

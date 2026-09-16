@@ -16,15 +16,15 @@ import {
   parseAgentCommand,
 } from '../protocol/index.js';
 import { canonicalJson } from '../session/events/canonicalJson.js';
+import { hasHistoryGap, type SessionHistoryProgress } from '../session/historyProgress.js';
 import type { PendingSessionInput, SessionOptions } from '../session/types.js';
-import type { JsonObject } from '../types/json.js';
 import {
   CommandId,
   type CommandId as CommandIdType,
   type RequestId,
   SessionId,
 } from '../types/identifiers.js';
-import { hasHistoryGap, type SessionHistoryProgress } from '../session/historyProgress.js';
+import type { JsonObject } from '../types/json.js';
 import { getErrorName } from '../utils/errorUtils.js';
 import { toJsonValue } from '../utils/jsonValue.js';
 import {
@@ -638,7 +638,10 @@ export class AgentServer {
     }
   }
 
-  private async readEventStreamHead(tenantId: string, sessionId: SessionId): Promise<number | null> {
+  private async readEventStreamHead(
+    tenantId: string,
+    sessionId: SessionId,
+  ): Promise<number | null> {
     if (!this.store.getEventStreamRange) {
       return null;
     }
@@ -732,10 +735,7 @@ export class AgentServer {
         ? range.headSequence
         : Math.min(range.headSequence, headBeforeRead);
     for (let scanned = 0; scanned < RECOVERY_SCAN_WINDOWS; scanned += 1) {
-      const windowStart = Math.max(
-        range.firstSequence,
-        windowEnd - RECOVERY_TAIL_EVENTS + 1,
-      );
+      const windowStart = Math.max(range.firstSequence, windowEnd - RECOVERY_TAIL_EVENTS + 1);
       const page = await this.store.readEvents(tenantId, sessionId, {
         after: windowStart - 1,
         limit: RECOVERY_TAIL_EVENTS,
@@ -744,10 +744,7 @@ export class AgentServer {
       // snapshot was read are allowed to form the boundary.
       const boundary = [...page.events]
         .reverse()
-        .find(
-          (event) =>
-            Number(event.sequence) <= windowEnd && isCompletedRequestEvent(event),
-        );
+        .find((event) => Number(event.sequence) <= windowEnd && isCompletedRequestEvent(event));
       if (boundary) {
         return { cursor: boundary.sequence, incomplete: false };
       }
@@ -792,11 +789,7 @@ export class AgentServer {
       });
       const match = [...page.events]
         .reverse()
-        .find(
-          (event) =>
-            event.requestId === requestId &&
-            Number(event.sequence) <= limit,
-        );
+        .find((event) => event.requestId === requestId && Number(event.sequence) <= limit);
       if (match) {
         return Number(match.sequence);
       }

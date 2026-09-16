@@ -39,22 +39,17 @@ export class HookProcessContainmentError extends SdkError {
   }
 }
 
-export function isHookProcessContainmentError(
-  error: unknown,
-): boolean {
+export function isHookProcessContainmentError(error: unknown): boolean {
   return containsHookProcessContainmentError(error, new Set());
 }
 
-function containsHookProcessContainmentError(
-  error: unknown,
-  seen: Set<object>,
-): boolean {
+function containsHookProcessContainmentError(error: unknown, seen: Set<object>): boolean {
   if (typeof error !== 'object' || error === null) {
     return false;
   }
   if (
-    error instanceof HookProcessContainmentError
-    || ('code' in error && error.code === 'HOOK_PROCESS_CONTAINMENT_FAILED')
+    error instanceof HookProcessContainmentError ||
+    ('code' in error && error.code === 'HOOK_PROCESS_CONTAINMENT_FAILED')
   ) {
     return true;
   }
@@ -63,16 +58,12 @@ function containsHookProcessContainmentError(
   }
   seen.add(error);
   if (
-    error instanceof AggregateError
-    && error.errors.some((nestedError) =>
-      containsHookProcessContainmentError(nestedError, seen))
+    error instanceof AggregateError &&
+    error.errors.some((nestedError) => containsHookProcessContainmentError(nestedError, seen))
   ) {
     return true;
   }
-  return (
-    'cause' in error
-    && containsHookProcessContainmentError(error.cause, seen)
-  );
+  return 'cause' in error && containsHookProcessContainmentError(error.cause, seen);
 }
 
 export function getRecoverableHookErrorMessage(error: unknown): string {
@@ -175,10 +166,7 @@ export class WindowsProcessJob {
         information.byteLength,
       )
     ) {
-      const configurationError = win32Error(
-        bindings,
-        'SetInformationJobObject',
-      );
+      const configurationError = win32Error(bindings, 'SetInformationJobObject');
       try {
         closeNativeHandle(bindings, handle, 'CloseHandle(Job)');
       } catch (closeError) {
@@ -208,28 +196,16 @@ export class WindowsProcessJob {
       throw win32Error(this.bindings, 'OpenProcess');
     }
 
-    const assigned = this.bindings.assignProcessToJobObject(
-      this.handle,
-      processHandle,
-    );
+    const assigned = this.bindings.assignProcessToJobObject(this.handle, processHandle);
     const assignmentError = assigned
       ? undefined
       : win32Error(this.bindings, 'AssignProcessToJobObject');
     try {
-      closeNativeHandle(
-        this.bindings,
-        processHandle,
-        'CloseHandle(Process)',
-      );
+      closeNativeHandle(this.bindings, processHandle, 'CloseHandle(Process)');
     } catch (closeError) {
-      throw new HookProcessContainmentError(
-        'Failed to close the Windows Hook process handle',
-        {
-          cause: assignmentError
-            ? new AggregateError([assignmentError, closeError])
-            : closeError,
-        },
-      );
+      throw new HookProcessContainmentError('Failed to close the Windows Hook process handle', {
+        cause: assignmentError ? new AggregateError([assignmentError, closeError]) : closeError,
+      });
     }
     if (assignmentError) {
       throw assignmentError;
@@ -268,10 +244,7 @@ export class WindowsProcessJob {
           );
         }
         await new Promise<void>((resolve) => {
-          setTimeout(
-            resolve,
-            Math.min(WINDOWS_JOB_POLL_INTERVAL_MS, remainingMs),
-          );
+          setTimeout(resolve, Math.min(WINDOWS_JOB_POLL_INTERVAL_MS, remainingMs));
         });
       }
       this.close();

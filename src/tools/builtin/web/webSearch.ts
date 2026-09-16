@@ -1,16 +1,16 @@
+import Type from 'typebox';
 import {
   type Dispatcher,
   ProxyAgent,
   type Response as UndiciResponse,
   fetch as undiciFetch,
 } from 'undici';
-import Type from 'typebox';
 import type { JsonValue } from '../../../types/json.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { WebSearchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -334,6 +334,7 @@ function sanitizeQuery(query: string): string {
 
 export const webSearchTool = createTool({
   name: 'WebSearch',
+  group: 'web',
   displayName: 'Web Search',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
@@ -472,10 +473,6 @@ IMPORTANT - Use the correct year in search queries:
       };
     }
   },
-
-  version: '2.0.0',
-  category: '网络工具',
-  tags: ['web', 'search', 'internet', 'news'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: `search:${sanitizeQuery(params.query)}`,

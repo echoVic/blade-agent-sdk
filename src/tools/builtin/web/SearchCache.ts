@@ -3,8 +3,8 @@
  * 使用 LRU + TTL 策略减少重复搜索请求
  */
 
-import { LRUCache } from 'lru-cache';
 import crypto from 'node:crypto';
+import { LRUCache } from 'lru-cache';
 import type { WebSearchResult } from './webSearch.js';
 
 /**
@@ -70,11 +70,7 @@ export class SearchCache {
    */
   private generateKey(provider: string, query: string): string {
     const normalized = query.toLowerCase().trim();
-    const hash = crypto
-      .createHash('md5')
-      .update(normalized)
-      .digest('hex')
-      .substring(0, 8);
+    const hash = crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
 
     return `${provider}:${hash}`;
   }

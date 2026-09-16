@@ -1,8 +1,8 @@
-import fg from 'fast-glob';
-import { LRUCache } from 'lru-cache';
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import fg from 'fast-glob';
+import { LRUCache } from 'lru-cache';
 import picomatch from 'picomatch';
 import { splitPath } from './pathHelpers.js';
 
@@ -88,12 +88,9 @@ const RULES_CACHE = new LRUCache<string, Rule[]>({
 
 async function collectGitignoreRulesOrderedAsync(
   cwd: string,
-  opts?: { scanIgnore?: string[]; cacheTTL?: number }
+  opts?: { scanIgnore?: string[]; cacheTTL?: number },
 ): Promise<Rule[]> {
-  const scanIgnore = [
-    ...DEFAULT_EXCLUDE_DIRS.map((d) => `${d}/**`),
-    ...(opts?.scanIgnore ?? []),
-  ];
+  const scanIgnore = [...DEFAULT_EXCLUDE_DIRS.map((d) => `${d}/**`), ...(opts?.scanIgnore ?? [])];
   const cacheKey = `${cwd}|${scanIgnore.join(',')}`;
 
   // 检查缓存
@@ -214,12 +211,7 @@ export class FileFilter {
   }
 
   private initialize(options: FileFilterOptions): void {
-    const {
-      cwd,
-      useGitignore = true,
-      useDefaults = true,
-      customPatterns = [],
-    } = options;
+    const { cwd, useGitignore = true, useDefaults = true, customPatterns = [] } = options;
 
     const allPatterns: string[] = [];
     const allNegatePatterns: string[] = [];
@@ -274,7 +266,7 @@ export class FileFilter {
 
   shouldIgnore(path: string): boolean {
     const normalized = path.replace(/\\/g, '/');
-    let matched: boolean | undefined ;
+    let matched: boolean | undefined;
     for (const rule of this.orderedRules) {
       if (rule.matcher(normalized)) {
         matched = rule.type === 'ignore';

@@ -28,10 +28,7 @@ export function buildShellEnvironment(
   const environment: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
-    if (
-      value !== undefined &&
-      (SAFE_PROCESS_ENV_KEYS.has(key) || key.startsWith('LC_'))
-    ) {
+    if (value !== undefined && (SAFE_PROCESS_ENV_KEYS.has(key) || key.startsWith('LC_'))) {
       environment[key] = value;
     }
   }

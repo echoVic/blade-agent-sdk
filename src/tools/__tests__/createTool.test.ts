@@ -690,14 +690,13 @@ describe('createTool', () => {
   });
 
   describe('toolFromDefinition', () => {
-    it('preserves category, tags, and exposure metadata for simplified tool definitions', () => {
+    it('preserves group and exposure metadata for simplified tool definitions', () => {
       const tool = toolFromDefinition({
         name: 'IndexedTool',
         sideEffect: 'pure',
         description: 'Indexed tool',
         parameters: { type: 'object', properties: {} },
-        category: 'analysis',
-        tags: ['search', 'catalog'],
+        group: 'system',
         exposure: {
           mode: 'deferred',
           discoveryHint: 'Use when searching the tool catalog.',
@@ -710,8 +709,7 @@ describe('createTool', () => {
         },
       });
 
-      expect(tool.category).toBe('analysis');
-      expect(tool.tags).toEqual(['search', 'catalog']);
+      expect(tool.group).toBe('system');
       expect(tool.exposure).toMatchObject({
         mode: 'deferred',
         discoveryHint: 'Use when searching the tool catalog.',

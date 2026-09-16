@@ -1,10 +1,10 @@
 export * from './runtime.js';
 export {
-  assertAgentServerStoreConformance,
   type AgentServerStoreConformanceOptions,
   type AgentServerStoreConformanceResult,
+  assertAgentServerStoreConformance,
   assertRuntimeStoreConformance,
+  assertSessionExecutorReadResult,
   type RuntimeStoreConformanceOptions,
   type RuntimeStoreConformanceResult,
-  assertSessionExecutorReadResult,
 } from './testing/index.js';

@@ -43,6 +43,9 @@ describe('runtime Tool shape', () => {
     expect('describe' in tool).toBe(false);
     expect('getMetadata' in tool).toBe(false);
     expect('getFunctionDeclaration' in tool).toBe(false);
+    expect('version' in tool).toBe(false);
+    expect('category' in tool).toBe(false);
+    expect('tags' in tool).toBe(false);
 
     const invocation = tool.prepare({
       file_path: '/tmp/example.txt',

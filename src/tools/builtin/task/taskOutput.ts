@@ -10,8 +10,8 @@ import Type from 'typebox';
 import type { IBackgroundAgentManager } from '../../../agent/types.js';
 import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -27,6 +27,7 @@ import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
  */
 export const taskOutputTool = createTool({
   name: 'TaskOutput',
+  group: 'task',
   displayName: 'Task Output',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
@@ -117,10 +118,6 @@ export const taskOutputTool = createTool({
       },
     };
   },
-
-  version: '1.0.0',
-  category: 'Task',
-  tags: ['task', 'output', 'background', 'shell', 'agent'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: params.task_id,

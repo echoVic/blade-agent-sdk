@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AtMentionParser } from '../processors/AtMentionParser.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
+import { AtMentionParser } from '../processors/AtMentionParser.js';
 
 describe('AtMentionParser', () => {
   describe('extract', () => {

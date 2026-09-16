@@ -2,14 +2,14 @@
  * Agent核心类型定义
  */
 
+import type { AgentMiddlewareConfig } from '../middleware/AgentPlugin.js';
 import type { OutputFormat } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
-import type { AgentMiddlewareConfig } from '../middleware/AgentPlugin.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
-import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { ToolSourcePolicy } from '../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/execution.js';
 import type { PermissionMode } from '../types/constants.js';
 import type { AgentId, InputId, RequestId, SessionId } from '../types/identifiers.js';
@@ -131,7 +131,7 @@ export interface AgentRuntimeOptions {
   permissionMode?: PermissionMode;
   maxTurns?: number; // 最大对话轮次 (-1=无限制, 0=禁用对话, N>0=限制轮次)
   toolWhitelist?: string[]; // 工具白名单（仅允许指定工具）
-  toolSourcePolicy?: ToolCatalogSourcePolicy; // 工具来源/信任级别过滤
+  toolSourcePolicy?: ToolSourcePolicy; // 工具来源/信任级别过滤
   modelId?: string;
 
   // 权限控制

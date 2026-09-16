@@ -1,9 +1,5 @@
 import { PermissionMode } from '../../types/constants.js';
-import type {
-  ToolCatalogEntry,
-  ToolCatalogReadView,
-  ToolCatalogSourcePolicy,
-} from '../catalog/ToolCatalog.js';
+import type { RegisteredTool, ToolRegistry, ToolSourcePolicy } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
@@ -43,24 +39,16 @@ export interface ToolExposurePlannerOptions {
   permissionMode?: PermissionMode;
   runtimeToolPolicy?: RuntimeToolPolicySnapshot;
   discoveredTools?: Iterable<string>;
-  sourcePolicy?: ToolCatalogSourcePolicy;
+  sourcePolicy?: ToolSourcePolicy;
 }
 
 export class ToolExposurePlanner implements DiscoverableCatalogView {
   constructor(
-    private readonly catalog: ToolCatalogReadView,
+    private readonly registry: Pick<ToolRegistry, 'entries'>,
     private readonly getDiscoveredTools: () => ReadonlySet<string> = () => new Set(),
   ) {}
 
   plan(options: ToolExposurePlannerOptions = {}): ToolExposurePlan {
-    const catalogEntries = this.catalog.getEntries?.();
-    const allTools = catalogEntries?.map((entry) => entry.tool) ?? this.catalog.getAll();
-    const entryByName = new Map(catalogEntries?.map((entry) => [entry.tool.name, entry]) ?? []);
-
-    if (allTools.length === 0 && this.catalog.getFunctionDeclarationsByMode) {
-      return this.planFromDeclarations(options);
-    }
-
     const declarations: FunctionDeclaration[] = [];
     const exposures: ToolExposure[] = [];
     const discoverableTools: DiscoverableToolInfo[] = [];
@@ -68,10 +56,11 @@ export class ToolExposurePlanner implements DiscoverableCatalogView {
     const deniedTools = new Set(options.runtimeToolPolicy?.deny ?? []);
     const allowSelectors = options.runtimeToolPolicy?.allow;
 
-    for (const tool of allTools) {
+    for (const entry of this.registry.entries()) {
+      const { tool } = entry;
       const blockedReason = this.getBlockedReason(
         tool,
-        entryByName.get(tool.name),
+        entry,
         options.permissionMode,
         allowSelectors,
         deniedTools,
@@ -124,49 +113,26 @@ export class ToolExposurePlanner implements DiscoverableCatalogView {
       }).discoverableTools.map((tool) => [tool.name, tool]),
     );
 
-    return searchTools(this.catalog.getAll(), input.query).flatMap((tool) => {
+    const tools = this.registry.entries().map((entry) => entry.tool);
+    return searchTools(tools, input.query).flatMap((tool) => {
       const entry = eligible.get(tool.name);
       return entry ? [entry] : [];
     });
   }
 
-  private planFromDeclarations(options: ToolExposurePlannerOptions): ToolExposurePlan {
-    const source = this.catalog.getFunctionDeclarationsByMode?.(options.permissionMode) ?? [];
-    const deniedTools = new Set(options.runtimeToolPolicy?.deny ?? []);
-    const allowSelectors = options.runtimeToolPolicy?.allow;
-    const declarations = source.filter((tool) => {
-      if (deniedTools.has(tool.name)) {
-        return false;
-      }
-      if (!allowSelectors || allowSelectors.length === 0) {
-        return true;
-      }
-      return allowSelectors.some((selector) => matchesToolSelector(selector, tool.name));
-    });
-
-    return {
-      declarations,
-      exposures: declarations.map((tool) => ({
-        toolName: tool.name,
-        mode: 'eager' as const,
-      })),
-      discoverableTools: [],
-    };
-  }
-
   private getBlockedReason(
     tool: Tool,
-    entry: ToolCatalogEntry | undefined,
+    entry: RegisteredTool,
     permissionMode: PermissionMode | undefined,
     allowSelectors: string[] | undefined,
     deniedTools: Set<string>,
-    sourcePolicy: ToolCatalogSourcePolicy | undefined,
+    sourcePolicy: ToolSourcePolicy | undefined,
   ): string | undefined {
     if (permissionMode === PermissionMode.PLAN && !tool.staticBehavior.isReadOnly) {
       return 'plan-mode-hidden';
     }
 
-    if (entry && sourcePolicy) {
+    if (sourcePolicy) {
       if (
         sourcePolicy.allowedSources &&
         sourcePolicy.allowedSources.length > 0 &&

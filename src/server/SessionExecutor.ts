@@ -13,6 +13,7 @@ import type {
   ResumeSessionCommand,
   SubmitInputCommand,
 } from '../protocol/index.js';
+import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import { createSession, forkSession, resumeSession } from '../session/Session.js';
 import { isSessionEventStore } from '../session/SessionRepository.js';
 import type {
@@ -24,7 +25,6 @@ import type {
 import type { CommandId, RequestId, SessionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
-import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import type { AgentServerSessionRecord, AgentServerStore } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
 import type { RuntimeTenantStore } from './RuntimeStore.js';

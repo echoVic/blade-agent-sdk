@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import type { JsonValue } from '../../../types/json.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -48,6 +48,7 @@ function parseResourceContent(value: JsonValue): ResourceContent {
 
 export const readMcpResourceTool = createTool({
   name: 'ReadMcpResource',
+  group: 'mcp-resources',
   displayName: 'Read MCP Resource',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',

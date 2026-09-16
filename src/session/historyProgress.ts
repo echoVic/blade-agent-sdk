@@ -50,9 +50,7 @@ export interface SessionHistoryProgress {
 }
 
 /** Whether the transcript may contain a gap the client would otherwise skip. */
-export function hasHistoryGap(
-  progress: SessionHistoryProgress | undefined,
-): boolean {
+export function hasHistoryGap(progress: SessionHistoryProgress | undefined): boolean {
   return progress?.state === 'failed';
 }
 

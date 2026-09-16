@@ -3,9 +3,9 @@ import { composeMiddleware } from '../../../middleware/composeMiddleware.js';
 import type { ToolMiddleware, ToolMiddlewareRequest } from '../../../middleware/ToolMiddleware.js';
 import type { JsonObject } from '../../../types/json.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
-import type { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { getRuntimeAccess, type ExecutionContext } from '../../types/execution.js';
 import { resolveBehavior, ToolSideEffect } from '../../behavior.js';
+import type { ToolRegistry } from '../../registry/ToolRegistry.js';
+import { type ExecutionContext, getRuntimeAccess } from '../../types/execution.js';
 import {
   ToolErrorType,
   type ToolExecution,

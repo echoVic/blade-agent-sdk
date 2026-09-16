@@ -31,9 +31,8 @@ export function composeMiddleware<TRequest, TResult>(
         return terminal(currentRequest);
       }
 
-      return current(
-        currentRequest,
-        (nextRequest = currentRequest) => dispatch(position + 1, nextRequest),
+      return current(currentRequest, (nextRequest = currentRequest) =>
+        dispatch(position + 1, nextRequest),
       );
     };
 

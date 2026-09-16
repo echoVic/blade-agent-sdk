@@ -146,10 +146,8 @@ export interface ExecutionContext {
 export function getRuntimeAccess(context: ExecutionContext): RuntimeAccess {
   return {
     executionFence: context.runtime?.executionFence,
-    assertExecutionLease:
-      context.runtime?.assertExecutionLease ?? allowUnfencedExecution,
-    runWithExecutionLease:
-      context.runtime?.runWithExecutionLease ?? runWithoutExecutionLease,
+    assertExecutionLease: context.runtime?.assertExecutionLease ?? allowUnfencedExecution,
+    runWithExecutionLease: context.runtime?.runWithExecutionLease ?? runWithoutExecutionLease,
   };
 }
 

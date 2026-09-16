@@ -1,15 +1,6 @@
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExecutionId } from '../../types/identifiers.js';
-import {
-  EphemeralCredentialBroker,
-  type CredentialIssuer,
-} from '../CredentialBroker.js';
+import { type CredentialIssuer, EphemeralCredentialBroker } from '../CredentialBroker.js';
 
 const executionId = ExecutionId('execution-credential-test');
 
@@ -36,10 +27,12 @@ describe('EphemeralCredentialBroker', () => {
 
     const lease = await broker.acquire(
       executionId,
-      [{
-        name: 'github',
-        audience: 'api.github.com',
-      }],
+      [
+        {
+          name: 'github',
+          audience: 'api.github.com',
+        },
+      ],
       1_000,
     );
 
@@ -100,9 +93,7 @@ describe('EphemeralCredentialBroker', () => {
         async issue(context) {
           return {
             value: 'first-value',
-            expiresAt: new Date(
-              Date.parse(context.expiresBy) - 1,
-            ).toISOString(),
+            expiresAt: new Date(Date.parse(context.expiresBy) - 1).toISOString(),
             revoke,
           };
         },
@@ -115,14 +106,16 @@ describe('EphemeralCredentialBroker', () => {
       },
     });
 
-    await expect(broker.acquire(
-      executionId,
-      [
-        { name: 'first', audience: 'first.example.com' },
-        { name: 'second', audience: 'second.example.com' },
-      ],
-      1_000,
-    )).rejects.toThrow('issuer unavailable');
+    await expect(
+      broker.acquire(
+        executionId,
+        [
+          { name: 'first', audience: 'first.example.com' },
+          { name: 'second', audience: 'second.example.com' },
+        ],
+        1_000,
+      ),
+    ).rejects.toThrow('issuer unavailable');
     expect(revoke).toHaveBeenCalledTimes(1);
   });
 
@@ -134,78 +127,77 @@ describe('EphemeralCredentialBroker', () => {
         async issue(context) {
           return {
             value: 'too-long-lived',
-            expiresAt: new Date(
-              Date.parse(context.expiresBy) + 1,
-            ).toISOString(),
+            expiresAt: new Date(Date.parse(context.expiresBy) + 1).toISOString(),
             revoke,
           };
         },
       },
     });
 
-    await expect(broker.acquire(
-      executionId,
-      [{ name: 'invalid', audience: 'invalid.example.com' }],
-      1_000,
-    )).rejects.toMatchObject({
+    await expect(
+      broker.acquire(executionId, [{ name: 'invalid', audience: 'invalid.example.com' }], 1_000),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_CREDENTIAL_ERROR',
     });
     expect(revoke).toHaveBeenCalledTimes(1);
   });
 
   it('rejects invalid limits, requests, and issuer environment collisions', async () => {
-    expect(() => new EphemeralCredentialBroker({}, 0)).toThrow(
-      /maxTtlMs/,
-    );
-    expect(() => new EphemeralCredentialBroker({
-      first: {
-        environmentVariable: 'SHARED_EPHEMERAL_TOKEN',
-        async issue() {
-          throw new Error('not reached');
-        },
-      },
-      second: {
-        environmentVariable: 'SHARED_EPHEMERAL_TOKEN',
-        async issue() {
-          throw new Error('not reached');
-        },
-      },
-    })).toThrow(/duplicated/);
+    expect(() => new EphemeralCredentialBroker({}, 0)).toThrow(/maxTtlMs/);
+    expect(
+      () =>
+        new EphemeralCredentialBroker({
+          first: {
+            environmentVariable: 'SHARED_EPHEMERAL_TOKEN',
+            async issue() {
+              throw new Error('not reached');
+            },
+          },
+          second: {
+            environmentVariable: 'SHARED_EPHEMERAL_TOKEN',
+            async issue() {
+              throw new Error('not reached');
+            },
+          },
+        }),
+    ).toThrow(/duplicated/);
 
-    const broker = new EphemeralCredentialBroker({
-      valid: {
-        environmentVariable: 'VALID_EPHEMERAL_TOKEN',
-        async issue(context) {
-          return {
-            value: 'valid',
-            expiresAt: new Date(
-              Date.parse(context.expiresBy) - 1,
-            ).toISOString(),
-          };
+    const broker = new EphemeralCredentialBroker(
+      {
+        valid: {
+          environmentVariable: 'VALID_EPHEMERAL_TOKEN',
+          async issue(context) {
+            return {
+              value: 'valid',
+              expiresAt: new Date(Date.parse(context.expiresBy) - 1).toISOString(),
+            };
+          },
         },
       },
-    }, 1_000);
-    await expect(broker.acquire(executionId, [], 100))
-      .rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
-    await expect(broker.acquire(
-      executionId,
-      [{
-        name: 'valid',
-        audience: 'example.com',
-        scopes: ['read', 'read'],
-      }],
-      100,
-    )).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
-    await expect(broker.acquire(
-      executionId,
-      [{ name: 'missing', audience: 'example.com' }],
-      100,
-    )).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
-    await expect(broker.acquire(
-      executionId,
-      [{ name: 'valid', audience: 'example.com' }],
-      1_001,
-    )).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
+      1_000,
+    );
+    await expect(broker.acquire(executionId, [], 100)).rejects.toMatchObject({
+      code: 'EXECUTION_CREDENTIAL_ERROR',
+    });
+    await expect(
+      broker.acquire(
+        executionId,
+        [
+          {
+            name: 'valid',
+            audience: 'example.com',
+            scopes: ['read', 'read'],
+          },
+        ],
+        100,
+      ),
+    ).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
+    await expect(
+      broker.acquire(executionId, [{ name: 'missing', audience: 'example.com' }], 100),
+    ).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
+    await expect(
+      broker.acquire(executionId, [{ name: 'valid', audience: 'example.com' }], 1_001),
+    ).rejects.toMatchObject({ code: 'EXECUTION_CREDENTIAL_ERROR' });
   });
 
   it('surfaces revocation failures after removing the lease', async () => {
@@ -218,9 +210,7 @@ describe('EphemeralCredentialBroker', () => {
         async issue(context) {
           return {
             value: 'value',
-            expiresAt: new Date(
-              Date.parse(context.expiresBy) - 1,
-            ).toISOString(),
+            expiresAt: new Date(Date.parse(context.expiresBy) - 1).toISOString(),
             revoke,
           };
         },

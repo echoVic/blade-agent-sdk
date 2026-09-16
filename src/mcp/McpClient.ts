@@ -624,7 +624,10 @@ export class McpClient extends EventEmitter {
     }
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`MCP ping timed out after ${timeoutMs}ms`)), timeoutMs);
+      timer = setTimeout(
+        () => reject(new Error(`MCP ping timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
       timer.unref?.();
     });
     try {

@@ -1,4 +1,4 @@
-import type { JsonValue } from '../types/json.js';
+import type { ConversationMessage } from '../model/conversation.js';
 import type {
   InputId,
   MessageId,
@@ -7,14 +7,14 @@ import type {
   ToolUseId,
   TurnId,
 } from '../types/identifiers.js';
-import type { ConversationMessage } from '../model/conversation.js';
+import type { JsonValue } from '../types/json.js';
 import {
-  DurableSessionProjector,
   type DurableRequestProjection,
   type DurableSessionProjection,
+  DurableSessionProjector,
   type DurableTurnProjection,
 } from './events/DurableSessionProjector.js';
-import { DurableEventType, type DurableEventEnvelope } from './events/types.js';
+import { type DurableEventEnvelope, DurableEventType } from './events/types.js';
 import { hasHistoryGap, type SessionHistoryProgress } from './historyProgress.js';
 import type { SessionEventStore, SessionRepository } from './SessionRepository.js';
 import type { SessionToolCallState } from './SessionStore.js';
@@ -54,10 +54,17 @@ export interface HistoryRepairResult {
 
 export interface HistoryRepairOptions {
   /** The tenant-scoped persistence port: transcript writes plus durable reads. */
-  readonly persistence: SessionRepository & Partial<SessionEventStore> & {
-    readonly read?: (sessionId: SessionId, options?: { after?: number; limit?: number }) =>
-      Promise<{ events: readonly DurableEventEnvelope[]; hasMore: boolean; nextCursor?: number | null }>;
-  };
+  readonly persistence: SessionRepository &
+    Partial<SessionEventStore> & {
+      readonly read?: (
+        sessionId: SessionId,
+        options?: { after?: number; limit?: number },
+      ) => Promise<{
+        events: readonly DurableEventEnvelope[];
+        hasMore: boolean;
+        nextCursor?: number | null;
+      }>;
+    };
   readonly sessionId: SessionId;
   readonly signal?: AbortSignal;
 }
@@ -308,20 +315,14 @@ export async function repairSessionHistory(
       if (typeof persistence.saveMessage !== 'function') {
         missing.add('assistant-message');
       } else {
-        await persistence.saveMessage(
-          sessionId,
-          'assistant',
-          response.content,
-          parentMessageId,
-          {
-            reasoningContent: response.reasoningContent,
-            toolCalls: response.toolCalls?.map((call) => ({
-              id: call.id,
-              type: 'function' as const,
-              function: { name: call.name, arguments: call.arguments },
-            })),
-          },
-        );
+        await persistence.saveMessage(sessionId, 'assistant', response.content, parentMessageId, {
+          reasoningContent: response.reasoningContent,
+          toolCalls: response.toolCalls?.map((call) => ({
+            id: call.id,
+            type: 'function' as const,
+            function: { name: call.name, arguments: call.arguments },
+          })),
+        });
         transcript.messages.push({
           role: 'assistant',
           content: response.content,
@@ -472,13 +473,14 @@ function hasUserMessage(messages: readonly ConversationMessage[], inputId: Input
  * the call; the result is a separate write that can fail on its own.
  */
 function hasToolResult(
-  transcript: { messages: readonly ConversationMessage[]; toolCalls: readonly SessionToolCallState[] },
+  transcript: {
+    messages: readonly ConversationMessage[];
+    toolCalls: readonly SessionToolCallState[];
+  },
   toolCallId: ToolUseId,
 ): boolean {
   return (
-    transcript.toolCalls.some(
-      (call) => call.id === toolCallId && call.status !== 'pending',
-    ) ||
+    transcript.toolCalls.some((call) => call.id === toolCallId && call.status !== 'pending') ||
     transcript.messages.some(
       (message) => message.role === 'tool' && message.tool_call_id === String(toolCallId),
     )
@@ -491,13 +493,11 @@ function hasAssistantMessage(
   content: string | undefined,
 ): boolean {
   if (toolCallIds.size > 0) {
-    return messages.some((message) =>
-      message.tool_calls?.some((call) => toolCallIds.has(String(call.id))) === true,
+    return messages.some(
+      (message) => message.tool_calls?.some((call) => toolCallIds.has(String(call.id))) === true,
     );
   }
-  return messages.some(
-    (message) => message.role === 'assistant' && message.content === content,
-  );
+  return messages.some((message) => message.role === 'assistant' && message.content === content);
 }
 
 function isBlankContent(content: string | unknown[] | undefined): boolean {

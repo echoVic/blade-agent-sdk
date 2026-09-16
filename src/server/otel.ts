@@ -1,8 +1,8 @@
 export {
-  OpenTelemetryAgentServerTelemetry,
   type OpenTelemetryAgentServerOptions,
+  OpenTelemetryAgentServerTelemetry,
 } from './OpenTelemetryAgentServerTelemetry.js';
 export {
-  OpenTelemetryAgentWorkerTelemetry,
   type OpenTelemetryAgentWorkerOptions,
+  OpenTelemetryAgentWorkerTelemetry,
 } from './OpenTelemetryAgentWorkerTelemetry.js';

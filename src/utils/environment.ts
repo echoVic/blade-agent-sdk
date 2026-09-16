@@ -80,5 +80,3 @@ function existsSync(filePath: string): boolean {
     return false;
   }
 }
-
-

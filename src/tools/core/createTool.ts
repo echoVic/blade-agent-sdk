@@ -52,11 +52,9 @@ interface ToolAssembly<TParams> {
   readonly maxResultSizeChars: number;
   readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
+  readonly group?: Tool['group'];
   readonly description: ToolDescription;
   readonly exposure: { mode: ToolExposureMode; alwaysLoad: boolean; discoveryHint: string };
-  readonly version: string;
-  readonly category?: string;
-  readonly tags: string[];
   readonly parse: (raw: unknown) => TParams;
   readonly resolveBehavior: (params: TParams) => ToolBehavior;
   readonly resolveDescription: (params: TParams) => string;
@@ -112,10 +110,8 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool {
     maxResultSizeChars: assembly.maxResultSizeChars,
     services: assembly.services,
     requiresRuntime: assembly.requiresRuntime,
+    group: assembly.group,
     exposure: assembly.exposure,
-    version: assembly.version,
-    category: assembly.category,
-    tags: assembly.tags,
     prepare,
     execute(params, context = {}) {
       return executeWithValidation(tool, params, context);
@@ -217,11 +213,9 @@ export function createTool<
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
     services: config.services ?? [],
     requiresRuntime: config.requiresRuntime ?? false,
+    group: config.group,
     description: config.description,
     exposure,
-    version: config.version || '1.0.0',
-    category: config.category,
-    tags: config.tags || [],
     parse: (params) => input.parse(params),
     resolveBehavior: (params) => resolveBehavior(config, params) ?? staticBehavior,
     resolveDescription: (params) => resolveDescription(params).short,
@@ -334,15 +328,13 @@ export function toolFromDefinition(
     maxResultSizeChars: Number.POSITIVE_INFINITY,
     services: definition.services ?? [],
     requiresRuntime,
+    group: definition.group,
     description,
     exposure: {
       mode: definition.exposure?.mode ?? 'eager',
       alwaysLoad: definition.exposure?.alwaysLoad ?? false,
       discoveryHint: definition.exposure?.discoveryHint ?? '',
     },
-    version: '1.0.0',
-    category: definition.category,
-    tags: definition.tags || [],
     parse: (params) => input.parse(params),
     resolveBehavior: () => staticBehavior,
     resolveDescription: () => description.short,

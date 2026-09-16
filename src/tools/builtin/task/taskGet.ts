@@ -9,6 +9,7 @@ import { TaskStore } from './TaskStore.js';
 
 export const taskGetTool = createTool({
   name: 'TaskGet',
+  group: 'task',
   displayName: 'Get Task',
   kind: ToolKind.Write,
   sideEffect: 'pure',

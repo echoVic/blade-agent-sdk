@@ -3,8 +3,8 @@ import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
 import type { MemoryManager } from '../memory/MemoryManager.js';
+import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
 import type {
   ModelProviderOptions,
   OutputFormat,
@@ -23,7 +23,7 @@ import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { SkillDefinition } from '../skills/types.js';
 import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
-import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { ToolSourcePolicy } from '../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
   ToolDisplayContent,
@@ -261,7 +261,7 @@ export interface SessionOptions {
 
   allowedTools?: string[];
   disallowedTools?: string[];
-  toolSourcePolicy?: ToolCatalogSourcePolicy;
+  toolSourcePolicy?: ToolSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   /** Enables the built-in MemoryRead and MemoryWrite tools for this Session. */
   memoryManager?: MemoryManager;

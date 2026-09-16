@@ -261,11 +261,11 @@ function streamPartError(part: unknown): Error {
   };
   const cause = record.error;
   const statusCode = errorStatusCode(cause);
-  const message = record.errorText
-    ?? errorMessage(cause)
-    ?? 'The model stream reported an error';
-  const error = new ModelStreamError(message, cause !== undefined ? { cause } : undefined) as
-    ModelStreamError & { statusCode?: number };
+  const message = record.errorText ?? errorMessage(cause) ?? 'The model stream reported an error';
+  const error = new ModelStreamError(
+    message,
+    cause !== undefined ? { cause } : undefined,
+  ) as ModelStreamError & { statusCode?: number };
   if (statusCode !== undefined) {
     error.statusCode = statusCode;
   }
@@ -997,9 +997,8 @@ export class VercelAIModelService implements ModelService {
       // after output has been forwarded terminates the stream.
       const attempt = await consumeRetryGenerator(
         withRetry(
-          (ctx: RetryContext) => this.openStreamAttempt(
-            coreMessages, coreTools, experimentalOutput, ctx, signal,
-          ),
+          (ctx: RetryContext) =>
+            this.openStreamAttempt(coreMessages, coreTools, experimentalOutput, ctx, signal),
           this.retryConfig,
           signal,
         ),
@@ -1061,7 +1060,10 @@ export class VercelAIModelService implements ModelService {
                           cacheCreationInputTokens?: number;
                           cacheReadInputTokens?: number;
                         };
-                        deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
+                        deepseek?: {
+                          promptCacheHitTokens?: number;
+                          promptCacheMissTokens?: number;
+                        };
                       };
                     }
                   ).providerMetadata,
@@ -1111,7 +1113,10 @@ export class VercelAIModelService implements ModelService {
     experimentalOutput: ReturnType<VercelAIModelService['convertOutputFormat']>,
     ctx: RetryContext,
     signal?: AbortSignal,
-  ): Promise<{ first: IteratorResult<Record<string, unknown>>; parts: AsyncIterator<Record<string, unknown>> }> {
+  ): Promise<{
+    first: IteratorResult<Record<string, unknown>>;
+    parts: AsyncIterator<Record<string, unknown>>;
+  }> {
     const result = streamText({
       model: this.model,
       messages: coreMessages as never,
@@ -1124,7 +1129,9 @@ export class VercelAIModelService implements ModelService {
       // Single retry owner: see the non-streaming calls above.
       maxRetries: 0,
     });
-    const parts = result.fullStream[Symbol.asyncIterator]() as AsyncIterator<Record<string, unknown>>;
+    const parts = result.fullStream[Symbol.asyncIterator]() as AsyncIterator<
+      Record<string, unknown>
+    >;
     try {
       for (;;) {
         const first = await parts.next();
@@ -1135,7 +1142,12 @@ export class VercelAIModelService implements ModelService {
         if (type === 'error') {
           throw streamPartError(first.value);
         }
-        if (type === 'text-delta' || type === 'reasoning-delta' || type === 'tool-call' || type === 'finish') {
+        if (
+          type === 'text-delta' ||
+          type === 'reasoning-delta' ||
+          type === 'tool-call' ||
+          type === 'finish'
+        ) {
           return { first, parts };
         }
         // Skip non-output parts until the first output, matching the main loop.

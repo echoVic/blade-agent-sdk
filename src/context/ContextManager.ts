@@ -305,7 +305,6 @@ export class ContextManager {
     }
 
     this.memory.addToolCall(toolCall);
-
   }
 
   /**

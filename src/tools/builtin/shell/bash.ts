@@ -6,9 +6,9 @@ import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
@@ -30,6 +30,7 @@ import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js
  */
 export const bashTool = createTool({
   name: 'Bash',
+  group: 'shell',
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
@@ -328,10 +329,6 @@ Before executing commands:
       };
     }
   },
-
-  version: '2.0.0',
-  category: '命令工具',
-  tags: ['bash', 'shell', 'non-interactive', 'event-driven'],
 
   preparePermissionMatcher: (params) => {
     const command = params.command.trim();

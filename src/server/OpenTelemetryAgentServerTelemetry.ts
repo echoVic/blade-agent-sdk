@@ -1,10 +1,4 @@
-import {
-  metrics,
-  SpanStatusCode,
-  trace,
-  type Meter,
-  type Tracer,
-} from '@opentelemetry/api';
+import { type Meter, metrics, SpanStatusCode, type Tracer, trace } from '@opentelemetry/api';
 import type {
   AgentServerAuditRecord,
   AgentServerCommandMetric,
@@ -16,9 +10,7 @@ export interface OpenTelemetryAgentServerOptions {
   readonly tracerName?: string;
   readonly meterName?: string;
   readonly includeTenantAttributes?: boolean;
-  readonly auditSink?: (
-    record: AgentServerAuditRecord,
-  ) => void | Promise<void>;
+  readonly auditSink?: (record: AgentServerAuditRecord) => void | Promise<void>;
 }
 
 /**
@@ -40,13 +32,10 @@ export class OpenTelemetryAgentServerTelemetry implements AgentServerTelemetry {
     this.commandCounter = this.meter.createCounter('blade.agent.server.commands', {
       description: 'Agent server commands by type and outcome',
     });
-    this.commandDuration = this.meter.createHistogram(
-      'blade.agent.server.command.duration',
-      {
-        description: 'Agent server command duration',
-        unit: 'ms',
-      },
-    );
+    this.commandDuration = this.meter.createHistogram('blade.agent.server.command.duration', {
+      description: 'Agent server command duration',
+      unit: 'ms',
+    });
     this.eventCounter = this.meter.createCounter('blade.agent.server.events', {
       description: 'Agent server events by type',
     });
@@ -56,12 +45,8 @@ export class OpenTelemetryAgentServerTelemetry implements AgentServerTelemetry {
     const attributes = {
       'blade.agent.command.type': metric.commandType,
       'blade.agent.command.outcome': metric.outcome,
-      ...(metric.errorCode
-        ? { 'error.type': metric.errorCode }
-        : {}),
-      ...(this.includeTenantAttributes
-        ? { 'blade.agent.tenant.id': metric.tenantId }
-        : {}),
+      ...(metric.errorCode ? { 'error.type': metric.errorCode } : {}),
+      ...(this.includeTenantAttributes ? { 'blade.agent.tenant.id': metric.tenantId } : {}),
     };
     this.commandCounter.add(1, attributes);
     this.commandDuration.record(metric.durationMs, attributes);
@@ -83,9 +68,7 @@ export class OpenTelemetryAgentServerTelemetry implements AgentServerTelemetry {
   recordEvent(metric: AgentServerEventMetric): void {
     this.eventCounter.add(1, {
       'blade.agent.event.type': metric.eventType,
-      ...(this.includeTenantAttributes
-        ? { 'blade.agent.tenant.id': metric.tenantId }
-        : {}),
+      ...(this.includeTenantAttributes ? { 'blade.agent.tenant.id': metric.tenantId } : {}),
     });
   }
 

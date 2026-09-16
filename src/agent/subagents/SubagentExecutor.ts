@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
-import type { IBackgroundAgentManager } from '../types.js';
 import type { BladeConfig } from '../config.js';
+import type { IBackgroundAgentManager } from '../types.js';
 import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';

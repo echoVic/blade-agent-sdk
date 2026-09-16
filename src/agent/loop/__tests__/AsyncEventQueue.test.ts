@@ -10,9 +10,10 @@ async function collect<T>(queue: AsyncEventQueue<T>): Promise<T[]> {
 describe('AsyncEventQueue backpressure', () => {
   it('merges consecutive text deltas instead of buffering each one', async () => {
     const queue = new AsyncEventQueue<{ type: 'content_delta'; delta: string }>({
-      coalesce: (pending, incoming) => pending.type === incoming.type
-        ? { type: 'content_delta', delta: pending.delta + incoming.delta }
-        : undefined,
+      coalesce: (pending, incoming) =>
+        pending.type === incoming.type
+          ? { type: 'content_delta', delta: pending.delta + incoming.delta }
+          : undefined,
     });
 
     for (const char of ['H', 'e', 'l', 'l', 'o']) {
@@ -36,9 +37,11 @@ describe('AsyncEventQueue backpressure', () => {
     queue.enqueue(4);
 
     const seen: number[] = [];
-    await expect((async () => {
-      for await (const event of queue) seen.push(event);
-    })()).rejects.toBeInstanceOf(AsyncEventQueueOverflowError);
+    await expect(
+      (async () => {
+        for await (const event of queue) seen.push(event);
+      })(),
+    ).rejects.toBeInstanceOf(AsyncEventQueueOverflowError);
     expect(seen).toEqual([1, 2, 3]);
   });
 

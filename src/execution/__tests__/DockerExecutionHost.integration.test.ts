@@ -1,20 +1,9 @@
 import { execFile } from 'node:child_process';
-import {
-  mkdtemp,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExecutionId } from '../../types/identifiers.js';
 import { EphemeralCredentialBroker } from '../CredentialBroker.js';
 import { DockerExecutionHost } from '../DockerExecutionHost.js';
@@ -60,12 +49,9 @@ async function dockerObjectExists(
 async function executionWorkspaceVolume(
   executionId: ReturnType<typeof ExecutionId>,
 ): Promise<string> {
-  const inspection = JSON.parse(
-    await docker(['inspect', `blade-execution-${executionId}`]),
-  )[0];
+  const inspection = JSON.parse(await docker(['inspect', `blade-execution-${executionId}`]))[0];
   const workspaceMount = inspection.Mounts.find(
-    (mount: { Destination: string }) =>
-      mount.Destination === '/workspace',
+    (mount: { Destination: string }) => mount.Destination === '/workspace',
   );
   if (!workspaceMount?.Name) {
     throw new Error(`Execution ${executionId} has no workspace volume`);
@@ -73,10 +59,7 @@ async function executionWorkspaceVolume(
   return workspaceMount.Name;
 }
 
-async function waitFor(
-  predicate: () => Promise<boolean>,
-  timeoutMs = 5_000,
-): Promise<void> {
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await predicate()) {
@@ -105,12 +88,10 @@ describeDocker('DockerExecutionHost integration', () => {
       );
     }
     await Promise.allSettled(
-      [...networkNames].map((networkName) =>
-        docker(['network', 'rm', networkName])),
+      [...networkNames].map((networkName) => docker(['network', 'rm', networkName])),
     );
     await Promise.allSettled(
-      [...volumeNames].map((volumeName) =>
-        docker(['volume', 'rm', volumeName])),
+      [...volumeNames].map((volumeName) => docker(['volume', 'rm', volumeName])),
     );
     executionIds.clear();
     networkNames.clear();
@@ -185,8 +166,7 @@ describeDocker('DockerExecutionHost integration', () => {
     expect(inspection.HostConfig.CapAdd ?? []).toEqual([]);
     expect(inspection.HostConfig.SecurityOpt).toContain('no-new-privileges');
     const workspaceMount = inspection.Mounts.find(
-      (mount: { Destination: string }) =>
-        mount.Destination === '/workspace',
+      (mount: { Destination: string }) => mount.Destination === '/workspace',
     );
     expect(workspaceMount).toMatchObject({
       Type: 'volume',
@@ -208,31 +188,37 @@ describeDocker('DockerExecutionHost integration', () => {
     });
     expect(volumeInspection.Options.o).toContain(
       `size=${
-        defaultResources.diskBytes
-        - Math.floor(defaultResources.diskBytes / 10)
-        - Math.floor(defaultResources.diskBytes / 20)
+        defaultResources.diskBytes -
+        Math.floor(defaultResources.diskBytes / 10) -
+        Math.floor(defaultResources.diskBytes / 20)
       }`,
     );
 
-    await expect(host.exec(sourceExecutionId, {
-      command: '/bin/sh',
-      args: ['-c', 'cat README.md; test ! -e .git'],
-    })).resolves.toMatchObject({
+    await expect(
+      host.exec(sourceExecutionId, {
+        command: '/bin/sh',
+        args: ['-c', 'cat README.md; test ! -e .git'],
+      }),
+    ).resolves.toMatchObject({
       exitCode: 0,
       stdout: 'seed\n',
     });
-    await expect(host.exec(sourceExecutionId, {
-      command: '/bin/sh',
-      args: ['-c', 'printf checkpoint > state.txt'],
-    })).resolves.toMatchObject({ exitCode: 0 });
+    await expect(
+      host.exec(sourceExecutionId, {
+        command: '/bin/sh',
+        args: ['-c', 'printf checkpoint > state.txt'],
+      }),
+    ).resolves.toMatchObject({ exitCode: 0 });
     const checkpoint = await host.checkpoint(sourceExecutionId, {
       stage: 'before-mutation',
     });
     expect(checkpoint.checkpointId).toMatch(/^checkpoint-/);
-    await expect(host.exec(sourceExecutionId, {
-      command: '/bin/sh',
-      args: ['-c', 'printf mutated > state.txt'],
-    })).resolves.toMatchObject({ exitCode: 0 });
+    await expect(
+      host.exec(sourceExecutionId, {
+        command: '/bin/sh',
+        args: ['-c', 'printf mutated > state.txt'],
+      }),
+    ).resolves.toMatchObject({ exitCode: 0 });
 
     const restoredExecutionId = ExecutionId('docker-lifecycle-restored');
     executionIds.add(restoredExecutionId);
@@ -240,24 +226,21 @@ describeDocker('DockerExecutionHost integration', () => {
       checkpointId: checkpoint.checkpointId,
       executionId: restoredExecutionId,
     });
-    const restoredVolumeName = await executionWorkspaceVolume(
-      restoredExecutionId,
-    );
+    const restoredVolumeName = await executionWorkspaceVolume(restoredExecutionId);
     volumeNames.add(restoredVolumeName);
-    await expect(host.exec(restoredExecutionId, {
-      command: 'cat',
-      args: ['state.txt'],
-    })).resolves.toMatchObject({
+    await expect(
+      host.exec(restoredExecutionId, {
+        command: 'cat',
+        args: ['state.txt'],
+      }),
+    ).resolves.toMatchObject({
       exitCode: 0,
       stdout: 'checkpoint',
     });
 
     const diskResult = await host.exec(restoredExecutionId, {
       command: '/bin/sh',
-      args: [
-        '-c',
-        'dd if=/dev/zero of=/workspace/too-large bs=1048576 count=32 2>/dev/null',
-      ],
+      args: ['-c', 'dd if=/dev/zero of=/workspace/too-large bs=1048576 count=32 2>/dev/null'],
     });
     expect(diskResult.exitCode).not.toBe(0);
 
@@ -270,14 +253,12 @@ describeDocker('DockerExecutionHost integration', () => {
 
     await host.terminate(sourceExecutionId);
     await host.terminate(restoredExecutionId);
-    expect(await dockerObjectExists(
-      'container',
-      `blade-execution-${sourceExecutionId}`,
-    )).toBe(false);
-    expect(await dockerObjectExists(
-      'container',
-      `blade-execution-${restoredExecutionId}`,
-    )).toBe(false);
+    expect(await dockerObjectExists('container', `blade-execution-${sourceExecutionId}`)).toBe(
+      false,
+    );
+    expect(await dockerObjectExists('container', `blade-execution-${restoredExecutionId}`)).toBe(
+      false,
+    );
     expect(await dockerObjectExists('volume', workspaceMount.Name)).toBe(false);
     expect(await dockerObjectExists('volume', restoredVolumeName)).toBe(false);
   }, 60_000);
@@ -294,9 +275,7 @@ describeDocker('DockerExecutionHost integration', () => {
         async issue(context) {
           return {
             value: secret,
-            expiresAt: new Date(
-              Date.parse(context.expiresBy) - 1,
-            ).toISOString(),
+            expiresAt: new Date(Date.parse(context.expiresBy) - 1).toISOString(),
             revoke,
           };
         },
@@ -323,10 +302,12 @@ describeDocker('DockerExecutionHost integration', () => {
         '-c',
         'printf "%s" "$BLADE_EPHEMERAL_TOKEN"; printf "%s" "$BLADE_EPHEMERAL_TOKEN" >&2',
       ],
-      credentials: [{
-        name: 'test',
-        audience: 'integration.example.invalid',
-      }],
+      credentials: [
+        {
+          name: 'test',
+          audience: 'integration.example.invalid',
+        },
+      ],
     });
     expect(result).toMatchObject({
       exitCode: 0,
@@ -335,16 +316,16 @@ describeDocker('DockerExecutionHost integration', () => {
     });
     expect(revoke).toHaveBeenCalledTimes(1);
 
-    const inspection = JSON.parse(
-      await docker(['inspect', `blade-execution-${executionId}`]),
-    )[0];
+    const inspection = JSON.parse(await docker(['inspect', `blade-execution-${executionId}`]))[0];
     const persistedEnvironment = inspection.Config.Env.join('\n');
     expect(persistedEnvironment).not.toContain('BLADE_EPHEMERAL_TOKEN');
     expect(persistedEnvironment).not.toContain(secret);
-    await expect(host.exec(executionId, {
-      command: 'printenv',
-      args: ['BLADE_EPHEMERAL_TOKEN'],
-    })).resolves.toMatchObject({
+    await expect(
+      host.exec(executionId, {
+        command: 'printenv',
+        args: ['BLADE_EPHEMERAL_TOKEN'],
+      }),
+    ).resolves.toMatchObject({
       exitCode: 1,
       stdout: '',
     });
@@ -377,25 +358,21 @@ describeDocker('DockerExecutionHost integration', () => {
       const volumeName = await executionWorkspaceVolume(executionId);
       volumeNames.add(volumeName);
 
-      const operation = failure === 'timeout'
-        ? host.exec(executionId, {
-            command: 'sleep',
-            args: ['5'],
-            timeoutMs: 100,
-          })
-        : host.exec(executionId, {
-            command: '/bin/sh',
-            args: ['-c', 'yes x | head -c 65536'],
-          });
+      const operation =
+        failure === 'timeout'
+          ? host.exec(executionId, {
+              command: 'sleep',
+              args: ['5'],
+              timeoutMs: 100,
+            })
+          : host.exec(executionId, {
+              command: '/bin/sh',
+              args: ['-c', 'yes x | head -c 65536'],
+            });
       await expect(operation).rejects.toMatchObject({
-        code: failure === 'timeout'
-          ? 'EXECUTION_TIMEOUT'
-          : 'EXECUTION_OUTPUT_LIMIT',
+        code: failure === 'timeout' ? 'EXECUTION_TIMEOUT' : 'EXECUTION_OUTPUT_LIMIT',
       });
-      expect(await dockerObjectExists(
-        'container',
-        `blade-execution-${executionId}`,
-      )).toBe(false);
+      expect(await dockerObjectExists('container', `blade-execution-${executionId}`)).toBe(false);
       expect(await dockerObjectExists('volume', volumeName)).toBe(false);
     },
     60_000,
@@ -423,23 +400,23 @@ describeDocker('DockerExecutionHost integration', () => {
     const volumeName = await executionWorkspaceVolume(executionId);
     volumeNames.add(volumeName);
 
-    await waitFor(async () =>
-      !(await dockerObjectExists(
-        'container',
-        `blade-execution-${executionId}`,
-      )));
-    await waitFor(async () =>
-      !(await dockerObjectExists('volume', volumeName)));
-    const expiredError = await host.exec(executionId, {
-      command: 'true',
-    }).catch((error: unknown) => error);
-    expect([
-      'EXECUTION_TIMEOUT',
-      'EXECUTION_NOT_FOUND',
-    ]).toContain((expiredError as { code?: string }).code);
-    await expect(host.exec(executionId, {
-      command: 'true',
-    })).rejects.toMatchObject({
+    await waitFor(
+      async () => !(await dockerObjectExists('container', `blade-execution-${executionId}`)),
+    );
+    await waitFor(async () => !(await dockerObjectExists('volume', volumeName)));
+    const expiredError = await host
+      .exec(executionId, {
+        command: 'true',
+      })
+      .catch((error: unknown) => error);
+    expect(['EXECUTION_TIMEOUT', 'EXECUTION_NOT_FOUND']).toContain(
+      (expiredError as { code?: string }).code,
+    );
+    await expect(
+      host.exec(executionId, {
+        command: 'true',
+      }),
+    ).rejects.toMatchObject({
       code: 'EXECUTION_NOT_FOUND',
     });
   }, 60_000);
@@ -450,18 +427,20 @@ describeDocker('DockerExecutionHost integration', () => {
     }
     const networkName = `blade-egress-${process.pid}-${Date.now()}`;
     networkNames.add(networkName);
-    const provision = vi.fn(async (
-      _executionId: ReturnType<typeof ExecutionId>,
-      _policy: Extract<ExecutionNetworkPolicy, { mode: 'proxy' }>,
-    ) => {
-      await docker(['network', 'create', '--internal', networkName]);
-      return {
-        networkName,
-        environment: {
-          HTTPS_PROXY: 'http://proxy.invalid:8080',
-        },
-      };
-    });
+    const provision = vi.fn(
+      async (
+        _executionId: ReturnType<typeof ExecutionId>,
+        _policy: Extract<ExecutionNetworkPolicy, { mode: 'proxy' }>,
+      ) => {
+        await docker(['network', 'create', '--internal', networkName]);
+        return {
+          networkName,
+          environment: {
+            HTTPS_PROXY: 'http://proxy.invalid:8080',
+          },
+        };
+      },
+    );
     const release = vi.fn(async () => {
       await docker(['network', 'rm', networkName]);
       networkNames.delete(networkName);
@@ -496,14 +475,14 @@ describeDocker('DockerExecutionHost integration', () => {
       },
       undefined,
     );
-    const inspection = JSON.parse(
-      await docker(['inspect', `blade-execution-${executionId}`]),
-    )[0];
+    const inspection = JSON.parse(await docker(['inspect', `blade-execution-${executionId}`]))[0];
     expect(inspection.HostConfig.NetworkMode).toBe(networkName);
-    await expect(host.exec(executionId, {
-      command: '/bin/sh',
-      args: ['-c', 'printf "%s" "$HTTPS_PROXY"'],
-    })).resolves.toMatchObject({
+    await expect(
+      host.exec(executionId, {
+        command: '/bin/sh',
+        args: ['-c', 'printf "%s" "$HTTPS_PROXY"'],
+      }),
+    ).resolves.toMatchObject({
       exitCode: 0,
       stdout: 'http://proxy.invalid:8080',
     });

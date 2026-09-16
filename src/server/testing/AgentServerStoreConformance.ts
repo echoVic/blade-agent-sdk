@@ -1,10 +1,10 @@
 import { AGENT_PROTOCOL_VERSION, type AgentEventPage } from '../../protocol/index.js';
+import { CommandId, RequestId, SessionId } from '../../types/identifiers.js';
 import type {
   AgentCommandClaim,
   AgentServerSessionRecord,
   AgentServerStore,
 } from '../AgentServerStore.js';
-import { CommandId, RequestId, SessionId } from '../../types/identifiers.js';
 
 /**
  * Shared contract for every `AgentServerStore`.
@@ -104,8 +104,7 @@ export async function assertAgentServerStoreConformance(
   await store.completeCommand(tenantId, commandId, claimed.leaseId, result);
   const replay = await store.claimCommand(tenantId, commandId, fingerprint, 1_000);
   assert(
-    replay.status === 'completed' &&
-      JSON.stringify(replay.result) === JSON.stringify(result),
+    replay.status === 'completed' && JSON.stringify(replay.result) === JSON.stringify(result),
     'A completed command must replay its recorded result',
   );
   assert(
@@ -131,18 +130,21 @@ export async function assertAgentServerStoreConformance(
     'A sealed command must be abandonable',
   );
   assert(
-    (await store.claimCommand(tenantId, abandonedId, scopedId(prefix, 'fingerprint-abandoned'), 1_000))
-      .status === 'abandoned',
+    (
+      await store.claimCommand(
+        tenantId,
+        abandonedId,
+        scopedId(prefix, 'fingerprint-abandoned'),
+        1_000,
+      )
+    ).status === 'abandoned',
     'An abandoned command must stay terminal',
   );
   checks.push('command-receipts');
 
   const first = await store.appendEvent(tenantId, sessionId, terminalDraft(sessionId, 'first'));
   const second = await store.appendEvent(tenantId, sessionId, terminalDraft(sessionId, 'second'));
-  assert(
-    second.sequence === first.sequence + 1,
-    'Agent events must be sequenced in append order',
-  );
+  assert(second.sequence === first.sequence + 1, 'Agent events must be sequenced in append order');
   const read: AgentEventPage = await store.readEvents(tenantId, sessionId);
   assert(
     read.events.length === 2 && read.events[0]?.eventId === first.eventId,

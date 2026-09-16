@@ -1,5 +1,5 @@
-import type { AgentId } from '../../types/identifiers.js';
 import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
+import type { AgentId } from '../../types/identifiers.js';
 import type { AgentProgress } from '../types.js';
 import type { AgentSession, AgentSessionStatus } from './AgentSessionStore.js';
 
@@ -46,10 +46,7 @@ export interface AgentSessionRepository {
     stats?: AgentSession['stats'],
     expectedExecutionFence?: DurableExecutionFence,
   ): Promise<AgentSession | undefined>;
-  deleteSession(
-    agentId: AgentId,
-    expectedExecutionFence?: DurableExecutionFence,
-  ): Promise<boolean>;
+  deleteSession(agentId: AgentId, expectedExecutionFence?: DurableExecutionFence): Promise<boolean>;
   listSessions(): Promise<AgentSession[]>;
   /** Running Sessions for this process, used to restore background work at startup. */
   listRunningSessions(): Promise<AgentSession[]>;

@@ -734,11 +734,11 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `providerOptions` | `JsonObject` | Provider-specific options |
 | `thinkingEnabled` / `thinkingBudget` | `boolean` / `number` | Reasoning controls |
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
-| `tools` | `SessionTool[]` | Custom `ToolDefinition` or complete `Tool` instances |
+| `tools` | `SessionTool[]` | Custom definitions returned by `defineTool()` |
 | `toolTimeoutMs` | `number` | Per-invocation wall-clock timeout; defaults to `600000` |
 | `webFetch` | `WebFetchSecurityPolicy` | WebFetch host allowlist, blocklist, and private-network policy |
 | `allowedTools` / `disallowedTools` | `string[]` | Tool filters |
-| `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
+| `toolSourcePolicy` | `ToolSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |
 | `permissionMode` | `PermissionMode` | Built-in approval mode |
 | `permissionHandler` | callback | Low-level custom permission policy |

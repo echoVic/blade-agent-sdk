@@ -11,11 +11,11 @@ import { MemoryManager } from '../../memory/MemoryManager.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecutor.js';
 import { SandboxService } from '../../sandbox/SandboxService.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
 import { memoryReadTool } from '../../tools/builtin/memory/index.js';
 import { createTool, defineTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
-import { ToolKind } from '../../tools/behavior.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -179,7 +179,7 @@ describe('SessionRuntime', () => {
       .getAll()
       .map((tool) => tool.name);
     expect(toolNames).toEqual(['CustomTool']);
-    expect(runtime.getToolCatalog().getEntry('CustomTool')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('CustomTool')).toMatchObject({
       source: {
         kind: 'custom',
         trustLevel: 'workspace',
@@ -289,7 +289,7 @@ describe('SessionRuntime', () => {
         .getAll()
         .map((tool) => tool.name),
     ).toEqual(['Skill']);
-    expect(runtime.getToolCatalog().getEntry('Skill')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('Skill')).toMatchObject({
       source: {
         kind: 'builtin',
         trustLevel: 'trusted',
@@ -678,7 +678,7 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    expect(runtime.getToolCatalog().getEntry('PluginTool')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('PluginTool')).toMatchObject({
       source: {
         kind: 'custom',
         trustLevel: 'workspace',
@@ -772,7 +772,7 @@ describe('SessionRuntime', () => {
       try {
         await expect(runtime.initialize(), testCase.label).rejects.toThrow('已注册');
         expect(
-          runtime.getToolCatalog().getEntry(testCase.toolName)?.source.sourceId,
+          runtime.getToolRegistry().getEntry(testCase.toolName)?.source.sourceId,
           testCase.label,
         ).toBe(testCase.expectedSourceId);
       } finally {
@@ -965,7 +965,9 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().getEntry('mcp__test__test_tool')?.source.sourceId).toBe(
+      'test',
+    );
 
     await runtime.mcpDisconnect('test');
     expect(await runtime.mcpListTools()).toEqual([]);
@@ -974,7 +976,9 @@ describe('SessionRuntime', () => {
     await runtime.mcpReconnect('test');
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().getEntry('mcp__test__test_tool')?.source.sourceId).toBe(
+      'test',
+    );
 
     await runtime.close();
   });

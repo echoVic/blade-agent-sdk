@@ -1,8 +1,8 @@
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AgentCommandType, type AgentPrincipal } from '../../protocol/index.js';
-import { createSession } from '../../session/Session.js';
 import { DurableExecutionLease } from '../../session/events/DurableExecutionLease.js';
+import { createSession } from '../../session/Session.js';
 import {
   CommandId,
   EventId,
@@ -10,15 +10,12 @@ import {
   SessionId,
   WorkerId,
 } from '../../types/identifiers.js';
-import { AgentServer } from '../AgentServer.js';
 import { AgentRuntimeOperations } from '../AgentRuntimeOperations.js';
+import { AgentServer } from '../AgentServer.js';
 import { AgentWorker } from '../AgentWorker.js';
-import { RUNTIME_STORE_SCHEMA_VERSION } from '../RuntimeStore.js';
-import {
-  EffectDispatcher,
-  UncertainRuntimeEffectError,
-} from '../EffectDispatcher.js';
+import { EffectDispatcher, UncertainRuntimeEffectError } from '../EffectDispatcher.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
+import { RUNTIME_STORE_SCHEMA_VERSION } from '../RuntimeStore.js';
 import { SdkSessionRunner } from '../SdkSessionRunner.js';
 import { assertAgentServerStoreConformance } from '../testing/AgentServerStoreConformance.js';
 import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
@@ -142,8 +139,9 @@ describePostgres('PostgresRuntimeStore', () => {
     expect(repeat.eventId).toBe(first.eventId);
     expect(repeat.sequence).toBe(first.sequence);
     expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
-    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, idempotencyKey))
-      .toMatchObject({ eventId: first.eventId, sequence: first.sequence });
+    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, idempotencyKey)).toMatchObject(
+      { eventId: first.eventId, sequence: first.sequence },
+    );
   });
 
   it('recognises an idempotency key written by the previous release', async () => {
@@ -465,13 +463,15 @@ describePostgres('PostgresRuntimeStore', () => {
             data: {},
           },
         },
-        effects: [{
-          effectId: `migration-effect-${Date.now()}`,
-          type: 'migration-check',
-          payload: {},
-          idempotencyKey: `migration-key-${Date.now()}`,
-          executionMode: 'at_most_once',
-        }],
+        effects: [
+          {
+            effectId: `migration-effect-${Date.now()}`,
+            type: 'migration-check',
+            payload: {},
+            idempotencyKey: `migration-key-${Date.now()}`,
+            executionMode: 'at_most_once',
+          },
+        ],
       });
       const [claim] = await migrated.claimEffects({
         tenantId: 'migration-tenant',
@@ -483,9 +483,9 @@ describePostgres('PostgresRuntimeStore', () => {
       if (!claim) {
         throw new Error('Migrated outbox effect was not claimed');
       }
-      await expect(
-        migrated.startEffect(effectLease(claim)),
-      ).resolves.toMatchObject({ status: 'executing' });
+      await expect(migrated.startEffect(effectLease(claim))).resolves.toMatchObject({
+        status: 'executing',
+      });
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
     }
@@ -559,17 +559,15 @@ describePostgres('PostgresRuntimeStore', () => {
       if (!claim) {
         throw new Error('Migrated Session route was not claimed');
       }
-      await migrated.transitionSession(
-        'migration-v2-tenant',
-        claim.lease,
-        { expectedState: 'provisioning', state: 'running' },
-      );
+      await migrated.transitionSession('migration-v2-tenant', claim.lease, {
+        expectedState: 'provisioning',
+        state: 'running',
+      });
       await expect(
-        migrated.transitionSession(
-          'migration-v2-tenant',
-          claim.lease,
-          { expectedState: 'running', state: 'idle' },
-        ),
+        migrated.transitionSession('migration-v2-tenant', claim.lease, {
+          expectedState: 'running',
+          state: 'idle',
+        }),
       ).resolves.toMatchObject({ state: 'idle' });
       const version = await pool.query(
         `SELECT value
@@ -610,47 +608,49 @@ describePostgres('PostgresRuntimeStore', () => {
           data: {},
         },
       },
-      effects: [{
-        effectId: duplicateEffectId,
-        type: 'seed',
-        payload: {},
-        idempotencyKey: `key-${duplicateEffectId}`,
-      }],
+      effects: [
+        {
+          effectId: duplicateEffectId,
+          type: 'seed',
+          payload: {},
+          idempotencyKey: `key-${duplicateEffectId}`,
+        },
+      ],
     });
-    const lease = await DurableExecutionLease.acquire(
-      tenantStore,
-      sessionId,
-      {
-        ownerId: WorkerId('worker-single-pool'),
-        leaseId: ExecutionLeaseId(`lease-${sessionId}`),
-        ttlMs: 1_000,
-        heartbeatIntervalMs: 250,
-        storeTimeoutMs: 500,
-      },
-    );
+    const lease = await DurableExecutionLease.acquire(tenantStore, sessionId, {
+      ownerId: WorkerId('worker-single-pool'),
+      leaseId: ExecutionLeaseId(`lease-${sessionId}`),
+      ttlMs: 1_000,
+      heartbeatIntervalMs: 250,
+      storeTimeoutMs: 500,
+    });
     try {
       await lease.runFenced(async () => {
         const conflictingCommandId = CommandId(`single-pool-conflict-${Date.now()}`);
-        await expect(singleStore.commitRuntimeTransaction({
-          tenantId,
-          sessionId,
-          command: {
-            commandId: conflictingCommandId,
-            fingerprint: `fingerprint-${conflictingCommandId}`,
-            result: {
-              protocolVersion: 1,
+        await expect(
+          singleStore.commitRuntimeTransaction({
+            tenantId,
+            sessionId,
+            command: {
               commandId: conflictingCommandId,
-              ok: true,
-              data: {},
+              fingerprint: `fingerprint-${conflictingCommandId}`,
+              result: {
+                protocolVersion: 1,
+                commandId: conflictingCommandId,
+                ok: true,
+                data: {},
+              },
             },
-          },
-          effects: [{
-            effectId: duplicateEffectId,
-            type: 'duplicate',
-            payload: {},
-            idempotencyKey: `different-${duplicateEffectId}`,
-          }],
-        })).rejects.toMatchObject({
+            effects: [
+              {
+                effectId: duplicateEffectId,
+                type: 'duplicate',
+                payload: {},
+                idempotencyKey: `different-${duplicateEffectId}`,
+              },
+            ],
+          }),
+        ).rejects.toMatchObject({
           code: 'RUNTIME_STORE_COMMAND_CONFLICT',
         });
         await tenantStore.createSession(sessionId);
@@ -884,12 +884,14 @@ describePostgres('PostgresRuntimeStore', () => {
             data: {},
           },
         },
-        effects: [{
-          effectId: `effect-${suffix}`,
-          type: 'concurrent',
-          payload: {},
-          idempotencyKey: `effect-key-${suffix}`,
-        }],
+        effects: [
+          {
+            effectId: `effect-${suffix}`,
+            type: 'concurrent',
+            payload: {},
+            idempotencyKey: `effect-key-${suffix}`,
+          },
+        ],
       });
       const effectClaims = await Promise.all([
         store.claimEffects({
@@ -940,12 +942,14 @@ describePostgres('PostgresRuntimeStore', () => {
           data: {},
         },
       },
-      effects: [{
-        effectId: `effect-${suffix}`,
-        type: 'metrics',
-        payload: {},
-        idempotencyKey: `effect-${suffix}`,
-      }],
+      effects: [
+        {
+          effectId: `effect-${suffix}`,
+          type: 'metrics',
+          payload: {},
+          idempotencyKey: `effect-${suffix}`,
+        },
+      ],
     });
 
     const metrics = await store.getQueueMetrics(tenantId);
@@ -983,21 +987,13 @@ describePostgres('PostgresRuntimeStore', () => {
     });
     expect(claimed).not.toBeNull();
     const claimedMetrics = await store.getQueueMetrics(tenantId);
-    expect(claimedMetrics.workers.activeSessions).toBe(
-      metrics.workers.activeSessions + 1,
-    );
-    expect(claimedMetrics.workers.availableCapacity).toBe(
-      metrics.workers.availableCapacity - 1,
-    );
+    expect(claimedMetrics.workers.activeSessions).toBe(metrics.workers.activeSessions + 1);
+    expect(claimedMetrics.workers.availableCapacity).toBe(metrics.workers.availableCapacity - 1);
 
     await store.drainWorker(workerId);
     const drainingMetrics = await store.getQueueMetrics(tenantId);
-    expect(drainingMetrics.workers.capacity).toBe(
-      claimedMetrics.workers.capacity - 3,
-    );
-    expect(drainingMetrics.workers.activeSessions).toBe(
-      claimedMetrics.workers.activeSessions - 1,
-    );
+    expect(drainingMetrics.workers.capacity).toBe(claimedMetrics.workers.capacity - 3);
+    expect(drainingMetrics.workers.activeSessions).toBe(claimedMetrics.workers.activeSessions - 1);
   });
 
   it('dispatches persisted effects with explicit terminal outcomes', async () => {
@@ -1098,16 +1094,13 @@ describePostgres('PostgresRuntimeStore', () => {
     expect(listed.effects[0]).not.toHaveProperty('payload');
 
     const reconcileResponse = await operations.handle(
-      new Request(
-        `http://localhost/v1/runtime/effects/uncertain-${suffix}/reconcile`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            status: 'completed',
-            result: { receiptId: `receipt-${suffix}` },
-          }),
-        },
-      ),
+      new Request(`http://localhost/v1/runtime/effects/uncertain-${suffix}/reconcile`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: 'completed',
+          result: { receiptId: `receipt-${suffix}` },
+        }),
+      }),
     );
     expect(reconcileResponse.status).toBe(200);
     await expect(
@@ -1172,9 +1165,9 @@ describePostgres('PostgresRuntimeStore', () => {
       try {
         await vi.waitFor(
           async () => {
-            await expect(
-              store.getSessionRoute(tenantId, session.sessionId),
-            ).resolves.toMatchObject({ state: 'idle' });
+            await expect(store.getSessionRoute(tenantId, session.sessionId)).resolves.toMatchObject(
+              { state: 'idle' },
+            );
           },
           { timeout: 10_000 },
         );

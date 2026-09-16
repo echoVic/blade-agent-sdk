@@ -13,10 +13,7 @@ import type {
 } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import type { AgentServerStore } from './AgentServerStore.js';
-import type {
-  RuntimeEffectExecutionMode,
-  WorkerRuntimeStore,
-} from './WorkerRuntime.js';
+import type { RuntimeEffectExecutionMode, WorkerRuntimeStore } from './WorkerRuntime.js';
 
 export const RUNTIME_STORE_SCHEMA_VERSION = 4 as const;
 export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1 as const;
@@ -56,7 +53,7 @@ export interface RuntimeEffectIntent {
   readonly executionMode?: RuntimeEffectExecutionMode;
 }
 
-export type RuntimeEffectStatus = typeof RUNTIME_EFFECT_STATUSES[number];
+export type RuntimeEffectStatus = (typeof RUNTIME_EFFECT_STATUSES)[number];
 
 export interface RuntimeEffectRecord extends RuntimeEffectIntent {
   readonly tenantId: string;
@@ -145,8 +142,7 @@ export interface RuntimeStore extends AgentServerStore, WorkerRuntimeStore {
   close(): Promise<void>;
 }
 
-export interface RuntimeTenantStore
-  extends SessionPersistence, DurableExecutionLeaseStore {}
+export interface RuntimeTenantStore extends SessionPersistence, DurableExecutionLeaseStore {}
 
 export type RuntimeStoreErrorCode =
   | 'RUNTIME_STORE_COMMAND_CONFLICT'

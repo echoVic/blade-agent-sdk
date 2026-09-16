@@ -21,9 +21,9 @@ import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutio
 import { PermissionMode } from '../../../types/constants.js';
 import { AgentId, SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
-import { createTool } from '../../core/createTool.js';
-import { getRuntimeAccess, type ExecutionContext } from '../../types/execution.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
+import { type ExecutionContext, getRuntimeAccess } from '../../types/execution.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -72,6 +72,7 @@ Usage notes:
  */
 export const taskTool = createTool({
   name: 'Task',
+  group: 'task',
   displayName: 'Subagent Scheduler',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
@@ -312,9 +313,6 @@ export const taskTool = createTool({
       };
     }
   },
-  version: '4.0.0',
-  category: 'Subagent',
-  tags: ['task', 'subagent', 'delegation', 'explore', 'plan'],
   preparePermissionMatcher: (params) => ({
     signatureContent: `${params.subagent_type}:${params.description}`,
     abstractRule: '',

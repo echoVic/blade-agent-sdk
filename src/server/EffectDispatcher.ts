@@ -47,10 +47,7 @@ export interface EffectDispatcherOptions {
   readonly retryDelayMs?: number;
   readonly maxRetryDelayMs?: number;
   readonly onMetrics?: (metrics: EffectDispatcherMetrics) => void;
-  readonly onError?: (
-    error: unknown,
-    effect: RuntimeEffectClaim,
-  ) => void;
+  readonly onError?: (error: unknown, effect: RuntimeEffectClaim) => void;
 }
 
 export class RetryableRuntimeEffectError extends SdkError {
@@ -196,9 +193,7 @@ export class EffectDispatcher {
     });
     this.metrics.claimed += claims.length;
     this.publishMetrics();
-    const outcomes = await Promise.allSettled(
-      claims.map((claim) => this.dispatch(claim, signal)),
-    );
+    const outcomes = await Promise.allSettled(claims.map((claim) => this.dispatch(claim, signal)));
     for (const [index, outcome] of outcomes.entries()) {
       if (outcome.status === 'rejected') {
         const claim = claims[index];
@@ -254,12 +249,7 @@ export class EffectDispatcher {
               { cause: error },
             )
         : error;
-      await this.settleFailure(
-        claim,
-        lease,
-        settlementError,
-        parentSignal?.aborted === true,
-      );
+      await this.settleFailure(claim, lease, settlementError, parentSignal?.aborted === true);
     } finally {
       this.metrics.handlerDurationMs += performance.now() - startedAt;
       controller.abort();
@@ -297,10 +287,7 @@ export class EffectDispatcher {
       const delay =
         requestedDelay === undefined || !Number.isFinite(requestedDelay)
           ? exponentialDelay
-          : Math.min(
-              this.maxRetryDelayMs,
-              Math.max(this.retryDelayMs, Math.ceil(requestedDelay)),
-            );
+          : Math.min(this.maxRetryDelayMs, Math.max(this.retryDelayMs, Math.ceil(requestedDelay)));
       await this.options.store.failEffect(lease, details, {
         retryAt: new Date(Date.now() + delay).toISOString(),
       });

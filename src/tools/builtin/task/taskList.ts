@@ -1,12 +1,13 @@
 import Type from 'typebox';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
 export const taskListTool = createTool({
   name: 'TaskList',
+  group: 'task',
   displayName: 'List Tasks',
   kind: ToolKind.Write,
   sideEffect: 'pure',

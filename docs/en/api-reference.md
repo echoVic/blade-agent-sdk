@@ -366,8 +366,6 @@ Authoring and execution:
 | Export | Purpose |
 |--------|---------|
 | `defineTool` | Define an async-function or generator tool with TypeBox |
-| `createTool` | Create a TypeBox-backed runtime tool |
-| `toolFromDefinition` | Convert a definition to `Tool` |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
 | `getBuiltinTools` | Build the `/advanced` local tool set |
@@ -376,17 +374,16 @@ Authoring and execution:
 
 Types:
 
-`ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
-`FunctionDeclaration`, `Tool`,
-`ToolBehavior`, `ToolConfig`, `ToolDefinition`,
+`BuiltinToolGroup`, `ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
+`ToolBehavior`, `ToolDefinition`,
 `ToolDefinitionInput`, `ToolDescription`,
-`ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
+`ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
 `ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,
 `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
 `ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
-`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`, `ToolSideEffect`,
-`RuntimeAccess`, `DiscoverableCatalogView`, `DiscoverableToolInfo`,
+`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSideEffect`,
+`RuntimeAccess`,
 `ToolServiceMap`, `ToolServiceName`,
 `ToolExecutionUpdate`, and `ToolYield`.
 
@@ -396,27 +393,18 @@ Constants:
 - `ToolSideEffect`: `PURE`, `IDEMPOTENT`, and `NON_IDEMPOTENT`
 - `ToolErrorType`: validation, permission, execution, interruption, timeout, and network errors
 
-`ToolConfig` requires a `sideEffect` declaration. `ToolDefinition` defaults to
-`non_idempotent` when it is omitted. The resolved value determines whether a
-started tool can be replayed during durable recovery.
+`ToolDefinition` defaults to `non_idempotent` when `sideEffect` is omitted. The
+resolved value determines whether a started tool can be replayed during durable
+recovery.
 
-Compiled `Tool` instances expose readonly `declaration` and `staticBehavior`
-fields. Their `prepare()` function creates an immutable invocation snapshot.
-`ToolInvocation` remains Pipeline-internal and is not exported from package
-entry points; hook or permission input updates trigger a new `prepare()` call.
+Compiled tools and invocation snapshots remain runtime-internal; hook or
+permission input updates trigger a fresh validation and preparation pass.
 
-## Tool catalog
-
-Runtime:
-
-- `ToolCatalog`
+## Tool source policy
 
 Types:
 
-- `ToolCatalogEntry`
-- `ToolCatalogReadView`
-- `ToolCatalogSourcePolicy`
-- `ToolSourceInfo`
+- `ToolSourcePolicy`
 - `ToolSourceKind`
 - `ToolTrustLevel`
 - `WebFetchSecurityPolicy`

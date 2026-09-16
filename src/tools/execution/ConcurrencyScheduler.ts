@@ -52,7 +52,10 @@ const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
 export class ConcurrencyQueueFullError extends Error {
   readonly code = 'TOOL_CONCURRENCY_QUEUE_FULL';
 
-  constructor(readonly kind: ToolKind, readonly maxQueued: number) {
+  constructor(
+    readonly kind: ToolKind,
+    readonly maxQueued: number,
+  ) {
     super(`Tool concurrency queue for ${kind} is full (${maxQueued} pending requests)`);
     this.name = 'ConcurrencyQueueFullError';
   }

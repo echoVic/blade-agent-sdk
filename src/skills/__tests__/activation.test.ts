@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  collectSkillActivationPaths,
-  isSkillAvailableInContext,
-} from '../activation.js';
+import { collectSkillActivationPaths, isSkillAvailableInContext } from '../activation.js';
 import type { SkillMetadata } from '../types.js';
 
 function createSkill(patterns: string[]): SkillMetadata {

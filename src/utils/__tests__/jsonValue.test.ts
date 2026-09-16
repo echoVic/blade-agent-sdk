@@ -4,11 +4,13 @@ import { toJsonValue } from '../jsonValue.js';
 
 describe('toJsonValue', () => {
   it('normalizes domain objects and removes undefined properties', () => {
-    expect(toJsonValue({
-      id: 'task-1',
-      optional: undefined,
-      nested: [{ value: 1 }],
-    })).toEqual({
+    expect(
+      toJsonValue({
+        id: 'task-1',
+        optional: undefined,
+        nested: [{ value: 1 }],
+      }),
+    ).toEqual({
       id: 'task-1',
       nested: [{ value: 1 }],
     });

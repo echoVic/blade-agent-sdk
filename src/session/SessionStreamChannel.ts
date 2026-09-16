@@ -25,11 +25,7 @@ export class SessionStreamChannel<T> implements AsyncIterable<T> {
   }
 
   async publish(value: T): Promise<boolean> {
-    while (
-      !this.closed
-      && !this.backpressureReleased
-      && this.buffer.length >= this.capacity
-    ) {
+    while (!this.closed && !this.backpressureReleased && this.buffer.length >= this.capacity) {
       await new Promise<void>((resolve) => {
         this.producerWaiters.add(resolve);
       });

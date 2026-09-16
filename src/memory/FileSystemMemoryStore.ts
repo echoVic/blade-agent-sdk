@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Mutex } from 'async-mutex';
@@ -50,8 +50,9 @@ export class FileSystemMemoryStore implements MemoryStore {
         { encoding: 'utf8' },
       );
 
-      const entries = (await this.collectIndexEntries())
-        .filter((entry) => entry.filePath !== filename);
+      const entries = (await this.collectIndexEntries()).filter(
+        (entry) => entry.filePath !== filename,
+      );
       entries.push({ title: memory.name, filePath: filename, hook: memory.description });
       await this.writeIndex(entries);
 
@@ -91,14 +92,16 @@ export class FileSystemMemoryStore implements MemoryStore {
    */
   async list(): Promise<Memory[]> {
     const files = await this.listMemoryFiles();
-    const memories = await Promise.all(files.map(async (filename) => {
-      const contentPath = path.join(this.dir, filename);
-      const memory = this.parseMemory(await readFile(contentPath, 'utf8'));
-      if (!memory) {
-        throw new Error(`Memory file ${contentPath} has no valid frontmatter`);
-      }
-      return { ...memory, updatedAt: await this.readUpdatedAt(contentPath) };
-    }));
+    const memories = await Promise.all(
+      files.map(async (filename) => {
+        const contentPath = path.join(this.dir, filename);
+        const memory = this.parseMemory(await readFile(contentPath, 'utf8'));
+        if (!memory) {
+          throw new Error(`Memory file ${contentPath} has no valid frontmatter`);
+        }
+        return { ...memory, updatedAt: await this.readUpdatedAt(contentPath) };
+      }),
+    );
     return memories.sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -142,9 +145,9 @@ export class FileSystemMemoryStore implements MemoryStore {
       type?: unknown;
     };
     if (
-      typeof frontmatter.name !== 'string'
-      || typeof frontmatter.description !== 'string'
-      || !MEMORY_TYPES.includes(frontmatter.type as MemoryType)
+      typeof frontmatter.name !== 'string' ||
+      typeof frontmatter.description !== 'string' ||
+      !MEMORY_TYPES.includes(frontmatter.type as MemoryType)
     ) {
       return undefined;
     }

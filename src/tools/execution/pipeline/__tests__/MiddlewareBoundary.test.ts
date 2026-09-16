@@ -4,19 +4,22 @@ import type { ToolMiddleware } from '../../../../middleware/ToolMiddleware.js';
 import { PermissionMode } from '../../../../types/constants.js';
 import type { JsonObject } from '../../../../types/json.js';
 import { readTool } from '../../../builtin/file/read.js';
-import { ToolRegistry } from '../../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
-import { completeToolExecution, type ToolExecution, ToolErrorType } from '../../../types/result.js';
+import { completeToolExecution, ToolErrorType, type ToolExecution } from '../../../types/result.js';
 import { MiddlewareBoundary } from '../MiddlewareBoundary.js';
 
 function createRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
-  registry.register(readTool);
+  registry.register(readTool, BUILTIN_TOOL_SOURCE);
   return registry;
 }
 
 /** Drain a boundary run and return its final outcome (progress yields ignored). */
-async function drain(boundary: MiddlewareBoundary, input: Parameters<MiddlewareBoundary['run']>[0]) {
+async function drain(
+  boundary: MiddlewareBoundary,
+  input: Parameters<MiddlewareBoundary['run']>[0],
+) {
   const execution = boundary.run(input);
   while (true) {
     const step = await execution.next();
@@ -151,11 +154,10 @@ describe('MiddlewareBoundary', () => {
     const shortCircuit: ToolMiddleware = () =>
       completeToolExecution({ status: 'success', model: 'served from cache' });
 
-    const outcome = await runBoundary(
-      [shortCircuit],
-      () => execute(),
-      { permissionMode: PermissionMode.YOLO, toolInvocationLifecycle: { onExecutionStarted } },
-    );
+    const outcome = await runBoundary([shortCircuit], () => execute(), {
+      permissionMode: PermissionMode.YOLO,
+      toolInvocationLifecycle: { onExecutionStarted },
+    });
 
     expect(outcome.coreStarted).toBe(false);
     expect(outcome.result).toMatchObject({ status: 'success', model: 'served from cache' });

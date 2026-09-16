@@ -3,24 +3,24 @@ import {
   calculateDeepSeekCost,
   createDeepSeekBatchChatCompletions,
   createDeepSeekChatCompletion,
-  createDeepSeekLongContextPlan,
-  createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
-  DeepSeekCostTracker,
   createDeepSeekLongContextChunks,
   createDeepSeekLongContextMessages,
+  createDeepSeekLongContextPlan,
+  createDeepSeekTokenBudgetCostConfig,
+  DeepSeekCostTracker,
   estimateDeepSeekTokens,
   getDeepSeekPricing,
   mergeDeepSeekUsage,
+  normalizeDeepSeekModel,
   optimizeDeepSeekCachePrefix,
   prepareDeepSeekTools,
-  normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
   serializeDeepSeekTools,
-  summarizeDeepSeekBatchChatCompletions,
-  shouldUseDeepSeekBetaBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
+  shouldUseDeepSeekBetaBaseUrl,
+  summarizeDeepSeekBatchChatCompletions,
   withDeepSeekDefaults,
 } from '../deepseek.js';
 
@@ -54,15 +54,20 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('calculates DeepSeek cost with cache hit, cache miss, and reasoning breakdown', () => {
-    expect(calculateDeepSeekCost({
-      promptTokens: 100,
-      completionTokens: 20,
-      totalTokens: 120,
-      cacheReadInputTokens: 70,
-      cacheMissInputTokens: 30,
-      billableInputTokens: 30,
-      reasoningTokens: 5,
-    }, 'deepseek-v4-pro')).toMatchObject({
+    expect(
+      calculateDeepSeekCost(
+        {
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          cacheReadInputTokens: 70,
+          cacheMissInputTokens: 30,
+          billableInputTokens: 30,
+          reasoningTokens: 5,
+        },
+        'deepseek-v4-pro',
+      ),
+    ).toMatchObject({
       model: 'deepseek-v4-pro',
       inputCacheHitTokens: 70,
       inputCacheMissTokens: 30,
@@ -74,19 +79,21 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('maps DeepSeek provider cache metadata when token details are absent', () => {
-    expect(mergeDeepSeekUsage(
-      {
-        promptTokens: 20,
-        completionTokens: 3,
-        totalTokens: 23,
-      },
-      {
-        deepseek: {
-          promptCacheHitTokens: 12,
-          promptCacheMissTokens: 8,
+    expect(
+      mergeDeepSeekUsage(
+        {
+          promptTokens: 20,
+          completionTokens: 3,
+          totalTokens: 23,
         },
-      },
-    )).toMatchObject({
+        {
+          deepseek: {
+            promptCacheHitTokens: 12,
+            promptCacheMissTokens: 8,
+          },
+        },
+      ),
+    ).toMatchObject({
       promptTokens: 20,
       completionTokens: 3,
       totalTokens: 23,
@@ -95,11 +102,13 @@ describe('DeepSeek provider helpers', () => {
       billableInputTokens: 8,
     });
 
-    expect(mergeDeepSeekUsage({
-      inputTokens: 20,
-      outputTokens: 3,
-      cachedInputTokens: 12,
-    })).toMatchObject({
+    expect(
+      mergeDeepSeekUsage({
+        inputTokens: 20,
+        outputTokens: 3,
+        cachedInputTokens: 12,
+      }),
+    ).toMatchObject({
       promptTokens: 20,
       completionTokens: 3,
       totalTokens: 23,
@@ -109,12 +118,14 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('applies DeepSeek model defaults', () => {
-    expect(withDeepSeekDefaults({
-      id: 'd',
-      name: 'DeepSeek',
-      provider: 'deepseek',
-      model: 'deepseek-chat',
-    })).toMatchObject({
+    expect(
+      withDeepSeekDefaults({
+        id: 'd',
+        name: 'DeepSeek',
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+      }),
+    ).toMatchObject({
       model: 'deepseek-v4-flash',
       baseUrl: 'https://api.deepseek.com',
       maxContextTokens: 1_000_000,
@@ -122,12 +133,14 @@ describe('DeepSeek provider helpers', () => {
       temperature: 0.3,
     });
 
-    expect(withDeepSeekDefaults({
-      id: 'r',
-      name: 'DeepSeek Reasoner',
-      provider: 'deepseek',
-      model: 'deepseek-reasoner',
-    })).toMatchObject({
+    expect(
+      withDeepSeekDefaults({
+        id: 'r',
+        name: 'DeepSeek Reasoner',
+        provider: 'deepseek',
+        model: 'deepseek-reasoner',
+      }),
+    ).toMatchObject({
       model: 'deepseek-v4-flash',
       supportsThinking: true,
       thinkingEnabled: true,
@@ -163,17 +176,54 @@ describe('DeepSeek provider helpers', () => {
 
     expect(estimateDeepSeekTokens('abcdef', 2)).toBe(3);
     expect(chunks).toEqual([
-      { id: 'doc_1', index: 0, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:1:4' },
-      { id: 'doc_2', index: 1, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:2:4' },
-      { id: 'doc_3', index: 2, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:3:4' },
-      { id: 'doc_4', index: 3, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:4:4' },
-      { id: 'doc_5', index: 4, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:5:4' },
+      {
+        id: 'doc_1',
+        index: 0,
+        content: 'aaaa',
+        estimatedTokens: 2,
+        contentHash: '4ceb2db9',
+        cacheKey: 'doc:1:4',
+      },
+      {
+        id: 'doc_2',
+        index: 1,
+        content: 'aaaa',
+        estimatedTokens: 2,
+        contentHash: '4ceb2db9',
+        cacheKey: 'doc:2:4',
+      },
+      {
+        id: 'doc_3',
+        index: 2,
+        content: 'aaaa',
+        estimatedTokens: 2,
+        contentHash: '4ceb2db9',
+        cacheKey: 'doc:3:4',
+      },
+      {
+        id: 'doc_4',
+        index: 3,
+        content: 'aaaa',
+        estimatedTokens: 2,
+        contentHash: '4ceb2db9',
+        cacheKey: 'doc:4:4',
+      },
+      {
+        id: 'doc_5',
+        index: 4,
+        content: 'aaaa',
+        estimatedTokens: 2,
+        contentHash: '4ceb2db9',
+        cacheKey: 'doc:5:4',
+      },
     ]);
-    expect(createDeepSeekLongContextMessages('abcdef', {
-      chunkTokenLimit: 2,
-      charsPerToken: 2,
-      chunkPrefix: 'doc',
-    })[0]).toMatchObject({
+    expect(
+      createDeepSeekLongContextMessages('abcdef', {
+        chunkTokenLimit: 2,
+        charsPerToken: 2,
+        chunkPrefix: 'doc',
+      })[0],
+    ).toMatchObject({
       role: 'user',
       providerOptions: {
         deepseek: {
@@ -250,37 +300,36 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('sanitizes object schemas for DeepSeek strict tools', () => {
-    expect(sanitizeDeepSeekStrictSchema({
-      type: 'object',
-      properties: {
-        q: { type: 'string', format: 'date-time' },
-        count: { type: 'number' },
-        email: { type: ['string', 'null'], format: 'email' },
-        nested: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', minLength: 2, maxLength: 8 },
-            choice: {
-              oneOf: [
-                { type: 'string', minLength: 1 },
-                { type: 'integer' },
-              ],
+    expect(
+      sanitizeDeepSeekStrictSchema({
+        type: 'object',
+        properties: {
+          q: { type: 'string', format: 'date-time' },
+          count: { type: 'number' },
+          email: { type: ['string', 'null'], format: 'email' },
+          nested: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', minLength: 2, maxLength: 8 },
+              choice: {
+                oneOf: [{ type: 'string', minLength: 1 }, { type: 'integer' }],
+              },
             },
+            required: [],
           },
-          required: [],
+          tags: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 3,
+            uniqueItems: true,
+            items: { type: 'string', minLength: 1 },
+          },
         },
-        tags: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 3,
-          uniqueItems: true,
-          items: { type: 'string', minLength: 1 },
-        },
-      },
-      required: ['q'],
-      allOf: [{ type: 'object' }],
-      propertyNames: { pattern: '^[a-z]+$' },
-    })).toMatchObject({
+        required: ['q'],
+        allOf: [{ type: 'object' }],
+        propertyNames: { pattern: '^[a-z]+$' },
+      }),
+    ).toMatchObject({
       required: ['q', 'count', 'email', 'nested', 'tags'],
       additionalProperties: false,
       properties: {
@@ -292,10 +341,7 @@ describe('DeepSeek provider helpers', () => {
           properties: {
             name: { type: 'string' },
             choice: {
-              anyOf: [
-                { type: 'string' },
-                { type: 'integer' },
-              ],
+              anyOf: [{ type: 'string' }, { type: 'integer' }],
             },
           },
         },
@@ -305,32 +351,39 @@ describe('DeepSeek provider helpers', () => {
         },
       },
     });
-    expect(sanitizeDeepSeekStrictSchema({
-      type: 'object',
-      properties: {},
-      allOf: [{ type: 'object' }],
-      propertyNames: { pattern: '^[a-z]+$' },
-    })).not.toHaveProperty('allOf');
+    expect(
+      sanitizeDeepSeekStrictSchema({
+        type: 'object',
+        properties: {},
+        allOf: [{ type: 'object' }],
+        propertyNames: { pattern: '^[a-z]+$' },
+      }),
+    ).not.toHaveProperty('allOf');
   });
 
   it('prepares DeepSeek strict tools and beta endpoint selection', () => {
-    const tools = prepareDeepSeekTools([
-      {
-        name: 'search',
-        description: 'Search files',
-        parameters: {
-          type: 'object',
-          properties: {
-            q: { type: 'string', minLength: 1 },
+    const tools = prepareDeepSeekTools(
+      [
+        {
+          name: 'search',
+          description: 'Search files',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string', minLength: 1 },
+            },
           },
         },
-      },
-    ], { strictTools: true });
+      ],
+      { strictTools: true },
+    );
 
-    expect(shouldUseDeepSeekBetaBaseUrl({
-      provider: 'deepseek',
-      deepseek: { strictTools: true },
-    })).toBe(true);
+    expect(
+      shouldUseDeepSeekBetaBaseUrl({
+        provider: 'deepseek',
+        deepseek: { strictTools: true },
+      }),
+    ).toBe(true);
     expect(tools?.[0]).toMatchObject({
       name: 'search',
       strict: true,
@@ -342,18 +395,23 @@ describe('DeepSeek provider helpers', () => {
         },
       },
     });
-    expect(serializeDeepSeekTools([
-      {
-        name: 'search',
-        description: 'Search files',
-        parameters: {
-          type: 'object',
-          properties: {
-            q: { type: 'string' },
+    expect(
+      serializeDeepSeekTools(
+        [
+          {
+            name: 'search',
+            description: 'Search files',
+            parameters: {
+              type: 'object',
+              properties: {
+                q: { type: 'string' },
+              },
+            },
           },
-        },
-      },
-    ], { strictTools: true })?.[0]).toEqual({
+        ],
+        { strictTools: true },
+      )?.[0],
+    ).toEqual({
       type: 'function',
       function: {
         name: 'search',
@@ -372,33 +430,40 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('normalizes empty and legacy-def schemas for DeepSeek strict tools', () => {
-    expect(prepareDeepSeekTools([
-      {
-        name: 'ping',
-        description: 'Ping',
-        parameters: {},
-      },
-    ], { strictTools: true })?.[0]?.parameters).toEqual({
+    expect(
+      prepareDeepSeekTools(
+        [
+          {
+            name: 'ping',
+            description: 'Ping',
+            parameters: {},
+          },
+        ],
+        { strictTools: true },
+      )?.[0]?.parameters,
+    ).toEqual({
       type: 'object',
       properties: {},
       required: [],
       additionalProperties: false,
     });
 
-    expect(sanitizeDeepSeekStrictSchema({
-      type: 'object',
-      properties: {
-        item: { $ref: '#/$def/Item' },
-      },
-      $def: {
-        Item: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', minLength: 1 },
+    expect(
+      sanitizeDeepSeekStrictSchema({
+        type: 'object',
+        properties: {
+          item: { $ref: '#/$def/Item' },
+        },
+        $def: {
+          Item: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', minLength: 1 },
+            },
           },
         },
-      },
-    } as never)).toMatchObject({
+      } as never),
+    ).toMatchObject({
       required: ['item'],
       additionalProperties: false,
       $def: {
@@ -423,13 +488,15 @@ describe('DeepSeek provider helpers', () => {
       additionalProperties: true,
     };
 
-    expect(prepareDeepSeekTools([
-      {
-        name: 'search',
-        description: 'Search files',
-        parameters,
-      },
-    ])?.[0]).toEqual({
+    expect(
+      prepareDeepSeekTools([
+        {
+          name: 'search',
+          description: 'Search files',
+          parameters,
+        },
+      ])?.[0],
+    ).toEqual({
       name: 'search',
       description: 'Search files',
       parameters,
@@ -437,24 +504,32 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('omits sampling options only for enabled DeepSeek thinking mode', () => {
-    expect(shouldOmitDeepSeekSamplingOptions({
-      provider: 'deepseek',
-      model: 'deepseek-reasoner',
-    })).toBe(true);
-    expect(shouldOmitDeepSeekSamplingOptions({
-      provider: 'deepseek',
-      model: 'deepseek-v4-pro',
-      deepseek: { thinking: { type: 'enabled' } },
-    })).toBe(true);
-    expect(shouldOmitDeepSeekSamplingOptions({
-      provider: 'deepseek',
-      model: 'deepseek-v4-pro',
-      deepseek: { thinking: { type: 'disabled' } },
-    })).toBe(false);
-    expect(shouldOmitDeepSeekSamplingOptions({
-      provider: 'openai',
-      model: 'deepseek-reasoner',
-    })).toBe(false);
+    expect(
+      shouldOmitDeepSeekSamplingOptions({
+        provider: 'deepseek',
+        model: 'deepseek-reasoner',
+      }),
+    ).toBe(true);
+    expect(
+      shouldOmitDeepSeekSamplingOptions({
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        deepseek: { thinking: { type: 'enabled' } },
+      }),
+    ).toBe(true);
+    expect(
+      shouldOmitDeepSeekSamplingOptions({
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        deepseek: { thinking: { type: 'disabled' } },
+      }),
+    ).toBe(false);
+    expect(
+      shouldOmitDeepSeekSamplingOptions({
+        provider: 'openai',
+        model: 'deepseek-reasoner',
+      }),
+    ).toBe(false);
   });
 
   it('creates FIM completion requests against the beta endpoint', async () => {
@@ -513,21 +588,26 @@ describe('DeepSeek provider helpers', () => {
   });
 
   it('surfaces DeepSeek FIM API error messages', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        error: {
-          message: 'invalid suffix',
-        },
-      }),
-    })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: {
+            message: 'invalid suffix',
+          },
+        }),
+      })),
+    );
 
-    await expect(createDeepSeekFimCompletion({
-      apiKey: 'test-key',
-      prompt: 'left',
-      suffix: 'right',
-    })).rejects.toThrow('invalid suffix');
+    await expect(
+      createDeepSeekFimCompletion({
+        apiKey: 'test-key',
+        prompt: 'left',
+        suffix: 'right',
+      }),
+    ).rejects.toThrow('invalid suffix');
   });
 
   it('creates DeepSeek chat completion requests with usage cost', async () => {
@@ -536,7 +616,9 @@ describe('DeepSeek provider helpers', () => {
       json: async () => ({
         id: 'chat_1',
         model: 'deepseek-v4-pro',
-        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop', index: 0 }],
+        choices: [
+          { message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop', index: 0 },
+        ],
         usage: {
           prompt_tokens: 10,
           completion_tokens: 3,
@@ -575,7 +657,9 @@ describe('DeepSeek provider helpers', () => {
       cacheMissInputTokens: 3,
     });
     expect(response.cost?.inputCacheHitTokens).toBe(7);
-    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string).messages).toEqual([
+    expect(
+      JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string).messages,
+    ).toEqual([
       { role: 'user', content: 'stable repo map' },
       { role: 'user', content: 'question' },
     ]);

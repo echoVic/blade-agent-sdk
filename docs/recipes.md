@@ -296,7 +296,7 @@ const session = await createSession({
 `feedback` 和 `reference`。
 :::
 
-## 工具来源策略（ToolCatalogSourcePolicy）
+## 工具来源策略（ToolSourcePolicy）
 
 通过 `toolSourcePolicy` 按来源类型和信任级别过滤工具：
 

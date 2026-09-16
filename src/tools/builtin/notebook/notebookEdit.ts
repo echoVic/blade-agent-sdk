@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises';
 import Type from 'typebox';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -14,6 +14,7 @@ import { ToolSchemas } from '../../validation/toolSchemas.js';
  */
 export const notebookEditTool = createTool({
   name: 'NotebookEdit',
+  group: 'filesystem',
   displayName: 'Notebook Edit',
   kind: ToolKind.Write,
   sideEffect: 'non_idempotent',

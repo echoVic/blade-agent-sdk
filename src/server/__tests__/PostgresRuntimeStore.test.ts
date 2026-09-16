@@ -1,10 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  type EventId,
-  type EventSequence,
-  SessionId,
-} from '../../types/identifiers.js';
+import { type EventId, type EventSequence, SessionId } from '../../types/identifiers.js';
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 
 describe('PostgresRuntimeStore event quotas', () => {

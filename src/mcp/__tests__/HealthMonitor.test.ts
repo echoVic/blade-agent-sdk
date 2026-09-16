@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HealthMonitor, HealthStatus, type HealthCheckConfig } from '../HealthMonitor.js';
+import { type HealthCheckConfig, HealthMonitor, HealthStatus } from '../HealthMonitor.js';
 import type { McpClient } from '../McpClient.js';
 import { McpConnectionStatus } from '../types.js';
 
@@ -20,7 +20,12 @@ function createMonitor(client: ReturnType<typeof createMockClient>, config: Heal
 }
 
 describe('HealthMonitor probing', () => {
-  const config: HealthCheckConfig = { enabled: true, interval: 10_000, timeout: 500, failureThreshold: 2 };
+  const config: HealthCheckConfig = {
+    enabled: true,
+    interval: 10_000,
+    timeout: 500,
+    failureThreshold: 2,
+  };
 
   it('reports unhealthy when a server with cached state stops answering', async () => {
     const client = createMockClient();
@@ -51,9 +56,12 @@ describe('HealthMonitor probing', () => {
     vi.useFakeTimers();
     const client = createMockClient();
     let releaseProbe!: () => void;
-    client.ping.mockImplementation(() => new Promise<void>((resolve) => {
-      releaseProbe = resolve;
-    }));
+    client.ping.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseProbe = resolve;
+        }),
+    );
     const monitor = createMonitor(client, { ...config, interval: 1_000 });
     try {
       monitor.start();

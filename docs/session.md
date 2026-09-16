@@ -1096,45 +1096,8 @@ const session = await createSession({
 });
 ```
 
-### 使用 createTool + TypeBox
-
-```ts
-import { createSession, createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import Type from 'typebox';
-
-const dbQueryTool = createTool({
-  name: 'DatabaseQuery',
-  displayName: 'Database Query',
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  schema: Type.Object({
-    query: Type.String({ description: 'SQL 查询语句' }),
-    database: Type.Optional(Type.String({ description: '数据库名称' })),
-  }),
-  description: {
-    short: '执行只读数据库查询',
-    long: '在指定数据库上执行只读 SQL 查询并返回结果',
-  },
-  async *execute(params, context) {
-    const results = await runQuery(params.query, params.database);
-    return {
-      status: 'success',
-      model: JSON.stringify(results),
-      display: { summary: `查询返回 ${results.length} 行` },
-    };
-  },
-});
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
-  model: 'gpt-4o',
-  tools: [dbQueryTool],
-});
-```
-
-`SessionOptions.tools` 接受 `ToolDefinition` 和完整 `Tool`。传入
-`createTool()` 的结果时，Session 会保留其 TypeBox 校验、权限检查和
-`interruptBehavior`。
+`SessionOptions.tools` 接受 `defineTool()` 返回的 `ToolDefinition`。Session
+负责统一编译 TypeBox schema、注入声明的服务并注册运行时工具。
 
 ### 工具过滤
 
@@ -1791,7 +1754,7 @@ async function analyzeCodeManual() {
 | `maxTurns`        | `number`                                                | —  | `200`       | Agent 最大轮次限制                                      |
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
-| `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
+| `toolSourcePolicy` | `ToolSourcePolicy`                                     | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
 | `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
 | `toolTimeoutMs`   | `number`                                                 | —  | `600000`    | 单次工具调用的总时限（毫秒）                                   |
 | `webFetch`        | `WebFetchSecurityPolicy`                                 | —  | 安全默认值      | WebFetch 主机白名单、黑名单与私网访问策略                        |

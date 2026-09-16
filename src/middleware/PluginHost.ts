@@ -1,13 +1,6 @@
+import type { HookCallback, SessionHookEvent, SessionTool } from '../session/types.js';
 import type { HookEvent } from '../types/constants.js';
-import type {
-  HookCallback,
-  SessionHookEvent,
-  SessionTool,
-} from '../session/types.js';
-import type {
-  AgentMiddlewareConfig,
-  AgentPlugin,
-} from './AgentPlugin.js';
+import type { AgentMiddlewareConfig, AgentPlugin } from './AgentPlugin.js';
 import type { ModelMiddleware } from './ModelMiddleware.js';
 import type { ToolMiddleware } from './ToolMiddleware.js';
 
@@ -62,10 +55,7 @@ export class PluginHost {
     sessionHooks: Partial<Record<SessionHookEvent, HookCallback[]>> = {},
   ): Partial<Record<HookEvent, HookCallback[]>> {
     const merged = Object.fromEntries(
-      Object.entries(sessionHooks).map(([event, callbacks]) => [
-        event,
-        [...(callbacks ?? [])],
-      ]),
+      Object.entries(sessionHooks).map(([event, callbacks]) => [event, [...(callbacks ?? [])]]),
     ) as Partial<Record<HookEvent, HookCallback[]>>;
 
     for (const plugin of this.plugins) {
@@ -83,10 +73,7 @@ export class PluginHost {
   private assertPluginNames(): void {
     const names = new Set<string>();
     for (const plugin of this.plugins) {
-      if (
-        typeof plugin.name !== 'string'
-        || !PLUGIN_NAME_PATTERN.test(plugin.name)
-      ) {
+      if (typeof plugin.name !== 'string' || !PLUGIN_NAME_PATTERN.test(plugin.name)) {
         throw new Error(
           `Agent plugin name "${plugin.name}" must be 1-64 lowercase letters, numbers, dots, underscores, or hyphens`,
         );

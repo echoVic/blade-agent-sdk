@@ -66,11 +66,13 @@ describe('VercelAIModelService', () => {
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
     const seen: unknown[] = [];
-    await expect((async () => {
-      for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
-        seen.push(chunk);
-      }
-    })()).rejects.toMatchObject({ message: 'upstream 503' });
+    await expect(
+      (async () => {
+        for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+          seen.push(chunk);
+        }
+      })(),
+    ).rejects.toMatchObject({ message: 'upstream 503' });
 
     // The partial text was emitted, but the call did not end as a success.
     expect(seen).toEqual([{ content: 'Partial answer' }]);
@@ -95,7 +97,10 @@ describe('VercelAIModelService', () => {
 
     const service = new VercelAIModelService(
       {
-        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        provider: 'openai',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'gpt-5',
         retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
       },
       NOOP_LOGGER,
@@ -110,10 +115,7 @@ describe('VercelAIModelService', () => {
     // The network failure surfaced while consuming the first stream, which used
     // to sit outside the retry scope; it must now be retried like any request.
     expect(attempts).toBe(2);
-    expect(chunks).toEqual([
-      { content: 'ok' },
-      expect.objectContaining({ finishReason: 'stop' }),
-    ]);
+    expect(chunks).toEqual([{ content: 'ok' }, expect.objectContaining({ finishReason: 'stop' })]);
   });
 
   it('closes the iterator of every failed attempt before retrying', async () => {
@@ -145,7 +147,10 @@ describe('VercelAIModelService', () => {
 
     const service = new VercelAIModelService(
       {
-        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        provider: 'openai',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'gpt-5',
         retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
       },
       NOOP_LOGGER,
@@ -161,10 +166,7 @@ describe('VercelAIModelService', () => {
     // one while the previous stream is still open.
     expect(attempts).toBe(3);
     expect(events).toEqual(['start:1', 'close:1', 'start:2', 'close:2', 'start:3', 'close:3']);
-    expect(chunks).toEqual([
-      { content: 'ok' },
-      expect.objectContaining({ finishReason: 'stop' }),
-    ]);
+    expect(chunks).toEqual([{ content: 'ok' }, expect.objectContaining({ finishReason: 'stop' })]);
   });
 
   it('does not retry once output has already been forwarded', async () => {
@@ -187,7 +189,10 @@ describe('VercelAIModelService', () => {
 
     const service = new VercelAIModelService(
       {
-        provider: 'openai', apiKey: 'test-key', baseUrl: '', model: 'gpt-5',
+        provider: 'openai',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'gpt-5',
         retry: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
       },
       NOOP_LOGGER,
@@ -195,11 +200,13 @@ describe('VercelAIModelService', () => {
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
     const seen: unknown[] = [];
-    await expect((async () => {
-      for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
-        seen.push(chunk);
-      }
-    })()).rejects.toThrow('Service unavailable');
+    await expect(
+      (async () => {
+        for await (const chunk of service.streamChat([{ role: 'user', content: 'hi' }])) {
+          seen.push(chunk);
+        }
+      })(),
+    ).rejects.toThrow('Service unavailable');
 
     expect(attempts).toBe(1);
     expect(seen).toEqual([{ content: 'Partial answer' }]);

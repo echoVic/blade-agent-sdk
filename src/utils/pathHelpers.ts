@@ -27,4 +27,3 @@ export function splitPath(filePath: string): string[] {
   const normalized = filePath.replace(/\\/g, '/');
   return normalized.split('/').filter(Boolean);
 }
-

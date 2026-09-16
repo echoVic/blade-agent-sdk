@@ -16,7 +16,7 @@ import type { InvocationBinder } from '../InvocationBinder.js';
 import type { PermissionDecisionApplier } from '../PermissionDecisionApplier.js';
 import type { PermissionRequestFactory } from '../PermissionRequestFactory.js';
 import { createAbortedResult } from '../results.js';
-import { getConfirmationReason, samePaths, type PipelineExecutionState } from '../state.js';
+import { getConfirmationReason, type PipelineExecutionState, samePaths } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
 
 export interface ConfirmationStageOptions {

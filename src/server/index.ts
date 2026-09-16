@@ -25,9 +25,9 @@ export {
   UncertainRuntimeEffectError,
 } from './EffectDispatcher.js';
 export {
-  type ExecutionCheckpointPolicy,
   EXECUTION_HOST_ROUTE_METADATA_KEY,
   EXECUTION_HOST_ROUTE_METADATA_VERSION,
+  type ExecutionCheckpointPolicy,
   type ExecutionHostSessionPlan,
   ExecutionHostSessionRunner,
   type ExecutionHostSessionRunnerOptions,

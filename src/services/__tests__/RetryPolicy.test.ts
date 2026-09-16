@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import {
   CannotRetryError,
   DEFAULT_RETRY_CONFIG,
@@ -10,7 +11,6 @@ import {
   parseContextOverflowError,
   withRetry,
 } from '../RetryPolicy.js';
-import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 /**
  * Helper: consume an AsyncGenerator, collecting yields and returning the result.
@@ -42,39 +42,33 @@ describe('RetryPolicy', () => {
 
   describe('isRetryableError', () => {
     it('returns true for retryable status codes', () => {
-      expect(
-        isRetryableError(Object.assign(new Error('Too many requests'), { status: 429 })),
-      ).toBe(true);
-      expect(
-        isRetryableError(Object.assign(new Error('Server error'), { statusCode: 500 })),
-      ).toBe(true);
+      expect(isRetryableError(Object.assign(new Error('Too many requests'), { status: 429 }))).toBe(
+        true,
+      );
+      expect(isRetryableError(Object.assign(new Error('Server error'), { statusCode: 500 }))).toBe(
+        true,
+      );
       expect(
         isRetryableError(Object.assign(new Error('Service unavailable'), { status: 503 })),
       ).toBe(true);
     });
 
     it('returns false for permanent client errors', () => {
-      expect(
-        isRetryableError(Object.assign(new Error('Unauthorized'), { status: 401 })),
-      ).toBe(false);
-      expect(
-        isRetryableError(Object.assign(new Error('Forbidden'), { status: 403 })),
-      ).toBe(false);
-      expect(
-        isRetryableError(Object.assign(new Error('Bad request'), { status: 400 })),
-      ).toBe(false);
-    });
-
-    it('returns true for transient network messages', () => {
-      expect(isRetryableError(new Error('read ECONNRESET while contacting upstream'))).toBe(
-        true,
+      expect(isRetryableError(Object.assign(new Error('Unauthorized'), { status: 401 }))).toBe(
+        false,
+      );
+      expect(isRetryableError(Object.assign(new Error('Forbidden'), { status: 403 }))).toBe(false);
+      expect(isRetryableError(Object.assign(new Error('Bad request'), { status: 400 }))).toBe(
+        false,
       );
     });
 
+    it('returns true for transient network messages', () => {
+      expect(isRetryableError(new Error('read ECONNRESET while contacting upstream'))).toBe(true);
+    });
+
     it('returns true for 529 errors', () => {
-      expect(
-        isRetryableError(Object.assign(new Error('Overloaded'), { status: 529 })),
-      ).toBe(true);
+      expect(isRetryableError(Object.assign(new Error('Overloaded'), { status: 529 }))).toBe(true);
     });
   });
 
@@ -132,7 +126,9 @@ describe('RetryPolicy', () => {
 
     it('returns undefined for malformed overflow message', () => {
       expect(
-        parseContextOverflowError(new Error('input length and `max_tokens` exceed context limit: bad')),
+        parseContextOverflowError(
+          new Error('input length and `max_tokens` exceed context limit: bad'),
+        ),
       ).toBeUndefined();
     });
   });
@@ -180,9 +176,7 @@ describe('RetryPolicy', () => {
     it('returns immediately on success without yielding', async () => {
       const operation = vi.fn().mockResolvedValue('ok');
 
-      const { yields, result } = await consumeGenerator(
-        withRetry(operation),
-      );
+      const { yields, result } = await consumeGenerator(withRetry(operation));
 
       expect(result).toBe('ok');
       expect(yields).toHaveLength(0);
@@ -195,9 +189,7 @@ describe('RetryPolicy', () => {
       const onRetry = vi.fn();
       const operation = vi
         .fn<() => Promise<string>>()
-        .mockRejectedValueOnce(
-          Object.assign(new Error('Service unavailable'), { status: 503 }),
-        )
+        .mockRejectedValueOnce(Object.assign(new Error('Service unavailable'), { status: 503 }))
         .mockResolvedValueOnce('ok');
 
       const { yields, result } = await consumeGenerator(
@@ -247,9 +239,7 @@ describe('RetryPolicy', () => {
       const operation = vi.fn<() => Promise<string>>().mockResolvedValue('ok');
 
       try {
-        await consumeGenerator(
-          withRetry(operation, { maxRetries: 3 }, controller.signal),
-        );
+        await consumeGenerator(withRetry(operation, { maxRetries: 3 }, controller.signal));
         expect.unreachable('should have thrown');
       } catch (error) {
         expect((error as Error).message).toBe('pre-aborted');
@@ -411,7 +401,9 @@ describe('RetryPolicy', () => {
       let capturedCtx: { maxTokensOverride?: number } | undefined;
       const operation = vi
         .fn<(ctx: { maxTokensOverride?: number }) => Promise<string>>()
-        .mockImplementationOnce(() => { throw overflowError; })
+        .mockImplementationOnce(() => {
+          throw overflowError;
+        })
         .mockImplementation((ctx) => {
           capturedCtx = ctx;
           return Promise.resolve('ok');
@@ -433,7 +425,8 @@ describe('RetryPolicy', () => {
         'input length and `max_tokens` exceed context limit: 199000 + 20000 > 200000',
       );
       Object.assign(overflowError, { status: 400 });
-      const operation = vi.fn<(ctx: { maxTokensOverride?: number }) => Promise<string>>()
+      const operation = vi
+        .fn<(ctx: { maxTokensOverride?: number }) => Promise<string>>()
         .mockRejectedValue(overflowError);
 
       try {
@@ -454,9 +447,9 @@ describe('RetryPolicy', () => {
 
       const operation = vi
         .fn<() => Promise<string>>()
-        .mockRejectedValueOnce(error529)      // 529 count: 1
-        .mockRejectedValueOnce(error500)       // reset to 0
-        .mockRejectedValueOnce(error529)       // 529 count: 1
+        .mockRejectedValueOnce(error529) // 529 count: 1
+        .mockRejectedValueOnce(error500) // reset to 0
+        .mockRejectedValueOnce(error529) // 529 count: 1
         .mockResolvedValueOnce('ok');
 
       const { yields, result } = await consumeGenerator(

@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import {
   discoverSkillScripts,
   hasSkillFile,
   loadSkillContent,
   loadSkillMetadata,
-  processInlineCommands
+  processInlineCommands,
 } from '../SkillLoader.js';
-import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 // ===== Helper =====
 
@@ -460,12 +460,15 @@ Hello !{ECHO_CMD}World
     });
 
     it('should not process inline commands when cwd is not provided', async () => {
-      const skillWithCmd = `---
+      const skillWithCmd =
+        `---
 name: cmd-skill
 description: Skill with inline command
 ---
 
-Result: !` + '`echo hello`' + `
+Result: !` +
+        '`echo hello`' +
+        `
 `;
       const filePath = await createSkillFile(tmpDir, skillWithCmd);
       const metaResult = await loadSkillMetadata(filePath, 'project');
@@ -676,7 +679,9 @@ Result: !` + '`echo hello`' + `
       };
       const content = '!`echo test`';
       await processInlineCommands(content, tmpDir, { logger, skillName: 'test-skill' });
-      expect(infoMessages.some((m) => m.includes('echo test') && m.includes('test-skill'))).toBe(true);
+      expect(infoMessages.some((m) => m.includes('echo test') && m.includes('test-skill'))).toBe(
+        true,
+      );
     });
 
     it('should block commands not in allowlist', async () => {

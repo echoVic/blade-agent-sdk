@@ -13,7 +13,6 @@ import type { McpServerConfig } from '../mcp/config.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import { resolveMcpServerName } from '../mcp/toolSource.js';
 import { PluginHost } from '../middleware/PluginHost.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
@@ -28,10 +27,13 @@ import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellMa
 import { skillTool } from '../tools/builtin/system/skill.js';
 import { TaskStore } from '../tools/builtin/task/TaskStore.js';
 import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
-import { ToolCatalog, type ToolSourceInfo } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
-import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import {
+  BUILTIN_TOOL_SOURCE,
+  ToolRegistry,
+  type ToolSourceInfo,
+} from '../tools/registry/ToolRegistry.js';
 import type { ToolServices } from '../tools/services.js';
 import type { Tool } from '../tools/types/tool.js';
 import type { PermissionMode } from '../types/constants.js';
@@ -95,7 +97,6 @@ export class SessionRuntime {
   private readonly subagentRegistry: SubagentRegistry;
   private readonly skillRegistry: SkillRegistry;
   private readonly toolRegistry: ToolRegistry;
-  private readonly toolCatalog: ToolCatalog;
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
   private readonly backgroundAgentManager: BackgroundAgentManager;
@@ -153,8 +154,7 @@ export class SessionRuntime {
       ...(this.options.memoryManager ? { memoryManager: this.options.memoryManager } : {}),
     };
     this.toolRegistry = new ToolRegistry(toolServices);
-    this.toolCatalog = new ToolCatalog(this.toolRegistry);
-    toolServices.discoverableCatalog = new ToolExposurePlanner(this.toolCatalog);
+    toolServices.discoverableCatalog = new ToolExposurePlanner(this.toolRegistry);
     this.contextManager = new ContextManager(
       {
         storage: {
@@ -216,10 +216,6 @@ export class SessionRuntime {
 
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
-  }
-
-  getToolCatalog(): ToolCatalog {
-    return this.toolCatalog;
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {
@@ -450,7 +446,6 @@ export class SessionRuntime {
       toolTimeoutMs: this.bladeConfig.toolTimeoutMs,
       middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
-      toolCatalog: this.toolCatalog,
     });
   }
 
@@ -474,11 +469,7 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    this.toolRegistry.registerAll(filteredTools, BUILTIN_TOOL_SOURCE);
   }
 
   private initializeSubagents(): void {
@@ -568,12 +559,16 @@ export class SessionRuntime {
       this.toolRegistry.removeMcpTools(serverName);
     }
 
-    const availableTools = await this.mcpRegistry.getAvailableToolsByServerNames(serverNames);
-    for (const tool of this.filterTools(availableTools)) {
-      this.toolCatalog.registerMcpTool(tool, {
+    const availableTools = await this.mcpRegistry.getAvailableToolEntriesByServerNames(serverNames);
+    for (const { tool, serverName } of availableTools) {
+      if (!this.isToolAllowed(tool.name)) {
+        continue;
+      }
+      this.toolRegistry.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveMcpServerName(tool),
+        sourceId: serverName,
+        serverName,
       });
     }
   }
@@ -583,10 +578,10 @@ export class SessionRuntime {
       return;
     }
     if (isRuntimeTool(tool)) {
-      this.toolCatalog.register(tool, source);
+      this.toolRegistry.register(tool, source);
       return;
     }
-    this.toolCatalog.registerDefinition(tool, source);
+    this.toolRegistry.registerDefinition(tool, source);
   }
 
   private filterTools(tools: Tool[]): Tool[] {

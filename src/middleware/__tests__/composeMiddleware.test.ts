@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  composeMiddleware,
-  type Middleware,
-} from '../composeMiddleware.js';
+import { composeMiddleware, type Middleware } from '../composeMiddleware.js';
 
 describe('composeMiddleware', () => {
   it('runs the first middleware as the outermost onion layer', async () => {
@@ -22,13 +19,10 @@ describe('composeMiddleware', () => {
       },
     ];
 
-    const execute = composeMiddleware(
-      middleware,
-      async (request) => {
-        calls.push(`terminal:${request}`);
-        return request;
-      },
-    );
+    const execute = composeMiddleware(middleware, async (request) => {
+      calls.push(`terminal:${request}`);
+      return request;
+    });
 
     await expect(execute(2)).resolves.toBe(13);
     expect(calls).toEqual([
@@ -55,12 +49,9 @@ describe('composeMiddleware', () => {
   });
 
   it('can short-circuit without invoking the terminal', async () => {
-    const execute = composeMiddleware<number, Promise<number>>(
-      [async () => 42],
-      async () => {
-        throw new Error('terminal should not run');
-      },
-    );
+    const execute = composeMiddleware<number, Promise<number>>([async () => 42], async () => {
+      throw new Error('terminal should not run');
+    });
 
     await expect(execute(1)).resolves.toBe(42);
   });
@@ -80,8 +71,8 @@ describe('composeMiddleware', () => {
       async (request) => request,
     );
 
-    await expect(
-      Promise.all([execute(1), execute(10), execute(100)]),
-    ).resolves.toEqual([4, 22, 202]);
+    await expect(Promise.all([execute(1), execute(10), execute(100)])).resolves.toEqual([
+      4, 22, 202,
+    ]);
   });
 });

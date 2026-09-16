@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SensitiveFileDetector, SensitivityLevel } from '../SensitiveFileDetector.js';
 import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
+import { SensitiveFileDetector, SensitivityLevel } from '../SensitiveFileDetector.js';
 
 describe('SensitiveFileDetector', () => {
   describe('check - HIGH level files', () => {
@@ -144,11 +144,7 @@ describe('SensitiveFileDetector', () => {
 
   describe('checkMultiple', () => {
     it('should check multiple files at once', () => {
-      const results = SensitiveFileDetector.checkMultiple([
-        'id_rsa',
-        '.env',
-        'index.ts',
-      ]);
+      const results = SensitiveFileDetector.checkMultiple(['id_rsa', '.env', 'index.ts']);
       expect(results.size).toBe(3);
       const idRsaResult = results.get('id_rsa');
       assertDefined(idRsaResult);
@@ -176,7 +172,7 @@ describe('SensitiveFileDetector', () => {
     it('should filter by minimum level HIGH', () => {
       const results = SensitiveFileDetector.filterSensitive(
         ['id_rsa', '.env', 'data.sqlite', 'index.ts'],
-        SensitivityLevel.HIGH
+        SensitivityLevel.HIGH,
       );
       expect(results.length).toBe(1);
       expect(results[0].path).toBe('id_rsa');
@@ -185,7 +181,7 @@ describe('SensitiveFileDetector', () => {
     it('should filter by minimum level MEDIUM', () => {
       const results = SensitiveFileDetector.filterSensitive(
         ['id_rsa', '.env', 'data.sqlite', 'index.ts'],
-        SensitivityLevel.MEDIUM
+        SensitivityLevel.MEDIUM,
       );
       expect(results.length).toBe(2);
     });

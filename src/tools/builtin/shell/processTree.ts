@@ -5,12 +5,7 @@ const PROCESS_TREE_FORCE_KILL_ATTEMPTS = 3;
 const WINDOWS_TASKKILL_TIMEOUT_MS = 5_000;
 
 function isMissingProcess(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'ESRCH'
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH';
 }
 
 export function shellProcessSpawnOptions(): {
@@ -36,20 +31,11 @@ export function signalProcessTree(
   if (process.platform === 'win32') {
     // Windows has no POSIX signal semantics for console process trees.
     // taskkill /T /F therefore force-terminates the complete tree.
-    const result = spawnSync(
-      'taskkill',
-      [
-        '/pid',
-        String(pid),
-        '/t',
-        '/f',
-      ],
-      {
-        stdio: 'ignore',
-        windowsHide: true,
-        timeout: taskkillTimeoutMs,
-      },
-    );
+    const result = spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: taskkillTimeoutMs,
+    });
     if (result.status === 0) {
       return true;
     }
@@ -71,10 +57,7 @@ export function signalProcessTree(
   }
 }
 
-export function isProcessTreeAlive(
-  pid: number | undefined,
-  child?: ChildProcess,
-): boolean {
+export function isProcessTreeAlive(pid: number | undefined, child?: ChildProcess): boolean {
   if (!pid) {
     return child?.exitCode === null && child.signalCode === null;
   }
@@ -99,10 +82,7 @@ export async function waitForProcessTreeExit(
       return false;
     }
     await new Promise<void>((resolve) => {
-      setTimeout(
-        resolve,
-        Math.min(PROCESS_TREE_POLL_INTERVAL_MS, remainingMs),
-      );
+      setTimeout(resolve, Math.min(PROCESS_TREE_POLL_INTERVAL_MS, remainingMs));
     });
   }
   return true;
@@ -119,9 +99,7 @@ export async function terminateProcessTree(
     try {
       const accepted = signalProcessTree(pid, signal, child, gracePeriodMs);
       if (!accepted) {
-        lastSignalError = new Error(
-          `Process tree ${pid ?? 'unknown'} did not accept ${signal}`,
-        );
+        lastSignalError = new Error(`Process tree ${pid ?? 'unknown'} did not accept ${signal}`);
       }
       return accepted;
     } catch (error) {
@@ -137,21 +115,17 @@ export async function terminateProcessTree(
 
   let signalAccepted = signalSafely('SIGTERM');
   if (
-    await waitForProcessTreeExit(pid, child, gracePeriodMs)
-    && (process.platform !== 'win32' || signalAccepted)
+    (await waitForProcessTreeExit(pid, child, gracePeriodMs)) &&
+    (process.platform !== 'win32' || signalAccepted)
   ) {
     return;
   }
 
-  for (
-    let attempt = 0;
-    attempt < PROCESS_TREE_FORCE_KILL_ATTEMPTS;
-    attempt += 1
-  ) {
+  for (let attempt = 0; attempt < PROCESS_TREE_FORCE_KILL_ATTEMPTS; attempt += 1) {
     signalAccepted = signalSafely('SIGKILL');
     if (
-      await waitForProcessTreeExit(pid, child, gracePeriodMs)
-      && (process.platform !== 'win32' || signalAccepted)
+      (await waitForProcessTreeExit(pid, child, gracePeriodMs)) &&
+      (process.platform !== 'win32' || signalAccepted)
     ) {
       return;
     }

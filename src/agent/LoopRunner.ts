@@ -382,10 +382,8 @@ export class LoopRunner {
     toolExecutionLifecycle: LoopOptions['toolExecutionLifecycle'],
   ): LoopState {
     const rpm = this.runtimePatchManager;
-    const catalog = this.executionPipeline.getCatalog();
-    const exposureCatalog = catalog ?? this.executionPipeline.getRegistry();
     const exposurePlanner = new ToolExposurePlanner(
-      exposureCatalog,
+      this.executionPipeline.getRegistry(),
       () => rpm.discoveredTools ?? new Set(),
     );
     const effectiveSnapshot = rpm.buildRuntimeContextSnapshot(context.sessionId, context.snapshot);

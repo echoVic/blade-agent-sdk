@@ -1,7 +1,7 @@
 import Type from 'typebox';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryWriteSchema = Type.Union([
@@ -22,6 +22,7 @@ const memoryWriteSchema = Type.Union([
 
 export const memoryWriteTool = createTool({
   name: 'MemoryWrite',
+  group: 'memory',
   displayName: 'Write Memory',
   kind: ToolKind.Write,
   sideEffect: 'idempotent',

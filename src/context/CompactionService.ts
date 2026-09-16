@@ -373,10 +373,7 @@ async function generateSummary(
   options: CompactionOptions,
 ): Promise<string> {
   const baseURL = options.baseURL || process.env.BLADE_BASE_URL || 'https://api.openai.com/v1';
-  const maxOutputTokens = Math.max(
-    1,
-    Math.min(4_000, Math.floor(options.maxContextTokens * 0.2)),
-  );
+  const maxOutputTokens = Math.max(1, Math.min(4_000, Math.floor(options.maxContextTokens * 0.2)));
   const maxInputTokens = Math.max(1, options.maxContextTokens - maxOutputTokens - 256);
   // A token always represents at least one input byte. Using the token budget
   // as a byte budget is conservative across ASCII and multibyte text without

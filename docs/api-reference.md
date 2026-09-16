@@ -40,9 +40,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `resumeSession` | session | 恢复会话 |
 | `forkSession` | session | 分叉会话 |
 | `prompt` | session | 一次性调用 |
-| `defineTool` | tools | 定义工具（简单模式） |
-| `createTool` | tools | 创建 TypeBox 工具 |
-| `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
+| `defineTool` | tools | 使用 TypeBox 定义工具 |
 | `getBuiltinTools` | advanced | 获取内置 Node 本地工具 |
 | `memoryReadTool` | advanced | 静态 opt-in MemoryRead 工具 |
 | `memoryWriteTool` | advanced | 静态 opt-in MemoryWrite 工具 |
@@ -69,7 +67,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 名称 | 来源 | 说明 |
 |------|------|------|
-| `ToolCatalog` | tools/catalog | 工具目录，管理来源追踪、信任分级和策略过滤 |
 | `FileSystemMemoryStore` | advanced | 文件系统 memory 适配器 |
 | `MemoryManager` | advanced | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
@@ -295,16 +292,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
-| `Tool` | 编译后的运行时工具；声明与静态行为为只读字段，`prepare()` 生成不可变调用快照 |
-| `ToolConfig` | 工具配置 |
-| `ToolSchema` | 工具 Schema |
+| `BuiltinToolGroup` | 内置工具分组 |
 | `ToolBehavior` | 工具行为配置 |
 | `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
 | `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema + async function 或 generator 定义 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
-| `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |
 | `ToolExecutionLifecycle` | Request 级工具 scheduled / settled 持久化边界 |
 | `ToolExecutionStartedLifecycle` | 最终执行输入与解析后副作用等级 |
@@ -323,29 +317,23 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolDisplayContent` | 展示给用户的工具内容 |
 | `ExecutionContext` | 工具执行上下文 |
 | `RuntimeAccess` | 工具执行期的租约校验与 fencing 能力 |
-| `DiscoverableCatalogView` | 可发现工具目录的窄只读查询接口 |
-| `DiscoverableToolInfo` | 可发现工具的只读摘要 |
 | `ToolServiceMap` | `defineTool` 可按需声明的会话级服务映射 |
 | `ToolServiceName` | `ToolServiceMap` 的合法服务名联合 |
 | `ToolExecutionRecord` | 工具调用记录 |
 | `ToolExposureConfig` | 工具暴露配置 |
 | `ToolExposureMode` | 工具暴露模式 |
 | `ToolExecutionUpdate` | 工具执行过程更新事件 |
-| `FunctionDeclaration` | 函数声明（JSON Schema 格式） |
 
 `ToolBehavior.sideEffect` 必须显式声明并决定 started tool 是否可在恢复时重放。
 `ToolBehavior.interruptBehavior` 默认为 `block`。只有能够观察 `AbortSignal` 并可靠清理资源的工具才应声明为 `cancel`。
 `ToolInvocation` 是 Pipeline 内部类型，不从包入口导出；Hook 或权限处理器改写参数后
 会重新执行 `prepare()`。
 
-### 工具目录
+### 工具来源策略
 
 | 类型 | 说明 |
 |------|------|
-| `ToolCatalogEntry` | 工具目录条目 |
-| `ToolCatalogReadView` | 工具目录只读视图接口 |
-| `ToolCatalogSourcePolicy` | 工具来源策略（按来源类型和信任级别过滤） |
-| `ToolSourceInfo` | 工具来源信息 |
+| `ToolSourcePolicy` | 工具来源策略（按来源类型和信任级别过滤） |
 | `ToolSourceKind` | 工具来源类型（`builtin` / `custom` / `mcp` / `session`） |
 | `ToolTrustLevel` | 工具信任级别（`trusted` / `workspace` / `remote`） |
 | `WebFetchSecurityPolicy` | WebFetch 主机白名单、黑名单与私网访问策略 |

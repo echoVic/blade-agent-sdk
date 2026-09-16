@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  InputId,
-  MessageId,
-  RequestId,
-  SessionId,
-  ToolUseId,
-} from '../../types/identifiers.js';
+import { InputId, MessageId, RequestId, SessionId, ToolUseId } from '../../types/identifiers.js';
 import { mergeHistoryProgress } from '../historyProgress.js';
 import { projectDurableHistory, repairSessionHistory } from '../historyRepair.js';
 import type { SessionState } from '../SessionStore.js';
@@ -13,7 +7,12 @@ import type { SessionState } from '../SessionStore.js';
 const sessionId = SessionId('session-repair');
 const requestId = RequestId('request-repair');
 
-function envelope(sequence: number, type: string, data: unknown, extra: Record<string, unknown> = {}) {
+function envelope(
+  sequence: number,
+  type: string,
+  data: unknown,
+  extra: Record<string, unknown> = {},
+) {
   return {
     schemaVersion: 4,
     eventId: `event-${sequence}`,
@@ -31,48 +30,109 @@ function envelope(sequence: number, type: string, data: unknown, extra: Record<s
 function journalWithTurn() {
   return [
     envelope(1, 'session_created', { source: 'create' }, { commandId: 'command-create' }),
-    envelope(2, 'request_accepted', { inputId: 'input-1', input: 'Fix the greeting', priority: 'next' }, {
-      requestId, commandId: 'command-accept',
-    }),
-    envelope(3, 'request_started', {}, { requestId, commandId: 'command-start' }),
-    envelope(4, 'turn_started', { turn: 1, model: 'test-model' }, {
-      requestId, commandId: 'command-turn', turnId: 'turn-1',
-    }),
-    envelope(5, 'model_request_started', { streaming: false, model: 'test-model' }, {
-      requestId, turnId: 'turn-1', modelAttemptId: 'attempt-1', commandId: 'command-model',
-    }),
-    envelope(6, 'model_request_completed', {
-      response: {
-        content: 'Updated the greeting',
-        toolCalls: [{
-          id: 'tool-1',
-          name: 'RepoWrite',
-          arguments: JSON.stringify({ file_path: 'src/greeting.sh' }),
-        }],
+    envelope(
+      2,
+      'request_accepted',
+      { inputId: 'input-1', input: 'Fix the greeting', priority: 'next' },
+      {
+        requestId,
+        commandId: 'command-accept',
       },
-    }, {
-      requestId, turnId: 'turn-1', modelAttemptId: 'attempt-1', commandId: 'command-model',
-    }),
-    envelope(7, 'tool_scheduled', {
-      toolCallId: 'tool-1', toolName: 'RepoWrite', input: { file_path: 'src/greeting.sh' },
-      modelInput: { file_path: 'src/greeting.sh' },
-      sideEffect: 'non_idempotent',
-      interruptBehavior: 'block',
-    }, {
-      requestId, turnId: 'turn-1', modelAttemptId: 'attempt-1',
-      toolAttemptId: 'tool-attempt-1', commandId: 'command-tool',
-    }),
-    envelope(8, 'tool_started', {
-      toolCallId: 'tool-1', toolName: 'RepoWrite',
-      input: { file_path: 'src/greeting.sh' }, sideEffect: 'non_idempotent',
-    }, {
-      requestId, turnId: 'turn-1', toolAttemptId: 'tool-attempt-1', commandId: 'command-tool',
-    }),
-    envelope(9, 'tool_completed', {
-      toolCallId: 'tool-1', toolName: 'RepoWrite', result: { changed: true },
-    }, {
-      requestId, turnId: 'turn-1', toolAttemptId: 'tool-attempt-1', commandId: 'command-tool',
-    }),
+    ),
+    envelope(3, 'request_started', {}, { requestId, commandId: 'command-start' }),
+    envelope(
+      4,
+      'turn_started',
+      { turn: 1, model: 'test-model' },
+      {
+        requestId,
+        commandId: 'command-turn',
+        turnId: 'turn-1',
+      },
+    ),
+    envelope(
+      5,
+      'model_request_started',
+      { streaming: false, model: 'test-model' },
+      {
+        requestId,
+        turnId: 'turn-1',
+        modelAttemptId: 'attempt-1',
+        commandId: 'command-model',
+      },
+    ),
+    envelope(
+      6,
+      'model_request_completed',
+      {
+        response: {
+          content: 'Updated the greeting',
+          toolCalls: [
+            {
+              id: 'tool-1',
+              name: 'RepoWrite',
+              arguments: JSON.stringify({ file_path: 'src/greeting.sh' }),
+            },
+          ],
+        },
+      },
+      {
+        requestId,
+        turnId: 'turn-1',
+        modelAttemptId: 'attempt-1',
+        commandId: 'command-model',
+      },
+    ),
+    envelope(
+      7,
+      'tool_scheduled',
+      {
+        toolCallId: 'tool-1',
+        toolName: 'RepoWrite',
+        input: { file_path: 'src/greeting.sh' },
+        modelInput: { file_path: 'src/greeting.sh' },
+        sideEffect: 'non_idempotent',
+        interruptBehavior: 'block',
+      },
+      {
+        requestId,
+        turnId: 'turn-1',
+        modelAttemptId: 'attempt-1',
+        toolAttemptId: 'tool-attempt-1',
+        commandId: 'command-tool',
+      },
+    ),
+    envelope(
+      8,
+      'tool_started',
+      {
+        toolCallId: 'tool-1',
+        toolName: 'RepoWrite',
+        input: { file_path: 'src/greeting.sh' },
+        sideEffect: 'non_idempotent',
+      },
+      {
+        requestId,
+        turnId: 'turn-1',
+        toolAttemptId: 'tool-attempt-1',
+        commandId: 'command-tool',
+      },
+    ),
+    envelope(
+      9,
+      'tool_completed',
+      {
+        toolCallId: 'tool-1',
+        toolName: 'RepoWrite',
+        result: { changed: true },
+      },
+      {
+        requestId,
+        turnId: 'turn-1',
+        toolAttemptId: 'tool-attempt-1',
+        commandId: 'command-tool',
+      },
+    ),
   ];
 }
 
@@ -84,9 +144,16 @@ function journalWithTurn() {
 function journalWithCompletedRequest() {
   return [
     ...journalWithTurn(),
-    envelope(10, 'turn_completed', { turn: 1, hasToolCalls: true }, {
-      requestId, turnId: 'turn-1', commandId: 'command-done',
-    }),
+    envelope(
+      10,
+      'turn_completed',
+      { turn: 1, hasToolCalls: true },
+      {
+        requestId,
+        turnId: 'turn-1',
+        commandId: 'command-done',
+      },
+    ),
     envelope(11, 'request_completed', {}, { requestId, commandId: 'command-done' }),
   ];
 }
@@ -99,34 +166,100 @@ function journalWithCompletedRequest() {
 function journalWithTwoTurns() {
   return [
     envelope(1, 'session_created', { source: 'create' }, { commandId: 'command-create' }),
-    envelope(2, 'request_accepted', { inputId: 'input-1', input: 'Fix the greeting', priority: 'next' }, {
-      requestId, commandId: 'command-accept',
-    }),
+    envelope(
+      2,
+      'request_accepted',
+      { inputId: 'input-1', input: 'Fix the greeting', priority: 'next' },
+      {
+        requestId,
+        commandId: 'command-accept',
+      },
+    ),
     envelope(3, 'request_started', {}, { requestId, commandId: 'command-start' }),
-    envelope(4, 'turn_started', { turn: 1, model: 'test-model' }, {
-      requestId, commandId: 'command-turn-1', turnId: 'turn-1',
-    }),
-    envelope(5, 'model_request_started', { streaming: false, model: 'test-model' }, {
-      requestId, turnId: 'turn-1', modelAttemptId: 'attempt-1', commandId: 'command-model-1',
-    }),
-    envelope(6, 'model_request_completed', { response: { content: 'first answer' } }, {
-      requestId, turnId: 'turn-1', modelAttemptId: 'attempt-1', commandId: 'command-model-1',
-    }),
-    envelope(7, 'turn_completed', { turn: 1, hasToolCalls: false }, {
-      requestId, turnId: 'turn-1', commandId: 'command-end-1',
-    }),
-    envelope(8, 'turn_started', { turn: 2, model: 'test-model' }, {
-      requestId, commandId: 'command-turn-2', turnId: 'turn-2',
-    }),
-    envelope(9, 'model_request_started', { streaming: false, model: 'test-model' }, {
-      requestId, turnId: 'turn-2', modelAttemptId: 'attempt-2', commandId: 'command-model-2',
-    }),
-    envelope(10, 'model_request_completed', { response: { content: 'second answer' } }, {
-      requestId, turnId: 'turn-2', modelAttemptId: 'attempt-2', commandId: 'command-model-2',
-    }),
-    envelope(11, 'turn_completed', { turn: 2, hasToolCalls: false }, {
-      requestId, turnId: 'turn-2', commandId: 'command-done',
-    }),
+    envelope(
+      4,
+      'turn_started',
+      { turn: 1, model: 'test-model' },
+      {
+        requestId,
+        commandId: 'command-turn-1',
+        turnId: 'turn-1',
+      },
+    ),
+    envelope(
+      5,
+      'model_request_started',
+      { streaming: false, model: 'test-model' },
+      {
+        requestId,
+        turnId: 'turn-1',
+        modelAttemptId: 'attempt-1',
+        commandId: 'command-model-1',
+      },
+    ),
+    envelope(
+      6,
+      'model_request_completed',
+      { response: { content: 'first answer' } },
+      {
+        requestId,
+        turnId: 'turn-1',
+        modelAttemptId: 'attempt-1',
+        commandId: 'command-model-1',
+      },
+    ),
+    envelope(
+      7,
+      'turn_completed',
+      { turn: 1, hasToolCalls: false },
+      {
+        requestId,
+        turnId: 'turn-1',
+        commandId: 'command-end-1',
+      },
+    ),
+    envelope(
+      8,
+      'turn_started',
+      { turn: 2, model: 'test-model' },
+      {
+        requestId,
+        commandId: 'command-turn-2',
+        turnId: 'turn-2',
+      },
+    ),
+    envelope(
+      9,
+      'model_request_started',
+      { streaming: false, model: 'test-model' },
+      {
+        requestId,
+        turnId: 'turn-2',
+        modelAttemptId: 'attempt-2',
+        commandId: 'command-model-2',
+      },
+    ),
+    envelope(
+      10,
+      'model_request_completed',
+      { response: { content: 'second answer' } },
+      {
+        requestId,
+        turnId: 'turn-2',
+        modelAttemptId: 'attempt-2',
+        commandId: 'command-model-2',
+      },
+    ),
+    envelope(
+      11,
+      'turn_completed',
+      { turn: 2, hasToolCalls: false },
+      {
+        requestId,
+        turnId: 'turn-2',
+        commandId: 'command-done',
+      },
+    ),
     envelope(12, 'request_completed', {}, { requestId, commandId: 'command-done' }),
   ];
 }
@@ -179,24 +312,32 @@ function createPersistence(
         id: MessageId('message-assistant'),
         role,
         content,
-        tool_calls: [{ id: ToolUseId('tool-1'), type: 'function', function: { name: 'RepoWrite', arguments: '{}' } }],
+        tool_calls: [
+          {
+            id: ToolUseId('tool-1'),
+            type: 'function',
+            function: { name: 'RepoWrite', arguments: '{}' },
+          },
+        ],
       } as never);
       return MessageId('message-assistant');
     }),
     // A real store writes the tool message and settles the tool-call record. A
     // double that only returns an ID would let repair believe a result exists
     // when nothing was persisted.
-    saveToolUse: vi.fn(async (_sessionId, toolName, _input, _parent, _subagent, requestedToolCallId) => {
-      const messageId = MessageId('message-tool');
-      state.messages.push({
-        id: messageId,
-        role: 'tool',
-        content: '',
-        tool_call_id: String(requestedToolCallId ?? 'tool-1'),
-        name: toolName,
-      } as never);
-      return { messageId, toolCallId: requestedToolCallId ?? ToolUseId('tool-1') };
-    }),
+    saveToolUse: vi.fn(
+      async (_sessionId, toolName, _input, _parent, _subagent, requestedToolCallId) => {
+        const messageId = MessageId('message-tool');
+        state.messages.push({
+          id: messageId,
+          role: 'tool',
+          content: '',
+          tool_call_id: String(requestedToolCallId ?? 'tool-1'),
+          name: toolName,
+        } as never);
+        return { messageId, toolCallId: requestedToolCallId ?? ToolUseId('tool-1') };
+      },
+    ),
     saveToolResult: vi.fn(async (_sessionId, toolCallId, toolName, output) => {
       state.toolCalls.push({
         id: toolCallId,
@@ -213,9 +354,12 @@ function createPersistence(
       state.historyProgress = { state: 'complete', updatedAt: 3, repairedMessages: 3 };
     }),
     read: vi.fn(async (_sessionId, { after }: { after?: number } = {}) => {
-      const remaining = after === undefined
-        ? events
-        : events.filter((event) => Number((event as { sequence: number }).sequence) > Number(after));
+      const remaining =
+        after === undefined
+          ? events
+          : events.filter(
+              (event) => Number((event as { sequence: number }).sequence) > Number(after),
+            );
       return {
         events: remaining,
         hasMore: false,
@@ -241,13 +385,26 @@ describe('repairSessionHistory', () => {
       missing: [],
     });
     expect(persistence.saveAppliedInputMessage).toHaveBeenCalledWith(
-      sessionId, InputId('input-1'), requestId, 'Fix the greeting', null,
+      sessionId,
+      InputId('input-1'),
+      requestId,
+      'Fix the greeting',
+      null,
     );
     expect(persistence.saveMessage).toHaveBeenCalledWith(
-      sessionId, 'assistant', 'Updated the greeting', expect.anything(), expect.anything(),
+      sessionId,
+      'assistant',
+      'Updated the greeting',
+      expect.anything(),
+      expect.anything(),
     );
     expect(persistence.saveToolResult).toHaveBeenCalledWith(
-      sessionId, ToolUseId('tool-1'), 'RepoWrite', { changed: true }, expect.anything(), undefined,
+      sessionId,
+      ToolUseId('tool-1'),
+      'RepoWrite',
+      { changed: true },
+      expect.anything(),
+      undefined,
     );
     expect(persistence.clearHistoryGap).toHaveBeenCalledWith(sessionId, 3, {
       coveredRequestId: requestId,
@@ -272,7 +429,11 @@ describe('repairSessionHistory', () => {
       missing: [],
     });
     expect(persistence.saveMessage).toHaveBeenCalledWith(
-      sessionId, 'assistant', 'Updated the greeting', expect.anything(), expect.anything(),
+      sessionId,
+      'assistant',
+      'Updated the greeting',
+      expect.anything(),
+      expect.anything(),
     );
   });
 
@@ -284,10 +445,18 @@ describe('repairSessionHistory', () => {
 
     expect(result).toMatchObject({ repaired: true, assistantMessages: 2, missing: [] });
     expect(persistence.saveMessage).toHaveBeenCalledWith(
-      sessionId, 'assistant', 'first answer', expect.anything(), expect.anything(),
+      sessionId,
+      'assistant',
+      'first answer',
+      expect.anything(),
+      expect.anything(),
     );
     expect(persistence.saveMessage).toHaveBeenCalledWith(
-      sessionId, 'assistant', 'second answer', expect.anything(), expect.anything(),
+      sessionId,
+      'assistant',
+      'second answer',
+      expect.anything(),
+      expect.anything(),
     );
   });
 
@@ -322,11 +491,32 @@ describe('repairSessionHistory', () => {
     // The transcript now holds every message the journal knows about, so a repeated
     // repair is a no-op rather than a duplicate.
     state.messages.push(
-      { id: MessageId('user-1'), role: 'user', content: 'Fix the greeting', correlation: { inputId: InputId('input-1'), requestId } },
-      { id: MessageId('assistant-1'), role: 'assistant', content: 'Updated the greeting',
-        tool_calls: [{ id: ToolUseId('tool-1'), type: 'function', function: { name: 'RepoWrite', arguments: '{}' } }] },
+      {
+        id: MessageId('user-1'),
+        role: 'user',
+        content: 'Fix the greeting',
+        correlation: { inputId: InputId('input-1'), requestId },
+      },
+      {
+        id: MessageId('assistant-1'),
+        role: 'assistant',
+        content: 'Updated the greeting',
+        tool_calls: [
+          {
+            id: ToolUseId('tool-1'),
+            type: 'function',
+            function: { name: 'RepoWrite', arguments: '{}' },
+          },
+        ],
+      },
     );
-    state.toolCalls.push({ id: ToolUseId('tool-1'), name: 'RepoWrite', input: {}, status: 'success', timestamp: 1 });
+    state.toolCalls.push({
+      id: ToolUseId('tool-1'),
+      name: 'RepoWrite',
+      input: {},
+      status: 'success',
+      timestamp: 1,
+    });
     state.historyProgress = { state: 'failed', updatedAt: 4, detail: 'write failed' };
 
     const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
@@ -350,7 +540,13 @@ describe('repairSessionHistory', () => {
           id: MessageId('assistant-declared'),
           role: 'assistant',
           content: 'Updated the greeting',
-          tool_calls: [{ id: ToolUseId('tool-1'), type: 'function', function: { name: 'RepoWrite', arguments: '{}' } }],
+          tool_calls: [
+            {
+              id: ToolUseId('tool-1'),
+              type: 'function',
+              function: { name: 'RepoWrite', arguments: '{}' },
+            },
+          ],
         },
       ],
       toolCalls: [
@@ -364,7 +560,12 @@ describe('repairSessionHistory', () => {
     expect(result.repaired).toBe(true);
     // A declaration is not a result: the result has to be written.
     expect(persistence.saveToolResult).toHaveBeenCalledWith(
-      sessionId, ToolUseId('tool-1'), 'RepoWrite', { changed: true }, expect.anything(), undefined,
+      sessionId,
+      ToolUseId('tool-1'),
+      'RepoWrite',
+      { changed: true },
+      expect.anything(),
+      undefined,
     );
   });
 
@@ -404,9 +605,13 @@ describe('repairSessionHistory', () => {
     class TenantAdapter {
       private readonly runtime = {
         read: async (_id: SessionId, options: { after?: number } = {}) => {
-          const remaining = options.after === undefined
-            ? events
-            : events.filter((event) => Number((event as { sequence: number }).sequence) > Number(options.after));
+          const remaining =
+            options.after === undefined
+              ? events
+              : events.filter(
+                  (event) =>
+                    Number((event as { sequence: number }).sequence) > Number(options.after),
+                );
           return { events: remaining, hasMore: false, nextCursor: null };
         },
       };
@@ -492,8 +697,9 @@ describe('history progress transitions', () => {
     expect(completed.state).toBe('failed');
 
     // Repair is the only writer that closes it.
-    expect(mergeHistoryProgress(gap, { state: 'complete', updatedAt: 4, repairedMessages: 2 }).state)
-      .toBe('complete');
+    expect(
+      mergeHistoryProgress(gap, { state: 'complete', updatedAt: 4, repairedMessages: 2 }).state,
+    ).toBe('complete');
   });
 
   it('never lets a later record forget the covered request', () => {

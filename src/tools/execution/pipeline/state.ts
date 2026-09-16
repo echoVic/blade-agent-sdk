@@ -1,8 +1,8 @@
 import type { ToolUseId } from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { ToolInvocation } from '../../core/ToolInvocation.js';
-import type { ExecutionContext } from '../../types/execution.js';
 import type { ToolServices } from '../../services.js';
+import type { ExecutionContext } from '../../types/execution.js';
 import type { ToolResult } from '../../types/result.js';
 import type { Tool } from '../../types/tool.js';
 import type { FileLockLease } from '../FileLockManager.js';

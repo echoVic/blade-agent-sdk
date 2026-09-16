@@ -25,9 +25,7 @@ export class ProviderRegistryError extends SdkError {
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
-      ...(this.providerType !== undefined
-        ? { providerType: this.providerType }
-        : {}),
+      ...(this.providerType !== undefined ? { providerType: this.providerType } : {}),
     };
   }
 }

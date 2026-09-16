@@ -7,9 +7,9 @@
  * - 支持等待完成、恢复、终止
  */
 
-import { nanoid } from 'nanoid';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { nanoid } from 'nanoid';
 import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
@@ -23,8 +23,8 @@ import {
 import type { PermissionMode } from '../../types/constants.js';
 import { AgentId, type SessionId } from '../../types/identifiers.js';
 import type { BladeConfig } from '../config.js';
-import type { AgentSession } from './AgentSessionStore.js';
 import type { AgentSessionRepository } from './AgentSessionRepository.js';
+import type { AgentSession } from './AgentSessionStore.js';
 import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentResult } from './types.js';

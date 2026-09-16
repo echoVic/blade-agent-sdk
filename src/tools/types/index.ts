@@ -1,3 +1,10 @@
+export type { ToolBehavior, ToolBehaviorSource } from '../behavior.js';
+export {
+  isToolSideEffect,
+  resolveBehavior,
+  ToolKind,
+  ToolSideEffect,
+} from '../behavior.js';
 export type { ToolEffect } from './effects.js';
 export {
   getRuntimePatchEffect,
@@ -18,13 +25,6 @@ export type {
   ToolSettledLifecycle,
 } from './execution.js';
 export { getEffectiveProjectDir } from './execution.js';
-export type { ToolBehavior, ToolBehaviorSource } from '../behavior.js';
-export {
-  isToolSideEffect,
-  resolveBehavior,
-  ToolKind,
-  ToolSideEffect,
-} from '../behavior.js';
 export type {
   BashBackgroundMetadata,
   BashForegroundMetadata,
@@ -63,6 +63,7 @@ export {
   validationErrorToToolResult,
 } from './result.js';
 export type {
+  BuiltinToolGroup,
   FunctionDeclaration,
   PreparedPermissionMatcher,
   Tool,

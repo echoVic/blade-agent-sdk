@@ -1,8 +1,8 @@
 import Type from 'typebox';
 import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
@@ -10,6 +10,7 @@ import { TaskStore } from './TaskStore.js';
 
 export const taskStopTool = createTool({
   name: 'TaskStop',
+  group: 'task',
   displayName: 'Stop Task',
   kind: ToolKind.Write,
   sideEffect: 'idempotent',

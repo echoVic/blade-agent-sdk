@@ -32,6 +32,15 @@ export type ToolDescriptionResolver<TParams = JsonObject> = (params?: TParams) =
 
 export type ToolExposureMode = 'eager' | 'deferred' | 'discoverable-only';
 
+export type BuiltinToolGroup =
+  | 'filesystem'
+  | 'shell'
+  | 'web'
+  | 'task'
+  | 'memory'
+  | 'system'
+  | 'mcp-resources';
+
 export interface ToolExposureConfig {
   mode?: ToolExposureMode;
   alwaysLoad?: boolean;
@@ -81,8 +90,7 @@ export interface ToolDefinition<
    */
   sideEffect?: ToolSideEffect;
   kind?: ToolKind;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   exposure?: ToolExposureConfig;
   services?: readonly TServices[];
   requiresRuntime?: TRequiresRuntime;
@@ -152,9 +160,7 @@ export interface ToolConfig<
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
   resolveBehavior?: (params?: Type.Static<TSchema>) => Partial<ToolBehavior> | ToolBehavior;
-  version?: string;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   preparePermissionMatcher?: (params: Type.Static<TSchema>) => PreparedPermissionMatcher;
 }
 
@@ -173,13 +179,10 @@ export interface Tool {
   readonly maxResultSizeChars: number;
   readonly services: readonly ToolServiceName[];
   readonly requiresRuntime: boolean;
+  readonly group?: BuiltinToolGroup;
   readonly exposure: Required<ToolExposureConfig> & {
     mode: ToolExposureMode;
   };
-  /** Removed with the remaining metadata indexes in §13 step 8. */
-  readonly version: string;
-  readonly category?: string;
-  readonly tags: string[];
 
   readonly prepare: (raw: unknown) => ToolInvocation;
   readonly execute: (params: JsonObject, context?: ExecutionContext) => ToolExecution;

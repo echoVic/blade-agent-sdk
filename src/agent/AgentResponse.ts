@@ -1,7 +1,4 @@
-import type {
-  InputSubmission,
-  SessionStreamEvent,
-} from '../session/types.js';
+import type { InputSubmission, SessionStreamEvent } from '../session/types.js';
 
 export type AgentResponseSubmission = Extract<InputSubmission, { status: 'started' }>;
 
@@ -16,17 +13,12 @@ export type AgentResponseListener<TType extends AgentResponseEventType> = (
   event: AgentResponseEvent<TType>,
 ) => void | Promise<void>;
 
-type AnyAgentResponseListener = (
-  event: SessionStreamEvent,
-) => void | Promise<void>;
+type AnyAgentResponseListener = (event: SessionStreamEvent) => void | Promise<void>;
 
 export class AgentResponse {
   private readonly events: SessionStreamEvent[] = [];
   private readonly waiters = new Set<() => void>();
-  private readonly listeners = new Map<
-    AgentResponseEventType,
-    Set<AnyAgentResponseListener>
-  >();
+  private readonly listeners = new Map<AgentResponseEventType, Set<AnyAgentResponseListener>>();
   private completion?: Promise<void>;
   private textPromise?: Promise<string>;
   private failure?: unknown;
@@ -60,10 +52,10 @@ export class AgentResponse {
       } else if (event.type === 'result' && event.subtype === 'error') {
         throw new Error(event.error ?? 'Agent response failed');
       } else if (
-        event.type === 'result'
-        && event.subtype === 'success'
-        && !emittedContent
-        && event.content
+        event.type === 'result' &&
+        event.subtype === 'success' &&
+        !emittedContent &&
+        event.content
       ) {
         emittedContent = true;
         yield event.content;
@@ -79,9 +71,7 @@ export class AgentResponse {
     type: TType,
     listener: AgentResponseListener<TType>,
   ): this {
-    const listeners =
-      this.listeners.get(type) ??
-      new Set<AnyAgentResponseListener>();
+    const listeners = this.listeners.get(type) ?? new Set<AnyAgentResponseListener>();
     listeners.add(listener as unknown as AnyAgentResponseListener);
     this.listeners.set(type, listeners);
     this.start();

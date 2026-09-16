@@ -208,18 +208,18 @@ describe('EffectDispatcher', () => {
   it('marks an at-most-once effect uncertain when completion persistence fails', async () => {
     const claim = effect('at_most_once');
     const store = createStore(claim);
-    vi.mocked(store.completeEffect).mockRejectedValueOnce(
-      new Error('database connection lost'),
-    );
+    vi.mocked(store.completeEffect).mockRejectedValueOnce(new Error('database connection lost'));
     const dispatcher = new EffectDispatcher({
       store,
       workerId: WorkerId('worker-1'),
-      handlers: [{
-        type: 'notify',
-        async execute() {
-          return { delivered: true };
+      handlers: [
+        {
+          type: 'notify',
+          async execute() {
+            return { delivered: true };
+          },
         },
-      }],
+      ],
     });
 
     await dispatcher.runOnce();

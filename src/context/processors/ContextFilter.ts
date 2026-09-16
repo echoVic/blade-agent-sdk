@@ -1,8 +1,4 @@
-import type {
-  ContextData,
-  ContextMessage,
-  ContextFilter as FilterOptions,
-} from '../types.js';
+import type { ContextData, ContextMessage, ContextFilter as FilterOptions } from '../types.js';
 
 /**
  * 上下文过滤器 - 根据配置过滤和筛选上下文内容
@@ -32,10 +28,7 @@ export class ContextFilter {
       layers: {
         system: contextData.layers.system,
         session: contextData.layers.session,
-        conversation: this.filterConversation(
-          contextData.layers.conversation,
-          filterOptions
-        ),
+        conversation: this.filterConversation(contextData.layers.conversation, filterOptions),
         tool: filterOptions.includeTools
           ? this.filterTools(contextData.layers.tool, filterOptions)
           : { recentCalls: [], toolStates: {}, dependencies: {} },
@@ -60,7 +53,7 @@ export class ContextFilter {
    */
   private filterConversation(
     conversation: ContextData['layers']['conversation'],
-    options: Required<FilterOptions>
+    options: Required<FilterOptions>,
   ): ContextData['layers']['conversation'] {
     let filteredMessages = [...conversation.messages];
 
@@ -68,7 +61,7 @@ export class ContextFilter {
     if (options.timeWindow > 0) {
       const cutoffTime = Date.now() - options.timeWindow;
       filteredMessages = filteredMessages.filter(
-        (msg) => msg.timestamp >= cutoffTime || msg.role === 'system'
+        (msg) => msg.timestamp >= cutoffTime || msg.role === 'system',
       );
     }
 
@@ -100,7 +93,7 @@ export class ContextFilter {
    */
   private filterTools(
     toolContext: ContextData['layers']['tool'],
-    options: Required<FilterOptions>
+    options: Required<FilterOptions>,
   ): ContextData['layers']['tool'] {
     let filteredCalls = [...toolContext.recentCalls];
 
@@ -133,10 +126,7 @@ export class ContextFilter {
   /**
    * 按优先级过滤消息
    */
-  private filterByPriority(
-    messages: ContextMessage[],
-    minPriority: number
-  ): ContextMessage[] {
+  private filterByPriority(messages: ContextMessage[], minPriority: number): ContextMessage[] {
     return messages.filter((msg) => {
       // 系统消息始终保留
       if (msg.role === 'system') return true;
@@ -167,11 +157,7 @@ export class ContextFilter {
     }
 
     // 包含代码或技术内容
-    if (
-      content.includes('```') ||
-      content.includes('function') ||
-      content.includes('class')
-    ) {
+    if (content.includes('```') || content.includes('function') || content.includes('class')) {
       priority += 1;
     }
 
@@ -186,10 +172,7 @@ export class ContextFilter {
   /**
    * 限制消息数量
    */
-  private limitMessages(
-    messages: ContextMessage[],
-    maxMessages: number
-  ): ContextMessage[] {
+  private limitMessages(messages: ContextMessage[], maxMessages: number): ContextMessage[] {
     if (messages.length <= maxMessages) {
       return messages;
     }
@@ -200,21 +183,15 @@ export class ContextFilter {
 
     // 保留系统消息和最近的其他消息
     const remainingSlots = maxMessages - systemMessages.length;
-    const limitedOtherMessages =
-      remainingSlots > 0 ? otherMessages.slice(-remainingSlots) : [];
+    const limitedOtherMessages = remainingSlots > 0 ? otherMessages.slice(-remainingSlots) : [];
 
-    return [...systemMessages, ...limitedOtherMessages].sort(
-      (a, b) => a.timestamp - b.timestamp
-    );
+    return [...systemMessages, ...limitedOtherMessages].sort((a, b) => a.timestamp - b.timestamp);
   }
 
   /**
    * 按 Token 数量限制消息
    */
-  private limitByTokens(
-    messages: ContextMessage[],
-    maxTokens: number
-  ): ContextMessage[] {
+  private limitByTokens(messages: ContextMessage[], maxTokens: number): ContextMessage[] {
     if (maxTokens <= 0) return messages;
 
     let totalTokens = 0;
@@ -231,10 +208,7 @@ export class ContextFilter {
           result.unshift(message);
           totalTokens += messageTokens;
         } else {
-          const compressedMessage = this.compressMessage(
-            message,
-            maxTokens - totalTokens
-          );
+          const compressedMessage = this.compressMessage(message, maxTokens - totalTokens);
           result.unshift(compressedMessage);
           totalTokens += this.estimateMessageTokens(compressedMessage);
         }

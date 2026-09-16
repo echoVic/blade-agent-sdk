@@ -1,36 +1,26 @@
 import { once } from 'node:events';
 import { writeSync } from 'node:fs';
 import { Pool } from 'pg';
-import {
-  ExecutionLeaseId,
-  WorkerId,
-} from '../../../types/identifiers.js';
+import { ExecutionLeaseId, WorkerId } from '../../../types/identifiers.js';
 import { PostgresRuntimeStore } from '../../PostgresRuntimeStore.js';
 import { effectLease } from '../../WorkerRuntime.js';
 
-const [
-  connectionString,
-  schema,
-  tablePrefix,
-  tenantId,
-  effectId,
-  rawWorkerId,
-  crashPoint,
-] = process.argv.slice(2);
+const [connectionString, schema, tablePrefix, tenantId, effectId, rawWorkerId, crashPoint] =
+  process.argv.slice(2);
 
 if (
-  !connectionString
-  || !schema
-  || !tablePrefix
-  || !tenantId
-  || !effectId
-  || !rawWorkerId
-  || !crashPoint
-  || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)
+  !connectionString ||
+  !schema ||
+  !tablePrefix ||
+  !tenantId ||
+  !effectId ||
+  !rawWorkerId ||
+  !crashPoint ||
+  !/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)
 ) {
   process.stderr.write(
-    'Usage: postgresEffectWorker.ts <url> <schema> <prefix> '
-      + '<tenant> <effect> <worker> <checkpoint>\n',
+    'Usage: postgresEffectWorker.ts <url> <schema> <prefix> ' +
+      '<tenant> <effect> <worker> <checkpoint>\n',
   );
   process.exit(2);
 }
@@ -95,9 +85,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  writeSync(
-    process.stderr.fd,
-    `${error instanceof Error ? error.stack : String(error)}\n`,
-  );
+  writeSync(process.stderr.fd, `${error instanceof Error ? error.stack : String(error)}\n`);
   process.exit(1);
 });

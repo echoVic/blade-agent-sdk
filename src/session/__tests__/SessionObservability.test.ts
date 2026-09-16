@@ -86,7 +86,9 @@ describe('Session observability', () => {
     expect(trace?.events.map((event) => event.type)).toEqual(
       expect.arrayContaining(['content_delta', 'usage', 'result']),
     );
-    expect(trace?.spans.some((span) => span.kind === 'tool' && span.name === 'SecretTool')).toBe(true);
+    expect(trace?.spans.some((span) => span.kind === 'tool' && span.name === 'SecretTool')).toBe(
+      true,
+    );
 
     const serialized = JSON.stringify(trace);
     expect(serialized).not.toContain('secret-prompt');

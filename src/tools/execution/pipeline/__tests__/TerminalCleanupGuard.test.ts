@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
-import { TerminalCleanupGuard, isTerminalCleanupFailure } from '../TerminalCleanupGuard.js';
+import { isTerminalCleanupFailure, TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
 
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -19,7 +19,11 @@ function containmentFailure(): HookProcessContainmentError {
 
 describe('TerminalCleanupGuard', () => {
   it('treats execution-lease and containment failures as terminal', () => {
-    expect(isTerminalCleanupFailure(new DurableExecutionLeaseError('DURABLE_EXECUTION_LEASE_LOST', 'lease lost'))).toBe(true);
+    expect(
+      isTerminalCleanupFailure(
+        new DurableExecutionLeaseError('DURABLE_EXECUTION_LEASE_LOST', 'lease lost'),
+      ),
+    ).toBe(true);
     expect(isTerminalCleanupFailure(containmentFailure())).toBe(true);
     expect(isTerminalCleanupFailure(new Error('ordinary failure'))).toBe(false);
     expect(isTerminalCleanupFailure(undefined)).toBe(false);
@@ -46,10 +50,7 @@ describe('TerminalCleanupGuard', () => {
 
     const controller = new AbortController();
     const pending = deferred();
-    const callback = guard.awaitPermissionCallback(
-      () => pending.promise,
-      controller.signal,
-    );
+    const callback = guard.awaitPermissionCallback(() => pending.promise, controller.signal);
     controller.abort(new Error('cancelled'));
     return callback
       .catch(() => undefined)

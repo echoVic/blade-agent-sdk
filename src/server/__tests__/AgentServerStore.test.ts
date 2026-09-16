@@ -195,8 +195,9 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
     expect(repeat.eventId).toBe(first.eventId);
     expect(repeat.sequence).toBe(first.sequence);
     expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
-    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-2'))
-      .toMatchObject({ eventId: first.eventId });
+    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-2')).toMatchObject({
+      eventId: first.eventId,
+    });
   });
 
   it('isolates the idempotency record from the caller object', async () => {

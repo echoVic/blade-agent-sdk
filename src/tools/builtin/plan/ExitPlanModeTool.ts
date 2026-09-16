@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import Type from 'typebox';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -12,6 +12,7 @@ import { lazySchema } from '../../validation/lazySchema.js';
  */
 export const exitPlanModeTool = createTool({
   name: 'ExitPlanMode',
+  group: 'system',
   displayName: 'Exit Plan Mode',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import { collectToolExecution } from '../../../types/result.js';
 import { listMcpResourcesTool } from '../listMcpResources.js';
 
@@ -12,7 +12,7 @@ const mockRegistry = {
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
 const registry = new ToolRegistry({ mcpRegistry: mockRegistry });
-registry.register(listMcpResourcesTool);
+registry.register(listMcpResourcesTool, BUILTIN_TOOL_SOURCE);
 const pipeline = new ExecutionPipeline(registry);
 const executeListMcpResources = (params: { serverName?: string }) =>
   collectToolExecution(pipeline.execute(listMcpResourcesTool.name, params, {}));

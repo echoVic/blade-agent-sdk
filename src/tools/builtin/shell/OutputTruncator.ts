@@ -122,9 +122,10 @@ const COMMAND_PATTERNS: Array<{
   },
 ];
 
-function getConfigForCommand(
-  command: string
-): { config: TruncationConfig; summaryTemplate?: (lines: number, chars: number) => string } {
+function getConfigForCommand(command: string): {
+  config: TruncationConfig;
+  summaryTemplate?: (lines: number, chars: number) => string;
+} {
   for (const { pattern, config, summaryTemplate } of COMMAND_PATTERNS) {
     if (pattern.test(command)) {
       return { config, summaryTemplate };
@@ -141,7 +142,7 @@ export function truncate(output: string, command: string): TruncationResult {
 export function truncateWithConfig(
   output: string,
   config: TruncationConfig,
-  summaryTemplate?: (lines: number, chars: number) => string
+  summaryTemplate?: (lines: number, chars: number) => string,
 ): TruncationResult {
   const originalChars = output.length;
   const lines = output.split('\n');
@@ -188,9 +189,8 @@ export function truncateWithConfig(
     }
   }
 
-  const summary = config.summarize && summaryTemplate
-    ? summaryTemplate(originalLines, originalChars)
-    : undefined;
+  const summary =
+    config.summarize && summaryTemplate ? summaryTemplate(originalLines, originalChars) : undefined;
 
   if (summary) {
     truncatedContent += `\n\n[Summary: ${summary}]`;
@@ -208,7 +208,7 @@ export function truncateWithConfig(
 export function truncateForLLM(
   stdout: string,
   stderr: string,
-  command: string
+  command: string,
 ): { stdout: string; stderr: string; truncationInfo?: string } {
   const stdoutResult = truncate(stdout, command);
   const stderrResult = truncate(stderr, command);
@@ -219,12 +219,12 @@ export function truncateForLLM(
     const parts: string[] = [];
     if (stdoutResult.truncated) {
       parts.push(
-        `stdout: ${stdoutResult.originalLines} lines → ${stdoutResult.content.split('\n').length} lines`
+        `stdout: ${stdoutResult.originalLines} lines → ${stdoutResult.content.split('\n').length} lines`,
       );
     }
     if (stderrResult.truncated) {
       parts.push(
-        `stderr: ${stderrResult.originalLines} lines → ${stderrResult.content.split('\n').length} lines`
+        `stderr: ${stderrResult.originalLines} lines → ${stderrResult.content.split('\n').length} lines`,
       );
     }
     truncationInfo = `Output truncated: ${parts.join(', ')}`;
@@ -251,4 +251,10 @@ export function getStats(output: string): { lines: number; chars: number; words:
   };
 }
 
-export const OutputTruncator = { truncate, truncateWithConfig, truncateForLLM, shouldTruncate, getStats };
+export const OutputTruncator = {
+  truncate,
+  truncateWithConfig,
+  truncateForLLM,
+  shouldTruncate,
+  getStats,
+};

@@ -1,15 +1,24 @@
 import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
 import { PermissionMode } from '../../../types/constants.js';
-import { ToolCatalog } from '../../catalog/ToolCatalog.js';
-import { createTool } from '../../core/createTool.js';
-import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
+import { ToolRegistry, type ToolSourceInfo } from '../../registry/ToolRegistry.js';
 import { completeToolExecution } from '../../types/result.js';
 import { ToolExposurePlanner } from '../ToolExposurePlanner.js';
 
-function registerTool(registry: ToolRegistry, tool: ReturnType<typeof createTool>) {
-  registry.register(tool as never);
+const BUILTIN_SOURCE = {
+  kind: 'builtin',
+  trustLevel: 'trusted',
+  sourceId: 'builtin',
+} as const;
+
+function registerTool(
+  registry: ToolRegistry,
+  tool: ReturnType<typeof createTool>,
+  source: ToolSourceInfo = BUILTIN_SOURCE,
+) {
+  registry.register(tool, source);
 }
 
 describe('ToolExposurePlanner', () => {
@@ -212,10 +221,7 @@ describe('ToolExposurePlanner', () => {
         }),
       );
     }
-    const planner = new ToolExposurePlanner(
-      registry,
-      () => new Set(['HeavyWrite']),
-    );
+    const planner = new ToolExposurePlanner(registry, () => new Set(['HeavyWrite']));
     const matches = planner.listDiscoverable({ query: 'heavy' });
 
     expect(matches.map((tool) => tool.name)).toEqual(['HeavyInspect']);
@@ -236,16 +242,13 @@ describe('ToolExposurePlanner', () => {
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
-    const planner = new ToolExposurePlanner(
-      registry,
-      () => new Set(['HeavyInspect']),
-    );
+    const planner = new ToolExposurePlanner(registry, () => new Set(['HeavyInspect']));
 
     expect(planner.listDiscoverable({ query: 'heavy' })).toEqual([]);
   });
 
-  it('filters tool exposure by source and trust when planning from a catalog', () => {
-    const catalog = new ToolCatalog();
+  it('filters tool exposure from registry-owned source metadata', () => {
+    const registry = new ToolRegistry();
     const builtinTool = createTool({
       name: 'BuiltinTool',
       displayName: 'Builtin Tool',
@@ -265,18 +268,15 @@ describe('ToolExposurePlanner', () => {
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
-    catalog.register(builtinTool, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
-    catalog.registerMcpTool(remoteMcpTool, {
+    registerTool(registry, builtinTool);
+    registry.registerMcpTool(remoteMcpTool, {
       kind: 'mcp',
       trustLevel: 'remote',
       sourceId: 'remote-docs',
+      serverName: 'remote-docs',
     });
 
-    const planner = new ToolExposurePlanner(catalog);
+    const planner = new ToolExposurePlanner(registry);
     const plan = planner.plan({
       sourcePolicy: {
         allowedSources: ['builtin'],
@@ -293,8 +293,8 @@ describe('ToolExposurePlanner', () => {
     );
   });
 
-  it('can plan directly from an immutable tool pool snapshot', () => {
-    const catalog = new ToolCatalog();
+  it('plans directly from registry entries', () => {
+    const registry = new ToolRegistry();
     const deferredTool = createTool({
       name: 'DeferredTool',
       displayName: 'Deferred Tool',
@@ -308,13 +308,9 @@ describe('ToolExposurePlanner', () => {
       execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
-    catalog.register(deferredTool, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    registerTool(registry, deferredTool);
 
-    const planner = new ToolExposurePlanner(catalog);
+    const planner = new ToolExposurePlanner(registry);
     const plan = planner.plan();
 
     expect(plan.declarations).toEqual([]);

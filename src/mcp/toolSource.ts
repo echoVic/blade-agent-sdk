@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Tool } from '../tools/types/tool.js';
 
 export const MCP_TOOL_NAME_PREFIX = 'mcp__';
-const MCP_SERVER_TAG_PREFIX = 'mcp-server:';
 
 function normalizeMcpNameSegment(value: string, label: string): string {
   const canonical = value.normalize('NFKC').trim();
@@ -22,22 +20,4 @@ export function createMcpToolName(serverName: string, toolName: string): string 
     serverName,
     'MCP server name',
   )}__${normalizeMcpNameSegment(toolName, 'MCP tool name')}`;
-}
-
-export function createMcpServerTag(serverName: string): string {
-  return `${MCP_SERVER_TAG_PREFIX}${serverName}`;
-}
-
-export function resolveMcpServerName(tool: Pick<Tool, 'name' | 'tags'>): string {
-  const taggedServer = tool.tags
-    .find(
-      (tag) => tag.startsWith(MCP_SERVER_TAG_PREFIX) && tag.length > MCP_SERVER_TAG_PREFIX.length,
-    )
-    ?.slice(MCP_SERVER_TAG_PREFIX.length);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__(.+?)__/);
-  return match?.[1] ?? 'mcp';
 }

@@ -7,11 +7,11 @@ import {
   isExecutionLeaseFailure,
 } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { SkillRegistry } from '../../skills/SkillRegistry.js';
+import { resolveBehavior, ToolSideEffect } from '../../tools/behavior.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { DiscoverableCatalogView } from '../../tools/exposure/index.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
-import { resolveBehavior, ToolSideEffect } from '../../tools/behavior.js';
 import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import { ToolErrorType } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';

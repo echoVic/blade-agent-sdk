@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ToolKind } from '../../behavior.js';
-import {
-  ConcurrencyQueueFullError,
-  ConcurrencyScheduler,
-} from '../ConcurrencyScheduler.js';
+import { ConcurrencyQueueFullError, ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 
 function deferred<T = void>() {
   let resolve!: (v: T | PromiseLike<T>) => void;

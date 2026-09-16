@@ -1,12 +1,11 @@
 import Type from 'typebox';
 import { describe, expect, it } from 'vitest';
 import type { JsonObject } from '../../../../types/json.js';
-import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
+import { ToolKind } from '../../../behavior.js';
 import { createTool } from '../../../core/createTool.js';
 import { ToolExposurePlanner } from '../../../exposure/ToolExposurePlanner.js';
-import { ToolRegistry } from '../../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
-import { ToolKind } from '../../../behavior.js';
 import {
   collectToolExecution,
   completeToolExecution,
@@ -70,6 +69,7 @@ describe('DiscoverTools tool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }) as never,
+      BUILTIN_TOOL_SOURCE,
     );
 
     const { result, events } = await executeDiscoverTools(
@@ -110,6 +110,7 @@ describe('DiscoverTools tool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }) as never,
+      BUILTIN_TOOL_SOURCE,
     );
 
     const { result, events } = await executeDiscoverTools(
@@ -124,9 +125,9 @@ describe('DiscoverTools tool', () => {
     expect(String(result.model)).toContain('No hidden tools matched');
   });
 
-  it('prefers catalog-backed search so discovery works from immutable pools too', async () => {
-    const catalog = new ToolCatalog();
-    catalog.register(
+  it('searches registry entries directly', async () => {
+    const registry = new ToolRegistry();
+    registry.register(
       createTool({
         name: 'HeavyInspect',
         displayName: 'Heavy Inspect',
@@ -139,16 +140,12 @@ describe('DiscoverTools tool', () => {
         schema: Type.Object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
-      {
-        kind: 'builtin',
-        trustLevel: 'trusted',
-        sourceId: 'builtin',
-      },
+      BUILTIN_TOOL_SOURCE,
     );
 
     const { result, events } = await executeDiscoverTools(
       { query: 'heavy' },
-      { discoverableCatalog: new ToolExposurePlanner(catalog) },
+      { discoverableCatalog: new ToolExposurePlanner(registry) },
     );
 
     expect(result.status).toBe('success');

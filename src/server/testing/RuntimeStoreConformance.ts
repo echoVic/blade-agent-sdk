@@ -219,8 +219,7 @@ export async function assertRuntimeStoreConformance(
   );
   const afterIdempotent = await store.readEvents(tenantId, sessionId);
   assert(
-    replayAppend.eventId === firstAppend.eventId &&
-      replayAppend.sequence === firstAppend.sequence,
+    replayAppend.eventId === firstAppend.eventId && replayAppend.sequence === firstAppend.sequence,
     'A repeated idempotency key must return the stored event, not a new one',
   );
   assert(
@@ -266,15 +265,13 @@ export async function assertRuntimeStoreConformance(
       !afterTrim.events.some((event) => event.requestId === racedRequestId),
       'The test hook must remove the retained event before the repeat',
     );
-    const repeatAfterTrim = await store.appendEvent(
-      tenantId,
-      sessionId,
-      racedDraft,
-      { idempotencyKey: racedKey },
-    );
+    const repeatAfterTrim = await store.appendEvent(tenantId, sessionId, racedDraft, {
+      idempotencyKey: racedKey,
+    });
     const finalLog = await store.readEvents(tenantId, sessionId);
     assert(
-      repeatAfterTrim.eventId === raced[0]?.eventId && repeatAfterTrim.sequence === raced[0]?.sequence,
+      repeatAfterTrim.eventId === raced[0]?.eventId &&
+        repeatAfterTrim.sequence === raced[0]?.sequence,
       'An idempotency key must be remembered after its event is no longer retained',
     );
     assert(
@@ -435,10 +432,7 @@ export async function assertRuntimeStoreConformance(
     ttlMs: 10_000,
   });
   assert(firstClaim !== null, 'Active worker must claim a queued Session');
-  assert(
-    firstClaim.route.state === 'provisioning',
-    'Claimed Session must enter provisioning',
-  );
+  assert(firstClaim.route.state === 'provisioning', 'Claimed Session must enter provisioning');
   const workerSessions = store.forTenant(workerTenantId);
   assert(
     await workerSessions.requiresExecutionLease(routedSessionId),
@@ -463,34 +457,23 @@ export async function assertRuntimeStoreConformance(
       executionFence: firstClaim.lease,
     },
   );
-  assert(
-    workerJournal.lastSequence === 1,
-    'Current Session fence must authorize durable appends',
-  );
-  const running = await store.transitionSession(
-    workerTenantId,
-    firstClaim.lease,
-    { expectedState: 'provisioning', state: 'running' },
-  );
+  assert(workerJournal.lastSequence === 1, 'Current Session fence must authorize durable appends');
+  const running = await store.transitionSession(workerTenantId, firstClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'running',
+  });
   assert(running.state === 'running', 'Provisioned Session must enter running');
-  const waiting = await store.transitionSession(
-    workerTenantId,
-    firstClaim.lease,
-    { expectedState: 'running', state: 'waiting_approval' },
-  );
-  assert(
-    waiting.state === 'waiting_approval',
-    'Running Session must enter waiting_approval',
-  );
-  const suspended = await store.handoffSession(
-    workerTenantId,
-    firstClaim.lease,
-    { reason: 'conformance-handoff' },
-  );
+  const waiting = await store.transitionSession(workerTenantId, firstClaim.lease, {
+    expectedState: 'running',
+    state: 'waiting_approval',
+  });
+  assert(waiting.state === 'waiting_approval', 'Running Session must enter waiting_approval');
+  const suspended = await store.handoffSession(workerTenantId, firstClaim.lease, {
+    reason: 'conformance-handoff',
+  });
   assert(suspended.state === 'suspended', 'Handoff must suspend the Session');
   assert(
-    (await store.handoffSession(workerTenantId, firstClaim.lease)).state
-      === 'suspended',
+    (await store.handoffSession(workerTenantId, firstClaim.lease)).state === 'suspended',
     'Completed handoff must be idempotent for the same fence',
   );
 
@@ -508,10 +491,7 @@ export async function assertRuntimeStoreConformance(
   } catch {
     drainingWorkerRejected = true;
   }
-  assert(
-    drainingWorkerRejected,
-    'Draining worker must not claim new Sessions',
-  );
+  assert(drainingWorkerRejected, 'Draining worker must not claim new Sessions');
 
   await store.registerWorker({
     workerId: secondWorkerId,
@@ -521,16 +501,16 @@ export async function assertRuntimeStoreConformance(
   if (store.getQueueMetrics) {
     const queueMetrics = await store.getQueueMetrics(workerTenantId);
     assert(
-      queueMetrics.tenantId === workerTenantId
-      && queueMetrics.sessions.claimable >= 2
-      && queueMetrics.sessions.counts.queued >= 1
-      && queueMetrics.sessions.counts.suspended >= 1,
+      queueMetrics.tenantId === workerTenantId &&
+        queueMetrics.sessions.claimable >= 2 &&
+        queueMetrics.sessions.counts.queued >= 1 &&
+        queueMetrics.sessions.counts.suspended >= 1,
       'Queue metrics must report tenant-scoped claimable Sessions',
     );
     assert(
-      queueMetrics.effects.counts.pending === 0
-      && queueMetrics.workers.capacity >= 4
-      && queueMetrics.workers.availableCapacity >= 0,
+      queueMetrics.effects.counts.pending === 0 &&
+        queueMetrics.workers.capacity >= 4 &&
+        queueMetrics.workers.availableCapacity >= 0,
       'Queue metrics must report effect backlog and global worker capacity',
     );
     checks.push('queue-metrics');
@@ -542,28 +522,23 @@ export async function assertRuntimeStoreConformance(
     ttlMs: 10_000,
   });
   assert(
-    secondClaim?.route.sessionId === routedSessionId
-    && secondClaim.lease.fencingToken > firstClaim.lease.fencingToken,
+    secondClaim?.route.sessionId === routedSessionId &&
+      secondClaim.lease.fencingToken > firstClaim.lease.fencingToken,
     'Handoff successor must receive a higher fencing token',
   );
   let staleFenceRejected = false;
   try {
-    await store.transitionSession(
-      workerTenantId,
-      firstClaim.lease,
-      { expectedState: 'suspended', state: 'provisioning' },
-    );
+    await store.transitionSession(workerTenantId, firstClaim.lease, {
+      expectedState: 'suspended',
+      state: 'provisioning',
+    });
   } catch {
     staleFenceRejected = true;
   }
   assert(staleFenceRejected, 'Previous worker fence must be rejected');
   let staleSettlementRejected = false;
   try {
-    await store.settleSession(
-      workerTenantId,
-      firstClaim.lease,
-      { state: 'completed' },
-    );
+    await store.settleSession(workerTenantId, firstClaim.lease, { state: 'completed' });
   } catch {
     staleSettlementRejected = true;
   }
@@ -588,16 +563,14 @@ export async function assertRuntimeStoreConformance(
   if (!secondClaim) {
     throw new Error('unreachable');
   }
-  await store.transitionSession(
-    workerTenantId,
-    secondClaim.lease,
-    { expectedState: 'provisioning', state: 'running' },
-  );
-  const completed = await store.transitionSession(
-    workerTenantId,
-    secondClaim.lease,
-    { expectedState: 'running', state: 'completed' },
-  );
+  await store.transitionSession(workerTenantId, secondClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'running',
+  });
+  const completed = await store.transitionSession(workerTenantId, secondClaim.lease, {
+    expectedState: 'running',
+    state: 'completed',
+  });
   assert(completed.state === 'completed', 'Session must enter completed');
 
   const idleSessionId = SessionId(`idle-${suffix}`);
@@ -612,37 +585,22 @@ export async function assertRuntimeStoreConformance(
   if (!idleClaim) {
     throw new Error('unreachable');
   }
-  await store.transitionSession(
-    workerTenantId,
-    idleClaim.lease,
-    { expectedState: 'provisioning', state: 'running' },
-  );
-  const idleHandoff = await store.handoffSession(
-    workerTenantId,
-    idleClaim.lease,
-    { reason: 'settlement-check' },
-  );
-  assert(
-    idleHandoff.state === 'suspended',
-    'Session settlement must follow a completed handoff',
-  );
-  const idle = await store.settleSession(
-    workerTenantId,
-    idleClaim.lease,
-    {
-      state: 'idle',
-      metadata: { reason: 'settled' },
-    },
-  );
+  await store.transitionSession(workerTenantId, idleClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'running',
+  });
+  const idleHandoff = await store.handoffSession(workerTenantId, idleClaim.lease, {
+    reason: 'settlement-check',
+  });
+  assert(idleHandoff.state === 'suspended', 'Session settlement must follow a completed handoff');
+  const idle = await store.settleSession(workerTenantId, idleClaim.lease, {
+    state: 'idle',
+    metadata: { reason: 'settled' },
+  });
   assert(idle.state === 'idle', 'Settled interactive Session must enter idle');
   assert(
-    (
-      await store.enqueueSession(
-        workerTenantId,
-        idleSessionId,
-        { priority: 100 },
-      )
-    ).state === 'queued',
+    (await store.enqueueSession(workerTenantId, idleSessionId, { priority: 100 })).state ===
+      'queued',
     'Idle Session must be requeueable for a later request',
   );
   const resumedIdleClaim = await store.claimSession({
@@ -658,11 +616,10 @@ export async function assertRuntimeStoreConformance(
   if (!resumedIdleClaim) {
     throw new Error('unreachable');
   }
-  await store.transitionSession(
-    workerTenantId,
-    resumedIdleClaim.lease,
-    { expectedState: 'provisioning', state: 'failed' },
-  );
+  await store.transitionSession(workerTenantId, resumedIdleClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'failed',
+  });
 
   const failedClaim = await store.claimSession({
     tenantId: workerTenantId,
@@ -677,15 +634,11 @@ export async function assertRuntimeStoreConformance(
   if (!failedClaim) {
     throw new Error('unreachable');
   }
-  const failed = await store.transitionSession(
-    workerTenantId,
-    failedClaim.lease,
-    {
-      expectedState: 'provisioning',
-      state: 'failed',
-      failure: { reason: 'conformance' },
-    },
-  );
+  const failed = await store.transitionSession(workerTenantId, failedClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'failed',
+    failure: { reason: 'conformance' },
+  });
   assert(failed.state === 'failed', 'Session must enter failed');
 
   const preemptedSessionId = SessionId(`preempted-${suffix}`);
@@ -697,24 +650,21 @@ export async function assertRuntimeStoreConformance(
     ttlMs: 10_000,
   });
   assert(preemptedClaim !== null, 'Worker must claim Session for preemption');
-  await store.transitionSession(
-    workerTenantId,
-    preemptedClaim.lease,
-    { expectedState: 'provisioning', state: 'running' },
-  );
-  const preempted = await store.preemptSession(
-    workerTenantId,
-    preemptedSessionId,
-    { requeue: true, reason: { reason: 'higher_priority_work' } },
-  );
+  await store.transitionSession(workerTenantId, preemptedClaim.lease, {
+    expectedState: 'provisioning',
+    state: 'running',
+  });
+  const preempted = await store.preemptSession(workerTenantId, preemptedSessionId, {
+    requeue: true,
+    reason: { reason: 'higher_priority_work' },
+  });
   assert(preempted.state === 'queued', 'Preempted Session must be requeued');
   let preemptedFenceRejected = false;
   try {
-    await store.transitionSession(
-      workerTenantId,
-      preemptedClaim.lease,
-      { expectedState: 'queued', state: 'provisioning' },
-    );
+    await store.transitionSession(workerTenantId, preemptedClaim.lease, {
+      expectedState: 'queued',
+      state: 'provisioning',
+    });
   } catch {
     preemptedFenceRejected = true;
   }
@@ -742,8 +692,7 @@ export async function assertRuntimeStoreConformance(
   const recovery = await store.recoverExpiredWork();
   assert(recovery.offlineWorkers >= 1, 'Expired worker must become offline');
   assert(
-    (await store.getSessionRoute(workerTenantId, expiringSessionId))?.state
-      === 'suspended',
+    (await store.getSessionRoute(workerTenantId, expiringSessionId))?.state === 'suspended',
     'Expired Session lease must suspend the Session',
   );
   checks.push('worker-recovery');
@@ -797,20 +746,13 @@ export async function assertRuntimeStoreConformance(
   });
   assert(completedEffectClaim !== undefined, 'Pending effect must be claimable');
   const completedEffectLease = effectLease(completedEffectClaim);
-  const renewedEffect = await store.renewEffectLease(
-    completedEffectLease,
-    10_000,
-  );
+  const renewedEffect = await store.renewEffectLease(completedEffectLease, 10_000);
   assert(
-    renewedEffect.status === 'claimed'
-    && renewedEffect.leaseExpiresAt !== undefined,
+    renewedEffect.status === 'claimed' && renewedEffect.leaseExpiresAt !== undefined,
     'Claimed effect lease must be renewable',
   );
   await store.startEffect(completedEffectLease);
-  const completedEffect = await store.completeEffect(
-    completedEffectLease,
-    { delivered: true },
-  );
+  const completedEffect = await store.completeEffect(completedEffectLease, { delivered: true });
   assert(completedEffect.status === 'completed', 'Effect must complete');
 
   const [uncertainEffectClaim] = await store.claimEffects({
@@ -830,26 +772,18 @@ export async function assertRuntimeStoreConformance(
   await store.startEffect(uncertainLease);
   let invalidRetryRejected = false;
   try {
-    await store.failEffect(
-      uncertainLease,
-      { reason: 'invalid-retry' },
-      { retryAt: '' },
-    );
+    await store.failEffect(uncertainLease, { reason: 'invalid-retry' }, { retryAt: '' });
   } catch (error) {
     invalidRetryRejected =
-      typeof error === 'object'
-      && error !== null
-      && 'code' in error
-      && error.code === 'WORKER_INVALID';
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'WORKER_INVALID';
   }
-  assert(
-    invalidRetryRejected,
-    'Empty effect retryAt must fail with a stable validation error',
-  );
-  const markedUncertain = await store.markEffectUncertain(
-    uncertainLease,
-    { reason: 'outcome_unknown' },
-  );
+  assert(invalidRetryRejected, 'Empty effect retryAt must fail with a stable validation error');
+  const markedUncertain = await store.markEffectUncertain(uncertainLease, {
+    reason: 'outcome_unknown',
+  });
   assert(
     markedUncertain.status === 'uncertain',
     'Started at-most-once effect must support explicit uncertainty',
@@ -861,10 +795,7 @@ export async function assertRuntimeStoreConformance(
     ttlMs: 500,
     limit: 1,
   });
-  assert(
-    unstartedEffectClaim !== undefined,
-    'Remaining at-most-once effect must be claimable',
-  );
+  assert(unstartedEffectClaim !== undefined, 'Remaining at-most-once effect must be claimable');
   await new Promise((resolve) => setTimeout(resolve, 700));
   const unstartedRecovery = await store.recoverExpiredWork();
   assert(
@@ -878,8 +809,8 @@ export async function assertRuntimeStoreConformance(
     limit: 1,
   });
   assert(
-    reclaimedEffect?.effectId === unstartedEffectClaim.effectId
-    && reclaimedEffect.fencingToken > unstartedEffectClaim.fencingToken,
+    reclaimedEffect?.effectId === unstartedEffectClaim.effectId &&
+      reclaimedEffect.fencingToken > unstartedEffectClaim.fencingToken,
     'Reclaimed effect must use a higher fencing token',
   );
   if (!reclaimedEffect) {
@@ -887,10 +818,7 @@ export async function assertRuntimeStoreConformance(
   }
   await store.startEffect(effectLease(reclaimedEffect));
   await store.completeEffect(effectLease(reclaimedEffect));
-  const uncertainEffects = await store.listEffects(
-    effectTenantId,
-    { status: 'uncertain' },
-  );
+  const uncertainEffects = await store.listEffects(effectTenantId, { status: 'uncertain' });
   assert(
     uncertainEffects.length === 1,
     'Uncertain at-most-once effect must not return to the pending queue',
@@ -909,9 +837,6 @@ export async function assertRuntimeStoreConformance(
   );
   checks.push('effect-delivery');
 
-  assert(
-    Object.values(AgentCommandType).length > 0,
-    'Protocol command catalog must be available',
-  );
+  assert(Object.values(AgentCommandType).length > 0, 'Protocol command catalog must be available');
   return { checks };
 }

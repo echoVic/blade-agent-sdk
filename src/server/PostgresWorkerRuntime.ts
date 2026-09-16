@@ -1,18 +1,14 @@
-import { createHash } from 'node:crypto';
 import type { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type {
-  Pool,
-  PoolClient,
-  QueryResultRow,
-} from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import type { DurableEventOperationOptions } from '../session/events/DurableEventStore.js';
 import {
-  DurableExecutionLeaseError,
+  type DurableExecutionFence,
   type DurableExecutionLease,
   type DurableExecutionLeaseAcquireOptions,
-  type DurableExecutionFence,
+  DurableExecutionLeaseError,
 } from '../session/events/DurableExecutionLeaseStore.js';
-import type { DurableEventOperationOptions } from '../session/events/DurableEventStore.js';
 import {
   CommandId,
   ExecutionLeaseId,
@@ -21,32 +17,29 @@ import {
   WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
-import type {
-  RuntimeEffectRecord,
-  RuntimeEffectStatus,
-} from './RuntimeStore.js';
+import type { RuntimeEffectRecord, RuntimeEffectStatus } from './RuntimeStore.js';
 import { RUNTIME_EFFECT_STATUSES } from './RuntimeStore.js';
 import {
   assertRuntimeSessionTransition,
-  SEALED_COMMAND_ABANDON_AFTER_MS,
-  type RuntimeQueueMetrics,
+  RUNTIME_SESSION_STATES,
+  RUNTIME_WORKER_STATUSES,
   type RuntimeEffectClaim,
   type RuntimeEffectClaimOptions,
   type RuntimeEffectExecutionMode,
   type RuntimeEffectFailureOptions,
   type RuntimeEffectLease,
   type RuntimeEffectReconciliation,
+  type RuntimeQueueMetrics,
   type RuntimeRecoveryResult,
   type RuntimeSessionClaim,
   type RuntimeSessionClaimOptions,
   type RuntimeSessionRoute,
   type RuntimeSessionSettlement,
   type RuntimeSessionState,
-  RUNTIME_SESSION_STATES,
   type RuntimeWorkerRecord,
   type RuntimeWorkerRegistration,
   type RuntimeWorkerStatus,
-  RUNTIME_WORKER_STATUSES,
+  SEALED_COMMAND_ABANDON_AFTER_MS,
   WorkerRuntimeError,
   type WorkerRuntimeStore,
 } from './WorkerRuntime.js';
@@ -179,33 +172,20 @@ function asJsonObject(value: unknown): JsonObject {
 function assertJsonObject(value: unknown, label: string): void {
   const seen = new WeakSet<object>();
   const visit = (item: unknown, path: string): void => {
-    if (
-      item === null
-      || typeof item === 'string'
-      || typeof item === 'boolean'
-    ) {
+    if (item === null || typeof item === 'string' || typeof item === 'boolean') {
       return;
     }
     if (typeof item === 'number') {
       if (!Number.isFinite(item)) {
-        throw new WorkerRuntimeError(
-          'WORKER_INVALID',
-          `${path} contains a non-finite number`,
-        );
+        throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-finite number`);
       }
       return;
     }
     if (typeof item !== 'object') {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        `${path} contains a non-JSON value`,
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-JSON value`);
     }
     if (seen.has(item)) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        `${path} contains a circular reference`,
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a circular reference`);
     }
     seen.add(item);
     if (Array.isArray(item)) {
@@ -217,10 +197,7 @@ function assertJsonObject(value: unknown, label: string): void {
     }
     const prototype = Object.getPrototypeOf(item);
     if (prototype !== Object.prototype && prototype !== null) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        `${path} contains a non-plain object`,
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-plain object`);
     }
     for (const [key, entry] of Object.entries(item)) {
       visit(entry, `${path}.${key}`);
@@ -229,10 +206,7 @@ function assertJsonObject(value: unknown, label: string): void {
   };
   visit(value, label);
   if (value === null || Array.isArray(value) || typeof value !== 'object') {
-    throw new WorkerRuntimeError(
-      'WORKER_INVALID',
-      `${label} must be a JSON object`,
-    );
+    throw new WorkerRuntimeError('WORKER_INVALID', `${label} must be a JSON object`);
   }
 }
 
@@ -261,19 +235,13 @@ function assertCapacity(capacity: number): void {
 
 function assertPriority(priority: number): void {
   if (!Number.isSafeInteger(priority)) {
-    throw new WorkerRuntimeError(
-      'WORKER_INVALID',
-      'Session priority must be a safe integer',
-    );
+    throw new WorkerRuntimeError('WORKER_INVALID', 'Session priority must be a safe integer');
   }
 }
 
 function assertLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-    throw new WorkerRuntimeError(
-      'WORKER_INVALID',
-      'Effect claim limit must be between 1 and 100',
-    );
+    throw new WorkerRuntimeError('WORKER_INVALID', 'Effect claim limit must be between 1 and 100');
   }
 }
 
@@ -286,10 +254,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     private readonly transactionContext: AsyncLocalStorage<PoolClient>,
   ) {}
 
-  async createSchema(
-    client: PoolClient,
-    previousSchemaVersion: number,
-  ): Promise<void> {
+  async createSchema(client: PoolClient, previousSchemaVersion: number): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS ${this.table('workers')} (
         worker_id TEXT PRIMARY KEY,
@@ -461,9 +426,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     }
   }
 
-  async registerWorker(
-    registration: RuntimeWorkerRegistration,
-  ): Promise<RuntimeWorkerRecord> {
+  async registerWorker(registration: RuntimeWorkerRegistration): Promise<RuntimeWorkerRecord> {
     this.assertWorkerId(registration.workerId);
     assertCapacity(registration.capacity);
     assertTtl(registration.ttlMs);
@@ -494,10 +457,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     return this.requireWorker(registration.workerId);
   }
 
-  async heartbeatWorker(
-    workerId: WorkerId,
-    ttlMs: number,
-  ): Promise<RuntimeWorkerRecord> {
+  async heartbeatWorker(workerId: WorkerId, ttlMs: number): Promise<RuntimeWorkerRecord> {
     this.assertWorkerId(workerId);
     assertTtl(ttlMs);
     await this.ensureInitialized();
@@ -530,10 +490,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       [workerId],
     );
     if (result.rowCount !== 1) {
-      throw new WorkerRuntimeError(
-        'WORKER_NOT_FOUND',
-        `Worker ${workerId} was not found`,
-      );
+      throw new WorkerRuntimeError('WORKER_NOT_FOUND', `Worker ${workerId} was not found`);
     }
     return this.requireWorker(workerId);
   }
@@ -574,12 +531,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     await this.ensureInitialized();
     return this.transaction(async (client) => {
       await this.lock(client, `execution:${tenantId}:${sessionId}`);
-      const executionLease = await this.loadExecutionLease(
-        client,
-        tenantId,
-        sessionId,
-        true,
-      );
+      const executionLease = await this.loadExecutionLease(client, tenantId, sessionId, true);
       if (executionLease?.active) {
         throw new WorkerRuntimeError(
           'SESSION_STATE_CONFLICT',
@@ -588,10 +540,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       }
       const current = await this.loadRoute(client, tenantId, sessionId, true);
       if (
-        current
-        && current.state !== 'queued'
-        && current.state !== 'suspended'
-        && current.state !== 'idle'
+        current &&
+        current.state !== 'queued' &&
+        current.state !== 'suspended' &&
+        current.state !== 'idle'
       ) {
         throw new WorkerRuntimeError(
           'SESSION_STATE_CONFLICT',
@@ -629,9 +581,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     });
   }
 
-  async claimSession(
-    options: RuntimeSessionClaimOptions,
-  ): Promise<RuntimeSessionClaim | null> {
+  async claimSession(options: RuntimeSessionClaimOptions): Promise<RuntimeSessionClaim | null> {
     this.assertWorkerId(options.ownerId);
     if (!options.leaseId.trim()) {
       throw new WorkerRuntimeError('WORKER_INVALID', 'Session leaseId must not be empty');
@@ -669,29 +619,16 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       for (const candidate of candidates.rows) {
         const sessionId = SessionId(candidate.session_id);
-        await this.lock(
-          client,
-          `execution:${candidate.tenant_id}:${sessionId}`,
-        );
-        const row = await this.loadRoute(
-          client,
-          candidate.tenant_id,
-          sessionId,
-          true,
-        );
+        await this.lock(client, `execution:${candidate.tenant_id}:${sessionId}`);
+        const row = await this.loadRoute(client, candidate.tenant_id, sessionId, true);
         if (
-          !row
-          || (row.state !== 'queued' && row.state !== 'suspended')
-          || row.worker_id !== null
+          !row ||
+          (row.state !== 'queued' && row.state !== 'suspended') ||
+          row.worker_id !== null
         ) {
           continue;
         }
-        const currentLease = await this.loadExecutionLease(
-          client,
-          row.tenant_id,
-          sessionId,
-          true,
-        );
+        const currentLease = await this.loadExecutionLease(client, row.tenant_id, sessionId, true);
         if (currentLease?.active) {
           continue;
         }
@@ -791,16 +728,16 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       if (current.state !== transition.expectedState) {
         throw new WorkerRuntimeError(
           'SESSION_STATE_CONFLICT',
-          `Expected Session ${lease.sessionId} in ${transition.expectedState}, `
-            + `but found ${current.state}`,
+          `Expected Session ${lease.sessionId} in ${transition.expectedState}, ` +
+            `but found ${current.state}`,
         );
       }
       assertRuntimeSessionTransition(current.state, transition.state);
       const terminal =
-        transition.state === 'idle'
-        || transition.state === 'completed'
-        || transition.state === 'failed'
-        || transition.state === 'suspended';
+        transition.state === 'idle' ||
+        transition.state === 'completed' ||
+        transition.state === 'failed' ||
+        transition.state === 'suspended';
       const updated = await client.query<SessionRouteRow>(
         `UPDATE ${this.table('session_routes')}
             SET state = $5,
@@ -862,18 +799,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     await this.ensureInitialized();
     return this.transaction(async (client) => {
       await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const current = await this.loadRoute(
-        client,
-        tenantId,
-        lease.sessionId,
-        true,
-      );
-      const persistedLease = await this.loadExecutionLease(
-        client,
-        tenantId,
-        lease.sessionId,
-        true,
-      );
+      const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
+      const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       if (!current) {
         throw new WorkerRuntimeError(
           'SESSION_ROUTE_NOT_FOUND',
@@ -881,23 +808,16 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         );
       }
       const sameLease =
-        persistedLease?.lease_id === lease.leaseId
-        && persistedLease.owner_id === lease.ownerId
-        && asNumber(persistedLease.fencing_token) === lease.fencingToken;
+        persistedLease?.lease_id === lease.leaseId &&
+        persistedLease.owner_id === lease.ownerId &&
+        asNumber(persistedLease.fencing_token) === lease.fencingToken;
       if (current.state === settlement.state && sameLease) {
         return this.routeRecord(current);
       }
       const wasHandedOff =
-        current.state === 'suspended'
-        && persistedLease?.released_at !== null
-        && sameLease;
+        current.state === 'suspended' && persistedLease?.released_at !== null && sameLease;
       if (!wasHandedOff) {
-        await this.assertExecutionLeaseWithClient(
-          client,
-          tenantId,
-          lease,
-          true,
-        );
+        await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
       }
       assertRuntimeSessionTransition(current.state, settlement.state);
       const updated = await client.query<SessionRouteRow>(
@@ -960,12 +880,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     await this.ensureInitialized();
     return this.transaction(async (client) => {
       await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const persistedLease = await this.loadExecutionLease(
-        client,
-        tenantId,
-        lease.sessionId,
-        true,
-      );
+      const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
       if (!current) {
         throw new WorkerRuntimeError(
@@ -974,10 +889,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         );
       }
       if (
-        persistedLease?.released_at
-        && persistedLease.lease_id === lease.leaseId
-        && asNumber(persistedLease.fencing_token) === lease.fencingToken
-        && current.state === 'suspended'
+        persistedLease?.released_at &&
+        persistedLease.lease_id === lease.leaseId &&
+        asNumber(persistedLease.fencing_token) === lease.fencingToken &&
+        current.state === 'suspended'
       ) {
         if (!metadata) {
           return this.routeRecord(current);
@@ -1105,9 +1020,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     return result.rows[0] ? this.routeRecord(result.rows[0]) : null;
   }
 
-  async listWorkerSessions(
-    workerId: WorkerId,
-  ): Promise<readonly RuntimeSessionRoute[]> {
+  async listWorkerSessions(workerId: WorkerId): Promise<readonly RuntimeSessionRoute[]> {
     this.assertWorkerId(workerId);
     await this.ensureInitialized();
     const result = await this.queryClient().query<SessionRouteRow>(
@@ -1232,9 +1145,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       const activeSessions = asNumber(workerResult.rows[0]?.active_sessions ?? 0);
       const sessionClaimable = sessionClaimableResult.rows[0];
       const effectClaimable = effectClaimableResult.rows[0];
-      const collectedAt = asIso(
-        sessionClaimable?.collected_at ?? new Date().toISOString(),
-      );
+      const collectedAt = asIso(sessionClaimable?.collected_at ?? new Date().toISOString());
       const oldestSessionAt = sessionClaimable?.oldest_claimable_at
         ? asIso(sessionClaimable.oldest_claimable_at)
         : undefined;
@@ -1387,18 +1298,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     });
   }
 
-  async claimEffects(
-    options: RuntimeEffectClaimOptions,
-  ): Promise<readonly RuntimeEffectClaim[]> {
+  async claimEffects(options: RuntimeEffectClaimOptions): Promise<readonly RuntimeEffectClaim[]> {
     this.assertWorkerId(options.workerId);
     assertTtl(options.ttlMs);
     const limit = options.limit ?? 10;
     assertLimit(limit);
     if (options.leaseId !== undefined && !options.leaseId.trim()) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        'Effect leaseId must not be empty',
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', 'Effect leaseId must not be empty');
     }
     if (options.tenantId !== undefined && !options.tenantId.trim()) {
       throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId must not be empty');
@@ -1429,22 +1335,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           WHERE effects.tenant_id = candidates.tenant_id
             AND effects.effect_id = candidates.effect_id
          RETURNING effects.*`,
-        [
-          options.tenantId ?? null,
-          limit,
-          options.workerId,
-          leaseId,
-          options.ttlMs,
-        ],
+        [options.tenantId ?? null, limit, options.workerId, leaseId, options.ttlMs],
       );
       return result.rows.map((row) => this.effectClaim(row));
     });
   }
 
-  async renewEffectLease(
-    lease: RuntimeEffectLease,
-    ttlMs: number,
-  ): Promise<RuntimeEffectRecord> {
+  async renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord> {
     assertTtl(ttlMs);
     await this.ensureInitialized();
     const result = await this.queryClient().query<EffectRow>(
@@ -1462,14 +1359,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           AND workers.status IN ('active', 'draining')
           AND workers.lease_expires_at > NOW()
         RETURNING effects.*`,
-      [
-        lease.tenantId,
-        lease.effectId,
-        lease.workerId,
-        lease.leaseId,
-        lease.fencingToken,
-        ttlMs,
-      ],
+      [lease.tenantId, lease.effectId, lease.workerId, lease.leaseId, lease.fencingToken, ttlMs],
     );
     return this.requireEffectMutation(result.rows[0], lease);
   }
@@ -1493,13 +1383,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           AND workers.status IN ('active', 'draining')
           AND workers.lease_expires_at > NOW()
         RETURNING effects.*`,
-      [
-        lease.tenantId,
-        lease.effectId,
-        lease.workerId,
-        lease.leaseId,
-        lease.fencingToken,
-      ],
+      [lease.tenantId, lease.effectId, lease.workerId, lease.leaseId, lease.fencingToken],
     );
     return this.requireEffectMutation(result.rows[0], lease);
   }
@@ -1541,14 +1425,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     options: RuntimeEffectFailureOptions = {},
   ): Promise<RuntimeEffectRecord> {
     assertJsonObject(error, 'Effect error');
-    if (
-      options.retryAt !== undefined
-      && !Number.isFinite(Date.parse(options.retryAt))
-    ) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        'Effect retryAt must be an ISO timestamp',
-      );
+    if (options.retryAt !== undefined && !Number.isFinite(Date.parse(options.retryAt))) {
+      throw new WorkerRuntimeError('WORKER_INVALID', 'Effect retryAt must be an ISO timestamp');
     }
     await this.ensureInitialized();
     return this.transaction(async (client) => {
@@ -1561,10 +1439,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       const row = current.rows[0];
       this.assertEffectLease(row, lease, 'executing');
-      if (
-        options.retryAt !== undefined
-        && row.execution_mode !== 'idempotent'
-      ) {
+      if (options.retryAt !== undefined && row.execution_mode !== 'idempotent') {
         throw new WorkerRuntimeError(
           'EFFECT_RETRY_NOT_ALLOWED',
           `At-most-once effect ${lease.effectId} cannot be retried`,
@@ -1637,10 +1512,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     outcome: RuntimeEffectReconciliation,
   ): Promise<RuntimeEffectRecord> {
     if (!tenantId.trim() || !effectId.trim()) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        'tenantId and effectId must not be empty',
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId and effectId must not be empty');
     }
     if (outcome.status === 'completed') {
       assertJsonObject(outcome.result ?? {}, 'Effect reconciliation result');
@@ -1661,12 +1533,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         tenantId,
         effectId,
         outcome.status,
-        outcome.status === 'completed'
-          ? JSON.stringify(outcome.result ?? {})
-          : null,
-        outcome.status === 'failed'
-          ? JSON.stringify(outcome.error)
-          : null,
+        outcome.status === 'completed' ? JSON.stringify(outcome.result ?? {}) : null,
+        outcome.status === 'failed' ? JSON.stringify(outcome.error) : null,
       ],
     );
     const row = result.rows[0];
@@ -1711,11 +1579,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       await this.lock(client, `execution:${tenantId}:${sessionId}`);
       const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
       if (
-        current?.active
-        && (
-          current.lease_id !== options.leaseId
-          || current.owner_id !== options.ownerId
-        )
+        current?.active &&
+        (current.lease_id !== options.leaseId || current.owner_id !== options.ownerId)
       ) {
         throw new DurableExecutionLeaseError(
           'DURABLE_EXECUTION_LEASE_CONFLICT',
@@ -1729,15 +1594,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         );
       }
       const reusesActiveLease =
-        current?.active === true
-        && current.lease_id === options.leaseId
-        && current.owner_id === options.ownerId;
-      const fencingToken = reusesActiveLease && current
-        ? FencingToken(asNumber(current.fencing_token))
-        : this.nextFencingToken(
-            sessionId,
-            current ? asNumber(current.fencing_token) : 0,
-          );
+        current?.active === true &&
+        current.lease_id === options.leaseId &&
+        current.owner_id === options.ownerId;
+      const fencingToken =
+        reusesActiveLease && current
+          ? FencingToken(asNumber(current.fencing_token))
+          : this.nextFencingToken(sessionId, current ? asNumber(current.fencing_token) : 0);
       return this.upsertExecutionLease(
         client,
         tenantId,
@@ -1770,13 +1633,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           WHERE tenant_id = $1 AND session_id = $2
             AND lease_id = $3 AND fencing_token = $4
           RETURNING *`,
-        [
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-          ttlMs,
-        ],
+        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, ttlMs],
       );
       const renewed = result.rows[0];
       if (!renewed) {
@@ -1787,13 +1644,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
             SET lease_expires_at = $5, updated_at = NOW()
           WHERE tenant_id = $1 AND session_id = $2
             AND lease_id = $3 AND fencing_token = $4`,
-        [
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-          renewed.expires_at,
-        ],
+        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, renewed.expires_at],
       );
       options.signal?.throwIfAborted();
       return this.executionLease(renewed);
@@ -1822,12 +1673,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     fence: DurableExecutionFence | undefined,
   ): Promise<void> {
     await this.lock(client, `execution:${tenantId}:${sessionId}`);
-    const current = await this.loadExecutionLease(
-      client,
-      tenantId,
-      sessionId,
-      true,
-    );
+    const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
     if (!current) {
       if (fence) {
         throw this.leaseLost({ ...fence, sessionId });
@@ -1840,18 +1686,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         `Session ${sessionId} requires an execution lease`,
         {
           sessionId,
-          ...(current.active
-            ? { activeLease: this.executionLease(current) }
-            : {}),
+          ...(current.active ? { activeLease: this.executionLease(current) } : {}),
         },
       );
     }
-    await this.assertExecutionLeaseWithClient(
-      client,
-      tenantId,
-      { ...fence, sessionId },
-      true,
-    );
+    await this.assertExecutionLeaseWithClient(client, tenantId, { ...fence, sessionId }, true);
   }
 
   async withExecutionLease<T>(
@@ -1883,16 +1722,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     await this.ensureInitialized();
     await this.transaction(async (client) => {
       await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
-      const current = await this.loadExecutionLease(
-        client,
-        tenantId,
-        lease.sessionId,
-        true,
-      );
+      const current = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       if (
-        current?.released_at
-        && current.lease_id === lease.leaseId
-        && asNumber(current.fencing_token) === lease.fencingToken
+        current?.released_at &&
+        current.lease_id === lease.leaseId &&
+        asNumber(current.fencing_token) === lease.fencingToken
       ) {
         return;
       }
@@ -1916,13 +1750,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
                 updated_at = NOW()
           WHERE tenant_id = $1 AND session_id = $2
             AND lease_id = $3 AND fencing_token = $4`,
-        [
-          tenantId,
-          lease.sessionId,
-          lease.leaseId,
-          lease.fencingToken,
-          ACTIVE_SESSION_STATES,
-        ],
+        [tenantId, lease.sessionId, lease.leaseId, lease.fencingToken, ACTIVE_SESSION_STATES],
       );
     });
     options.signal?.throwIfAborted();
@@ -1931,10 +1759,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   private async requireWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
     const worker = await this.getWorker(workerId);
     if (!worker) {
-      throw new WorkerRuntimeError(
-        'WORKER_NOT_FOUND',
-        `Worker ${workerId} was not found`,
-      );
+      throw new WorkerRuntimeError('WORKER_NOT_FOUND', `Worker ${workerId} was not found`);
     }
     return worker;
   }
@@ -1953,10 +1778,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     );
     const worker = result.rows[0];
     if (!worker) {
-      throw new WorkerRuntimeError(
-        'WORKER_NOT_FOUND',
-        `Worker ${workerId} was not found`,
-      );
+      throw new WorkerRuntimeError('WORKER_NOT_FOUND', `Worker ${workerId} was not found`);
     }
     if (worker.status !== 'active' || !worker.heartbeat_active) {
       throw new WorkerRuntimeError(
@@ -2054,19 +1876,14 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     },
     requireUnexpired: boolean,
   ): Promise<ExecutionLeaseRow> {
-    const current = await this.loadExecutionLease(
-      client,
-      tenantId,
-      lease.sessionId,
-      true,
-    );
+    const current = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
     if (
-      !current
-      || current.released_at !== null
-      || current.lease_id !== lease.leaseId
-      || asNumber(current.fencing_token) !== lease.fencingToken
-      || (lease.ownerId !== undefined && current.owner_id !== lease.ownerId)
-      || (requireUnexpired && !current.active)
+      !current ||
+      current.released_at !== null ||
+      current.lease_id !== lease.leaseId ||
+      asNumber(current.fencing_token) !== lease.fencingToken ||
+      (lease.ownerId !== undefined && current.owner_id !== lease.ownerId) ||
+      (requireUnexpired && !current.active)
     ) {
       throw this.leaseLost(lease);
     }
@@ -2095,11 +1912,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     status: RuntimeEffectStatus,
   ): asserts row is EffectRow {
     if (
-      !row
-      || row.worker_id !== lease.workerId
-      || row.lease_id !== lease.leaseId
-      || asNumber(row.fencing_token) !== lease.fencingToken
-      || row.status !== status
+      !row ||
+      row.worker_id !== lease.workerId ||
+      row.lease_id !== lease.leaseId ||
+      asNumber(row.fencing_token) !== lease.fencingToken ||
+      row.status !== status
     ) {
       throw new WorkerRuntimeError(
         row ? 'EFFECT_LEASE_LOST' : 'EFFECT_NOT_FOUND',
@@ -2151,9 +1968,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       fencingToken: FencingToken(asNumber(row.fencing_token)),
       ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
       ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(row.lease_expires_at
-        ? { leaseExpiresAt: asIso(row.lease_expires_at) }
-        : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
       queuedAt: asIso(row.queued_at),
       updatedAt: asIso(row.updated_at),
       metadata: asJsonObject(row.metadata),
@@ -2192,9 +2007,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       ...(asNumber(row.fencing_token) > 0
         ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
         : {}),
-      ...(row.lease_expires_at
-        ? { leaseExpiresAt: asIso(row.lease_expires_at) }
-        : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
       ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
       ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
       ...(row.result ? { result: asJsonObject(row.result) } : {}),
@@ -2205,11 +2018,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   private effectClaim(row: EffectRow): RuntimeEffectClaim {
     const record = this.effectRecord(row);
     if (
-      record.status !== 'claimed'
-      || !record.workerId
-      || !record.leaseId
-      || record.fencingToken === undefined
-      || !record.leaseExpiresAt
+      record.status !== 'claimed' ||
+      !record.workerId ||
+      !record.leaseId ||
+      record.fencingToken === undefined ||
+      !record.leaseExpiresAt
     ) {
       throw new WorkerRuntimeError(
         'WORKER_INVALID',
@@ -2243,10 +2056,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     );
   }
 
-  private nextFencingToken(
-    sessionId: SessionId,
-    current: number,
-  ): FencingToken {
+  private nextFencingToken(sessionId: SessionId, current: number): FencingToken {
     const next = current + 1;
     if (!Number.isSafeInteger(next) || next < 1) {
       throw new DurableExecutionLeaseError(
@@ -2266,10 +2076,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
   private assertTenantSession(tenantId: string, sessionId: SessionId): void {
     if (!tenantId.trim() || !sessionId.trim()) {
-      throw new WorkerRuntimeError(
-        'WORKER_INVALID',
-        'tenantId and sessionId must not be empty',
-      );
+      throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId and sessionId must not be empty');
     }
   }
 
@@ -2282,9 +2089,9 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     },
   ): void {
     if (
-      !lease.leaseId.trim()
-      || !lease.ownerId.trim()
-      || (lease.sessionId !== undefined && lease.sessionId !== sessionId)
+      !lease.leaseId.trim() ||
+      !lease.ownerId.trim() ||
+      (lease.sessionId !== undefined && lease.sessionId !== sessionId)
     ) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_INVALID',
@@ -2302,34 +2109,25 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     return this.transactionContext.getStore() ?? this.pool;
   }
 
-  private async transaction<T>(
-    operation: (client: PoolClient) => Promise<T>,
-  ): Promise<T> {
+  private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     const activeClient = this.transactionContext.getStore();
     if (activeClient) {
-      const savepoint = quoteIdentifier(
-        `worker_nested_${nanoid().replaceAll('-', '_')}`,
-      );
+      const savepoint = quoteIdentifier(`worker_nested_${nanoid().replaceAll('-', '_')}`);
       await activeClient.query(`SAVEPOINT ${savepoint}`);
       try {
         const result = await operation(activeClient);
         await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
         return result;
       } catch (error) {
-        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
+        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined);
+        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => undefined);
         throw error;
       }
     }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await this.transactionContext.run(
-        client,
-        () => operation(client),
-      );
+      const result = await this.transactionContext.run(client, () => operation(client));
       await client.query('COMMIT');
       return result;
     } catch (error) {
@@ -2342,9 +2140,6 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
   private async lock(client: PoolClient, key: string): Promise<void> {
     const [first, second] = lockKey(key);
-    await client.query(
-      'SELECT pg_advisory_xact_lock($1, $2)',
-      [first, second],
-    );
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [first, second]);
   }
 }

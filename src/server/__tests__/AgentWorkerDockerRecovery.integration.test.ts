@@ -3,16 +3,10 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { Pool } from 'pg';
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DockerExecutionHost } from '../../execution/DockerExecutionHost.js';
 import { SessionId, WorkerId } from '../../types/identifiers.js';
 import { AgentWorker } from '../AgentWorker.js';
@@ -65,9 +59,7 @@ async function waitForCheckpoint(
       };
     }
     if (child.exitCode !== null) {
-      throw new Error(
-        `Worker exited before checkpoint (${String(child.exitCode)}): ${stderr}`,
-      );
+      throw new Error(`Worker exited before checkpoint (${String(child.exitCode)}): ${stderr}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -108,10 +100,12 @@ describeRuntime('AgentWorker PostgreSQL and Docker recovery', () => {
 
   afterAll(async () => {
     for (const executionId of abandonedContainers) {
-      await execFileAsync(
-        'docker',
-        ['rm', '--force', '--volumes', `blade-execution-${executionId}`],
-      ).catch(() => undefined);
+      await execFileAsync('docker', [
+        'rm',
+        '--force',
+        '--volumes',
+        `blade-execution-${executionId}`,
+      ]).catch(() => undefined);
     }
     if (pool) {
       await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
@@ -159,10 +153,8 @@ describeRuntime('AgentWorker PostgreSQL and Docker recovery', () => {
     }
     const leaseExpiresAt = crashedRoute.leaseExpiresAt;
     await new Promise((resolve) =>
-      setTimeout(
-        resolve,
-        Math.max(0, Date.parse(leaseExpiresAt) - Date.now()) + 100,
-      ));
+      setTimeout(resolve, Math.max(0, Date.parse(leaseExpiresAt) - Date.now()) + 100),
+    );
     await store.recoverExpiredWork();
     await expect(store.getSessionRoute(tenantId, sessionId)).resolves.toMatchObject({
       state: 'suspended',

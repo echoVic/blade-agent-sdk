@@ -28,9 +28,9 @@ function destroyReadable(stream: NodeJS.ReadableStream, error?: Error): void {
 }
 
 import { FileFilter } from '../../../utils/filePatterns.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../behavior.js';
 import type { GlobMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
@@ -63,6 +63,7 @@ interface FileMatch {
  */
 export const globTool = createTool({
   name: 'Glob',
+  group: 'filesystem',
   displayName: 'File Pattern Match',
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
@@ -284,10 +285,6 @@ export const globTool = createTool({
       };
     }
   },
-
-  version: '2.0.0',
-  category: '搜索工具',
-  tags: ['file', 'search', 'glob', 'pattern', 'wildcard'],
 
   preparePermissionMatcher: (params) => ({
     signatureContent: params.pattern,

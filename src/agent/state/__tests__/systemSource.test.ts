@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  VALID_SYSTEM_SOURCES,
-  isValidSystemSource,
-  type SystemSource,
-} from '../systemSource.js';
+import { isValidSystemSource, type SystemSource, VALID_SYSTEM_SOURCES } from '../systemSource.js';
 
 describe('systemSource controlled enum', () => {
   describe('VALID_SYSTEM_SOURCES', () => {
@@ -23,7 +19,7 @@ describe('systemSource controlled enum', () => {
       ['compaction_summary', true],
       ['unknown', false],
       ['', false],
-      ['CATALOG', false],       // case-sensitive
+      ['CATALOG', false], // case-sensitive
       [null, false],
       [undefined, false],
       [42, false],

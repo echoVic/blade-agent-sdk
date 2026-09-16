@@ -20,7 +20,6 @@ describe('createMcpTool', () => {
 
     expect(tool.name).toBe('mcp__test-server__schema_tool');
     expect(tool.staticBehavior.sideEffect).toBe('non_idempotent');
-    expect(tool.tags).toContain('mcp-server:test-server');
   });
 
   it('preserves the MCP JSON Schema as the model-facing declaration', () => {

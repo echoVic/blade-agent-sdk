@@ -134,6 +134,7 @@ describe('package entrypoints', () => {
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
     expect(browser.ToolSideEffect.PURE).toBe('pure');
+    expect(browser.defineTool).toBeTypeOf('function');
     expect(browser.DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
     expect(browser.DurableSessionJournal.open).toBeTypeOf('function');
     expect(browser.DurableSessionRecoveryRequiredError).toBeDefined();

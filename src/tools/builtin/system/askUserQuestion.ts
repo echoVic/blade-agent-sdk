@@ -1,6 +1,6 @@
 import Type from 'typebox';
-import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../behavior.js';
+import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -60,6 +60,7 @@ const askUserQuestionSchema = Type.Object({
  */
 export const askUserQuestionTool = createTool({
   name: 'AskUserQuestion',
+  group: 'system',
   displayName: 'Ask User Question',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
