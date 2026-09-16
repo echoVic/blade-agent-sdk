@@ -82,7 +82,6 @@ try {
 
   for (const packageName of [
     'pg',
-    'koffi',
     'fs-native-extensions',
     '@vscode/ripgrep',
     '@ai-sdk/anthropic',
@@ -105,7 +104,6 @@ try {
   );
   for (const packageName of [
     'pg',
-    'koffi',
     'fs-native-extensions',
     '@vscode/ripgrep',
     '@opentelemetry/api',
