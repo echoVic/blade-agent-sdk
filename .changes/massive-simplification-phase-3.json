@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Unify durable Session state projection and remove the test-only Runtime Store conformance API from production package entrypoints.",
+  "zh-CN": "统一 durable Session 状态投影，并从生产包入口移除仅用于测试的 Runtime Store conformance API。"
+}

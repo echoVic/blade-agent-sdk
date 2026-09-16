@@ -51,10 +51,6 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/server/otel.js"
     },
-    "./server/testing": {
-      "types": "./dist/server/testing/index.d.ts",
-      "import": "./dist/server/testing/index.js"
-    },
     "./package.json": {
       "default": "./package.json"
     }

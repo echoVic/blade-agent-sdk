@@ -24,8 +24,7 @@ JavaScript package export.
 | `@blade-ai/agent-sdk` | Node.js | Default `createAgent`, tool authoring, and public type entry |
 | `@blade-ai/agent-sdk/browser` | Browser and Node.js | `AgentClient`, protocol schemas, parsers, events, and constants |
 | `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Wire protocol schemas and parsers |
-| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, Runtime Store contracts, and conformance suites |
-| `@blade-ai/agent-sdk/server/testing` | Node.js | Runtime Store conformance helpers |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, and Runtime Store contracts |
 | `@blade-ai/agent-sdk/advanced` | Node.js | Local/server Sessions, `SessionRunner`, execution hosts, and Node adapters |
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
@@ -199,8 +198,6 @@ Types:
 - `AgentInitializationData`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
-- `assertRuntimeStoreConformance` (`/server/infra`)
-
 `PostgresRuntimeStore` is exported by `/server/postgres`.
 `OpenTelemetryAgentServerTelemetry` and
 `OpenTelemetryAgentWorkerTelemetry` are exported by `/server/otel`.

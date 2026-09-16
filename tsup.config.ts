@@ -24,7 +24,6 @@ export default defineConfig({
     'server/infra': 'src/server/infra.ts',
     'server/otel': 'src/server/otel.ts',
     'server/postgres': 'src/server/postgres.ts',
-    'server/testing/index': 'src/server/testing/index.ts',
   },
   format: ['esm'],
   target: 'node18',

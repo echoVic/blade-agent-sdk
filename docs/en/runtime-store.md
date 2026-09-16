@@ -184,27 +184,6 @@ for existing third-party Store implementations throughout `6.0.x`.
 `AgentRuntimeOperations` returns HTTP `501` when a Store does not expose the
 capability.
 
-## Conformance
-
-Third-party Stores can run the public framework-independent conformance suite:
-
-```ts
-import {
-  assertRuntimeStoreConformance,
-} from '@blade-ai/agent-sdk/server/infra';
-
-await assertRuntimeStoreConformance(runtimeStore, {
-  tenantId: 'conformance-a',
-  otherTenantId: 'conformance-b',
-});
-```
-
-The suite verifies health, Session projection, tenant isolation, command
-receipts, agent and durable events, atomic commits, transaction rollback,
-projection checkpoints, worker routing, lease recovery, and effect delivery.
-When the Store exposes queue metrics, the suite also verifies tenant scoping
-and capacity accounting. Run it against a dedicated schema or test database.
-
 ## Operational boundaries
 
 - Schema initialization requires DDL privileges; production deployments may call `initialize()` during deployment.

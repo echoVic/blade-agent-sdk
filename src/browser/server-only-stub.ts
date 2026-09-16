@@ -246,15 +246,3 @@ export class OpenTelemetryAgentWorkerTelemetry {
     serverOnly('OpenTelemetryAgentWorkerTelemetry');
   }
 }
-
-export function assertRuntimeStoreConformance(..._args: unknown[]): never {
-  return serverOnly('assertRuntimeStoreConformance');
-}
-
-export function assertAgentServerStoreConformance(..._args: unknown[]): never {
-  return serverOnly('assertAgentServerStoreConformance');
-}
-
-export function assertSessionExecutorReadResult(..._args: unknown[]): never {
-  return serverOnly('assertSessionExecutorReadResult');
-}

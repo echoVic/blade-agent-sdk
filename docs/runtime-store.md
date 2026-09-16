@@ -175,26 +175,6 @@ const metrics = await runtimeStore.getQueueMetrics?.(tenantId);
 中继续兼容。`AgentRuntimeOperations` 遇到不支持该 capability 的 Store 时返回
 HTTP `501`。
 
-## Conformance
-
-第三方 Store 可以直接运行公开的无测试框架 conformance：
-
-```ts
-import {
-  assertRuntimeStoreConformance,
-} from '@blade-ai/agent-sdk/server/infra';
-
-await assertRuntimeStoreConformance(runtimeStore, {
-  tenantId: 'conformance-a',
-  otherTenantId: 'conformance-b',
-});
-```
-
-该套件验证 health、Session projection、tenant isolation、command receipt、
-agent/durable event、原子 commit、事务回滚、projection checkpoint、worker
-路由、lease 恢复与 effect delivery。Store 提供 queue metrics capability 时也会
-验证其 tenant 隔离与容量统计。应在专用 schema 或测试数据库中运行。
-
 ## 运维边界
 
 - schema 初始化需要 DDL 权限；生产环境可在部署阶段提前调用 `initialize()`。

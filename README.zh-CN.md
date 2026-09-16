@@ -238,8 +238,7 @@ import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/ot
 - 根入口：`createAgent`、`defineTool`、middleware、模型契约、常量和公共类型
 - `/browser`：browser-safe `AgentClient`、协议契约和事件解析器
 - `/protocol`：wire protocol schema 与解析器
-- `/server/infra`：`AgentServer`、`AgentWorker`、Runtime Store 契约和 conformance suite
-- `/server/testing`：Runtime Store conformance helper
+- `/server/infra`：`AgentServer`、`AgentWorker` 和 Runtime Store 契约
 - `/advanced`：底层 local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter
 
 原 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、

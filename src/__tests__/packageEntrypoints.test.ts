@@ -21,7 +21,6 @@ describe('package entrypoints', () => {
         './server/infra',
         './server/otel',
         './server/postgres',
-        './server/testing',
       ].sort(),
     );
     expect(packageJson.exports).toMatchObject({
@@ -58,10 +57,6 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/server/otel.js',
       },
-      './server/testing': {
-        types: './dist/server/testing/index.d.ts',
-        import: './dist/server/testing/index.js',
-      },
     });
   });
 
@@ -75,7 +70,6 @@ describe('package entrypoints', () => {
       'src/server/infra.ts',
       'src/server/otel.ts',
       'src/server/postgres.ts',
-      'src/server/testing/index.ts',
       'src/node/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);
@@ -131,9 +125,6 @@ describe('package entrypoints', () => {
     );
     expect(() => serverOnly.createServerSession({} as never)).toThrow(
       /server-only.*createServerSession/,
-    );
-    expect(() => serverOnly.assertRuntimeStoreConformance({} as never)).toThrow(
-      /server-only.*assertRuntimeStoreConformance/,
     );
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
     expect(() => new serverOnly.JsonlDurableEventStore()).toThrow(

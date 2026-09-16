@@ -6,7 +6,6 @@ import {
   InProcessSessionExecutor,
   type SessionExecutorCommandContext,
 } from '../SessionExecutor.js';
-import { assertSessionExecutorReadResult } from '../testing/index.js';
 
 const tenantId = 'tenant-read-boundary';
 const principal = {
@@ -62,7 +61,7 @@ describe('InProcessSessionExecutor read', () => {
     const restarted = createExecutor(store);
     const result = await restarted.read(context('command-read'), { sessionId });
 
-    assertSessionExecutorReadResult(result, 'InProcessSessionExecutor.read');
+    expect(Object.keys(result).sort()).toEqual(['loaded', 'messages', 'pendingInputs', 'session']);
     expect(result.session.sessionId).toBe(sessionId);
     expect(result.loaded).toBe(false);
     // Empty is the placeholder value; `loaded: false` is what makes it honest.

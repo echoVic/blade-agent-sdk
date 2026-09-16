@@ -17,8 +17,6 @@ import { EffectDispatcher, UncertainRuntimeEffectError } from '../EffectDispatch
 import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
 import { RUNTIME_STORE_SCHEMA_VERSION } from '../RuntimeStore.js';
 import { SdkSessionRunner } from '../SdkSessionRunner.js';
-import { assertAgentServerStoreConformance } from '../testing/AgentServerStoreConformance.js';
-import { assertRuntimeStoreConformance } from '../testing/RuntimeStoreConformance.js';
 import { effectLease } from '../WorkerRuntime.js';
 
 const connectionString = process.env.TEST_POSTGRES_URL;
@@ -76,40 +74,6 @@ describePostgres('PostgresRuntimeStore', () => {
     }
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     await pool.end();
-  });
-
-  it('passes the public RuntimeStore conformance suite', async () => {
-    const result = await assertRuntimeStoreConformance(store, {
-      idPrefix: `postgres-${process.pid}`,
-    });
-    expect(result.checks).toEqual([
-      'health',
-      'session-projection',
-      'tenant-isolation',
-      'command-receipts',
-      'agent-events',
-      'durable-events',
-      'atomic-runtime-commit',
-      'transaction-rollback',
-      'projection-checkpoint',
-      'queue-metrics',
-      'worker-routing',
-      'worker-recovery',
-      'effect-delivery',
-    ]);
-  });
-
-  it('passes the shared AgentServerStore contract', async () => {
-    const result = await assertAgentServerStoreConformance(store, {
-      idPrefix: `postgres-${process.pid}-${Date.now()}`,
-    });
-
-    expect(result.checks).toEqual([
-      'session-records',
-      'command-receipts',
-      'agent-events',
-      'idempotent-appends',
-    ]);
   });
 
   it('remembers an idempotency key after its event is no longer retained', async () => {

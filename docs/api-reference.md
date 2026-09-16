@@ -21,8 +21,7 @@ package export；通过 npm bin 调用。
 | `@blade-ai/agent-sdk` | Node.js | 默认 `createAgent`、工具定义和公共类型入口 |
 | `@blade-ai/agent-sdk/browser` | Browser-safe / Node | `AgentClient`、协议 schema、解析器、事件和常量 |
 | `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | wire protocol schema 与解析器 |
-| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker、Runtime Store 契约与 conformance suite |
-| `@blade-ai/agent-sdk/server/testing` | Node.js | Runtime Store conformance helper |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker 与 Runtime Store 契约 |
 | `@blade-ai/agent-sdk/advanced` | Node.js | local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter |
 
 旧 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
@@ -196,8 +195,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SessionRunner` / `SessionRunnerContext` / `SessionRunResult` | 单个 fenced Session 的执行边界 |
 | `AgentRuntimeOperationsOptions` / `RuntimeOperationsPrincipal` | 运维 HTTP 面、鉴权与 tenant scope 配置 |
 | `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
-| `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
-
 完整部署约束见 [Server Runtime](./server-runtime) 和
 [Runtime Store](./runtime-store)，worker 调度见
 [Worker Runtime](./worker-runtime)，隔离执行见

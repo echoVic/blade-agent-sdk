@@ -164,7 +164,7 @@ const subpathOutput = run(process.execPath, [
     "console.log('root', typeof root.createAgent, typeof root.defineTool, typeof root.composeMiddleware, root.PROVIDER_TYPES.length);",
     "console.log('browser', typeof browser.AgentClient, typeof browser.AgentResponse, browser.AGENT_PROTOCOL_VERSION);",
     "console.log('advanced', typeof advanced.createSession, typeof advanced.createServerSession, typeof advanced.getBuiltinTools, typeof advanced.JsonlDurableEventStore, typeof advanced.DockerExecutionHost, typeof advanced.EffectDispatcher, typeof advanced.SdkSessionRunner);",
-    "console.log('infra', typeof infra.AgentServer, typeof infra.AgentWorker, typeof infra.InMemoryAgentServerStore, typeof infra.RuntimeStoreError, typeof infra.assertRuntimeStoreConformance, infra.RUNTIME_SESSION_STATES.length);",
+    "console.log('infra', typeof infra.AgentServer, typeof infra.AgentWorker, typeof infra.InMemoryAgentServerStore, typeof infra.RuntimeStoreError, infra.RUNTIME_SESSION_STATES.length);",
     "console.log('boundaries', 'createAgent' in infra, 'createSession' in infra, 'EffectDispatcher' in infra, 'PostgresRuntimeStore' in infra, 'OpenTelemetryAgentServerTelemetry' in infra);",
   ].join(' '),
 ]);
@@ -177,7 +177,7 @@ assertIncludes(
 );
 assertIncludes(
   subpathOutput,
-  'infra function function function function function 8',
+  'infra function function function function 8',
   'server infrastructure entrypoint',
 );
 assertIncludes(
@@ -204,7 +204,6 @@ assertIncludes(
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/protocol/index.js');
-verifyBrowserSafeDist('dist/server/testing/index.js');
 
 const tempDir = mkdtempSync(join(repoRoot, '.tmp-entrypoints-'));
 try {

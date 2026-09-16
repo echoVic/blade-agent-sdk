@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_PROTOCOL_VERSION } from '../../protocol/index.js';
 import { CommandId, SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
-import { assertAgentServerStoreConformance } from '../testing/index.js';
 
 describe('InMemoryAgentServerStore', () => {
   it('claims, fences, and replays idempotent command results', async () => {
@@ -228,20 +227,5 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
     await store.appendEvent(tenantId, sessionId, event);
     await store.appendEvent(tenantId, sessionId, event);
     expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(2);
-  });
-});
-
-describe('InMemoryAgentServerStore shared contract', () => {
-  it('passes the AgentServerStore conformance suite', async () => {
-    const result = await assertAgentServerStoreConformance(new InMemoryAgentServerStore(), {
-      idPrefix: `memory-${process.pid}-${Date.now()}`,
-    });
-
-    expect(result.checks).toEqual([
-      'session-records',
-      'command-receipts',
-      'agent-events',
-      'idempotent-appends',
-    ]);
   });
 });

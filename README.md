@@ -245,8 +245,7 @@ import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/ot
 - Root: `createAgent`, `defineTool`, middleware, model contracts, constants, and public types
 - `/browser`: browser-safe `AgentClient`, protocol contracts, and event parsers
 - `/protocol`: wire protocol schemas and parsers
-- `/server/infra`: `AgentServer`, `AgentWorker`, Runtime Store contracts, and conformance suites
-- `/server/testing`: Runtime Store conformance helpers
+- `/server/infra`: `AgentServer`, `AgentWorker`, and Runtime Store contracts
 - `/advanced`: low-level local/server Sessions, `SessionRunner`, execution hosts, and Node adapters
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,

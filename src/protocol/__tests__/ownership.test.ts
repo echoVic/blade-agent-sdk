@@ -56,7 +56,6 @@ describe('protocol ownership', () => {
       'src/server/infra.ts',
       'src/server/otel.ts',
       'src/server/postgres.ts',
-      'src/server/testing/index.ts',
     ]) {
       const entry = source(entrypoint);
       for (const internalType of [
