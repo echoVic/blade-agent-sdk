@@ -250,7 +250,7 @@ describe('JsonlSessionStore', () => {
     ]);
   });
 
-  it('should repair legacy message ID collisions and duplicate tool calls', async () => {
+  it('rejects non-canonical tool calls attached to a user message', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const sessionId = SessionId('session-legacy-tool-collision');
     const now = new Date().toISOString();
@@ -326,28 +326,13 @@ describe('JsonlSessionStore', () => {
       entries,
     );
 
-    const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
-
-    assertDefined(state);
-    expect(state.messages.map((message) => message.role)).toEqual([
-      'user',
-      'assistant',
-      'tool',
-      'assistant',
-      'tool',
-    ]);
-    expect(state.messages[0]?.content).toBe('hello');
-    expect(
-      state.messages.flatMap((message) => message.tool_calls ?? []).map((call) => call.id),
-    ).toEqual(['call-first', 'call-second']);
-    expect(
-      state.messages
-        .filter((message) => message.role === 'tool')
-        .map((message) => message.tool_call_id),
-    ).toEqual(['call-first', 'call-second']);
+    await expect(new JsonlSessionStore(workspaceRoot).loadState(sessionId)).rejects.toMatchObject({
+      code: 'SESSION_JSONL_CORRUPT_LOG',
+      message: expect.stringContaining('tool_call'),
+    });
   });
 
-  it('should preserve repeated provider tool-call IDs across legacy turns', async () => {
+  it('rejects repeated provider tool-call IDs from legacy transcripts', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const sessionId = SessionId('session-repeated-tool-call-id');
     const now = new Date().toISOString();
@@ -414,26 +399,9 @@ describe('JsonlSessionStore', () => {
       entries,
     );
 
-    const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
-
-    assertDefined(state);
-    expect(state.messages.map((message) => message.role)).toEqual([
-      'user',
-      'assistant',
-      'tool',
-      'assistant',
-      'tool',
-    ]);
-    expect(
-      state.messages.filter((message) => message.tool_calls?.[0]?.id === 'call-repeated'),
-    ).toHaveLength(2);
-    expect(
-      state.messages.filter((message) => message.tool_call_id === 'call-repeated'),
-    ).toHaveLength(2);
-    expect(state.toolCalls.map((toolCall) => toolCall.output)).toEqual([
-      'first result',
-      'second result updated',
-    ]);
+    await expect(new JsonlSessionStore(workspaceRoot).loadState(sessionId)).rejects.toMatchObject({
+      code: 'SESSION_JSONL_CORRUPT_LOG',
+    });
   });
 
   it('rejects a transcript containing events for another Session', async () => {
