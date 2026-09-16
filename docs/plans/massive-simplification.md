@@ -59,7 +59,7 @@ process executor, schema mirror, and 14 uncallable events were removed. Eight
 supported inline events now share one `HookDispatcher`; `HookRuntime` contains
 only event-specific input/output adaptation and runtime registration.
 
-### Task 3: Simplify durable session events
+### Task 3: Simplify durable session events [COMPLETED]
 
 Unify projection, journal, recovery, recorder, and history-repair state
 transitions around shared command/event reducers.
@@ -73,6 +73,17 @@ Acceptance:
 - Remove recovery paths that encode superseded schemas or duplicate journal
   authority.
 - Production LOC reduction target: at least 4,500 additional lines.
+
+Result: production TypeScript is **69,370 LOC**, down **4,629 lines** in this
+task and **14,435 lines** from baseline. Durable projection now uses one typed
+reducer split by request, model, and tool domains; recovery is a compact
+planner/coordinator; and recorder payload and terminal-event construction are
+shared. Local and PostgreSQL persistence store one authoritative Session
+projection instead of replaying a second transcript log. Abort/deadline
+observation is shared across durable Stores and model services. The test-only
+Runtime Store conformance framework and its duplicate `/server/testing`
+package entrypoint were deleted instead of shipping test infrastructure as a
+runtime API.
 
 ### Task 4: Consolidate server and PostgreSQL runtimes
 
