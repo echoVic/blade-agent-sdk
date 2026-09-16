@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
 import type { ConversationMessage } from '../model/conversation.js';
@@ -60,8 +58,14 @@ import {
   WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
-import { toJsonValue } from '../utils/jsonValue.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
+import {
+  PostgresContext,
+  postgresAdvisoryLockKey,
+  postgresInteger,
+  postgresJsonObject,
+  postgresTimestamp,
+} from './PostgresContext.js';
 import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
 import {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
@@ -161,39 +165,13 @@ interface EffectRow extends QueryResultRow {
   error: unknown | null;
 }
 
-function quoteIdentifier(value: string, label: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw new RangeError(`${label} must be a PostgreSQL identifier`);
-  }
-  return `"${value}"`;
-}
-
-function asNumber(value: string | number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `PostgreSQL returned an unsafe integer: ${String(value)}`,
-    );
-  }
-  return parsed;
-}
-
-function asIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function asJsonObject(value: unknown): JsonObject {
-  return structuredClone(value) as JsonObject;
-}
-
 function asSessionState(value: unknown): SessionState {
   return structuredClone(value) as SessionState;
 }
 
 function parseRuntimeDomainEvent(value: unknown): RuntimeDomainEvent {
   assertJsonObject(value, 'runtime domain event');
-  const event = asJsonObject(value);
+  const event = postgresJsonObject(value);
   if (
     event.schemaVersion !== RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION ||
     typeof event.eventId !== 'string' ||
@@ -222,85 +200,24 @@ function parseRuntimeDomainEvent(value: unknown): RuntimeDomainEvent {
     commandId: CommandId(event.commandId),
     sequence: EventSequence(event.sequence),
     type: event.type,
-    data: asJsonObject(event.data),
+    data: postgresJsonObject(event.data),
     occurredAt: event.occurredAt,
     recordedAt: event.recordedAt,
   };
-}
-
-function advisoryLockKey(key: string): readonly [number, number] {
-  // A hash collision can only add serialization. Every mutation remains scoped
-  // by full tenant/session/stream columns and row-level predicates.
-  const digest = createHash('sha256').update(key).digest();
-  return [digest.readInt32BE(0), digest.readInt32BE(4)];
 }
 
 function isPostgresUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
 }
 
-function assertStrictJsonValue(value: unknown, label: string, seen = new WeakSet<object>()): void {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return;
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        `${label} contains a non-finite number`,
-      );
-    }
-    return;
-  }
-  if (typeof value !== 'object') {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a non-JSON value`,
-    );
-  }
-  if (seen.has(value)) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a circular reference`,
-    );
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      assertStrictJsonValue(item, `${label}[${index}]`, seen);
-    });
-    seen.delete(value);
-    return;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a non-plain object`,
-    );
-  }
-  for (const [key, item] of Object.entries(value)) {
-    assertStrictJsonValue(item, `${label}.${key}`, seen);
-  }
-  seen.delete(value);
-}
-
 function assertJsonObject(value: unknown, label: string): void {
-  assertStrictJsonValue(value, label);
-  let converted: JsonValue;
   try {
-    converted = toJsonValue(value);
-  } catch (error) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} is not JSON serializable`,
-      { cause: error },
-    );
-  }
-  if (converted === null || Array.isArray(converted) || typeof converted !== 'object') {
+    postgresJsonObject(value, label);
+  } catch (cause) {
     throw new RuntimeStoreError(
       'RUNTIME_STORE_INVALID_TRANSACTION',
       `${label} must be a JSON object`,
+      { cause },
     );
   }
 }
@@ -385,16 +302,13 @@ function messageEnvelope(
 }
 
 export class PostgresRuntimeStore implements RuntimeStore {
-  private readonly pool: Pool;
+  private readonly db: PostgresContext;
   private readonly ownsPool: boolean;
-  private readonly schema: string;
-  private readonly prefix: string;
   private readonly maxAgentEventsPerSession: number;
   private readonly maxDurableEventsPerSession: number;
   private readonly maxDomainEventsPerSession: number;
   private readonly maxTranscriptEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
-  private readonly transactionContext = new AsyncLocalStorage<PoolClient>();
   private readonly workerRuntime: PostgresWorkerRuntime;
   private initialization?: Promise<void>;
 
@@ -402,17 +316,17 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (!options.pool && !options.connectionString && !options.poolConfig) {
       throw new TypeError('PostgresRuntimeStore requires pool, connectionString, or poolConfig');
     }
-    this.pool =
+    const pool =
       options.pool ??
       new Pool({
         ...options.poolConfig,
         connectionString: options.connectionString ?? options.poolConfig?.connectionString,
       });
     this.ownsPool = !options.pool;
-    this.schema = quoteIdentifier(options.schema ?? 'public', 'schema');
-    this.prefix = quoteIdentifier(options.tablePrefix ?? 'blade_runtime', 'tablePrefix').slice(
-      1,
-      -1,
+    this.db = new PostgresContext(
+      pool,
+      options.schema ?? 'public',
+      options.tablePrefix ?? 'blade_runtime',
     );
     this.maxAgentEventsPerSession =
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
@@ -423,13 +337,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     this.maxTranscriptEventsPerSession =
       options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant = options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
-    this.workerRuntime = new PostgresWorkerRuntime(
-      this.pool,
-      this.schema,
-      this.prefix,
-      () => this.initialize(),
-      this.transactionContext,
-    );
+    this.workerRuntime = new PostgresWorkerRuntime(this.db, () => this.initialize());
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
       ['maxDurableEventsPerSession', this.maxDurableEventsPerSession],
@@ -469,7 +377,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }> {
     try {
       await this.initialize();
-      await this.queryClient().query('SELECT 1');
+      await this.db.client().query('SELECT 1');
       return {
         ready: true,
         details: {
@@ -504,11 +412,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('Command claim parameters are invalid');
     }
     await this.initialize();
-    return this.transaction(async (client) => {
-      await this.lock(client, `command:${tenantId}:${commandId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `command:${tenantId}:${commandId}`);
       const existing = await client.query<CommandRow>(
         `SELECT command_fingerprint, lease_id, status, expires_at, result, abandon_reason
-           FROM ${this.table('commands')}
+           FROM ${this.db.table('commands')}
           WHERE tenant_id = $1 AND command_id = $2
           FOR UPDATE`,
         [tenantId, commandId],
@@ -543,7 +451,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       const leaseId = ExecutionLeaseId(nanoid());
       const expiresAt = new Date(now + ttlMs);
       await client.query(
-        `INSERT INTO ${this.table('commands')} (
+        `INSERT INTO ${this.db.table('commands')} (
            tenant_id, command_id, command_fingerprint, lease_id,
            status, expires_at, created_at, updated_at
          ) VALUES ($1, $2, $3, $4, 'claimed', $5, NOW(), NOW())
@@ -566,8 +474,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const result = await this.db.client().query(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'sealed', expires_at = 'infinity', updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
           AND status = 'claimed' AND result IS NULL`,
@@ -585,8 +493,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     result: AgentCommandResult,
   ): Promise<void> {
     await this.initialize();
-    const updated = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const updated = await this.db.client().query(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'completed', expires_at = 'infinity',
               result = $4::jsonb, updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
@@ -604,8 +512,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
-    await this.queryClient().query(
-      `DELETE FROM ${this.table('commands')}
+    await this.db.client().query(
+      `DELETE FROM ${this.db.table('commands')}
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
           AND status = 'claimed'`,
       [tenantId, commandId, leaseId],
@@ -622,8 +530,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('An abandoned command requires a reason');
     }
     await this.initialize();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const result = await this.db.client().query(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'abandoned', abandon_reason = $3, updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2
           AND status = 'sealed' AND result IS NULL`,
@@ -634,8 +542,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
     await this.initialize();
-    await this.queryClient().query(
-      `INSERT INTO ${this.table('sessions')} (
+    await this.db.client().query(
+      `INSERT INTO ${this.db.table('sessions')} (
          tenant_id, session_id, created_by, status,
          created_at, updated_at, metadata
        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
@@ -660,10 +568,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<AgentServerSessionRecord | null> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
-         FROM ${this.table('sessions')}
+         FROM ${this.db.table('sessions')}
         WHERE tenant_id = $1 AND session_id = $2`,
       [tenantId, sessionId],
     );
@@ -684,10 +592,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
           createdBy: row.created_by,
           sessionId: SessionId(row.session_id),
           status: row.status,
-          createdAt: asIso(row.created_at),
-          updatedAt: asIso(row.updated_at),
+          createdAt: postgresTimestamp(row.created_at),
+          updatedAt: postgresTimestamp(row.updated_at),
           ...(Object.keys(row.metadata ?? {}).length > 0
-            ? { metadata: asJsonObject(row.metadata) }
+            ? { metadata: postgresJsonObject(row.metadata) }
             : {}),
         }
       : null;
@@ -709,10 +617,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
     ) {
       throw new RangeError('Session list pagination is invalid');
     }
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
-         FROM ${this.table('sessions')}
+         FROM ${this.db.table('sessions')}
         WHERE tenant_id = $1
         ORDER BY updated_at DESC, session_id ASC
         OFFSET $2 LIMIT $3`,
@@ -734,10 +642,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         createdBy: row.created_by,
         sessionId: SessionId(row.session_id),
         status: row.status,
-        createdAt: asIso(row.created_at),
-        updatedAt: asIso(row.updated_at),
+        createdAt: postgresTimestamp(row.created_at),
+        updatedAt: postgresTimestamp(row.updated_at),
         ...(Object.keys(row.metadata ?? {}).length > 0
-          ? { metadata: asJsonObject(row.metadata) }
+          ? { metadata: postgresJsonObject(row.metadata) }
           : {}),
       })),
       ...(hasMore ? { nextCursor: String(offset + limit) } : {}),
@@ -755,11 +663,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
     await this.initialize();
     const idempotencyKey = options.idempotencyKey;
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       if (idempotencyKey !== undefined) {
         // Serialised against other appends to this stream, so the check cannot
         // race a concurrent publisher of the same key.
-        await this.lock(client, `stream:${tenantId}:${sessionId}:agent`);
+        await this.db.lock(client, `stream:${tenantId}:${sessionId}:agent`);
         const existing = await this.readIdempotencyRecord(
           client,
           tenantId,
@@ -802,13 +710,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<JsonObject | null> {
     const result = await client.query<PayloadRow>(
       `SELECT payload
-         FROM ${this.table('event_keys')}
+         FROM ${this.db.table('event_keys')}
         WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3`,
       [tenantId, sessionId, idempotencyKey],
     );
     const row = result.rows[0];
     if (row) {
-      return asJsonObject(row.payload);
+      return postgresJsonObject(row.payload);
     }
     return null;
   }
@@ -822,7 +730,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     payload: unknown = event,
   ): Promise<void> {
     await client.query(
-      `INSERT INTO ${this.table('event_keys')} (
+      `INSERT INTO ${this.db.table('event_keys')} (
          tenant_id, session_id, idempotency_key, sequence, event_id, payload
        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
        ON CONFLICT (tenant_id, session_id, idempotency_key) DO NOTHING`,
@@ -842,9 +750,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<{ firstSequence: number; headSequence: number } | null> {
     await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
+    const result = await this.db.client().query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
+         FROM ${this.db.table('stream_heads')}
         WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
       [tenantId, sessionId],
     );
@@ -852,8 +760,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (!row) {
       return null;
     }
-    const nextSequence = asNumber(row.next_sequence);
-    const firstSequence = asNumber(row.first_sequence);
+    const nextSequence = postgresInteger(row.next_sequence);
+    const firstSequence = postgresInteger(row.first_sequence);
     if (nextSequence <= firstSequence) {
       return null;
     }
@@ -866,7 +774,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     idempotencyKey: string,
   ): Promise<AgentServerEvent | null> {
     await this.initialize();
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       const payload = await this.readIdempotencyRecord(client, tenantId, sessionId, idempotencyKey);
       return payload ? parseAgentServerEvent(payload) : null;
     });
@@ -896,14 +804,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async getLatestEventSequence(tenantId: string, sessionId: SessionId): Promise<number | null> {
     await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
+    const result = await this.db.client().query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
+         FROM ${this.db.table('stream_heads')}
         WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
       [tenantId, sessionId],
     );
     const row = result.rows[0];
-    return row ? asNumber(row.next_sequence) - 1 : null;
+    return row ? postgresInteger(row.next_sequence) - 1 : null;
   }
 
   async commitRuntimeTransaction(commit: RuntimeCommandCommit): Promise<RuntimeCommitResult> {
@@ -916,11 +824,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
       );
     }
     try {
-      return await this.transaction(async (client) => {
-        await this.lock(client, `command:${commit.tenantId}:${commit.command.commandId}`);
+      return await this.db.transaction(async (client) => {
+        await this.db.lock(client, `command:${commit.tenantId}:${commit.command.commandId}`);
         const commandResult = await client.query<CommandRow>(
           `SELECT command_fingerprint, lease_id, status, expires_at, result
-             FROM ${this.table('commands')}
+             FROM ${this.db.table('commands')}
             WHERE tenant_id = $1 AND command_id = $2
             FOR UPDATE`,
           [commit.tenantId, commit.command.commandId],
@@ -949,7 +857,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           );
         } else {
           await client.query(
-            `INSERT INTO ${this.table('commands')} (
+            `INSERT INTO ${this.db.table('commands')} (
                tenant_id, command_id, command_fingerprint, lease_id,
                status, expires_at, created_at, updated_at
              ) VALUES ($1, $2, $3, $4, 'sealed', 'infinity', NOW(), NOW())`,
@@ -969,7 +877,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           : undefined;
 
         const completed = await client.query(
-          `UPDATE ${this.table('commands')}
+          `UPDATE ${this.db.table('commands')}
               SET status = 'completed', expires_at = 'infinity',
                   result = $4::jsonb, updated_at = NOW()
             WHERE tenant_id = $1 AND command_id = $2
@@ -1043,9 +951,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
       predicates.push(`status = $${values.length}`);
     }
     values.push(limit);
-    const result = await this.queryClient().query<EffectRow>(
+    const result = await this.db.client().query<EffectRow>(
       `SELECT *
-         FROM ${this.table('outbox')}
+         FROM ${this.db.table('outbox')}
         WHERE ${predicates.join(' AND ')}
         ORDER BY created_at ASC, effect_id ASC
         LIMIT $${values.length}`,
@@ -1060,9 +968,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
     name: string,
   ): Promise<RuntimeProjectionRecord | null> {
     await this.initialize();
-    const result = await this.queryClient().query<ProjectionRow>(
+    const result = await this.db.client().query<ProjectionRow>(
       `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3`,
       [tenantId, sessionId, name],
     );
@@ -1072,16 +980,16 @@ export class PostgresRuntimeStore implements RuntimeStore {
           tenantId,
           sessionId,
           name,
-          offset: asNumber(row.projection_offset),
-          state: asJsonObject(row.state),
-          updatedAt: asIso(row.updated_at),
+          offset: postgresInteger(row.projection_offset),
+          state: postgresJsonObject(row.state),
+          updatedAt: postgresTimestamp(row.updated_at),
         }
       : null;
   }
 
   async close(): Promise<void> {
     if (this.ownsPool) {
-      await this.pool.end();
+      await this.db.pool.end();
     }
   }
 
@@ -1286,7 +1194,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
     });
     options.signal?.throwIfAborted();
-    const appended = await this.transaction(async (client) => {
+    const appended = await this.db.transaction(async (client) => {
       await this.workerRuntime.assertExecutionFenceWithClient(
         client,
         tenantId,
@@ -1402,14 +1310,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async getDurableHead(tenantId: string, sessionId: SessionId): Promise<EventSequence | null> {
     await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
+    const result = await this.db.client().query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
+         FROM ${this.db.table('stream_heads')}
         WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'durable'`,
       [tenantId, sessionId],
     );
     const row = result.rows[0];
-    return row ? EventSequence(asNumber(row.next_sequence) - 1) : null;
+    return row ? EventSequence(postgresInteger(row.next_sequence) - 1) : null;
   }
 
   /**
@@ -1481,11 +1389,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
       );
     }
     await this.initialize();
-    return this.transaction(async (client) => {
-      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
       const projectionResult = await client.query<ProjectionRow>(
         `SELECT projection_offset, state, updated_at
-           FROM ${this.table('projections')}
+           FROM ${this.db.table('projections')}
           WHERE tenant_id = $1 AND session_id = $2
             AND projection_name = $3
           FOR UPDATE`,
@@ -1533,7 +1441,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         );
       }
       await client.query(
-        `INSERT INTO ${this.table('projections')} (
+        `INSERT INTO ${this.db.table('projections')} (
            tenant_id, session_id, projection_name, projection_offset, state, updated_at
          ) VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
          ON CONFLICT (tenant_id, session_id, projection_name) DO UPDATE SET
@@ -1548,21 +1456,21 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async deleteSessionProjection(tenantId: string, sessionId: SessionId): Promise<void> {
     await this.initialize();
-    await this.transaction(async (client) => {
-      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
-      await this.lock(client, `stream:${tenantId}:${sessionId}:transcript`);
+    await this.db.transaction(async (client) => {
+      await this.db.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
+      await this.db.lock(client, `stream:${tenantId}:${sessionId}:transcript`);
       await client.query(
-        `DELETE FROM ${this.table('events')}
+        `DELETE FROM ${this.db.table('events')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
         [tenantId, sessionId],
       );
       await client.query(
-        `DELETE FROM ${this.table('stream_heads')}
+        `DELETE FROM ${this.db.table('stream_heads')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
         [tenantId, sessionId],
       );
       await client.query(
-        `DELETE FROM ${this.table('projections')}
+        `DELETE FROM ${this.db.table('projections')}
           WHERE tenant_id = $1 AND session_id = $2
             AND projection_name = $3`,
         [tenantId, sessionId, SESSION_PROJECTION],
@@ -1572,9 +1480,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async listSessionProjectionIds(tenantId: string): Promise<SessionId[]> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT session_id
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2
         ORDER BY session_id ASC`,
       [tenantId, SESSION_PROJECTION],
@@ -1584,9 +1492,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async cleanupSessionProjections(tenantId: string): Promise<void> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT session_id
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2
         ORDER BY (state->>'lastActivity')::bigint DESC, session_id ASC
         OFFSET $3`,
@@ -1599,10 +1507,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async sessionStorageStats(tenantId: string): Promise<SessionRepositoryStorageStats> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT COUNT(*)::int AS total_sessions,
               COALESCE(SUM(octet_length(state::text)), 0)::bigint AS total_size
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND projection_name = $2`,
       [tenantId, SESSION_PROJECTION],
     );
@@ -1735,20 +1643,22 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }
 
   private async createSchema(): Promise<void> {
-    const client = await this.pool.connect();
-    const lockKey = advisoryLockKey(`runtime-store-schema:${this.schema}:${this.prefix}`);
+    const client = await this.db.pool.connect();
+    const lockKey = postgresAdvisoryLockKey(
+      `runtime-store-schema:${this.db.schema}:${this.db.prefix}`,
+    );
     let lockAcquired = false;
     try {
       await client.query('SELECT pg_advisory_lock($1, $2)', [lockKey[0], lockKey[1]]);
       lockAcquired = true;
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.db.schema}`);
       await client.query(`
-      CREATE TABLE IF NOT EXISTS ${this.table('metadata')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('metadata')} (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('commands')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('commands')} (
         tenant_id TEXT NOT NULL,
         command_id TEXT NOT NULL,
         command_fingerprint TEXT NOT NULL,
@@ -1762,7 +1672,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, command_id)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('sessions')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('sessions')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         created_by TEXT NOT NULL,
@@ -1773,12 +1683,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_sessions_listing_idx
-        ON ${this.table('sessions')} (
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_sessions_listing_idx
+        ON ${this.db.table('sessions')} (
           tenant_id, updated_at DESC, session_id ASC
         );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('stream_heads')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('stream_heads')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         stream_name TEXT NOT NULL,
@@ -1787,7 +1697,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, stream_name)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('events')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('events')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         stream_name TEXT NOT NULL,
@@ -1802,14 +1712,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
         UNIQUE (tenant_id, event_id)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_events_command_idx
-        ON ${this.table('events')} (tenant_id, command_id)
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_events_command_idx
+        ON ${this.db.table('events')} (tenant_id, command_id)
         WHERE command_id IS NOT NULL;
 
       -- Idempotency records live outside the trimmable event log: a retry that
       -- outlives event retention must still be recognised as a repeat, and the
       -- stored payload lets the repeat return the original event either way.
-      CREATE TABLE IF NOT EXISTS ${this.table('event_keys')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('event_keys')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         idempotency_key TEXT NOT NULL,
@@ -1820,7 +1730,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, idempotency_key)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('outbox')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('outbox')} (
         tenant_id TEXT NOT NULL,
         effect_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
@@ -1829,10 +1739,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         payload JSONB NOT NULL,
         idempotency_key TEXT NOT NULL,
         execution_mode TEXT NOT NULL DEFAULT 'idempotent'
-          CONSTRAINT ${this.prefix}_outbox_execution_mode_check
+          CONSTRAINT ${this.db.prefix}_outbox_execution_mode_check
           CHECK (execution_mode IN ('idempotent', 'at_most_once')),
         status TEXT NOT NULL DEFAULT 'pending'
-          CONSTRAINT ${this.prefix}_outbox_status_check
+          CONSTRAINT ${this.db.prefix}_outbox_status_check
           CHECK (
             status IN (
               'pending', 'claimed', 'executing',
@@ -1854,10 +1764,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         UNIQUE (tenant_id, idempotency_key)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_outbox_pending_idx
-        ON ${this.table('outbox')} (tenant_id, status, available_at);
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_outbox_pending_idx
+        ON ${this.db.table('outbox')} (tenant_id, status, available_at);
 
-      CREATE TABLE IF NOT EXISTS ${this.table('projections')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('projections')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         projection_name TEXT NOT NULL,
@@ -1869,7 +1779,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     `);
       const storedVersion = await client.query(
         `SELECT value
-           FROM ${this.table('metadata')}
+           FROM ${this.db.table('metadata')}
           WHERE key = 'schema_version'`,
       );
       const previousSchemaVersion = storedVersion.rows[0] ? Number(storedVersion.rows[0].value) : 1;
@@ -1886,7 +1796,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
       await this.workerRuntime.createSchema(client, previousSchemaVersion);
       await client.query(
-        `INSERT INTO ${this.table('metadata')} AS metadata (key, value)
+        `INSERT INTO ${this.db.table('metadata')} AS metadata (key, value)
          VALUES ('schema_version', $1)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
          WHERE metadata.value IN ('1', '2', '3')`,
@@ -1902,66 +1812,21 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
   }
 
-  private table(suffix: string): string {
-    return `${this.schema}.${quoteIdentifier(`${this.prefix}_${suffix}`, 'table')}`;
-  }
-
-  private queryClient(): Pool | PoolClient {
-    return this.transactionContext.getStore() ?? this.pool;
-  }
-
-  private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
-    const activeClient = this.transactionContext.getStore();
-    if (activeClient) {
-      const savepoint = quoteIdentifier(
-        `runtime_nested_${nanoid().replaceAll('-', '_')}`,
-        'savepoint',
-      );
-      await activeClient.query(`SAVEPOINT ${savepoint}`);
-      try {
-        const result = await operation(activeClient);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
-        return result;
-      } catch (error) {
-        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => undefined);
-        throw error;
-      }
-    }
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await this.transactionContext.run(client, () => operation(client));
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  private async lock(client: PoolClient, key: string): Promise<void> {
-    const lockKey = advisoryLockKey(key);
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lockKey[0], lockKey[1]]);
-  }
-
   private async currentHead(
     client: PoolClient,
     tenantId: string,
     sessionId: SessionId,
     streamName: string,
   ): Promise<number | null> {
-    await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
+    await this.db.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
     const result = await client.query<StreamHeadRow>(
       `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
+         FROM ${this.db.table('stream_heads')}
         WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
         FOR UPDATE`,
       [tenantId, sessionId, streamName],
     );
-    return result.rows[0] ? asNumber(result.rows[0].next_sequence) - 1 : null;
+    return result.rows[0] ? postgresInteger(result.rows[0].next_sequence) - 1 : null;
   }
 
   private async appendStream<
@@ -2021,7 +1886,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       recorded_at: recordedAt,
     }));
     await client.query(
-      `INSERT INTO ${this.table('events')} (
+      `INSERT INTO ${this.db.table('events')} (
          tenant_id, session_id, stream_name, sequence, event_id,
          command_id, event_type, payload, occurred_at, recorded_at
        )
@@ -2046,7 +1911,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     const nextSequence = firstSequence + payloads.length;
     const retainedFirst = retention ? Math.max(1, nextSequence - retention) : 1;
     await client.query(
-      `INSERT INTO ${this.table('stream_heads')} (
+      `INSERT INTO ${this.db.table('stream_heads')} (
          tenant_id, session_id, stream_name, first_sequence, next_sequence
        ) VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (tenant_id, session_id, stream_name) DO UPDATE SET
@@ -2056,7 +1921,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
     if (retention) {
       await client.query(
-        `DELETE FROM ${this.table('events')}
+        `DELETE FROM ${this.db.table('events')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
             AND sequence < $4`,
         [tenantId, sessionId, streamName, retainedFirst],
@@ -2083,11 +1948,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
       throw new RangeError('Event page limit must be between 1 and 1000');
     }
-    return this.transaction(async (client) => {
-      await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
       const headResult = await client.query<StreamHeadRow>(
         `SELECT first_sequence, next_sequence
-           FROM ${this.table('stream_heads')}
+           FROM ${this.db.table('stream_heads')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3`,
         [tenantId, sessionId, streamName],
       );
@@ -2098,8 +1963,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
         }
         return { payloads: [], headSequence: null, hasMore: false };
       }
-      const firstSequence = asNumber(head.first_sequence);
-      const nextSequence = asNumber(head.next_sequence);
+      const firstSequence = postgresInteger(head.first_sequence);
+      const nextSequence = postgresInteger(head.next_sequence);
       if (after < firstSequence - 1) {
         throw new RangeError('Event cursor is stale');
       }
@@ -2108,7 +1973,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
       const result = await client.query<PayloadRow>(
         `SELECT payload
-           FROM ${this.table('events')}
+           FROM ${this.db.table('events')}
           WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
             AND sequence > $4
           ORDER BY sequence ASC
@@ -2116,7 +1981,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         [tenantId, sessionId, streamName, after, limit + 1],
       );
       return {
-        payloads: result.rows.slice(0, limit).map((row) => asJsonObject(row.payload)),
+        payloads: result.rows.slice(0, limit).map((row) => postgresJsonObject(row.payload)),
         headSequence: nextSequence - 1,
         hasMore: result.rows.length > limit,
       };
@@ -2166,7 +2031,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     const effects: RuntimeEffectRecord[] = [];
     for (const effect of commit.effects ?? []) {
       const result = await client.query<EffectRow>(
-        `INSERT INTO ${this.table('outbox')} (
+        `INSERT INTO ${this.db.table('outbox')} (
            tenant_id, effect_id, session_id, command_id, effect_type,
            payload, idempotency_key, available_at, execution_mode
          ) VALUES (
@@ -2210,15 +2075,20 @@ export class PostgresRuntimeStore implements RuntimeStore {
           `does not match domain head ${String(domainHead)}`,
       );
     }
-    await this.lock(client, `projection:${commit.tenantId}:${commit.sessionId}:${projection.name}`);
+    await this.db.lock(
+      client,
+      `projection:${commit.tenantId}:${commit.sessionId}:${projection.name}`,
+    );
     const current = await client.query<ProjectionRow>(
       `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3
         FOR UPDATE`,
       [commit.tenantId, commit.sessionId, projection.name],
     );
-    const currentOffset = current.rows[0] ? asNumber(current.rows[0].projection_offset) : null;
+    const currentOffset = current.rows[0]
+      ? postgresInteger(current.rows[0].projection_offset)
+      : null;
     if (projection.expectedOffset !== undefined && projection.expectedOffset !== currentOffset) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_PROJECTION_CONFLICT',
@@ -2227,7 +2097,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       );
     }
     await client.query(
-      `INSERT INTO ${this.table('projections')} (
+      `INSERT INTO ${this.db.table('projections')} (
          tenant_id, session_id, projection_name, projection_offset, state, updated_at
        ) VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
        ON CONFLICT (tenant_id, session_id, projection_name) DO UPDATE SET
@@ -2263,7 +2133,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<RuntimeCommitResult> {
     const events = await client.query<PayloadRow>(
       `SELECT payload
-         FROM ${this.table('events')}
+         FROM ${this.db.table('events')}
         WHERE tenant_id = $1 AND session_id = $2
           AND stream_name = 'domain' AND command_id = $3
         ORDER BY sequence ASC`,
@@ -2271,7 +2141,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     );
     const effects = await client.query<EffectRow>(
       `SELECT *
-         FROM ${this.table('outbox')}
+         FROM ${this.db.table('outbox')}
         WHERE tenant_id = $1 AND session_id = $2 AND command_id = $3
         ORDER BY created_at ASC, effect_id ASC`,
       [commit.tenantId, commit.sessionId, commit.command.commandId],
@@ -2300,7 +2170,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<RuntimeProjectionRecord | null> {
     const result = await client.query<ProjectionRow>(
       `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
+         FROM ${this.db.table('projections')}
         WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3`,
       [tenantId, sessionId, name],
     );
@@ -2310,9 +2180,9 @@ export class PostgresRuntimeStore implements RuntimeStore {
           tenantId,
           sessionId,
           name,
-          offset: asNumber(row.projection_offset),
-          state: asJsonObject(row.state),
-          updatedAt: asIso(row.updated_at),
+          offset: postgresInteger(row.projection_offset),
+          state: postgresJsonObject(row.state),
+          updatedAt: postgresTimestamp(row.updated_at),
         }
       : null;
   }
@@ -2324,23 +2194,23 @@ export class PostgresRuntimeStore implements RuntimeStore {
       commandId: CommandId(row.command_id),
       effectId: row.effect_id,
       type: row.effect_type,
-      payload: asJsonObject(row.payload),
+      payload: postgresJsonObject(row.payload),
       idempotencyKey: row.idempotency_key,
       executionMode: row.execution_mode,
       status: row.status,
       attempts: row.attempts,
-      availableAt: asIso(row.available_at),
-      createdAt: asIso(row.created_at),
+      availableAt: postgresTimestamp(row.available_at),
+      createdAt: postgresTimestamp(row.created_at),
       ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
       ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(asNumber(row.fencing_token) > 0
-        ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
+      ...(postgresInteger(row.fencing_token) > 0
+        ? { fencingToken: FencingToken(postgresInteger(row.fencing_token)) }
         : {}),
-      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
-      ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
-      ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
-      ...(row.result ? { result: asJsonObject(row.result) } : {}),
-      ...(row.error ? { error: asJsonObject(row.error) } : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: postgresTimestamp(row.lease_expires_at) } : {}),
+      ...(row.started_at ? { startedAt: postgresTimestamp(row.started_at) } : {}),
+      ...(row.completed_at ? { completedAt: postgresTimestamp(row.completed_at) } : {}),
+      ...(row.result ? { result: postgresJsonObject(row.result) } : {}),
+      ...(row.error ? { error: postgresJsonObject(row.error) } : {}),
     };
   }
 }

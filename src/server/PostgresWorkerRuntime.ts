@@ -1,7 +1,5 @@
-import type { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import type { PoolClient, QueryResultRow } from 'pg';
 import type { DurableEventOperationOptions } from '../session/events/DurableEventStore.js';
 import {
   type DurableExecutionFence,
@@ -17,6 +15,13 @@ import {
   WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
+import {
+  type PostgresContext,
+  postgresInteger,
+  postgresJsonObject,
+  postgresTimestamp,
+  quotePostgresIdentifier,
+} from './PostgresContext.js';
 import type { RuntimeEffectRecord, RuntimeEffectStatus } from './RuntimeStore.js';
 import { RUNTIME_EFFECT_STATUSES } from './RuntimeStore.js';
 import {
@@ -139,80 +144,16 @@ interface ConstraintRow extends QueryResultRow {
   conname: string;
 }
 
-function quoteIdentifier(value: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw new RangeError('PostgreSQL identifier is invalid');
-  }
-  return `"${value}"`;
-}
-
-function asNumber(value: string | number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new WorkerRuntimeError(
-      'WORKER_INVALID',
-      `PostgreSQL returned an unsafe integer: ${String(value)}`,
-    );
-  }
-  return parsed;
-}
-
-function asIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
 function ageMs(collectedAt: string, oldestAt: string): number {
   return Math.max(0, Date.parse(collectedAt) - Date.parse(oldestAt));
 }
 
-function asJsonObject(value: unknown): JsonObject {
-  return structuredClone(value) as JsonObject;
-}
-
 function assertJsonObject(value: unknown, label: string): void {
-  const seen = new WeakSet<object>();
-  const visit = (item: unknown, path: string): void => {
-    if (item === null || typeof item === 'string' || typeof item === 'boolean') {
-      return;
-    }
-    if (typeof item === 'number') {
-      if (!Number.isFinite(item)) {
-        throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-finite number`);
-      }
-      return;
-    }
-    if (typeof item !== 'object') {
-      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-JSON value`);
-    }
-    if (seen.has(item)) {
-      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a circular reference`);
-    }
-    seen.add(item);
-    if (Array.isArray(item)) {
-      item.forEach((entry, index) => {
-        visit(entry, `${path}[${index}]`);
-      });
-      seen.delete(item);
-      return;
-    }
-    const prototype = Object.getPrototypeOf(item);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new WorkerRuntimeError('WORKER_INVALID', `${path} contains a non-plain object`);
-    }
-    for (const [key, entry] of Object.entries(item)) {
-      visit(entry, `${path}.${key}`);
-    }
-    seen.delete(item);
-  };
-  visit(value, label);
-  if (value === null || Array.isArray(value) || typeof value !== 'object') {
-    throw new WorkerRuntimeError('WORKER_INVALID', `${label} must be a JSON object`);
+  try {
+    postgresJsonObject(value, label);
+  } catch (cause) {
+    throw new WorkerRuntimeError('WORKER_INVALID', `${label} must be a JSON object`, { cause });
   }
-}
-
-function lockKey(key: string): readonly [number, number] {
-  const digest = createHash('sha256').update(key).digest();
-  return [digest.readInt32BE(0), digest.readInt32BE(4)];
 }
 
 function assertTtl(ttlMs: number): void {
@@ -247,16 +188,13 @@ function assertLimit(limit: number): void {
 
 export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   constructor(
-    private readonly pool: Pool,
-    private readonly schema: string,
-    private readonly prefix: string,
+    private readonly db: PostgresContext,
     private readonly ensureInitialized: () => Promise<void>,
-    private readonly transactionContext: AsyncLocalStorage<PoolClient>,
   ) {}
 
   async createSchema(client: PoolClient, previousSchemaVersion: number): Promise<void> {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS ${this.table('workers')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('workers')} (
         worker_id TEXT PRIMARY KEY,
         status TEXT NOT NULL
           CHECK (status IN ('active', 'draining', 'offline')),
@@ -268,7 +206,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         draining_at TIMESTAMPTZ
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('execution_leases')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('execution_leases')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         fencing_token BIGINT NOT NULL CHECK (fencing_token > 0),
@@ -281,7 +219,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         PRIMARY KEY (tenant_id, session_id)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('session_routes')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('session_routes')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         state TEXT NOT NULL CHECK (
@@ -303,15 +241,15 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         PRIMARY KEY (tenant_id, session_id)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_session_routes_queue_idx
-        ON ${this.table('session_routes')} (
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_session_routes_queue_idx
+        ON ${this.db.table('session_routes')} (
           state, priority DESC, queued_at ASC, tenant_id, session_id
         );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_session_routes_worker_idx
-        ON ${this.table('session_routes')} (worker_id, state, lease_expires_at);
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_session_routes_worker_idx
+        ON ${this.db.table('session_routes')} (worker_id, state, lease_expires_at);
 
-      ALTER TABLE ${this.table('outbox')}
+      ALTER TABLE ${this.db.table('outbox')}
         ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'idempotent',
         ADD COLUMN IF NOT EXISTS worker_id TEXT,
         ADD COLUMN IF NOT EXISTS lease_id TEXT,
@@ -320,8 +258,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_outbox_claim_idx
-        ON ${this.table('outbox')} (
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_outbox_claim_idx
+        ON ${this.db.table('outbox')} (
           status, available_at, tenant_id, created_at, effect_id
         );
     `);
@@ -337,25 +275,25 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           WHERE constraint_row.conrelid = $1::regclass
             AND constraint_row.contype = 'c'
             AND attribute.attname = ANY($2::text[])`,
-        [this.table('outbox'), ['status', 'execution_mode']],
+        [this.db.table('outbox'), ['status', 'execution_mode']],
       );
       for (const constraint of constraints.rows) {
         await client.query(
-          `ALTER TABLE ${this.table('outbox')}
-             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+          `ALTER TABLE ${this.db.table('outbox')}
+             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
         );
       }
       await client.query(`
-        ALTER TABLE ${this.table('outbox')}
-          ADD CONSTRAINT ${this.prefix}_outbox_status_check CHECK (
+        ALTER TABLE ${this.db.table('outbox')}
+          ADD CONSTRAINT ${this.db.prefix}_outbox_status_check CHECK (
             status IN (
               'pending', 'claimed', 'executing',
               'completed', 'failed', 'uncertain'
             )
           );
 
-        ALTER TABLE ${this.table('outbox')}
-          ADD CONSTRAINT ${this.prefix}_outbox_execution_mode_check CHECK (
+        ALTER TABLE ${this.db.table('outbox')}
+          ADD CONSTRAINT ${this.db.prefix}_outbox_execution_mode_check CHECK (
             execution_mode IN ('idempotent', 'at_most_once')
           );
       `);
@@ -372,17 +310,17 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           WHERE constraint_row.conrelid = $1::regclass
             AND constraint_row.contype = 'c'
             AND attribute.attname = 'state'`,
-        [this.table('session_routes')],
+        [this.db.table('session_routes')],
       );
       for (const constraint of constraints.rows) {
         await client.query(
-          `ALTER TABLE ${this.table('session_routes')}
-             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+          `ALTER TABLE ${this.db.table('session_routes')}
+             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
         );
       }
       await client.query(`
-        ALTER TABLE ${this.table('session_routes')}
-          ADD CONSTRAINT ${this.prefix}_session_routes_state_check CHECK (
+        ALTER TABLE ${this.db.table('session_routes')}
+          ADD CONSTRAINT ${this.db.prefix}_session_routes_state_check CHECK (
             state IN (
               'queued', 'provisioning', 'running', 'waiting_approval',
               'suspended', 'idle', 'completed', 'failed'
@@ -395,7 +333,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       // case where the process never reported a result, otherwise the same
       // commandId answers `in_progress` forever.
       await client.query(`
-        ALTER TABLE ${this.table('commands')}
+        ALTER TABLE ${this.db.table('commands')}
           ADD COLUMN IF NOT EXISTS abandon_reason TEXT;
       `);
       const constraints = await client.query<ConstraintRow>(
@@ -409,17 +347,17 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           WHERE constraint_row.conrelid = $1::regclass
             AND constraint_row.contype = 'c'
             AND attribute.attname = 'status'`,
-        [this.table('commands')],
+        [this.db.table('commands')],
       );
       for (const constraint of constraints.rows) {
         await client.query(
-          `ALTER TABLE ${this.table('commands')}
-             DROP CONSTRAINT ${quoteIdentifier(constraint.conname)}`,
+          `ALTER TABLE ${this.db.table('commands')}
+             DROP CONSTRAINT ${quotePostgresIdentifier(constraint.conname)}`,
         );
       }
       await client.query(`
-        ALTER TABLE ${this.table('commands')}
-          ADD CONSTRAINT ${this.prefix}_commands_status_check CHECK (
+        ALTER TABLE ${this.db.table('commands')}
+          ADD CONSTRAINT ${this.db.prefix}_commands_status_check CHECK (
             status IN ('claimed', 'sealed', 'completed', 'abandoned')
           );
       `);
@@ -432,8 +370,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     assertTtl(registration.ttlMs);
     assertJsonObject(registration.metadata ?? {}, 'Worker metadata');
     await this.ensureInitialized();
-    await this.queryClient().query(
-      `INSERT INTO ${this.table('workers')} (
+    await this.db.client().query(
+      `INSERT INTO ${this.db.table('workers')} (
          worker_id, status, capacity, metadata, registered_at,
          last_heartbeat_at, lease_expires_at, draining_at
        ) VALUES (
@@ -461,8 +399,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertWorkerId(workerId);
     assertTtl(ttlMs);
     await this.ensureInitialized();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('workers')}
+    const result = await this.db.client().query(
+      `UPDATE ${this.db.table('workers')}
           SET last_heartbeat_at = NOW(),
               lease_expires_at = NOW() + ($2 * INTERVAL '1 millisecond')
         WHERE worker_id = $1 AND status IN ('active', 'draining')
@@ -481,8 +419,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   async drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
     this.assertWorkerId(workerId);
     await this.ensureInitialized();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('workers')}
+    const result = await this.db.client().query(
+      `UPDATE ${this.db.table('workers')}
           SET status = 'draining',
               draining_at = COALESCE(draining_at, NOW())
         WHERE worker_id = $1 AND status <> 'offline'
@@ -498,17 +436,17 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   async getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null> {
     this.assertWorkerId(workerId);
     await this.ensureInitialized();
-    const result = await this.queryClient().query<WorkerRow>(
+    const result = await this.db.client().query<WorkerRow>(
       `SELECT worker_id, status, capacity, metadata, registered_at,
               last_heartbeat_at, lease_expires_at, draining_at,
               (
                 SELECT COUNT(*)::int
-                  FROM ${this.table('session_routes')} routes
+                  FROM ${this.db.table('session_routes')} routes
                  WHERE routes.worker_id = workers.worker_id
                    AND routes.state = ANY($2::text[])
                    AND routes.lease_expires_at > NOW()
               ) AS active_sessions
-         FROM ${this.table('workers')} workers
+         FROM ${this.db.table('workers')} workers
         WHERE worker_id = $1`,
       [workerId, ACTIVE_SESSION_STATES],
     );
@@ -529,8 +467,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     assertPriority(priority);
     assertJsonObject(options.metadata ?? {}, 'Session route metadata');
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
       const executionLease = await this.loadExecutionLease(client, tenantId, sessionId, true);
       if (executionLease?.active) {
         throw new WorkerRuntimeError(
@@ -556,11 +494,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           tenantId,
           sessionId,
           ExecutionLeaseId(current.lease_id),
-          FencingToken(asNumber(current.fencing_token)),
+          FencingToken(postgresInteger(current.fencing_token)),
         );
       }
       const result = await client.query<SessionRouteRow>(
-        `INSERT INTO ${this.table('session_routes')} (
+        `INSERT INTO ${this.db.table('session_routes')} (
            tenant_id, session_id, state, priority, queued_at, updated_at,
            metadata, failure
          ) VALUES ($1, $2, 'queued', $3, NOW(), NOW(), $4::jsonb, NULL)
@@ -593,12 +531,12 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
     await this.recoverExpiredWork();
-    const claim = await this.transaction(async (client) => {
+    const claim = await this.db.transaction(async (client) => {
       options.signal?.throwIfAborted();
       const worker = await this.lockAvailableWorker(client, options.ownerId);
       const active = await client.query(
         `SELECT COUNT(*)::int AS count
-           FROM ${this.table('session_routes')}
+           FROM ${this.db.table('session_routes')}
           WHERE worker_id = $1
             AND state = ANY($2::text[])
             AND lease_expires_at > NOW()`,
@@ -609,7 +547,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       }
       const candidates = await client.query<SessionRouteRow>(
         `SELECT *
-           FROM ${this.table('session_routes')}
+           FROM ${this.db.table('session_routes')}
           WHERE state IN ('queued', 'suspended')
             AND worker_id IS NULL
             AND ($1::text IS NULL OR tenant_id = $1)
@@ -619,7 +557,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       for (const candidate of candidates.rows) {
         const sessionId = SessionId(candidate.session_id);
-        await this.lock(client, `execution:${candidate.tenant_id}:${sessionId}`);
+        await this.db.lock(client, `execution:${candidate.tenant_id}:${sessionId}`);
         const row = await this.loadRoute(client, candidate.tenant_id, sessionId, true);
         if (
           !row ||
@@ -635,12 +573,12 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         const nextToken = this.nextFencingToken(
           sessionId,
           Math.max(
-            asNumber(row.fencing_token),
-            currentLease ? asNumber(currentLease.fencing_token) : 0,
+            postgresInteger(row.fencing_token),
+            currentLease ? postgresInteger(currentLease.fencing_token) : 0,
           ),
         );
         const updated = await client.query<SessionRouteRow>(
-          `UPDATE ${this.table('session_routes')}
+          `UPDATE ${this.db.table('session_routes')}
               SET state = 'provisioning',
                   attempt = attempt + 1,
                   fencing_token = $3,
@@ -715,8 +653,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       assertJsonObject(transition.failure, 'Session transition failure');
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
       const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
       if (!current) {
@@ -739,7 +677,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         transition.state === 'failed' ||
         transition.state === 'suspended';
       const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET state = $5,
                 worker_id = CASE WHEN $6 THEN NULL ELSE worker_id END,
                 lease_id = CASE WHEN $6 THEN NULL ELSE lease_id END,
@@ -797,8 +735,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
       const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       if (!current) {
@@ -810,7 +748,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       const sameLease =
         persistedLease?.lease_id === lease.leaseId &&
         persistedLease.owner_id === lease.ownerId &&
-        asNumber(persistedLease.fencing_token) === lease.fencingToken;
+        postgresInteger(persistedLease.fencing_token) === lease.fencingToken;
       if (current.state === settlement.state && sameLease) {
         return this.routeRecord(current);
       }
@@ -821,7 +759,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       }
       assertRuntimeSessionTransition(current.state, settlement.state);
       const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET state = $5,
                 worker_id = NULL,
                 lease_id = NULL,
@@ -878,8 +816,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       assertJsonObject(metadata, 'Session handoff metadata');
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       const persistedLease = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       const current = await this.loadRoute(client, tenantId, lease.sessionId, true);
       if (!current) {
@@ -891,14 +829,14 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       if (
         persistedLease?.released_at &&
         persistedLease.lease_id === lease.leaseId &&
-        asNumber(persistedLease.fencing_token) === lease.fencingToken &&
+        postgresInteger(persistedLease.fencing_token) === lease.fencingToken &&
         current.state === 'suspended'
       ) {
         if (!metadata) {
           return this.routeRecord(current);
         }
         const replayed = await client.query<SessionRouteRow>(
-          `UPDATE ${this.table('session_routes')}
+          `UPDATE ${this.db.table('session_routes')}
               SET metadata = $3::jsonb, updated_at = NOW()
             WHERE tenant_id = $1 AND session_id = $2
             RETURNING *`,
@@ -914,7 +852,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         );
       }
       const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET state = 'suspended',
                 worker_id = NULL,
                 lease_id = NULL,
@@ -959,8 +897,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       assertJsonObject(options.reason, 'Session preemption reason');
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
       const current = await this.loadRoute(client, tenantId, sessionId, true);
       if (!current) {
         throw new WorkerRuntimeError(
@@ -980,11 +918,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           tenantId,
           sessionId,
           ExecutionLeaseId(current.lease_id),
-          FencingToken(asNumber(current.fencing_token)),
+          FencingToken(postgresInteger(current.fencing_token)),
         );
       }
       const updated = await client.query<SessionRouteRow>(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET state = $3,
                 worker_id = NULL,
                 lease_id = NULL,
@@ -1011,9 +949,9 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<RuntimeSessionRoute | null> {
     this.assertTenantSession(tenantId, sessionId);
     await this.ensureInitialized();
-    const result = await this.queryClient().query<SessionRouteRow>(
+    const result = await this.db.client().query<SessionRouteRow>(
       `SELECT *
-         FROM ${this.table('session_routes')}
+         FROM ${this.db.table('session_routes')}
         WHERE tenant_id = $1 AND session_id = $2`,
       [tenantId, sessionId],
     );
@@ -1023,9 +961,9 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   async listWorkerSessions(workerId: WorkerId): Promise<readonly RuntimeSessionRoute[]> {
     this.assertWorkerId(workerId);
     await this.ensureInitialized();
-    const result = await this.queryClient().query<SessionRouteRow>(
+    const result = await this.db.client().query<SessionRouteRow>(
       `SELECT *
-         FROM ${this.table('session_routes')}
+         FROM ${this.db.table('session_routes')}
         WHERE worker_id = $1
         ORDER BY updated_at ASC, tenant_id ASC, session_id ASC`,
       [workerId],
@@ -1038,10 +976,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       throw new WorkerRuntimeError('WORKER_INVALID', 'tenantId must not be empty');
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       const sessionCountsResult = await client.query<MetricCountRow>(
         `SELECT state AS metric_state, COUNT(*) AS metric_count
-           FROM ${this.table('session_routes')}
+           FROM ${this.db.table('session_routes')}
           WHERE ($1::text IS NULL OR tenant_id = $1)
           GROUP BY state`,
         [tenantId ?? null],
@@ -1050,7 +988,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         `SELECT COUNT(*) AS claimable,
                 MIN(queued_at) AS oldest_claimable_at,
                 NOW() AS collected_at
-           FROM ${this.table('session_routes')}
+           FROM ${this.db.table('session_routes')}
           WHERE state IN ('queued', 'suspended')
             AND worker_id IS NULL
             AND ($1::text IS NULL OR tenant_id = $1)`,
@@ -1058,7 +996,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       );
       const effectCountsResult = await client.query<MetricCountRow>(
         `SELECT status AS metric_state, COUNT(*) AS metric_count
-           FROM ${this.table('outbox')}
+           FROM ${this.db.table('outbox')}
           WHERE ($1::text IS NULL OR tenant_id = $1)
           GROUP BY status`,
         [tenantId ?? null],
@@ -1067,7 +1005,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         `SELECT COUNT(*) AS claimable,
                 MIN(available_at) AS oldest_claimable_at,
                 NOW() AS collected_at
-           FROM ${this.table('outbox')}
+           FROM ${this.db.table('outbox')}
           WHERE status = 'pending'
             AND available_at <= NOW()
             AND ($1::text IS NULL OR tenant_id = $1)`,
@@ -1081,12 +1019,12 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
                     ELSE status
                   END AS status,
                   capacity
-             FROM ${this.table('workers')}
+             FROM ${this.db.table('workers')}
          ),
          active_sessions AS (
            SELECT worker_id,
                   COUNT(*) AS count
-             FROM ${this.table('session_routes')}
+             FROM ${this.db.table('session_routes')}
             WHERE state = ANY($1::text[])
               AND worker_id IS NOT NULL
               AND lease_expires_at > NOW()
@@ -1119,7 +1057,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
             `PostgreSQL returned an unknown Session state: ${row.metric_state}`,
           );
         }
-        sessionCounts[row.metric_state as RuntimeSessionState] = asNumber(row.metric_count);
+        sessionCounts[row.metric_state as RuntimeSessionState] = postgresInteger(row.metric_count);
       }
 
       const effectCounts = Object.fromEntries(
@@ -1132,25 +1070,27 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
             `PostgreSQL returned an unknown Effect status: ${row.metric_state}`,
           );
         }
-        effectCounts[row.metric_state as RuntimeEffectStatus] = asNumber(row.metric_count);
+        effectCounts[row.metric_state as RuntimeEffectStatus] = postgresInteger(row.metric_count);
       }
 
       const workerCounts = Object.fromEntries(
         RUNTIME_WORKER_STATUSES.map((status) => [status, 0]),
       ) as Record<RuntimeWorkerStatus, number>;
-      workerCounts.active = asNumber(workerResult.rows[0]?.active_workers ?? 0);
-      workerCounts.draining = asNumber(workerResult.rows[0]?.draining_workers ?? 0);
-      workerCounts.offline = asNumber(workerResult.rows[0]?.offline_workers ?? 0);
-      const capacity = asNumber(workerResult.rows[0]?.capacity ?? 0);
-      const activeSessions = asNumber(workerResult.rows[0]?.active_sessions ?? 0);
+      workerCounts.active = postgresInteger(workerResult.rows[0]?.active_workers ?? 0);
+      workerCounts.draining = postgresInteger(workerResult.rows[0]?.draining_workers ?? 0);
+      workerCounts.offline = postgresInteger(workerResult.rows[0]?.offline_workers ?? 0);
+      const capacity = postgresInteger(workerResult.rows[0]?.capacity ?? 0);
+      const activeSessions = postgresInteger(workerResult.rows[0]?.active_sessions ?? 0);
       const sessionClaimable = sessionClaimableResult.rows[0];
       const effectClaimable = effectClaimableResult.rows[0];
-      const collectedAt = asIso(sessionClaimable?.collected_at ?? new Date().toISOString());
+      const collectedAt = postgresTimestamp(
+        sessionClaimable?.collected_at ?? new Date().toISOString(),
+      );
       const oldestSessionAt = sessionClaimable?.oldest_claimable_at
-        ? asIso(sessionClaimable.oldest_claimable_at)
+        ? postgresTimestamp(sessionClaimable.oldest_claimable_at)
         : undefined;
       const oldestEffectAt = effectClaimable?.oldest_claimable_at
-        ? asIso(effectClaimable.oldest_claimable_at)
+        ? postgresTimestamp(effectClaimable.oldest_claimable_at)
         : undefined;
 
       return {
@@ -1158,7 +1098,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         ...(tenantId ? { tenantId } : {}),
         sessions: {
           counts: sessionCounts,
-          claimable: asNumber(sessionClaimable?.claimable ?? 0),
+          claimable: postgresInteger(sessionClaimable?.claimable ?? 0),
           ...(oldestSessionAt
             ? {
                 oldestClaimableAt: oldestSessionAt,
@@ -1168,7 +1108,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         },
         effects: {
           counts: effectCounts,
-          claimable: asNumber(effectClaimable?.claimable ?? 0),
+          claimable: postgresInteger(effectClaimable?.claimable ?? 0),
           ...(oldestEffectAt
             ? {
                 oldestClaimableAt: oldestEffectAt,
@@ -1189,28 +1129,28 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   async recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
     // See the abandonment statement below for why this window exists.
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       const offlineWorkers = await client.query(
-        `UPDATE ${this.table('workers')}
+        `UPDATE ${this.db.table('workers')}
             SET status = 'offline'
           WHERE status <> 'offline' AND lease_expires_at <= NOW()`,
       );
       await client.query(
-        `UPDATE ${this.table('execution_leases')} leases
+        `UPDATE ${this.db.table('execution_leases')} leases
             SET released_at = COALESCE(released_at, NOW())
           WHERE released_at IS NULL
             AND (
               expires_at <= NOW()
               OR EXISTS (
                 SELECT 1
-                  FROM ${this.table('workers')} workers
+                  FROM ${this.db.table('workers')} workers
                  WHERE workers.worker_id = leases.owner_id
                    AND workers.status = 'offline'
               )
             )`,
       );
       const suspendedSessions = await client.query(
-        `UPDATE ${this.table('session_routes')} routes
+        `UPDATE ${this.db.table('session_routes')} routes
             SET state = 'suspended',
                 worker_id = NULL,
                 lease_id = NULL,
@@ -1225,7 +1165,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               lease_expires_at <= NOW()
               OR EXISTS (
                 SELECT 1
-                  FROM ${this.table('workers')} workers
+                  FROM ${this.db.table('workers')} workers
                  WHERE workers.worker_id = routes.worker_id
                    AND workers.status = 'offline'
               )
@@ -1233,7 +1173,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         [ACTIVE_SESSION_STATES],
       );
       const uncertainEffects = await client.query(
-        `UPDATE ${this.table('outbox')} effects
+        `UPDATE ${this.db.table('outbox')} effects
             SET status = 'uncertain',
                 completed_at = NOW(),
                 error = COALESCE(
@@ -1246,14 +1186,14 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               lease_expires_at <= NOW()
               OR EXISTS (
                 SELECT 1
-                  FROM ${this.table('workers')} workers
+                  FROM ${this.db.table('workers')} workers
                  WHERE workers.worker_id = effects.worker_id
                    AND workers.status = 'offline'
               )
             )`,
       );
       const requeuedEffects = await client.query(
-        `UPDATE ${this.table('outbox')} effects
+        `UPDATE ${this.db.table('outbox')} effects
             SET status = 'pending',
                 worker_id = NULL,
                 lease_id = NULL,
@@ -1267,7 +1207,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
               lease_expires_at <= NOW()
               OR EXISTS (
                 SELECT 1
-                  FROM ${this.table('workers')} workers
+                  FROM ${this.db.table('workers')} workers
                  WHERE workers.worker_id = effects.worker_id
                    AND workers.status = 'offline'
               )
@@ -1279,7 +1219,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       // let the caller reconcile. The side effect may have happened, which is why
       // it is never re-executed.
       const abandonedCommands = await client.query(
-        `UPDATE ${this.table('commands')}
+        `UPDATE ${this.db.table('commands')}
             SET status = 'abandoned',
                 abandon_reason = 'sealed command did not complete within the abandonment window',
                 updated_at = NOW()
@@ -1311,13 +1251,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     }
     await this.ensureInitialized();
     await this.recoverExpiredWork();
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       await this.lockAvailableWorker(client, options.workerId);
       const leaseId = options.leaseId ?? ExecutionLeaseId(nanoid());
       const result = await client.query<EffectRow>(
         `WITH candidates AS (
            SELECT tenant_id, effect_id
-             FROM ${this.table('outbox')}
+             FROM ${this.db.table('outbox')}
             WHERE status = 'pending'
               AND available_at <= NOW()
               AND ($1::text IS NULL OR tenant_id = $1)
@@ -1325,7 +1265,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
             FOR UPDATE SKIP LOCKED
             LIMIT $2
          )
-         UPDATE ${this.table('outbox')} effects
+         UPDATE ${this.db.table('outbox')} effects
             SET status = 'claimed',
                 worker_id = $3,
                 lease_id = $4,
@@ -1344,10 +1284,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   async renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord> {
     assertTtl(ttlMs);
     await this.ensureInitialized();
-    const result = await this.queryClient().query<EffectRow>(
-      `UPDATE ${this.table('outbox')} effects
+    const result = await this.db.client().query<EffectRow>(
+      `UPDATE ${this.db.table('outbox')} effects
           SET lease_expires_at = NOW() + ($6 * INTERVAL '1 millisecond')
-         FROM ${this.table('workers')} workers
+         FROM ${this.db.table('workers')} workers
         WHERE effects.tenant_id = $1
           AND effects.effect_id = $2
           AND effects.worker_id = $3
@@ -1366,12 +1306,12 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
 
   async startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord> {
     await this.ensureInitialized();
-    const result = await this.queryClient().query<EffectRow>(
-      `UPDATE ${this.table('outbox')} effects
+    const result = await this.db.client().query<EffectRow>(
+      `UPDATE ${this.db.table('outbox')} effects
           SET status = 'executing',
               attempts = attempts + 1,
               started_at = COALESCE(started_at, NOW())
-         FROM ${this.table('workers')} workers
+         FROM ${this.db.table('workers')} workers
         WHERE effects.tenant_id = $1
           AND effects.effect_id = $2
           AND effects.worker_id = $3
@@ -1394,8 +1334,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<RuntimeEffectRecord> {
     assertJsonObject(result ?? {}, 'Effect result');
     await this.ensureInitialized();
-    const updated = await this.queryClient().query<EffectRow>(
-      `UPDATE ${this.table('outbox')}
+    const updated = await this.db.client().query<EffectRow>(
+      `UPDATE ${this.db.table('outbox')}
           SET status = 'completed',
               result = $6::jsonb,
               error = NULL,
@@ -1429,10 +1369,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       throw new WorkerRuntimeError('WORKER_INVALID', 'Effect retryAt must be an ISO timestamp');
     }
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       const current = await client.query<EffectRow>(
         `SELECT *
-           FROM ${this.table('outbox')}
+           FROM ${this.db.table('outbox')}
           WHERE tenant_id = $1 AND effect_id = $2
           FOR UPDATE`,
         [lease.tenantId, lease.effectId],
@@ -1447,7 +1387,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       }
       const retry = options.retryAt !== undefined;
       const updated = await client.query<EffectRow>(
-        `UPDATE ${this.table('outbox')}
+        `UPDATE ${this.db.table('outbox')}
             SET status = $6,
                 error = $7::jsonb,
                 available_at = CASE WHEN $6 = 'pending' THEN $8 ELSE available_at END,
@@ -1482,8 +1422,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<RuntimeEffectRecord> {
     assertJsonObject(error, 'Effect uncertainty');
     await this.ensureInitialized();
-    const updated = await this.queryClient().query<EffectRow>(
-      `UPDATE ${this.table('outbox')}
+    const updated = await this.db.client().query<EffectRow>(
+      `UPDATE ${this.db.table('outbox')}
           SET status = 'uncertain',
               error = $6::jsonb,
               completed_at = NOW()
@@ -1520,8 +1460,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       assertJsonObject(outcome.error, 'Effect reconciliation error');
     }
     await this.ensureInitialized();
-    const result = await this.queryClient().query<EffectRow>(
-      `UPDATE ${this.table('outbox')}
+    const result = await this.db.client().query<EffectRow>(
+      `UPDATE ${this.db.table('outbox')}
           SET status = $3,
               result = $4::jsonb,
               error = $5::jsonb,
@@ -1555,9 +1495,9 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertTenantSession(tenantId, sessionId);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT 1
-         FROM ${this.table('execution_leases')}
+         FROM ${this.db.table('execution_leases')}
         WHERE tenant_id = $1 AND session_id = $2`,
       [tenantId, sessionId],
     );
@@ -1575,8 +1515,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     assertTtl(options.ttlMs);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
       const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
       if (
         current?.active &&
@@ -1588,7 +1528,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
           {
             sessionId,
             leaseId: options.leaseId,
-            fencingToken: FencingToken(asNumber(current.fencing_token)),
+            fencingToken: FencingToken(postgresInteger(current.fencing_token)),
             activeLease: this.executionLease(current),
           },
         );
@@ -1599,15 +1539,15 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         current.owner_id === options.ownerId;
       const fencingToken =
         reusesActiveLease && current
-          ? FencingToken(asNumber(current.fencing_token))
-          : this.nextFencingToken(sessionId, current ? asNumber(current.fencing_token) : 0);
+          ? FencingToken(postgresInteger(current.fencing_token))
+          : this.nextFencingToken(sessionId, current ? postgresInteger(current.fencing_token) : 0);
       return this.upsertExecutionLease(
         client,
         tenantId,
         sessionId,
         options,
         fencingToken,
-        reusesActiveLease && current ? asIso(current.acquired_at) : undefined,
+        reusesActiveLease && current ? postgresTimestamp(current.acquired_at) : undefined,
       );
     });
   }
@@ -1623,11 +1563,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     assertTtl(ttlMs);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
       const result = await client.query<ExecutionLeaseRow>(
-        `UPDATE ${this.table('execution_leases')}
+        `UPDATE ${this.db.table('execution_leases')}
             SET renewed_at = NOW(),
                 expires_at = NOW() + ($5 * INTERVAL '1 millisecond')
           WHERE tenant_id = $1 AND session_id = $2
@@ -1640,7 +1580,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         throw this.leaseLost(lease);
       }
       await client.query(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET lease_expires_at = $5, updated_at = NOW()
           WHERE tenant_id = $1 AND session_id = $2
             AND lease_id = $3 AND fencing_token = $4`,
@@ -1659,8 +1599,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertTenantSession(tenantId, lease.sessionId);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    await this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    await this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
     });
     options.signal?.throwIfAborted();
@@ -1672,7 +1612,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     sessionId: SessionId,
     fence: DurableExecutionFence | undefined,
   ): Promise<void> {
-    await this.lock(client, `execution:${tenantId}:${sessionId}`);
+    await this.db.lock(client, `execution:${tenantId}:${sessionId}`);
     const current = await this.loadExecutionLease(client, tenantId, sessionId, true);
     if (!current) {
       if (fence) {
@@ -1702,8 +1642,8 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertTenantSession(tenantId, lease.sessionId);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    return this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       await this.assertExecutionLeaseWithClient(client, tenantId, lease, true);
       options.signal?.throwIfAborted();
       const result = await operation();
@@ -1720,13 +1660,13 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     this.assertTenantSession(tenantId, lease.sessionId);
     options.signal?.throwIfAborted();
     await this.ensureInitialized();
-    await this.transaction(async (client) => {
-      await this.lock(client, `execution:${tenantId}:${lease.sessionId}`);
+    await this.db.transaction(async (client) => {
+      await this.db.lock(client, `execution:${tenantId}:${lease.sessionId}`);
       const current = await this.loadExecutionLease(client, tenantId, lease.sessionId, true);
       if (
         current?.released_at &&
         current.lease_id === lease.leaseId &&
-        asNumber(current.fencing_token) === lease.fencingToken
+        postgresInteger(current.fencing_token) === lease.fencingToken
       ) {
         return;
       }
@@ -1739,7 +1679,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         lease.fencingToken,
       );
       await client.query(
-        `UPDATE ${this.table('session_routes')}
+        `UPDATE ${this.db.table('session_routes')}
             SET state = CASE
                   WHEN state = ANY($5::text[]) THEN 'suspended'
                   ELSE state
@@ -1771,7 +1711,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     const result = await client.query<WorkerRow>(
       `SELECT *, 0::int AS active_sessions,
               lease_expires_at > NOW() AS heartbeat_active
-         FROM ${this.table('workers')}
+         FROM ${this.db.table('workers')}
         WHERE worker_id = $1
         FOR UPDATE`,
       [workerId],
@@ -1797,7 +1737,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
   ): Promise<SessionRouteRow | null> {
     const result = await client.query<SessionRouteRow>(
       `SELECT *
-         FROM ${this.table('session_routes')}
+         FROM ${this.db.table('session_routes')}
         WHERE tenant_id = $1 AND session_id = $2
         ${forUpdate ? 'FOR UPDATE' : ''}`,
       [tenantId, sessionId],
@@ -1814,7 +1754,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     const result = await client.query<ExecutionLeaseRow>(
       `SELECT *,
               released_at IS NULL AND expires_at > NOW() AS active
-         FROM ${this.table('execution_leases')}
+         FROM ${this.db.table('execution_leases')}
         WHERE tenant_id = $1 AND session_id = $2
         ${forUpdate ? 'FOR UPDATE' : ''}`,
       [tenantId, sessionId],
@@ -1831,7 +1771,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     acquiredAt?: string,
   ): Promise<DurableExecutionLease> {
     const result = await client.query<ExecutionLeaseRow>(
-      `INSERT INTO ${this.table('execution_leases')} (
+      `INSERT INTO ${this.db.table('execution_leases')} (
          tenant_id, session_id, fencing_token, lease_id, owner_id,
          acquired_at, renewed_at, expires_at, released_at
        ) VALUES (
@@ -1881,7 +1821,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       !current ||
       current.released_at !== null ||
       current.lease_id !== lease.leaseId ||
-      asNumber(current.fencing_token) !== lease.fencingToken ||
+      postgresInteger(current.fencing_token) !== lease.fencingToken ||
       (lease.ownerId !== undefined && current.owner_id !== lease.ownerId) ||
       (requireUnexpired && !current.active)
     ) {
@@ -1898,7 +1838,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
     fencingToken: FencingToken,
   ): Promise<void> {
     await client.query(
-      `UPDATE ${this.table('execution_leases')}
+      `UPDATE ${this.db.table('execution_leases')}
           SET released_at = COALESCE(released_at, NOW())
         WHERE tenant_id = $1 AND session_id = $2
           AND lease_id = $3 AND fencing_token = $4`,
@@ -1915,7 +1855,7 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       !row ||
       row.worker_id !== lease.workerId ||
       row.lease_id !== lease.leaseId ||
-      asNumber(row.fencing_token) !== lease.fencingToken ||
+      postgresInteger(row.fencing_token) !== lease.fencingToken ||
       row.status !== status
     ) {
       throw new WorkerRuntimeError(
@@ -1944,11 +1884,11 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       status: row.status,
       capacity: row.capacity,
       activeSessions: row.active_sessions,
-      metadata: asJsonObject(row.metadata),
-      registeredAt: asIso(row.registered_at),
-      lastHeartbeatAt: asIso(row.last_heartbeat_at),
-      leaseExpiresAt: asIso(row.lease_expires_at),
-      ...(row.draining_at ? { drainingAt: asIso(row.draining_at) } : {}),
+      metadata: postgresJsonObject(row.metadata),
+      registeredAt: postgresTimestamp(row.registered_at),
+      lastHeartbeatAt: postgresTimestamp(row.last_heartbeat_at),
+      leaseExpiresAt: postgresTimestamp(row.lease_expires_at),
+      ...(row.draining_at ? { drainingAt: postgresTimestamp(row.draining_at) } : {}),
     };
   }
 
@@ -1965,14 +1905,14 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       state: row.state,
       priority: row.priority,
       attempt: row.attempt,
-      fencingToken: FencingToken(asNumber(row.fencing_token)),
+      fencingToken: FencingToken(postgresInteger(row.fencing_token)),
       ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
       ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
-      queuedAt: asIso(row.queued_at),
-      updatedAt: asIso(row.updated_at),
-      metadata: asJsonObject(row.metadata),
-      ...(row.failure ? { failure: asJsonObject(row.failure) } : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: postgresTimestamp(row.lease_expires_at) } : {}),
+      queuedAt: postgresTimestamp(row.queued_at),
+      updatedAt: postgresTimestamp(row.updated_at),
+      metadata: postgresJsonObject(row.metadata),
+      ...(row.failure ? { failure: postgresJsonObject(row.failure) } : {}),
     };
   }
 
@@ -1981,10 +1921,10 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       sessionId: SessionId(row.session_id),
       leaseId: ExecutionLeaseId(row.lease_id),
       ownerId: WorkerId(row.owner_id),
-      fencingToken: FencingToken(asNumber(row.fencing_token)),
-      acquiredAt: asIso(row.acquired_at),
-      renewedAt: asIso(row.renewed_at),
-      expiresAt: asIso(row.expires_at),
+      fencingToken: FencingToken(postgresInteger(row.fencing_token)),
+      acquiredAt: postgresTimestamp(row.acquired_at),
+      renewedAt: postgresTimestamp(row.renewed_at),
+      expiresAt: postgresTimestamp(row.expires_at),
     };
   }
 
@@ -1995,23 +1935,23 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
       commandId: CommandId(row.command_id),
       effectId: row.effect_id,
       type: row.effect_type,
-      payload: asJsonObject(row.payload),
+      payload: postgresJsonObject(row.payload),
       idempotencyKey: row.idempotency_key,
       executionMode: row.execution_mode,
       status: row.status,
       attempts: row.attempts,
-      availableAt: asIso(row.available_at),
-      createdAt: asIso(row.created_at),
+      availableAt: postgresTimestamp(row.available_at),
+      createdAt: postgresTimestamp(row.created_at),
       ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
       ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(asNumber(row.fencing_token) > 0
-        ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
+      ...(postgresInteger(row.fencing_token) > 0
+        ? { fencingToken: FencingToken(postgresInteger(row.fencing_token)) }
         : {}),
-      ...(row.lease_expires_at ? { leaseExpiresAt: asIso(row.lease_expires_at) } : {}),
-      ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
-      ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
-      ...(row.result ? { result: asJsonObject(row.result) } : {}),
-      ...(row.error ? { error: asJsonObject(row.error) } : {}),
+      ...(row.lease_expires_at ? { leaseExpiresAt: postgresTimestamp(row.lease_expires_at) } : {}),
+      ...(row.started_at ? { startedAt: postgresTimestamp(row.started_at) } : {}),
+      ...(row.completed_at ? { completedAt: postgresTimestamp(row.completed_at) } : {}),
+      ...(row.result ? { result: postgresJsonObject(row.result) } : {}),
+      ...(row.error ? { error: postgresJsonObject(row.error) } : {}),
     };
   }
 
@@ -2099,47 +2039,5 @@ export class PostgresWorkerRuntime implements WorkerRuntimeStore {
         { sessionId, leaseId: lease.leaseId },
       );
     }
-  }
-
-  private table(suffix: string): string {
-    return `${this.schema}.${quoteIdentifier(`${this.prefix}_${suffix}`)}`;
-  }
-
-  private queryClient(): Pool | PoolClient {
-    return this.transactionContext.getStore() ?? this.pool;
-  }
-
-  private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
-    const activeClient = this.transactionContext.getStore();
-    if (activeClient) {
-      const savepoint = quoteIdentifier(`worker_nested_${nanoid().replaceAll('-', '_')}`);
-      await activeClient.query(`SAVEPOINT ${savepoint}`);
-      try {
-        const result = await operation(activeClient);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
-        return result;
-      } catch (error) {
-        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => undefined);
-        throw error;
-      }
-    }
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await this.transactionContext.run(client, () => operation(client));
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  private async lock(client: PoolClient, key: string): Promise<void> {
-    const [first, second] = lockKey(key);
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [first, second]);
   }
 }
