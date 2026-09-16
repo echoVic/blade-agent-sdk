@@ -232,6 +232,11 @@ legacy history has no identity, reasoning is converted to ordinary assistant
 text while tool-call relationships are preserved. This prevents
 provider-specific reasoning payloads from being sent to an incompatible API.
 
+Built-in provider selection is owned by the single typed factory table in
+`services/modelProvider.ts`. Message, tool-schema, tool-call, usage, and
+provider-option conversion live in `services/modelAdapter.ts`;
+`VercelAIModelService` only coordinates requests, retries, and streams.
+
 ## Custom provider adapters
 
 `ProviderRegistry` is an instance-scoped registry. It has no process-global

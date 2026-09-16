@@ -17,6 +17,12 @@ import {
 creates a private, bounded tmpfs workspace and a dedicated OCI container. The
 workspace may start empty or import one local Git revision.
 
+The reference implementation has explicit internal owners:
+`DockerExecutionPolicy` validates requests and builds container configuration,
+`DockerProcessRunner` enforces process timeouts, cancellation, and output
+limits, and `DockerWorkspace` transfers Git archives and checkpoint workspaces.
+`DockerExecutionHost` retains only execution lifecycle and ownership state.
+
 ## Lifecycle
 
 ```ts

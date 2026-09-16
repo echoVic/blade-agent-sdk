@@ -16,6 +16,11 @@ import {
 tmpfs workspace 和 OCI 容器。workspace 可以为空，也可以从一个本地 Git revision
 导入。
 
+参考实现内部按责任拆分：`DockerExecutionPolicy` 校验请求并生成容器配置，
+`DockerProcessRunner` 统一处理进程超时、中止和输出上限，
+`DockerWorkspace` 负责 Git archive 与 checkpoint workspace 传输。
+`DockerExecutionHost` 只保留 execution 生命周期和所有权状态。
+
 ## 生命周期
 
 ```ts

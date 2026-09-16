@@ -159,7 +159,7 @@ search cache/provider layers, fuzzy Edit diagnostics, and duplicate file
 tracking branches were removed. Built-in production code is **7,447 LOC**, and
 every built-in file is below 700 lines.
 
-### Task 7: Simplify providers, execution hosts, and remaining god files
+### Task 7: Simplify providers, execution hosts, and remaining god files [COMPLETED]
 
 Collapse provider selection/conversion/retry code and Docker execution helpers,
 then address every remaining production file over 900 LOC or function over 150
@@ -172,6 +172,18 @@ Acceptance:
   process primitives.
 - Remove unused dependencies discovered by the final import graph.
 - Production LOC reduction target: enough to reach the global 30% gate.
+
+Result: production TypeScript is **56,212 LOC**, down **210 lines** in this task
+and **27,593 lines (32.9%)** from baseline. Built-in model creation now uses one
+typed provider factory table, while message, schema, tool-call, provider-option,
+and usage conversion live in a shared adapter. `VercelAIModelService` is a
+289-line request/stream coordinator instead of a 1,174-line provider switch.
+Docker execution delegates policy validation, process lifecycle, and workspace
+archive transfer to three focused modules. Durable request/tool reducers and
+foreground Bash execution were split into bounded handlers. The final import
+audit removed four unused runtime dependencies and two obsolete type packages,
+and moved VitePress-only `fuse.js` to development dependencies. Every
+production file is at most 895 lines and every function is at most 150 lines.
 
 ### Task 8: Final architecture, verification, and PR
 

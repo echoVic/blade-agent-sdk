@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Type from 'typebox';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
@@ -8,15 +7,13 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
-import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
+import type { BashBackgroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { BashClassifier } from './BashClassifier.js';
-import { buildShellEnvironment } from './environment.js';
-import { OutputTruncator } from './OutputTruncator.js';
-import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js';
+import { executeForegroundShell } from './ForegroundShellRunner.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -295,14 +292,14 @@ Before executing commands:
         );
       }
 
-      return await executeWithTimeout(
-        effectiveCommand,
-        workDir,
+      return await executeForegroundShell({
+        command: effectiveCommand,
+        cwd: workDir,
         env,
-        context.contextSnapshot?.environment,
+        runtimeEnvironment: context.contextSnapshot?.environment,
         timeout,
         signal,
-      );
+      });
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
@@ -413,176 +410,4 @@ function executeInBackground(
     }),
     metadata,
   };
-}
-
-/**
- * 带超时的命令执行 - 使用进程事件监听
- */
-async function executeWithTimeout(
-  command: string,
-  cwd: string,
-  env: Record<string, string> | undefined,
-  runtimeEnvironment: Readonly<Record<string, string>> | undefined,
-  timeout: number,
-  signal: AbortSignal,
-): Promise<ToolResult> {
-  signal.throwIfAborted();
-  return new Promise((resolve) => {
-    const startTime = Date.now();
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-
-    // 创建进程
-    const bashProcess = spawn('bash', ['-c', command], {
-      cwd,
-      env: buildShellEnvironment(runtimeEnvironment, env),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      ...shellProcessSpawnOptions(),
-    });
-
-    // 收集 stdout
-    bashProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    // 收集 stderr
-    bashProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    let terminationPromise: Promise<void> | undefined;
-    const terminateTree = (): Promise<void> => {
-      terminationPromise ??= terminateProcessTree(bashProcess.pid, bashProcess, 1_000).catch(
-        (error) => {
-          stderr += `\nFailed to terminate command process tree: ${getErrorMessage(error)}`;
-        },
-      );
-      return terminationPromise;
-    };
-
-    // 设置超时
-    const timeoutHandle = setTimeout(() => {
-      if (bashProcess.exitCode !== null || bashProcess.signalCode !== null) {
-        return;
-      }
-      timedOut = true;
-      void terminateTree();
-    }, timeout);
-
-    // 处理中止信号
-    const abortHandler = () => {
-      clearTimeout(timeoutHandle);
-      void terminateTree();
-    };
-
-    signal.addEventListener('abort', abortHandler);
-    if (signal.aborted) {
-      abortHandler();
-    }
-
-    // 监听进程完成事件 - 业界标准做法
-    bashProcess.on('close', async (code, sig) => {
-      clearTimeout(timeoutHandle);
-      // 移除中止监听器
-      signal.removeEventListener('abort', abortHandler);
-      await terminationPromise;
-
-      const executionTime = Date.now() - startTime;
-
-      // 如果超时
-      if (timedOut) {
-        resolve({
-          status: 'error',
-          model: `Command execution timed out (${timeout}ms)`,
-          error: {
-            type: ToolErrorType.TIMEOUT_ERROR,
-            message: '命令执行超时',
-          },
-          metadata: {
-            command,
-            timeout: true,
-            stdout,
-            stderr,
-            execution_time: executionTime,
-          },
-        });
-        return;
-      }
-
-      // 如果被中止
-      if (signal.aborted) {
-        resolve({
-          status: 'error',
-          model: 'Command execution aborted by user',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: '操作被中止',
-          },
-          metadata: {
-            command,
-            aborted: true,
-            stdout,
-            stderr,
-            execution_time: executionTime,
-          },
-        });
-        return;
-      }
-
-      // 正常完成
-      // 生成 summary 用于流式显示
-      const cmdPreview = command.length > 30 ? `${command.substring(0, 30)}...` : command;
-      const summary =
-        code === 0
-          ? `执行命令成功 (${executionTime}ms): ${cmdPreview}`
-          : `执行命令完成 (退出码 ${code}, ${executionTime}ms): ${cmdPreview}`;
-
-      const metadata: BashForegroundMetadata = {
-        command,
-        execution_time: executionTime,
-        exit_code: code,
-        signal: sig,
-        stdout_length: stdout.length,
-        stderr_length: stderr.length,
-        has_stderr: stderr.length > 0,
-        summary,
-      };
-
-      const truncated = OutputTruncator.truncateForLLM(stdout.trim(), stderr.trim(), command);
-
-      resolve({
-        status: 'success',
-        model: toJsonValue({
-          stdout: truncated.stdout,
-          stderr: truncated.stderr,
-          execution_time: executionTime,
-          exit_code: code,
-          signal: sig,
-          ...(truncated.truncationInfo && {
-            truncation_info: truncated.truncationInfo,
-          }),
-        }),
-        metadata,
-      });
-    });
-
-    // 监听进程错误
-    bashProcess.on('error', async (error) => {
-      clearTimeout(timeoutHandle);
-      // 移除中止监听器
-      signal.removeEventListener('abort', abortHandler);
-      await terminationPromise;
-
-      resolve({
-        status: 'error',
-        model: `Command execution failed: ${error.message}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: error.message,
-          details: error,
-        },
-      });
-    });
-  });
 }

@@ -85,6 +85,10 @@ Provider、adapter、模型，或恢复不含来源信息的旧历史时，reaso
 普通 assistant 文本，同时保留 tool call 关联，避免把 Provider 专属 payload
 发送给不兼容的 API。
 
+内置 Provider 的选择由 `services/modelProvider.ts` 中唯一的 typed factory table
+负责。消息、工具 schema、tool call、usage 与 provider options 的转换集中在
+`services/modelAdapter.ts`；`VercelAIModelService` 只编排请求、重试和流消费。
+
 ## 自定义 Provider Adapter
 
 `ProviderRegistry` 是实例级 Registry，不包含进程全局注册状态，因此不同 Session
