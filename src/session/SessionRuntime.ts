@@ -5,7 +5,6 @@ import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
-import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
@@ -144,11 +143,9 @@ export class SessionRuntime {
     this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
       sessionId,
-      permissionMode,
       callbacks: this.hookCallbacks,
       hookTimeoutMs: options.hookTimeoutMs,
       sessionEndHookTimeoutMs: options.sessionEndHookTimeoutMs,
-      resolveProjectDir: () => getContextCwd(this.defaultContext),
     });
     this.executionPipeline = this.createExecutionPipeline();
   }
@@ -243,7 +240,6 @@ export class SessionRuntime {
       this.logger.warn(`⚠️  Skill loading error at ${error.path}: ${error.error}`);
     }
     await this.contextManager.initialize();
-    this.initializeHooks();
     if (this.hostProfile === NODE_SESSION_HOST) {
       await this.registerBuiltinTools();
     } else {
@@ -300,8 +296,7 @@ export class SessionRuntime {
 
   private getTerminalCleanupFailures(): Error[] {
     const terminalCleanupFailure = this.executionPipeline.getTerminalCleanupFailure();
-    const hookContainmentFailure = this.hookRuntime.getTerminalContainmentFailure();
-    return Array.from(new Set([terminalCleanupFailure, hookContainmentFailure]))
+    return [terminalCleanupFailure]
       .filter((error) => error !== undefined)
       .map((error) => (error instanceof Error ? error : new Error(String(error))));
   }
@@ -406,13 +401,6 @@ export class SessionRuntime {
       middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
     });
-  }
-
-  private initializeHooks(): void {
-    const hookManager = HookManager.getInstance();
-    if (Object.keys(this.hookCallbacks).length > 0) {
-      hookManager.enable();
-    }
   }
 
   private async registerBuiltinTools(): Promise<void> {

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
-import { HookManager } from '../../hooks/HookManager.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ModelServiceConfig } from '../../model/config.js';
 import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
@@ -144,49 +142,6 @@ describe('CompactionService', () => {
         providerRegistry: new ProviderRegistry(),
       }),
     ).rejects.toBe(registryError);
-  });
-
-  it('preserves a hook containment failure when cancellation races cleanup', async () => {
-    const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
-    const preCompactHook = vi
-      .spyOn(HookManager.getInstance(), 'executePreCompactHooks')
-      .mockImplementationOnce(async () => {
-        controller.abort(new Error('request cancelled'));
-        throw containmentError;
-      });
-
-    await expect(
-      compact([{ role: 'user', content: 'hello' }], {
-        trigger: 'manual',
-        modelName: 'gpt-5',
-        maxContextTokens: 128000,
-        projectDir: '/tmp',
-        signal: controller.signal,
-      }),
-    ).rejects.toBe(containmentError);
-    preCompactHook.mockRestore();
-  });
-
-  it('routes session-owned compaction hooks through the runtime boundary', async () => {
-    const controller = new AbortController();
-    const runFileHookOperation = vi.fn(
-      async (signal: AbortSignal | undefined, operation: () => Promise<unknown>) => {
-        expect(signal).toBe(controller.signal);
-        return operation();
-      },
-    );
-
-    await compact([{ role: 'user', content: 'hello' }], {
-      trigger: 'manual',
-      modelName: 'gpt-5',
-      maxContextTokens: 128000,
-      projectDir: '/tmp',
-      signal: controller.signal,
-      hookRuntime: { runFileHookOperation } as never,
-    });
-
-    expect(runFileHookOperation).toHaveBeenCalledTimes(3);
   });
 
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {

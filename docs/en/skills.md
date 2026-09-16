@@ -28,7 +28,7 @@ const agent = await createAgent({
 
 Explicit Skills take precedence over user, project, bundled, plugin, and MCP
 sources, but not managed sources. Data Skills have no file assets and deny
-inline shell commands and shell hooks by default.
+inline shell commands and runtime hook registration by default.
 
 ## Project layout
 

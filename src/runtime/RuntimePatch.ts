@@ -19,19 +19,7 @@ export interface RuntimeModelOverride {
   effort?: string | number;
 }
 
-// RuntimeHookEvent is intentionally a strict subset of HookEvent. When adding
-// a new HookEvent that should be activatable through skills/runtime patches,
-// update this union and the runtime guard in src/tools/builtin/system/skill.ts
-// together so parsed hooks are not silently dropped at activation time.
-export type RuntimeHookEvent =
-  | typeof HookEvent.PreToolUse
-  | typeof HookEvent.PostToolUse
-  | typeof HookEvent.PostToolUseFailure
-  | typeof HookEvent.PermissionRequest
-  | typeof HookEvent.UserPromptSubmit
-  | typeof HookEvent.SessionStart
-  | typeof HookEvent.SessionEnd
-  | typeof HookEvent.TaskCompleted;
+export type RuntimeHookEvent = typeof HookEvent.UserPromptSubmit;
 
 export interface RuntimeHookRegistration {
   event: RuntimeHookEvent;

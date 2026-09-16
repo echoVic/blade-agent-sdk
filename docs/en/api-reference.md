@@ -529,23 +529,15 @@ Constants:
 
 ## Hooks
 
-Runtime:
-
-- `getHookSchemas`
-
 Types and constants:
 
 - `HookCallback`
 - `HookInput`
 - `HookOutput`
 - `HookEvent`
-- `DecisionBehavior`
-- `HookExitCode`
-- `HookType`
 
-`HookEvent` has 22 shell-hook protocol events.
-`AgentOptions.advanced.hooks` and `SessionOptions.hooks` only accept the eight
-events in `SessionHookEvent`; see [Hooks](./hooks).
+`HookEvent`, `AgentOptions.advanced.hooks`, and `SessionOptions.hooks` use the
+eight events in `SessionHookEvent`; see [Hooks](./hooks).
 
 ## Middleware and plugins
 

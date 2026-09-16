@@ -1,4 +1,3 @@
-import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type { ModelToolCall } from '../../model/message.js';
 import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
@@ -46,8 +45,7 @@ export async function executeToolCalls(
   );
   const criticalFailure = settled.find(
     (result): result is PromiseRejectedResult =>
-      result.status === 'rejected' &&
-      (isHookProcessContainmentError(result.reason) || isExecutionLeaseFailure(result.reason)),
+      result.status === 'rejected' && isExecutionLeaseFailure(result.reason),
   );
   if (criticalFailure) {
     throw criticalFailure.reason;

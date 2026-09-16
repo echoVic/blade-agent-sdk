@@ -317,10 +317,7 @@ export class ExecutionPipeline {
         normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
       let result: ToolResult;
       try {
-        result = await this.hookStage.postExecution(state, executionId, normalizedResult, {
-          isTimeout,
-          isInterrupt: state.interrupted,
-        });
+        result = await this.hookStage.postExecution(state, executionId, normalizedResult);
       } catch (error) {
         if (isTerminalCleanupFailure(error)) {
           throw error;
@@ -359,10 +356,7 @@ export class ExecutionPipeline {
       let errorResult: ToolResult = originalErrorResult;
 
       try {
-        const hookResult = await this.hookStage.postExecution(state, executionId, errorResult, {
-          isTimeout,
-          isInterrupt,
-        });
+        const hookResult = await this.hookStage.postExecution(state, executionId, errorResult);
         errorResult = preserveTimeoutFailure(
           this.logger,
           originalErrorResult,

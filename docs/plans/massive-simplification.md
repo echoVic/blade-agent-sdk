@@ -41,7 +41,7 @@ baseline. The context cache/compression stack, dead history repair subsystem,
 deprecated permission and package-entrypoint paths, and legacy persistence
 migrations were removed.
 
-### Task 2: Collapse the hook subsystem
+### Task 2: Collapse the hook subsystem [COMPLETED]
 
 Replace HookManager/HookRuntime/HookExecutor/schema repetition with one typed,
 table-driven hook dispatcher and one callback lifecycle implementation.
@@ -52,6 +52,12 @@ Acceptance:
 - No per-event copy/paste dispatch methods.
 - Split remaining files by responsibility; no hook file over 900 LOC.
 - Production LOC reduction target: at least 3,500 additional lines.
+
+Result: production TypeScript is **73,999 LOC**, down **6,756 lines** in this
+task and **9,806 lines** from baseline. The unreachable shell-hook protocol,
+process executor, schema mirror, and 14 uncallable events were removed. Eight
+supported inline events now share one `HookDispatcher`; `HookRuntime` contains
+only event-specific input/output adaptation and runtime registration.
 
 ### Task 3: Simplify durable session events
 

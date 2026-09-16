@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
 import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { HookEvent } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { TranscriptEvent } from '../transcript.js';
@@ -147,32 +146,6 @@ describe('Session steering resilience', () => {
     for await (const _event of stream) {
       // drain
     }
-    await session.close();
-  });
-
-  it('does not hide a containment failure behind request cancellation', async () => {
-    const started = Promise.withResolvers<void>();
-    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
-    streamChatImpl = async function* containmentFailureStream(_message, context) {
-      const signal = (context as { signal: AbortSignal }).signal;
-      started.resolve();
-      await new Promise<void>((resolve) => {
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      });
-      yield* [] as never[];
-      throw containmentError;
-    };
-    const session = await createSession(baseOptions(createWorkspaceRoot()));
-    const controller = new AbortController();
-    await session.send('cancel during cleanup', { signal: controller.signal });
-    const stream = session.stream();
-    const firstEvent = stream.next();
-    const rejection = expect(firstEvent).rejects.toBe(containmentError);
-
-    await started.promise;
-    controller.abort(new Error('request cancelled'));
-
-    await rejection;
     await session.close();
   });
 

@@ -15,11 +15,8 @@ import { SubagentExecutor } from '../../../agent/subagents/SubagentExecutor.js';
 import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import type { SubagentContext, SubagentResult } from '../../../agent/subagents/types.js';
 import type { IBackgroundAgentManager } from '../../../agent/types.js';
-import { HookManager } from '../../../hooks/HookManager.js';
-import { isHookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
-import { PermissionMode } from '../../../types/constants.js';
-import { AgentId, SessionId } from '../../../types/identifiers.js';
+import { AgentId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
@@ -237,62 +234,12 @@ export const taskTool = createTool({
       };
 
       const startTime = Date.now();
-      let result: SubagentResult = await executor.execute(subagentContext);
-      let duration = Date.now() - startTime;
-
-      try {
-        const projectDir = context.contextSnapshot?.cwd;
-        if (!projectDir) {
-          return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
-        }
-
-        const hookManager = HookManager.getInstance();
-        const stopResult = await hookManager.executeSubagentStopHooks(subagent_type, {
-          projectDir,
-          sessionId: context.sessionId || SessionId('unknown'),
-          permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
-          taskDescription: description,
-          success: result.success,
-          resultSummary: result.message.slice(0, 500),
-          error: result.error,
-          abortSignal: context.signal,
-        });
-        context.signal?.throwIfAborted();
-
-        if (!stopResult.shouldStop && stopResult.continueReason) {
-          console.log(`[Task] SubagentStop hook 阻止停止，继续执行: ${stopResult.continueReason}`);
-
-          const continueContext: SubagentContext = {
-            prompt: stopResult.continueReason,
-            parentSessionId: context.sessionId,
-            permissionMode: context.permissionMode,
-            subagentSessionId,
-            snapshot: context.contextSnapshot,
-            signal: context.signal,
-            executionFence: runtime.executionFence,
-            assertExecutionLease: runtime.assertExecutionLease,
-            runWithExecutionLease: runtime.runWithExecutionLease,
-          };
-
-          const continueStartTime = Date.now();
-          result = await executor.execute(continueContext);
-          duration += Date.now() - continueStartTime;
-        }
-
-        if (stopResult.warning) {
-          console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
-        }
-      } catch (hookError) {
-        if (isExecutionLeaseFailure(hookError) || isHookProcessContainmentError(hookError)) {
-          throw hookError;
-        }
-        context.signal?.throwIfAborted();
-        console.warn('[Task] SubagentStop hook execution failed:', hookError);
-      }
+      const result: SubagentResult = await executor.execute(subagentContext);
+      const duration = Date.now() - startTime;
 
       return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
     } catch (error) {
-      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+      if (isExecutionLeaseFailure(error)) {
         throw error;
       }
       context.signal?.throwIfAborted();

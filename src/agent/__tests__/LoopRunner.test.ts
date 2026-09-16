@@ -7,7 +7,6 @@ import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ConversationMessage } from '../../model/conversation.js';
 import type { ModelMessage } from '../../model/message.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
@@ -372,30 +371,6 @@ describe('LoopRunner', () => {
         }),
       ).rejects.toBe(leaseError);
       expect(mm._chat).toHaveBeenCalledOnce();
-    });
-
-    it('propagates process-containment failures from the agent loop', async () => {
-      const mm = createMockModelManager();
-      mm._chat.mockResolvedValueOnce({
-        content: '',
-        toolCalls: [
-          {
-            id: 'containment-tool',
-            type: 'function',
-            function: { name: 'Task', arguments: '{}' },
-          },
-        ],
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
-      const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
-      const pipeline = createMockPipeline();
-      pipeline.execute = vi.fn(async function* () {
-        yield* [] as never[];
-        throw containmentError;
-      });
-      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-
-      await expect(runner.runLoop('Run a tool', createContext())).rejects.toBe(containmentError);
     });
 
     it('persists streaming tool turns in provider-compatible order', async () => {
@@ -1562,11 +1537,6 @@ describe('LoopRunner', () => {
 
       const hookRuntime = new HookRuntime({
         sessionId: SessionId('test-session'),
-        permissionMode: PermissionMode.DEFAULT,
-        resolveProjectDir: () => undefined,
-        hookManager: {
-          executeUserPromptSubmitHooks: vi.fn(async () => ({ proceed: true })),
-        } as never,
       });
 
       const runner = new LoopRunner(
@@ -1666,11 +1636,6 @@ describe('LoopRunner', () => {
 
       const hookRuntime = new HookRuntime({
         sessionId: SessionId('test-session'),
-        permissionMode: PermissionMode.DEFAULT,
-        resolveProjectDir: () => undefined,
-        hookManager: {
-          executeUserPromptSubmitHooks: vi.fn(async () => ({ proceed: true })),
-        } as never,
       });
 
       const runner = new LoopRunner(

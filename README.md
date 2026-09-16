@@ -220,8 +220,7 @@ const agent = await createAgent({
 ```
 
 `advanced.hooks` contains in-process TypeScript callbacks for the eight Session
-hook events. Shell hooks use `HookConfig` in CLI/host configuration and are not
-accepted by `createAgent()`. The low-level `SessionOptions.permissionMode` and
+hook events. The low-level `SessionOptions.permissionMode` and
 `permissionHandler` APIs remain available for runtime integrations.
 
 ## Package Entry Points

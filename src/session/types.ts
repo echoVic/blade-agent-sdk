@@ -213,27 +213,15 @@ export interface HookInput {
 
 export interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  /**
-   * For PreToolUse hooks: a JsonObject to merge into tool input params.
-   * For UserPromptSubmit hooks: either a JsonObject with a `userPrompt`
-   * key, or a bare string (legacy form) that replaces the prompt text.
-   */
-  modifiedInput?: JsonObject | string;
+  /** Input fields to merge into tool input or prompt payload. */
+  modifiedInput?: JsonObject;
   modifiedOutput?: JsonValue;
   reason?: string;
 }
 
 export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
-export type SessionHookEvent =
-  | typeof HookEvent.PreToolUse
-  | typeof HookEvent.PostToolUse
-  | typeof HookEvent.PostToolUseFailure
-  | typeof HookEvent.PermissionRequest
-  | typeof HookEvent.UserPromptSubmit
-  | typeof HookEvent.SessionStart
-  | typeof HookEvent.SessionEnd
-  | typeof HookEvent.TaskCompleted;
+export type SessionHookEvent = HookEvent;
 
 export interface SubagentInfo {
   parentSessionId: SessionId;

@@ -56,14 +56,6 @@ export {
   SessionInputError,
   ToolExecutionError,
 } from './errors/index.js';
-// --- Hook schema accessors ---
-export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
-// --- Hook system ---
-export {
-  DecisionBehavior,
-  HookExitCode,
-  HookType,
-} from './hooks/types.js';
 export type {
   CleanupFn,
   CleanupHandle,

@@ -1,5 +1,4 @@
 import type { JSONSchema7 } from 'json-schema';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ModelMessage, ModelStreamToolCall, ModelToolCall } from '../model/message.js';
 import type { ModelResponse, ModelService } from '../model/service.js';
@@ -235,10 +234,6 @@ export class StreamingToolExecutor {
         ),
       };
     } catch (error) {
-      if (isHookProcessContainmentError(error)) {
-        await Promise.allSettled(Array.from(inFlightExecutions.values()));
-        throw error;
-      }
       if (isSteeringInterruptSignal(signal)) {
         await this.settleInFlightExecutions(inFlightExecutions.values());
         await this.completeInterruptedToolCalls(
@@ -275,14 +270,7 @@ export class StreamingToolExecutor {
   }
 
   private async settleInFlightExecutions(executions: Iterable<Promise<void>>): Promise<void> {
-    const settled = await Promise.allSettled(Array.from(executions));
-    const containmentFailure = settled.find(
-      (result): result is PromiseRejectedResult =>
-        result.status === 'rejected' && isHookProcessContainmentError(result.reason),
-    );
-    if (containmentFailure) {
-      throw containmentFailure.reason;
-    }
+    await Promise.allSettled(Array.from(executions));
   }
 
   private async emitToolExecutionUpdate(

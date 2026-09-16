@@ -210,16 +210,7 @@ function compileRuntimeHooks(content: SkillContent): RuntimeHookRegistration[] |
 }
 
 function isRuntimeHookEvent(event: HookEvent): event is RuntimeHookEvent {
-  return (
-    event === HookEvent.PreToolUse ||
-    event === HookEvent.PostToolUse ||
-    event === HookEvent.PostToolUseFailure ||
-    event === HookEvent.PermissionRequest ||
-    event === HookEvent.UserPromptSubmit ||
-    event === HookEvent.SessionStart ||
-    event === HookEvent.SessionEnd ||
-    event === HookEvent.TaskCompleted
-  );
+  return event === HookEvent.UserPromptSubmit;
 }
 
 /**

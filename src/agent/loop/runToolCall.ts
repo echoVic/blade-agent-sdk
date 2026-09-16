@@ -1,4 +1,3 @@
-import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ModelToolCall } from '../../model/message.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
@@ -262,7 +261,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
         try {
           await execution.return(undefined as never);
         } catch (error) {
-          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+          if (isExecutionLeaseFailure(error)) {
             closeFailure = error;
           }
         }
@@ -299,7 +298,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
     }
     outcome = { toolCall: input.toolCall, result, effects, toolMessageId };
   } catch (error) {
-    if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+    if (isExecutionLeaseFailure(error)) {
       throw error;
     }
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);

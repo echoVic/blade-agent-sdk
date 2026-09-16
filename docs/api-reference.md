@@ -102,7 +102,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 名称 | 值 |
 |------|------|
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
-| `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
+| `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` |
 | `ToolKind` | `ReadOnly` / `Write` / `Execute` |
 | `InputPriority` | `NOW` / `NEXT` / `LATER` |
 | `SessionStreamEventType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
@@ -416,8 +416,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `HookInput` | Hook 输入 |
 | `HookOutput` | Hook 输出 |
 
-`HookEvent` 包含 22 个 shell hook 协议事件；`AgentOptions.advanced.hooks`
-与 `SessionOptions.hooks` 只接受
+`HookEvent`、`AgentOptions.advanced.hooks` 与 `SessionOptions.hooks` 接受
 `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PermissionRequest`、
 `PreToolUse`、`PostToolUse`、`PostToolUseFailure` 和 `TaskCompleted` 这 8 个
 内联事件。
@@ -500,15 +499,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `AgentId` / `MessageId` / `ToolUseId` | Agent、消息和工具调用 branded identifiers |
 | `JsonObject` / `JsonValue` | 严格 JSON 类型 |
 | `lazySingleton` | 惰性单例辅助函数 |
-
-### Hook 协议
-
-除 Session 内联 Hook 类型外，根入口还导出：
-
-- `getHookSchemas`
-- `DecisionBehavior`
-- `HookExitCode`
-- `HookType`
 
 ### DeepSeek 辅助 API
 

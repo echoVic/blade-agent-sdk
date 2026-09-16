@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Type from 'typebox';
-import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -14,6 +13,7 @@ import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
+import { BashClassifier } from './BashClassifier.js';
 import { buildShellEnvironment } from './environment.js';
 import { OutputTruncator } from './OutputTruncator.js';
 import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js';

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
 import { isTerminalCleanupFailure, TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
 
@@ -13,26 +12,21 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-function containmentFailure(): HookProcessContainmentError {
-  return new HookProcessContainmentError('containment lost');
+function leaseFailure(): DurableExecutionLeaseError {
+  return new DurableExecutionLeaseError('DURABLE_EXECUTION_LEASE_LOST', 'lease lost');
 }
 
 describe('TerminalCleanupGuard', () => {
-  it('treats execution-lease and containment failures as terminal', () => {
-    expect(
-      isTerminalCleanupFailure(
-        new DurableExecutionLeaseError('DURABLE_EXECUTION_LEASE_LOST', 'lease lost'),
-      ),
-    ).toBe(true);
-    expect(isTerminalCleanupFailure(containmentFailure())).toBe(true);
+  it('treats execution-lease failures as terminal', () => {
+    expect(isTerminalCleanupFailure(leaseFailure())).toBe(true);
     expect(isTerminalCleanupFailure(new Error('ordinary failure'))).toBe(false);
     expect(isTerminalCleanupFailure(undefined)).toBe(false);
   });
 
   it('keeps the first terminal failure and refuses later work', () => {
     const guard = new TerminalCleanupGuard();
-    const first = containmentFailure();
-    const second = containmentFailure();
+    const first = leaseFailure();
+    const second = leaseFailure();
 
     guard.remember(new Error('ordinary failure'));
     expect(guard.getTerminalFailure()).toBeUndefined();
@@ -70,9 +64,9 @@ describe('TerminalCleanupGuard', () => {
     controller.abort(new Error('cancelled'));
     await settled;
 
-    pending.reject(containmentFailure());
+    pending.reject(leaseFailure());
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(guard.getTerminalFailure()).toBeInstanceOf(HookProcessContainmentError);
+    expect(guard.getTerminalFailure()).toBeInstanceOf(DurableExecutionLeaseError);
   });
 
   it('does not quarantine a callback that only fails with an ordinary error', async () => {
@@ -105,10 +99,10 @@ describe('TerminalCleanupGuard', () => {
 
   it('quarantines the guard when a tracked cleanup fails terminally', async () => {
     const guard = new TerminalCleanupGuard();
-    const tracked = Promise.reject(containmentFailure());
+    const tracked = Promise.reject(leaseFailure());
     guard.trackExecutionCleanup(tracked);
     await vi.waitFor(() => {
-      expect(guard.getTerminalFailure()).toBeInstanceOf(HookProcessContainmentError);
+      expect(guard.getTerminalFailure()).toBeInstanceOf(DurableExecutionLeaseError);
       expect(guard.hasPendingExecutionCleanup()).toBe(false);
     });
   });

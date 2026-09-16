@@ -4,8 +4,6 @@ import { join } from 'node:path';
 import Type from 'typebox';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
-import { HookManager } from '../../hooks/HookManager.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { MemoryManager } from '../../memory/MemoryManager.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
@@ -561,65 +559,6 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('remains fail closed after permission cleanup reports a containment failure', async () => {
-    const started = deferred();
-    const release = Promise.withResolvers<void>();
-    const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Permission Hook process cleanup failed',
-    );
-    const runtime = new SessionRuntime(
-      SessionId('session-permission-containment-failure'),
-      createOptions({
-        tools: [customTool],
-        allowedTools: ['CustomTool'],
-        permissionHandler: async () => {
-          started.resolve();
-          await release.promise;
-          throw containmentError;
-        },
-      }),
-      {
-        models: [],
-      },
-      PermissionMode.YOLO,
-      createFilesystemContext(workspaceRoot),
-      NOOP_LOGGER,
-    );
-
-    await runtime.initialize();
-    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-    assertDefined(executionPipeline);
-    const resultPromise = collectToolExecution(
-      executionPipeline.execute(
-        'CustomTool',
-        {},
-        {
-          permissionMode: PermissionMode.YOLO,
-          signal: controller.signal,
-        },
-      ),
-    );
-
-    await started.promise;
-    controller.abort(new Error('request cancelled'));
-    await expect(resultPromise).resolves.toMatchObject({
-      status: 'error',
-      error: { message: 'request cancelled' },
-    });
-    release.reject(containmentError);
-    await vi.waitFor(() => {
-      expect(executionPipeline.getTerminalCleanupFailure()).toBe(containmentError);
-    });
-
-    const cancelBackgroundAgents = vi.spyOn(
-      runtime.getBackgroundAgentManager(),
-      'sealCancelAndWait',
-    );
-    await expect(runtime.close()).rejects.toBe(containmentError);
-    expect(cancelBackgroundAgents).toHaveBeenCalledOnce();
-  });
-
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
     const pluginTool = defineTool({
@@ -771,7 +710,6 @@ describe('SessionRuntime', () => {
   });
 
   it('should activate and execute hooks contributed only by a plugin', async () => {
-    const enableHooks = vi.spyOn(HookManager.getInstance(), 'enable');
     const pluginHook = vi.fn(async () => ({
       action: 'continue' as const,
       modifiedInput: {
@@ -803,7 +741,6 @@ describe('SessionRuntime', () => {
     await expect(runtime.getHookRuntime().applyUserPromptSubmit('original')).resolves.toBe(
       'modified by plugin',
     );
-    expect(enableHooks).toHaveBeenCalled();
     expect(pluginHook).toHaveBeenCalledOnce();
 
     await runtime.close();
@@ -1006,7 +943,7 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('should combine session prompt hooks with the hook runtime facade', async () => {
+  it('should expose session prompt hooks through the hook runtime facade', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-hooks'),
       createOptions({
@@ -1027,24 +964,9 @@ describe('SessionRuntime', () => {
       NOOP_LOGGER,
     );
 
-    const managerSpy = vi
-      .spyOn(HookManager.getInstance(), 'executeUserPromptSubmitHooks')
-      .mockResolvedValue({
-        proceed: true,
-        updatedPrompt: 'from-hook-manager',
-        contextInjection: 'extra context',
-      });
-
     const rewritten = await runtime.getHookRuntime().applyUserPromptSubmit('original prompt');
 
-    expect(managerSpy).toHaveBeenCalledWith(
-      'from-session-hook',
-      expect.objectContaining({
-        projectDir: workspaceRoot,
-        sessionId: 'session-hooks',
-      }),
-    );
-    expect(rewritten).toBe('from-hook-manager\n\nextra context');
+    expect(rewritten).toBe('from-session-hook');
 
     await runtime.close();
   });

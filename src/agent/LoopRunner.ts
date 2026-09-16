@@ -11,7 +11,6 @@
  */
 
 import type { HookRuntime } from '../hooks/HookRuntime.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import { buildSystemPrompt } from '../prompts/index.js';
@@ -135,11 +134,7 @@ export class LoopRunner {
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const requestSignal = options?.signal ?? context.signal;
-    if (
-      requestSignal?.aborted &&
-      (isExecutionLeaseFailure(requestSignal.reason) ||
-        isHookProcessContainmentError(requestSignal.reason))
-    ) {
+    if (requestSignal?.aborted && isExecutionLeaseFailure(requestSignal.reason)) {
       throw requestSignal.reason;
     }
 
@@ -286,7 +281,7 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
-      if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+      if (isExecutionLeaseFailure(error)) {
         throw error;
       }
       if (isExecutionLeaseFailure(requestSignal?.reason)) {

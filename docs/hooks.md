@@ -1,14 +1,7 @@
 # Hooks 生命周期钩子
 
-SDK 有两套用途不同的 Hook，配置位置不能混用：
-
-| Hook | API 位置 | 用途 |
-|------|----------|------|
-| Inline hooks | `AgentOptions.advanced.hooks`；底层为 `SessionOptions.hooks` | 当前进程中的 TypeScript callback |
-| Shell hooks | CLI/宿主配置文件中的 `HookConfig` | 由宿主启动并隔离命令进程 |
-
-`createAgent()` 只接受 inline hooks，不接受 `HookConfig`。Session 也不会自动扫描
-`.blade/hooks/` 等目录；shell hook 配置的发现、加载和进程权限属于 CLI 或宿主集成职责。
+SDK 通过 `AgentOptions.advanced.hooks` 提供进程内 TypeScript callback；
+底层 `SessionOptions.hooks` 使用同一套契约。
 
 ## 快速开始
 
@@ -39,9 +32,7 @@ const agent = await createAgent({
 
 ## Session 支持的事件
 
-`HookEvent` 常量包含 22 个事件，供 SDK 内部和 shell hook 协议使用。
-`AgentOptions.advanced.hooks` 与 `SessionOptions.hooks` 的公开类型
-`SessionHookEvent` 只接受以下 8 个事件。该类型可从根入口导入。
+`HookEvent` 和 `SessionHookEvent` 包含以下 8 个事件：
 
 | 事件 | 时机 | 常用输入 |
 |------|------|----------|
@@ -70,7 +61,7 @@ interface HookInput {
 
 interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  modifiedInput?: JsonObject | string;
+  modifiedInput?: JsonObject;
   modifiedOutput?: JsonValue;
   reason?: string;
 }
@@ -95,25 +86,10 @@ SDK 会组合调用方 signal 与 deadline，并通过 `HookInput.abortSignal` �
 callback。到期后事件以 `HookTimeoutError`（code 为 `HOOK_TIMEOUT`）失败。
 callback 必须监听 signal 并释放资源；如果取消后仍未结束，后续 inline hook
 dispatch 以及 Session close/handoff 都会 fail-closed，直至该 callback
-settle。上述选项不替代文件 Hook 自己的独立超时配置。
-
-文件/命令 Hook 会在启动子进程前检查 Request 信号。在 POSIX 上，取消或文件
-Hook 超时时会终止进程组，先发送 `SIGTERM` 并短暂等待，必要时升级为
-`SIGKILL`。在 Windows 上，命令必须在启动后代前加入 Job Object，取消时会终止
-完整 Job。进程树退出前 Hook 不会报告清理成功；containment 失败会直接拒绝，
-不服从普通 Hook 的失败降级策略。Windows 原生依赖 `koffi` 不可用时，命令 Hook
-也会在启动前 fail-closed。Runtime 还会在每个文件 Hook 返回后再次检查信号，因此
-默认的 `ignore` 失败策略不会让已取消的 Request 继续执行。
-如果 containment failure 在取消已赢得异步工具或权限竞态后才到达，执行管道会
-进入隔离状态；后续工具调用以及 Session close/handoff 都会继续 fail-closed。
-该状态不可在原 pipeline 上恢复；调用方必须停止使用并重新创建所属 Agent 或
-Session runtime，不能重试同一个实例。关闭旧 runtime 时仍可能返回同一个终态错误。
-
-POSIX containment 以进程组为边界。若 Hook 命令主动通过 `setsid()` 创建新会话，
-该进程会离开 SDK 管理的进程组，不属于可移植清理边界。
+settle。
 
 `SessionEnd` callback 在一次 runtime 关闭流程中只执行一次；callback 失败或
-超时后，重试 `close()` 不会再次调用它；文件 Hook 保持原有重试行为。
+超时后，重试 `close()` 不会再次调用它。
 
 ## 修改用户输入
 
@@ -134,8 +110,6 @@ hooks: {
   ],
 }
 ```
-
-为兼容旧回调，`modifiedInput` 也可以直接返回字符串。
 
 ## 修改工具输入
 

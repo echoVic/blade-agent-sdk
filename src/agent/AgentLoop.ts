@@ -6,7 +6,6 @@
  * 3. 使用 AsyncGenerator<AgentEvent, LoopResult> 统一输出
  */
 
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
@@ -284,9 +283,6 @@ export async function* agentLoop(config: AgentLoopConfig): AsyncGenerator<AgentE
       streamingExecutionResults = turnOutcome.streamingExecutionResults;
       modelAttemptId = turnOutcome.modelAttemptId;
     } catch (llmError) {
-      if (isHookProcessContainmentError(llmError)) {
-        throw llmError;
-      }
       const interruptInputId = getSteeringInterruptInputId(stepSignal);
       if (!signal?.aborted && interruptInputId && runControl) {
         yield {

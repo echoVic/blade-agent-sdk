@@ -213,8 +213,7 @@ const agent = await createAgent({
 ```
 
 `advanced.hooks` 只包含进程内 TypeScript callback，对应 8 种 Session hook
-事件。Shell hooks 使用 CLI/宿主配置中的 `HookConfig`，不能传给
-`createAgent()`。底层集成仍可使用 `SessionOptions.permissionMode` 和
+事件。底层集成仍可使用 `SessionOptions.permissionMode` 和
 `permissionHandler`。
 
 ## 包入口

@@ -3,8 +3,6 @@ import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
-import type { HookRuntime } from '../hooks/HookRuntime.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ModelService } from '../model/service.js';
 import { cloneMessage } from '../services/messageUtils.js';
@@ -24,7 +22,6 @@ export interface CompactionRuntimeContext {
   signal?: AbortSignal;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
-  hookRuntime?: HookRuntime;
 }
 
 export class CompactionHandler {
@@ -140,7 +137,6 @@ export class CompactionHandler {
           filesystemRoots: runtimeCtx.filesystemRoots,
           signal: runtimeCtx.signal,
           assertExecutionLease: runtimeCtx.assertExecutionLease,
-          hookRuntime: runtimeCtx.hookRuntime,
         });
         runtimeCtx.signal?.throwIfAborted();
         await runtimeCtx.assertExecutionLease?.();
@@ -178,11 +174,7 @@ export class CompactionHandler {
             this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩数据已保存到 JSONL`);
           }
         } catch (saveError) {
-          if (
-            runtimeCtx.signal?.aborted ||
-            isExecutionLeaseFailure(saveError) ||
-            isHookProcessContainmentError(saveError)
-          ) {
+          if (runtimeCtx.signal?.aborted || isExecutionLeaseFailure(saveError)) {
             throw saveError;
           }
           this.logger.warn(`[Agent] [轮次 ${currentTurn}] 保存压缩数据失败:`, saveError);
@@ -195,7 +187,6 @@ export class CompactionHandler {
         if (
           runtimeCtx.signal?.aborted ||
           isExecutionLeaseFailure(error) ||
-          isHookProcessContainmentError(error) ||
           error instanceof ProviderRegistryError
         ) {
           throw error;
@@ -286,7 +277,6 @@ export class CompactionHandler {
         filesystemRoots: runtimeCtx.filesystemRoots,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
-        hookRuntime: runtimeCtx.hookRuntime,
       });
       runtimeCtx.signal?.throwIfAborted();
       await runtimeCtx.assertExecutionLease?.();
@@ -312,11 +302,7 @@ export class CompactionHandler {
           );
         }
       } catch (saveError) {
-        if (
-          runtimeCtx.signal?.aborted ||
-          isExecutionLeaseFailure(saveError) ||
-          isHookProcessContainmentError(saveError)
-        ) {
+        if (runtimeCtx.signal?.aborted || isExecutionLeaseFailure(saveError)) {
           throw saveError;
         }
         this.logger.warn('[Agent] 保存反应式压缩数据失败:', saveError);
@@ -328,7 +314,6 @@ export class CompactionHandler {
       if (
         runtimeCtx.signal?.aborted ||
         isExecutionLeaseFailure(error) ||
-        isHookProcessContainmentError(error) ||
         error instanceof ProviderRegistryError
       ) {
         throw error;

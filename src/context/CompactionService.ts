@@ -5,9 +5,6 @@
 
 import { nanoid } from 'nanoid';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
-import { HookManager } from '../hooks/HookManager.js';
-import type { HookRuntime } from '../hooks/HookRuntime.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import type { ProviderType } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
@@ -16,8 +13,6 @@ import { createModelService } from '../services/createModelService.js';
 import { wrapModelServiceWithTimeouts } from '../services/ModelServiceTimeout.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
-import { PermissionMode } from '../types/constants.js';
-import { SessionId } from '../types/identifiers.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import {
   type MicrocompactOptions,
@@ -50,11 +45,7 @@ export interface CompactionOptions {
   customHeaders?: Record<string, string>;
   /** 真实的 preTokens（可选，来自 LLM usage，比估算更准确） */
   actualPreTokens?: number;
-  /** 会话 ID（用于 hooks） */
-  sessionId?: SessionId;
-  /** 权限模式（用于 hooks） */
-  permissionMode?: PermissionMode;
-  /** 当前 turn 的项目目录（用于 hooks） */
+  /** Current turn project directory used for scoped file context. */
   projectDir?: string;
   /** Canonicalization boundary for optional file context included in the summary. */
   filesystemRoots?: readonly string[];
@@ -62,8 +53,6 @@ export interface CompactionOptions {
   signal?: AbortSignal;
   /** @internal Validates execution ownership around compaction side effects. */
   assertExecutionLease?: () => Promise<void>;
-  /** @internal Applies the owning Session's file-Hook quarantine boundary. */
-  hookRuntime?: Pick<HookRuntime, 'runFileHookOperation'>;
 }
 
 /**
@@ -147,96 +136,6 @@ export async function compact(
     options.actualPreTokens ?? TokenCounter.countTokens(messages, options.modelName);
   const tokenSource = options.actualPreTokens ? 'actual (from LLM usage)' : 'estimated';
   console.log(`[CompactionService] preTokens source: ${tokenSource}`);
-  const runFileHook = <T>(operation: () => Promise<T>): Promise<T> =>
-    options.hookRuntime
-      ? options.hookRuntime.runFileHookOperation(options.signal, operation)
-      : operation();
-  const projectDir = options.projectDir;
-
-  if (projectDir) {
-    try {
-      const hookManager = HookManager.getInstance();
-
-      const preCompactResult = await runFileHook(() =>
-        hookManager.executePreCompactHooks(
-          {
-            trigger: options.trigger,
-            messages_before: messages.length,
-            tokens_before: preTokens,
-          },
-          projectDir,
-          options.sessionId || SessionId('unknown'),
-          options.permissionMode || PermissionMode.DEFAULT,
-          options.signal,
-        ),
-      );
-      options.signal?.throwIfAborted();
-      await options.assertExecutionLease?.();
-
-      if (preCompactResult.blockCompaction) {
-        console.log(
-          `[CompactionService] PreCompact hook 阻止压缩: ${preCompactResult.blockReason || '(无原因)'}`,
-        );
-        return {
-          success: false,
-          summary: '',
-          preTokens,
-          postTokens: preTokens,
-          filesIncluded: [],
-          compactedMessages: messages,
-          boundaryMessage: { role: 'system', content: '' },
-          summaryMessage: { role: 'user', content: '' },
-          error: preCompactResult.blockReason || 'Compaction blocked by PreCompact hook',
-        };
-      }
-      if (preCompactResult.warning) {
-        console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
-      }
-
-      const hookResult = await runFileHook(() =>
-        hookManager.executeCompactionHooks(options.trigger, {
-          projectDir,
-          sessionId: options.sessionId || SessionId('unknown'),
-          permissionMode: options.permissionMode || PermissionMode.DEFAULT,
-          messagesBefore: messages.length,
-          tokensBefore: preTokens,
-          abortSignal: options.signal,
-        }),
-      );
-      options.signal?.throwIfAborted();
-      await options.assertExecutionLease?.();
-
-      if (hookResult.blockCompaction) {
-        console.log(
-          `[CompactionService] Compaction hook 阻止压缩: ${hookResult.blockReason || '(无原因)'}`,
-        );
-        return {
-          success: false,
-          summary: '',
-          preTokens,
-          postTokens: preTokens,
-          filesIncluded: [],
-          compactedMessages: messages,
-          boundaryMessage: { role: 'system', content: '' },
-          summaryMessage: { role: 'user', content: '' },
-          error: hookResult.blockReason || 'Compaction blocked by hook',
-        };
-      }
-
-      if (hookResult.warning) {
-        console.warn(`[CompactionService] Compaction hook warning: ${hookResult.warning}`);
-      }
-    } catch (hookError) {
-      if (
-        options.signal?.aborted ||
-        isExecutionLeaseFailure(hookError) ||
-        isHookProcessContainmentError(hookError)
-      ) {
-        throw hookError;
-      }
-      console.warn('[CompactionService] Compaction hook execution failed:', hookError);
-    }
-  }
 
   try {
     console.log('[CompactionService] 开始压缩，消息数:', messages.length);
@@ -289,44 +188,6 @@ export async function compact(
       `(-${((1 - postTokens / preTokens) * 100).toFixed(1)}%)`,
     );
 
-    if (projectDir) {
-      try {
-        options.signal?.throwIfAborted();
-        await options.assertExecutionLease?.();
-        const postHookManager = HookManager.getInstance();
-        const postHookResult = await runFileHook(() =>
-          postHookManager.executePostCompactHooks(
-            {
-              trigger: options.trigger,
-              messages_before: messages.length,
-              messages_after: compactedMessages.length,
-              tokens_before: preTokens,
-              tokens_after: postTokens,
-              summary,
-            },
-            projectDir,
-            options.sessionId || SessionId('unknown'),
-            options.permissionMode || PermissionMode.DEFAULT,
-            options.signal,
-          ),
-        );
-        options.signal?.throwIfAborted();
-        await options.assertExecutionLease?.();
-        if (postHookResult.warning) {
-          console.warn(`[CompactionService] PostCompact hook warning: ${postHookResult.warning}`);
-        }
-      } catch (hookError) {
-        if (
-          options.signal?.aborted ||
-          isExecutionLeaseFailure(hookError) ||
-          isHookProcessContainmentError(hookError)
-        ) {
-          throw hookError;
-        }
-        console.warn('[CompactionService] PostCompact hook execution failed:', hookError);
-      }
-    }
-
     options.signal?.throwIfAborted();
     return {
       success: true,
@@ -339,11 +200,7 @@ export async function compact(
       summaryMessage,
     };
   } catch (error) {
-    if (
-      isExecutionLeaseFailure(error) ||
-      isHookProcessContainmentError(error) ||
-      error instanceof ProviderRegistryError
-    ) {
+    if (isExecutionLeaseFailure(error) || error instanceof ProviderRegistryError) {
       throw error;
     }
     options.signal?.throwIfAborted();

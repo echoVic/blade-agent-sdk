@@ -1,4 +1,3 @@
-import { isHookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { awaitWithAbortSignal, getAbortSignalReason } from '../../../utils/abortPromise.js';
 import type { ToolResult } from '../../types/result.js';
@@ -9,7 +8,7 @@ import { createPendingCleanupResult } from './results.js';
  * Once observed, the owning pipeline instance must stop executing tools.
  */
 export function isTerminalCleanupFailure(error: unknown): boolean {
-  return isExecutionLeaseFailure(error) || isHookProcessContainmentError(error);
+  return isExecutionLeaseFailure(error);
 }
 
 /**

@@ -1,12 +1,3 @@
-/**
- * BashClassifier - Classifies bash commands by danger level
- *
- * Categories:
- * - destructive: irreversible operations (rm, format, drop, etc.)
- * - write: modifies state but potentially reversible (mv, cp, chmod, etc.)
- * - readonly: read-only operations (ls, cat, grep, etc.)
- */
-
 export type BashCommandCategory = 'destructive' | 'write' | 'readonly';
 
 export interface BashClassification {
@@ -15,7 +6,6 @@ export interface BashClassification {
   matchedPattern?: string;
 }
 
-/** Patterns that indicate destructive (irreversible) operations */
 const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
     pattern: /\$(?:\{?[A-Za-z_][A-Za-z0-9_]*\}?|\()/,
@@ -56,7 +46,6 @@ const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: />\s*\/dev\/[a-z]+[0-9]/, reason: 'write to block device' },
 ];
 
-/** Patterns that indicate write operations (modifies state) */
 const WRITE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bmv\b/, reason: 'move/rename file' },
   { pattern: /\bcp\b/, reason: 'copy file' },
@@ -94,10 +83,6 @@ const WRITE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /(?<![>])>(?![>])/, reason: 'output redirect' },
 ];
 
-/**
- * Bash is an execution language, so read-only classification must be proven.
- * Compound commands and expansion are intentionally excluded from this list.
- */
 const READONLY_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /^\s*(pwd|whoami|date)\s*$/i, reason: 'read-only shell builtin' },
   { pattern: /^\s*(id|uname)(?:\s+[-\w]+)*\s*$/i, reason: 'read-only system inspection' },
@@ -120,35 +105,23 @@ const READONLY_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 export const BashClassifier = {
-  /**
-   * Classify a bash command by its danger level.
-   * Returns the most severe category found.
-   */
   classify(command: string): BashClassification {
-    // Check destructive first (highest severity)
     for (const { pattern, reason } of DESTRUCTIVE_PATTERNS) {
       if (pattern.test(command)) {
         return { category: 'destructive', reason, matchedPattern: pattern.source };
       }
     }
-
-    // Check write operations
     for (const { pattern, reason } of WRITE_PATTERNS) {
       if (pattern.test(command)) {
         return { category: 'write', reason, matchedPattern: pattern.source };
       }
     }
-
     for (const { pattern, reason } of READONLY_PATTERNS) {
       if (pattern.test(command)) {
         return { category: 'readonly', reason, matchedPattern: pattern.source };
       }
     }
-
-    return {
-      category: 'write',
-      reason: 'command is not proven read-only',
-    };
+    return { category: 'write', reason: 'command is not proven read-only' };
   },
 
   isDestructive(command: string): boolean {

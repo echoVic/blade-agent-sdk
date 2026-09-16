@@ -1,5 +1,4 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ModelResponse, ModelStreamChunk } from '../../model/service.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import type { ToolExecution, ToolResult } from '../../tools/types/result.js';
@@ -1018,64 +1017,6 @@ describe('StreamingToolExecutor', () => {
         message: 'cancelled',
       },
     });
-  });
-
-  it('does not downgrade containment failure during a steering interrupt', async () => {
-    const toolStarted = deferred<void>();
-    const runControl = new ActiveRequestController(RequestId('request-containment'));
-    const containmentError = new HookProcessContainmentError('Windows Job Object cleanup failed');
-    const { executor, execute } = createExecutor({
-      streamChat: async function* () {
-        yield {
-          toolCalls: [
-            {
-              index: 0,
-              id: 'tool-1',
-              function: {
-                name: 'CancelableTool',
-                arguments: '{}',
-              },
-            },
-          ],
-        };
-        while (!runControl.stepSignal.aborted) {
-          await tick();
-        }
-      },
-      execute: async (_toolName, _params, context) => {
-        const signal = (context as { signal?: AbortSignal } | undefined)?.signal;
-        toolStarted.resolve();
-        await new Promise<void>((_resolve) => {
-          signal?.addEventListener('abort', () => _resolve(), { once: true });
-        });
-        throw containmentError;
-      },
-      toolInterruptBehaviors: {
-        CancelableTool: 'cancel',
-      },
-    });
-
-    const promise = executor.collectAndExecute(
-      [{ role: 'user', content: 'run cancelable tool' }],
-      [{ name: 'CancelableTool', description: 'cancel', parameters: {} }],
-      runControl.stepSignal,
-      {
-        executionPipeline: executionPipelineFromMock(execute, {
-          CancelableTool: { interruptBehavior: 'cancel' },
-        }),
-        executionContext: {
-          sessionId: SessionId('session-1'),
-          userId: 'user-1',
-        },
-        requestSignal: runControl.requestSignal,
-        steeringSignal: runControl.steeringSignal,
-      },
-    );
-    const rejection = expect(promise).rejects.toBe(containmentError);
-    await toolStarted.promise;
-
-    runControl.interruptStep(InputId('input-now'));
-    await rejection;
   });
 
   it('forwards skillActivationPaths through the streaming execution path', async () => {

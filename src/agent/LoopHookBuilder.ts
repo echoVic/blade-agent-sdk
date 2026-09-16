@@ -11,7 +11,6 @@ import type { ContextManager } from '../context/ContextManager.js';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelMessage } from '../model/message.js';
@@ -210,7 +209,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           signal: requestSignal,
           assertExecutionLease: context.assertExecutionLease,
           runWithExecutionLease: context.runWithExecutionLease,
-          hookRuntime,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState,
@@ -243,7 +241,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               filesystemRoots: context.snapshot?.filesystemRoots,
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
-              hookRuntime,
             },
           );
           requestSignal?.throwIfAborted();
@@ -289,7 +286,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           if (
             requestSignal?.aborted ||
             isExecutionLeaseFailure(compactError) ||
-            isHookProcessContainmentError(compactError) ||
             compactError instanceof ProviderRegistryError
           ) {
             throw compactError;
@@ -499,7 +495,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
-              hookRuntime,
             };
             const compactStream = compactionHandler?.reactiveCompact(
               loopState.conversationState,
@@ -509,31 +504,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             return yield* compactStream;
           }
         : undefined,
-    },
-
-    stop: {
-      async check(ctx) {
-        try {
-          if (!hookRuntime) {
-            return { shouldStop: true };
-          }
-          const stopResult = await hookRuntime.executeStopCheck({
-            reason: ctx.content,
-            abortSignal: requestSignal,
-          });
-          return {
-            shouldStop: stopResult.shouldStop,
-            continueReason: stopResult.continueReason,
-            warning: stopResult.warning,
-          };
-        } catch (error) {
-          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
-            throw error;
-          }
-          requestSignal?.throwIfAborted();
-          return { shouldStop: true };
-        }
-      },
     },
   };
 
