@@ -5,7 +5,7 @@ import type { ModelServiceConfig } from '../model/config.js';
 import type { ModelMessage } from '../model/message.js';
 import type { ModelRetryEvent } from '../model/retry.js';
 import type { ModelResponse, ModelService, ModelStreamChunk } from '../model/service.js';
-import { awaitWithAbortSignal, getAbortSignalReason } from '../utils/abortPromise.js';
+import { awaitWithAbortSignal, awaitWithDeadline } from '../utils/abortPromise.js';
 
 export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
 export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
@@ -49,40 +49,15 @@ function awaitWithTimeout<T>(
   timeoutController: AbortController,
   signal: AbortSignal,
 ): Promise<T> {
-  if (signal.aborted) {
-    return Promise.reject(getAbortSignalReason(signal));
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-    };
-    const resolveOnce = (value: T): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const rejectOnce = (error: unknown): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const onAbort = (): void => {
-      rejectOnce(getAbortSignalReason(signal));
-    };
-    const timer = setTimeout(() => {
-      const error = new ModelTimeoutError(code, timeoutMs);
-      timeoutController.abort(error);
-      rejectOnce(error);
-    }, timeoutMs);
-
-    signal.addEventListener('abort', onAbort, { once: true });
-    Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
-  });
+  return awaitWithDeadline(
+    {
+      timeoutMs,
+      signal,
+      controller: timeoutController,
+      createTimeoutError: () => new ModelTimeoutError(code, timeoutMs),
+    },
+    operation,
+  );
 }
 
 async function waitForGeneratorClose(
