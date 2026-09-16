@@ -208,6 +208,7 @@ export class RepositorySessionRunner {
         sessionRepository: tenantStore,
         sessionEventStore: tenantStore,
         durableEventStore: tenantStore,
+        durableExecutionLeaseStore: tenantStore,
         executionLease: leaseOptions,
       });
       if (context.signal.aborted) onShutdown();
