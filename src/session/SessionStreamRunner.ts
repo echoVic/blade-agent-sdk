@@ -309,7 +309,6 @@ export class SessionStreamRunner {
         this.state.defaultContext,
         sendOptions?.context,
       );
-    runtime.prepareTurn(snapshot);
     const executionLease = this.state.executionLease;
 
     const context: AgentExecutionContext = {

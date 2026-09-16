@@ -45,7 +45,7 @@ import type {
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentLogger } from '../types/logging.js';
-import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type { PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type {
@@ -272,13 +272,8 @@ export interface SessionOptions {
   tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
 
   permissionMode?: PermissionMode;
-  /** Full permission callback. Takes precedence when canUseTool is also provided. */
+  /** Full permission callback for low-level Session integrations. */
   permissionHandler?: PermissionHandler;
-  /**
-   * @deprecated Use `permissionHandler` for low-level Sessions or
-   * `AgentOptions.advanced.permission` with `createAgent()`.
-   */
-  canUseTool?: CanUseTool;
   confirmationHandler?: ConfirmationHandler;
   /** Creates a Session-bound confirmation handler after the Session ID exists. */
   confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;

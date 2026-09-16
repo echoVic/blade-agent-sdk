@@ -1202,8 +1202,7 @@ type PermissionResult =
 
 ::: tip
 `permissionHandler` 的优先级低于 Hook 系统中的 `PermissionRequest` 事件。如果
-Hook 已做出决策（`abort` 或 `skip`），handler 不会被调用。`canUseTool` 只为旧
-Session 集成保留，已弃用。
+Hook 已做出决策（`abort` 或 `skip`），handler 不会被调用。
 :::
 
 权限和确认回调不受 `toolTimeoutMs` 限制，因为交互式人工审批可以合理地无限期
@@ -1757,7 +1756,6 @@ async function analyzeCodeManual() {
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
 | `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器                                           |
-| `canUseTool`      | `CanUseTool`                                            | —  | —           | 已弃用的兼容权限回调                                        |
 | `agents`          | `Record<string, AgentDefinition>`                       | —  | —           | 命名子代理定义                                           |
 | `subagent`        | `SubagentInfo`                                          | —  | —           | 子代理上下文信息（内部使用）                                    |
 | `hooks`           | `Partial<Record<SessionHookEvent, HookCallback[]>>`     | —  | —           | 生命周期 Hook 回调                                      |
@@ -2029,8 +2027,6 @@ export type {
   OutputFormat,
   McpServerConfig,
   SandboxSettings,
-  CanUseTool,
-  CanUseToolOptions,
   PermissionResult,
   PermissionHandler,
   PermissionUpdate,

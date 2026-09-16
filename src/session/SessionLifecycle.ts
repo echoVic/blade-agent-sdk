@@ -62,7 +62,6 @@ export class SessionLifecycle {
           systemPrompt: this.state.options.systemPrompt,
           maxTurns: this.state.maxTurns,
           permissionHandler: this.state.options.permissionHandler,
-          canUseTool: this.state.options.canUseTool,
           toolSourcePolicy: this.state.options.toolSourcePolicy,
           outputFormat: this.state.options.outputFormat,
           sandbox: this.state.options.sandbox,

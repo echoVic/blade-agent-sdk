@@ -109,12 +109,7 @@ describe('Tool type ownership', () => {
     expect(sessionTypes).not.toMatch(/\bErasedToolDefinition\b/);
     expect(sessionTypes).not.toMatch(/\bSessionTool\b/);
     expect(sessionTypes).not.toContain('ToolDefinition<never>');
-    for (const entrypoint of [
-      'src/index.ts',
-      'src/browser/index.ts',
-      'src/core/index.ts',
-      'src/tools/index.ts',
-    ]) {
+    for (const entrypoint of ['src/index.ts', 'src/browser/index.ts', 'src/core/index.ts']) {
       expect(readFileSync(resolve(entrypoint), 'utf8')).not.toMatch(/\bErasedToolDefinition\b/);
     }
   });
@@ -122,7 +117,6 @@ describe('Tool type ownership', () => {
   it('does not recover runtime tools through structural detection', () => {
     for (const entrypoint of [
       'src/index.ts',
-      'src/session/index.ts',
       'src/agent/createAgent.ts',
       'src/middleware/AgentPlugin.ts',
     ]) {
@@ -140,12 +134,9 @@ describe('Tool type ownership', () => {
 
   it('does not expose schema-family or codec-specific Tool contracts', () => {
     const toolTypes = readFileSync(resolve('src/tools/types/tool.ts'), 'utf8');
-    const publicEntrypoints = [
-      'src/index.ts',
-      'src/core/index.ts',
-      'src/tools/index.ts',
-      'src/tools/types/index.ts',
-    ].map((entrypoint) => readFileSync(resolve(entrypoint), 'utf8'));
+    const publicEntrypoints = ['src/index.ts', 'src/core/index.ts', 'src/tools/types/index.ts'].map(
+      (entrypoint) => readFileSync(resolve(entrypoint), 'utf8'),
+    );
 
     for (const source of [toolTypes, ...publicEntrypoints]) {
       expect(source).not.toMatch(/\bZodToolDefinitionInput\b/);
@@ -157,11 +148,9 @@ describe('Tool type ownership', () => {
   });
 
   it('keeps legacy and runtime-only tool contracts out of the root entrypoint', () => {
-    const publicAuthoringEntrypoints = [
-      'src/index.ts',
-      'src/core/index.ts',
-      'src/tools/index.ts',
-    ].map((entrypoint) => readFileSync(resolve(entrypoint), 'utf8'));
+    const publicAuthoringEntrypoints = ['src/index.ts', 'src/core/index.ts'].map((entrypoint) =>
+      readFileSync(resolve(entrypoint), 'utf8'),
+    );
 
     for (const source of publicAuthoringEntrypoints) {
       expect(source).not.toMatch(/export\s*\{[^}]*\bcreateTool\b/s);

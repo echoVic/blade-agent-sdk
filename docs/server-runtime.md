@@ -213,17 +213,6 @@ attempt、fencing token 与 worker，同时给出本服务是否已加载该 Ses
 从日志仍保留的起点重放；若日志已被裁剪、或投影报告了缺口，则同时返回
 `recoveryIncomplete: true`——回退只能恢复仍然保留的部分，不会被宣称成无损。
 
-修复入口 `repairSessionHistory()` 以 durable journal 为权威重建缺失消息：请求的已接受输入
-（按 `inputId`）、完成的工具调用（按 `toolCallId`）、该轮次的 assistant 输出（按它请求的
-工具调用匹配）。修复只写数据，不重跑模型或工具；重复执行不会产生重复消息；journal 本身
-已被裁剪、无法补齐时保持缺口并返回 `insufficient-durable-data`。
-调用方必须提供完整的 `HistoryRepairStore`，不能依赖可选方法探测降级能力。
-
-修复的作用域是**缺口所属的请求与轮次**（从缺口记录本身读出），并且把 journal 当历史来读：
-即使执行投影已经丢弃了正常结束的请求，它仍然可以被修复。assistant 消息里的工具调用声明
-不等于工具结果，因此 `pending` 的工具调用会被重建而不是被当作已存在。只有在重新读取
-transcript 并确认 journal 知道的每一部分都真的在之后，缺口才会被清除。
-
 事件日志的保留区间来自 Store 的 `getEventStreamRange`，这是恢复保证的一部分：自定义
 Store 若不实现该能力，Server 不会把事件头当作安全游标。此时若日志仍可从起点读取，就
 保守地从 0 开始重放；连起点都无法确定（日志已裁剪）时，`recovery` 会带
@@ -232,8 +221,6 @@ Store 若不实现该能力，Server 不会把事件头当作安全游标。此�
 
 `appendEvent(..., { idempotencyKey })` 的幂等记录与事件保留期解耦：它按 Session 生命周期
 保存，即使事件日志已经裁剪掉原事件，同一个键的重试仍会被识别为重复并返回原始事件。
-7.4.4 及更早版本把幂等键写在事件自身的 `event_id` 上，没有独立记录；读取时任一侧命中
-即可，旧格式会被就地回填，因此升级不会把已发布的终态结果再发一次。
 
 `AgentClient` 为命令生成稳定的 `commandId`，网络错误、HTTP 408、HTTP 429 和所有
 5xx 响应会重试同一个 command。也可通过每个方法的 `commandId` 选项显式控制幂等键。

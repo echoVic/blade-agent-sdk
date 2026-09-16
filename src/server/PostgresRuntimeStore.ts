@@ -2,7 +2,6 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
-import type { ContextData } from '../context/types.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelContent } from '../model/message.js';
 import {
@@ -795,15 +794,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
     });
   }
 
-  /**
-   * The payload an idempotency key already stored, read from the record rather
-   * than the event log so event retention cannot forget it.
-   *
-   * Stores written before the key table existed (7.4.4 and earlier) kept the key
-   * as the event's own id, so a missing record falls back to that shape and
-   * backfills it. Without this an upgrade would not recognise a terminal result
-   * published by the previous version and would publish it again.
-   */
   private async readIdempotencyRecord(
     client: PoolClient,
     tenantId: string,
@@ -820,47 +810,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     if (row) {
       return asJsonObject(row.payload);
     }
-
-    const legacy = await client.query<PayloadRow>(
-      `SELECT payload
-         FROM ${this.table('events')}
-        WHERE tenant_id = $1 AND session_id = $2
-          AND stream_name = 'agent' AND event_id = $3`,
-      [tenantId, sessionId, idempotencyKey],
-    );
-    const legacyRow = legacy.rows[0];
-    if (!legacyRow) {
-      return null;
-    }
-    const payload = asJsonObject(legacyRow.payload);
-    await this.backfillIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, payload);
-    return payload;
-  }
-
-  /** Record a key that only exists in the pre-7.4.5 event-id shape. */
-  private async backfillIdempotencyRecord(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    idempotencyKey: string,
-    payload: JsonObject,
-  ): Promise<void> {
-    const sequence = Number(payload.sequence);
-    const eventId = payload.eventId;
-    if (!Number.isSafeInteger(sequence) || typeof eventId !== 'string') {
-      return;
-    }
-    await this.writeIdempotencyRecord(
-      client,
-      tenantId,
-      sessionId,
-      idempotencyKey,
-      {
-        eventId: EventId(eventId),
-        sequence: EventSequence(sequence),
-      },
-      payload,
-    );
+    return null;
   }
 
   private async writeIdempotencyRecord(
@@ -2680,39 +2630,6 @@ class PostgresTenantRuntimeStore implements RuntimeTenantStore {
         state.summary = summary;
         state.summaryMessageIds.push(messageId);
         return messageId;
-      },
-    );
-  }
-
-  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
-    const messages = contextData.layers.conversation.messages.map((message) => ({
-      messageId: MessageId(nanoid()),
-      role: message.role,
-      content: structuredClone(message.content),
-    }));
-    if (messages.length === 0) {
-      return;
-    }
-    await this.runtime.mutateSessionStateBatch(
-      this.tenantId,
-      sessionId,
-      messages.map(({ messageId, role }) => ({
-        type: 'transcript.message_saved',
-        data: { messageId, role },
-      })),
-      (state, now) => {
-        for (const message of messages) {
-          appendMessage(
-            state,
-            message.messageId,
-            {
-              id: message.messageId,
-              role: message.role,
-              content: message.content,
-            },
-            now,
-          );
-        }
       },
     );
   }

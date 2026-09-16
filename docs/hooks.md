@@ -231,8 +231,7 @@ const agent = await createAgent({
 });
 ```
 
-`SessionOptions.permissionHandler` 是底层运行时扩展点。`canUseTool` 只为旧
-Session 集成保留，已弃用，新代码不应继续使用。
+`SessionOptions.permissionHandler` 是底层运行时扩展点。
 
 ## 回调顺序与错误
 

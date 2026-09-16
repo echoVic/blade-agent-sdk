@@ -13,7 +13,7 @@ import type { ToolSourcePolicy } from '../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/execution.js';
 import type { PermissionMode } from '../types/constants.js';
 import type { AgentId, InputId, RequestId, SessionId } from '../types/identifiers.js';
-import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../types/permissions.js';
+import type { PermissionHandler, PermissionsConfig } from '../types/permissions.js';
 import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
 import type { InitialInputPreparation } from './InitialInputPreparation.js';
 import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
@@ -135,10 +135,7 @@ export interface AgentRuntimeOptions {
   modelId?: string;
 
   // 权限控制
-  /** Full permission callback. Takes precedence when canUseTool is also provided. */
   permissionHandler?: PermissionHandler;
-  /** Legacy permission callback, used only when permissionHandler is absent. */
-  canUseTool?: CanUseTool;
 
   // MCP 配置
   mcpConfig?: string[]; // CLI 参数：MCP 配置文件路径或 JSON 字符串数组

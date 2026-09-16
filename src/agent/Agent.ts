@@ -37,7 +37,6 @@ import { PermissionMode } from '../types/constants.js';
 import { SessionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import type { PermissionsConfig } from '../types/permissions.js';
-import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { AttachmentHandler } from './AttachmentHandler.js';
 import { CompactionHandler } from './CompactionHandler.js';
@@ -555,16 +554,11 @@ export class Agent {
       ...this.runtimeOptions.permissions,
     };
     const permissionMode = this.runtimeOptions.permissionMode ?? PermissionMode.DEFAULT;
-    const permissionHandler =
-      this.runtimeOptions.permissionHandler ??
-      (this.runtimeOptions.canUseTool
-        ? createPermissionHandlerFromCanUseTool(this.runtimeOptions.canUseTool)
-        : undefined);
     return new ExecutionPipeline(registry, {
       permissionConfig: permissions,
       permissionMode,
       maxHistorySize: 1000,
-      permissionHandler,
+      permissionHandler: this.runtimeOptions.permissionHandler,
       toolTimeoutMs: this.config.toolTimeoutMs,
       middleware,
     });

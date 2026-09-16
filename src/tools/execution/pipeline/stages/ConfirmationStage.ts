@@ -2,9 +2,7 @@ import type { InternalLogger } from '../../../../logging/Logger.js';
 import type { PermissionMode } from '../../../../types/constants.js';
 import type { PermissionRequestId } from '../../../../types/identifiers.js';
 import {
-  type CanUseTool,
   createModePermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
 } from '../../../../types/permissions.js';
 import { getErrorMessage } from '../../../../utils/errorUtils.js';
@@ -22,7 +20,6 @@ import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../Terminal
 export interface ConfirmationStageOptions {
   permissionMode: PermissionMode;
   permissionHandler?: PermissionHandler;
-  canUseTool?: CanUseTool;
 }
 
 /**
@@ -46,11 +43,7 @@ export class ConfirmationStage {
     options: ConfirmationStageOptions,
   ) {
     this.permissionHandlers = [
-      ...(options.permissionHandler
-        ? [options.permissionHandler]
-        : options.canUseTool
-          ? [createPermissionHandlerFromCanUseTool(options.canUseTool)]
-          : []),
+      ...(options.permissionHandler ? [options.permissionHandler] : []),
       createModePermissionHandler(options.permissionMode),
     ];
   }

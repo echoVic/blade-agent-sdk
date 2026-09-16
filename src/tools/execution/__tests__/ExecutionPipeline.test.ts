@@ -1325,7 +1325,6 @@ describe('ExecutionPipeline', () => {
     'permissionRuleHandler',
     'pathSafetyHandler',
     'permissionHandler',
-    'canUseTool',
     'confirmationHandler',
   ] as const) {
     it(`cancels and tracks an uncooperative ${boundary} callback`, async () => {
@@ -1388,15 +1387,9 @@ describe('ExecutionPipeline', () => {
                 behavior: 'allow' as const,
               })) satisfies PermissionHandler)
           : undefined;
-      const canUseTool =
-        boundary === 'canUseTool'
-          ? async (_toolName: string, _input: JsonObject, options: { signal: AbortSignal }) =>
-              waitForRelease(options.signal, { behavior: 'allow' as const })
-          : undefined;
       const pipeline = new ExecutionPipeline(registry, {
         permissionMode: PermissionMode.YOLO,
         permissionHandler,
-        canUseTool,
       });
       let cleanupWasVisibleToEarlierAbortListener = false;
       controller.signal.addEventListener(
@@ -1537,55 +1530,6 @@ describe('ExecutionPipeline', () => {
     expect(result.status).toBe('error');
     expect(result.error?.message).toBe('Denied by tool checkPermissions');
     expect(permissionHandler).not.toHaveBeenCalled();
-    expect(executeSpy).not.toHaveBeenCalled();
-  });
-
-  it('uses permissionHandler instead of legacy canUseTool when both are configured', async () => {
-    const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() =>
-      completeToolExecution({
-        status: 'success',
-        model: 'unexpected',
-      }),
-    );
-    registerTool(
-      registry,
-      createTool({
-        name: 'PermissionPrecedenceTool',
-        displayName: 'Permission Precedence Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Permission precedence tool' },
-        schema: Type.Object({}),
-        execute: executeSpy,
-      }),
-    );
-    const permissionHandler = vi.fn(async () => ({
-      behavior: 'deny' as const,
-      message: 'denied by permissionHandler',
-    }));
-    const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
-    const pipeline = new ExecutionPipeline(registry, {
-      permissionMode: PermissionMode.YOLO,
-      permissionHandler,
-      canUseTool,
-    });
-
-    const result = await executePipeline(
-      pipeline,
-      'PermissionPrecedenceTool',
-      {},
-      { permissionMode: PermissionMode.YOLO },
-    );
-
-    expect(result).toMatchObject({
-      status: 'error',
-      error: {
-        message: 'denied by permissionHandler',
-      },
-    });
-    expect(permissionHandler).toHaveBeenCalledOnce();
-    expect(canUseTool).not.toHaveBeenCalled();
     expect(executeSpy).not.toHaveBeenCalled();
   });
 

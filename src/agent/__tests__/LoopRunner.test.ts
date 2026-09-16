@@ -402,21 +402,9 @@ describe('LoopRunner', () => {
       const workspaceRoot = mkdtempSync(join(tmpdir(), 'loop-runner-persistence-'));
       const sessionId = SessionId('streaming-tool-session');
       const persistence = new PersistentStore(workspaceRoot);
-      const contextManager = new ContextManager(
-        {
-          projectPath: workspaceRoot,
-          storage: {
-            maxMemorySize: 1000,
-            persistentPath: workspaceRoot,
-            cacheSize: 100,
-            compressionEnabled: true,
-          },
-        },
-        persistence,
-        persistence,
-      );
+      const contextManager = new ContextManager(persistence, persistence);
       await contextManager.initialize();
-      await contextManager.createSession(undefined, {}, { sessionId });
+      await contextManager.createSession(sessionId);
 
       let turn = 0;
       const streamChat = vi.fn(async function* () {

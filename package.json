@@ -28,10 +28,6 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/advanced/index.js"
     },
-    "./core": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js"
-    },
     "./browser": {
       "types": "./dist/browser/index.d.ts",
       "import": "./dist/browser/index.js"
@@ -39,11 +35,6 @@
     "./protocol": {
       "types": "./dist/protocol/index.d.ts",
       "import": "./dist/protocol/index.js"
-    },
-    "./server": {
-      "types": "./dist/server/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/server/index.js"
     },
     "./server/infra": {
       "types": "./dist/server/infra.d.ts",
@@ -63,28 +54,6 @@
     "./server/testing": {
       "types": "./dist/server/testing/index.d.ts",
       "import": "./dist/server/testing/index.js"
-    },
-    "./session": {
-      "types": "./dist/session/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/session/index.js"
-    },
-    "./tools": {
-      "types": "./dist/tools/index.d.ts",
-      "import": "./dist/tools/index.js"
-    },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/node/index.js"
-    },
-    "./middleware": {
-      "types": "./dist/middleware/index.d.ts",
-      "import": "./dist/middleware/index.js"
-    },
-    "./model": {
-      "types": "./dist/model/index.d.ts",
-      "import": "./dist/model/index.js"
     },
     "./package.json": {
       "default": "./package.json"

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SessionRunner } from '../../advanced/SessionRunner.js';
 import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/identifiers.js';
 import { AgentWorker } from '../AgentWorker.js';
 import type { AgentWorkerTelemetry } from '../AgentWorkerTelemetry.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
-import type { SessionRunner } from '../SessionRunner.js';
 import type {
   RuntimeSessionClaim,
   RuntimeSessionRoute,

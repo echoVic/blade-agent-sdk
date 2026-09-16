@@ -20,12 +20,14 @@ package export；通过 npm bin 调用。
 |------|---------|------|
 | `@blade-ai/agent-sdk` | Node.js | 默认 `createAgent`、工具定义和公共类型入口 |
 | `@blade-ai/agent-sdk/browser` | Browser-safe / Node | `AgentClient`、协议 schema、解析器、事件和常量 |
+| `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | wire protocol schema 与解析器 |
 | `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker、Runtime Store 契约与 conformance suite |
+| `@blade-ai/agent-sdk/server/testing` | Node.js | Runtime Store conformance helper |
 | `@blade-ai/agent-sdk/advanced` | Node.js | local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter |
 
 旧 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
-`/tools`、`/protocol` 和 `/server/testing` 属于 deprecated compatibility
-alias。可选 PostgreSQL 与 OTel adapter 保留 `/server/postgres` 和
+`/tools` compatibility alias 已删除。可选 PostgreSQL 与 OTel adapter 保留
+`/server/postgres` 和
 `/server/otel`，避免 canonical 入口强制加载 peer dependency。
 
 ## 函数
@@ -52,13 +54,12 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `createCompositePermissionHandler` | permissions | 组合多个权限处理器 |
 | `createModePermissionHandler` | permissions | 基于权限模式创建处理器 |
 | `createPathSafetyPermissionHandler` | permissions | 基于路径安全策略创建处理器 |
-| `createPermissionHandlerFromCanUseTool` | permissions | 适配已弃用 canUseTool 回调的兼容处理器 |
 | `createRuleBasedPermissionHandler` | permissions | 基于规则创建处理器 |
-| `collectToolExecution` | root / core / tools | 消费工具执行并返回最终结果 |
-| `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
-| `composeMiddleware` | root / core / middleware | 组合通用洋葱 middleware |
-| `definePlugin` | root / core / middleware | 定义声明式 Agent 插件 |
-| `wrapModelService` | root / core / middleware | 使用模型 middleware 包装 `ModelService` |
+| `collectToolExecution` | root | 消费工具执行并返回最终结果 |
+| `completeToolExecution` | root | 将单个结果包装成工具执行 |
+| `composeMiddleware` | root | 组合通用洋葱 middleware |
+| `definePlugin` | root | 定义声明式 Agent 插件 |
+| `wrapModelService` | root | 使用模型 middleware 包装 `ModelService` |
 | `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
 | `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
 | `getErrorMessage` 等 | root | 安全提取未知错误信息 |
@@ -137,7 +138,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SessionOptions` | Session 创建选项 |
 | `SessionRepository` | transcript 的只读 projection 端口 |
 | `SessionEventStore` | transcript domain event append 端口 |
-| `HistoryRepairStore` | history repair 所需的完整 transcript 读写与 durable event 读取端口 |
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
@@ -401,8 +401,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
-| `CanUseTool` | 权限回调类型 |
-| `CanUseToolOptions` | 权限回调选项 |
 | `PermissionResult` | 权限判定结果 |
 | `PermissionHandler` | 底层权限处理器接口 |
 | `PermissionHandlerRequest` | 权限处理请求 |

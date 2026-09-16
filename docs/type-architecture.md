@@ -170,11 +170,11 @@ Catalog 和 Registry 不通过 `as unknown as Tool` 擦除工具参数类型。�
 ## 导出规则
 
 - 源码内部优先直接导入所有者文件，避免通过根 barrel 形成循环依赖。
-- barrel 使用显式导出表达公开契约，不使用大范围 `export *` 聚合业务类型。
+- barrel 直接从所有者模块导出，不再经过领域级兼容 barrel。
 - 根入口汇总应用侧 API 与公共类型；`/browser` 保持 browser-safe。
 - 本地文件系统、Shell、进程、底层 Session 和集成扩展从 `/advanced` 导出。
 - `AgentServer`、Worker、Runtime Store 和遥测 adapter 从 `/server/infra` 导出。
-- 旧 subpath 仅作为 deprecated compatibility alias，不承载新的公开契约。
+- 已删除 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、`/tools` 旧 subpath。
 - 类型级测试辅助仅供源码内部使用，不属于 npm 公共 API。
 
 ## 变更检查

@@ -10,7 +10,20 @@ const packageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
 };
 
 describe('package entrypoints', () => {
-  it('declares four canonical entrypoints and compatibility subpaths', () => {
+  it('declares only canonical and server-specialized entrypoints', () => {
+    expect(Object.keys(packageJson.exports).sort()).toEqual(
+      [
+        '.',
+        './advanced',
+        './browser',
+        './package.json',
+        './protocol',
+        './server/infra',
+        './server/otel',
+        './server/postgres',
+        './server/testing',
+      ].sort(),
+    );
     expect(packageJson.exports).toMatchObject({
       '.': {
         types: './dist/index.d.ts',
@@ -22,10 +35,6 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/advanced/index.js',
       },
-      './core': {
-        types: './dist/core/index.d.ts',
-        import: './dist/core/index.js',
-      },
       './browser': {
         types: './dist/browser/index.d.ts',
         import: './dist/browser/index.js',
@@ -33,11 +42,6 @@ describe('package entrypoints', () => {
       './protocol': {
         types: './dist/protocol/index.d.ts',
         import: './dist/protocol/index.js',
-      },
-      './server': {
-        types: './dist/server/index.d.ts',
-        browser: './dist/browser/server-only-stub.js',
-        import: './dist/server/index.js',
       },
       './server/infra': {
         types: './dist/server/infra.d.ts',
@@ -58,28 +62,6 @@ describe('package entrypoints', () => {
         types: './dist/server/testing/index.d.ts',
         import: './dist/server/testing/index.js',
       },
-      './session': {
-        types: './dist/session/index.d.ts',
-        browser: './dist/browser/server-only-stub.js',
-        import: './dist/session/index.js',
-      },
-      './tools': {
-        types: './dist/tools/index.d.ts',
-        import: './dist/tools/index.js',
-      },
-      './node': {
-        types: './dist/node/index.d.ts',
-        browser: './dist/browser/server-only-stub.js',
-        import: './dist/node/index.js',
-      },
-      './middleware': {
-        types: './dist/middleware/index.d.ts',
-        import: './dist/middleware/index.js',
-      },
-      './model': {
-        types: './dist/model/index.d.ts',
-        import: './dist/model/index.js',
-      },
     });
   });
 
@@ -90,16 +72,11 @@ describe('package entrypoints', () => {
       'src/browser/index.ts',
       'src/browser/server-only-stub.ts',
       'src/protocol/index.ts',
-      'src/server/index.ts',
       'src/server/infra.ts',
       'src/server/otel.ts',
       'src/server/postgres.ts',
       'src/server/testing/index.ts',
-      'src/tools/index.ts',
       'src/node/index.ts',
-      'src/middleware/index.ts',
-      'src/model/index.ts',
-      'src/session/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);
     }
@@ -194,10 +171,9 @@ describe('package entrypoints', () => {
     );
   });
 
-  it('uses distinct server and Node Session factories', async () => {
+  it('uses distinct server and local Session factories', async () => {
     const root = await import('../index.js');
     const advanced = await import('../advanced/index.js');
-    const server = await import('../server/index.js');
     const infra = await import('../server/infra.js');
     const node = await import('../node/index.js');
     const otel = await import('../server/otel.js');
@@ -208,9 +184,9 @@ describe('package entrypoints', () => {
     expect(advanced.createNodeSession).toBe(node.createSession);
     expect(advanced.createServerSession).toBe(root.createSession);
     expect(advanced.DockerExecutionHost).toBe(node.DockerExecutionHost);
-    expect(advanced.EffectDispatcher).toBe(server.EffectDispatcher);
-    expect(infra.AgentServer).toBe(server.AgentServer);
-    expect(infra.AgentWorker).toBe(server.AgentWorker);
+    expect(advanced.EffectDispatcher).toBeTypeOf('function');
+    expect(infra.AgentServer).toBeTypeOf('function');
+    expect(infra.AgentWorker).toBeTypeOf('function');
     expect(postgres.PostgresRuntimeStore).toBeTypeOf('function');
     expect(otel.OpenTelemetryAgentServerTelemetry).toBeTypeOf('function');
     expect('createAgent' in infra).toBe(false);
@@ -218,22 +194,15 @@ describe('package entrypoints', () => {
     expect('EffectDispatcher' in infra).toBe(false);
     expect('PostgresRuntimeStore' in infra).toBe(false);
     expect('OpenTelemetryAgentServerTelemetry' in infra).toBe(false);
-    expect(server.createAgent).toBe(root.createAgent);
     expect(node.createAgent).toBe(root.createAgent);
-    expect(server.createSession).toBe(root.createSession);
-    expect(node.createSession).not.toBe(server.createSession);
-    expect(server.AgentServer).toBeTypeOf('function');
-    expect(server.InProcessSessionExecutor).toBeTypeOf('function');
-    expect(server.AgentWorker).toBeTypeOf('function');
-    expect(server.EffectDispatcher).toBeTypeOf('function');
-    expect(server.SdkSessionRunner).toBeTypeOf('function');
-    expect(server.ExecutionHostSessionRunner).toBeTypeOf('function');
-    expect('PostgresRuntimeStore' in server).toBe(false);
-    expect('OpenTelemetryAgentServerTelemetry' in server).toBe(false);
-    expect(server.EphemeralCredentialBroker).toBeTypeOf('function');
-    expect(server.ExecutionHostError).toBeTypeOf('function');
-    expect(server.WorkerRuntimeError).toBeTypeOf('function');
-    expect(server.RUNTIME_SESSION_STATES).toEqual([
+    expect(node.createSession).not.toBe(root.createSession);
+    expect(infra.InProcessSessionExecutor).toBeTypeOf('function');
+    expect(advanced.SdkSessionRunner).toBeTypeOf('function');
+    expect(advanced.ExecutionHostSessionRunner).toBeTypeOf('function');
+    expect(advanced.EphemeralCredentialBroker).toBeTypeOf('function');
+    expect(advanced.ExecutionHostError).toBeTypeOf('function');
+    expect(infra.WorkerRuntimeError).toBeTypeOf('function');
+    expect(infra.RUNTIME_SESSION_STATES).toEqual([
       'queued',
       'provisioning',
       'running',
@@ -245,7 +214,7 @@ describe('package entrypoints', () => {
     ]);
     expect(node.JsonlSessionRepository).toBeTypeOf('function');
     expect(node.DockerExecutionHost).toBeTypeOf('function');
-    expect(node.EphemeralCredentialBroker).toBe(server.EphemeralCredentialBroker);
+    expect(node.EphemeralCredentialBroker).toBe(advanced.EphemeralCredentialBroker);
     expect('getBuiltinTools' in root).toBe(false);
     expect(node.getBuiltinTools).toBeTypeOf('function');
   });
@@ -267,7 +236,6 @@ describe('package entrypoints', () => {
       'src/core/index.ts',
       'src/browser/index.ts',
       'src/browser/server-only-stub.ts',
-      'src/model/index.ts',
     ]) {
       const source = readFileSync(file, 'utf-8');
       for (const pattern of disallowedPatterns) {

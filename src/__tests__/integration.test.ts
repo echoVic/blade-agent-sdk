@@ -22,6 +22,7 @@ import {
   defineTool,
   forkSession,
   type ISession,
+  type PermissionHandlerRequest,
   PermissionMode,
   type PromptResult,
   type ProviderType,
@@ -629,7 +630,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
   );
 
   it(
-    'canUseTool deny 应阻止工具执行并返回受控错误结果',
+    'permissionHandler deny 应阻止工具执行并返回受控错误结果',
     async () => {
       const restrictedTool = defineTool({
         name: 'restricted_action',
@@ -650,7 +651,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
           maxTurns: 4,
           systemPrompt:
             'You must call restricted_action exactly once when asked. If it fails, explain the failure briefly.',
-          canUseTool: async (toolName: string) => {
+          permissionHandler: async ({ toolName }: PermissionHandlerRequest) => {
             if (toolName === 'restricted_action') {
               return {
                 behavior: 'deny',

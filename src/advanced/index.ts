@@ -63,7 +63,7 @@ export {
   forkSession as forkServerSession,
   prompt as promptServer,
   resumeSession as resumeServerSession,
-} from '../session/index.js';
+} from '../session/Session.js';
 export {
   discoverSkills,
   getSkillRegistry,

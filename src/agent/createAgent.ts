@@ -58,7 +58,6 @@ type RootAgentOption =
   | 'maxTurns'
   | 'permissionMode'
   | 'permissionHandler'
-  | 'canUseTool'
   | 'hooks';
 
 export interface AgentAdvancedOptions extends Omit<SessionOptions, RootAgentOption> {
@@ -95,12 +94,10 @@ export async function createAgent(options: AgentOptions): Promise<Agent> {
     defaultContext,
     permissionMode: _legacyPermissionMode,
     permissionHandler: _legacyPermissionHandler,
-    canUseTool: _legacyCanUseTool,
     ...advanced
   } = (options.advanced ?? {}) as AgentAdvancedOptions & {
     permissionMode?: PermissionMode;
     permissionHandler?: PermissionHandler;
-    canUseTool?: unknown;
   };
   const profile = options.profile ?? (options.filesystem ? 'local' : 'server');
   const hostProfile = profile === 'local' ? NODE_SESSION_HOST : SERVER_SESSION_HOST;

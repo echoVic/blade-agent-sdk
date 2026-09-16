@@ -27,12 +27,12 @@ export class ModelManager {
     private config: BladeConfig,
     private outputFormat?: OutputFormat,
     contextManager?: ContextManager,
-    projectPath?: string,
+    _projectPath?: string,
     logger?: InternalLogger,
     private readonly modelMiddleware: readonly ModelMiddleware[] = [],
     private readonly providerRegistry?: ProviderRegistry,
   ) {
-    this.contextManager = contextManager || new ContextManager({ projectPath });
+    this.contextManager = contextManager || new ContextManager();
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
 

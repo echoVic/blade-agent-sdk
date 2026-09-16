@@ -12,7 +12,7 @@ import { LogCategory } from '../logging/Logger.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { PluginHost } from '../middleware/PluginHost.js';
-import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
+import type { RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
@@ -40,7 +40,6 @@ import type { AgentId, SessionId } from '../types/identifiers.js';
 import type { PermissionsConfig } from '../types/permissions.js';
 import {
   createCompositePermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
   type PermissionResult,
 } from '../types/permissions.js';
@@ -138,23 +137,10 @@ export class SessionRuntime {
     };
     this.toolRegistry = new ToolRegistry(toolServices);
     toolServices.discoverableCatalog = new ToolExposurePlanner(this.toolRegistry);
-    this.contextManager = new ContextManager(
-      {
-        storage: {
-          maxMemorySize: 1000,
-          persistentPath: options.storagePath,
-          persistenceEnabled:
-            options.persistSession !== false &&
-            sessionRepository !== undefined &&
-            sessionEventStore !== undefined,
-          cacheSize: 100,
-          compressionEnabled: true,
-        },
-        projectPath: getContextCwd(defaultContext),
-      },
-      sessionRepository,
-      sessionEventStore,
-    );
+    this.contextManager =
+      options.persistSession === false
+        ? new ContextManager()
+        : new ContextManager(sessionRepository, sessionEventStore);
     this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
       sessionId,
@@ -274,24 +260,14 @@ export class SessionRuntime {
   }
 
   async ensureSessionCreated(): Promise<void> {
-    await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+    await this.contextManager.createSession(this.sessionId);
   }
 
   async ensureSessionLoaded(): Promise<void> {
     const loaded = await this.contextManager.loadSession(this.sessionId);
     if (!loaded) {
-      await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+      await this.contextManager.createSession(this.sessionId);
     }
-  }
-
-  prepareTurn(snapshot: ContextSnapshot): void {
-    this.contextManager.updateWorkspace({
-      projectPath: snapshot.cwd,
-      environment: {
-        ...snapshot.environment,
-        ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
-      },
-    });
   }
 
   assertNoPendingCleanup(options: { includeTerminalFailures?: boolean } = {}): void {
@@ -577,11 +553,7 @@ export class SessionRuntime {
   private createPermissionHandler(): PermissionHandler | undefined {
     const hasPermissionCallbacks =
       (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
-    const basePermissionHandler =
-      this.options.permissionHandler ??
-      (this.options.canUseTool
-        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
-        : undefined);
+    const basePermissionHandler = this.options.permissionHandler;
 
     if (!hasPermissionCallbacks && !basePermissionHandler) {
       return undefined;

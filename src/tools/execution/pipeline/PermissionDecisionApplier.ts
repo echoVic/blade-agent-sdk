@@ -1,5 +1,5 @@
 import type { InternalLogger } from '../../../logging/Logger.js';
-import type { PermissionResult as CanUseToolResult } from '../../../types/permissions.js';
+import type { PermissionResult } from '../../../types/permissions.js';
 import { normalizePermissionEffects } from '../../types/effects.js';
 import type { ApprovalLedger } from './ApprovalLedger.js';
 import { createAbortedResult } from './results.js';
@@ -23,7 +23,7 @@ export class PermissionDecisionApplier {
     private readonly logger: InternalLogger,
   ) {}
 
-  apply(result: CanUseToolResult, state: PipelineExecutionState): void {
+  apply(result: PermissionResult, state: PipelineExecutionState): void {
     switch (result.behavior) {
       case 'allow':
         for (const effect of normalizePermissionEffects(result)) {

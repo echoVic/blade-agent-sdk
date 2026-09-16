@@ -51,17 +51,12 @@ describe('protocol ownership', () => {
       'src/advanced/index.ts',
       'src/browser/index.ts',
       'src/core/index.ts',
-      'src/middleware/index.ts',
-      'src/model/index.ts',
       'src/node/index.ts',
       'src/protocol/index.ts',
-      'src/server/index.ts',
       'src/server/infra.ts',
       'src/server/otel.ts',
       'src/server/postgres.ts',
       'src/server/testing/index.ts',
-      'src/session/index.ts',
-      'src/tools/index.ts',
     ]) {
       const entry = source(entrypoint);
       for (const internalType of [

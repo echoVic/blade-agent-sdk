@@ -222,8 +222,7 @@ const agent = await createAgent({
 `advanced.hooks` contains in-process TypeScript callbacks for the eight Session
 hook events. Shell hooks use `HookConfig` in CLI/host configuration and are not
 accepted by `createAgent()`. The low-level `SessionOptions.permissionMode` and
-`permissionHandler` APIs remain available for runtime integrations;
-`canUseTool` is deprecated.
+`permissionHandler` APIs remain available for runtime integrations.
 
 ## Package Entry Points
 
@@ -246,13 +245,14 @@ import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/ot
 
 - Root: `createAgent`, `defineTool`, middleware, model contracts, constants, and public types
 - `/browser`: browser-safe `AgentClient`, protocol contracts, and event parsers
+- `/protocol`: wire protocol schemas and parsers
 - `/server/infra`: `AgentServer`, `AgentWorker`, Runtime Store contracts, and conformance suites
+- `/server/testing`: Runtime Store conformance helpers
 - `/advanced`: low-level local/server Sessions, `SessionRunner`, execution hosts, and Node adapters
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
-`/tools`, `/protocol`, and `/server/testing` paths remain deprecated
-compatibility aliases until Phase 3. Optional PostgreSQL and OpenTelemetry
-adapters retain `/server/postgres` and `/server/otel` so importing
+and `/tools` compatibility aliases have been removed. Optional PostgreSQL and
+OpenTelemetry adapters retain `/server/postgres` and `/server/otel` so importing
 `/server/infra` does not require their peer dependencies.
 
 Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.

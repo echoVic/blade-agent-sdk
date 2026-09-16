@@ -127,20 +127,3 @@ export function detectGitBranch(projectPath?: string): string | undefined {
     return undefined;
   }
 }
-
-/**
- * 获取所有项目目录列表
- *
- * @param storageRoot SDK 数据存储根目录
- * @returns 项目目录名称数组
- */
-export async function listProjectDirectories(storageRoot: string): Promise<string[]> {
-  const { readdir } = await import('node:fs/promises');
-  try {
-    const projectsDir = path.join(storageRoot, 'projects');
-    const entries = await readdir(projectsDir, { withFileTypes: true });
-    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  } catch {
-    return [];
-  }
-}

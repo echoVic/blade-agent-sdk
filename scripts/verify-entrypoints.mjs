@@ -201,41 +201,10 @@ assertIncludes(
   'runtime profile boundaries',
 );
 
-const compatibilityOutput = run(process.execPath, [
-  '-e',
-  [
-    "const root = await import('@blade-ai/agent-sdk');",
-    "const core = await import('@blade-ai/agent-sdk/core');",
-    "const model = await import('@blade-ai/agent-sdk/model');",
-    "const middleware = await import('@blade-ai/agent-sdk/middleware');",
-    "const tools = await import('@blade-ai/agent-sdk/tools');",
-    "const browser = await import('@blade-ai/agent-sdk/browser');",
-    "const protocol = await import('@blade-ai/agent-sdk/protocol');",
-    "const advanced = await import('@blade-ai/agent-sdk/advanced');",
-    "const node = await import('@blade-ai/agent-sdk/node');",
-    "const session = await import('@blade-ai/agent-sdk/session');",
-    "const infra = await import('@blade-ai/agent-sdk/server/infra');",
-    "const server = await import('@blade-ai/agent-sdk/server');",
-    "const postgres = await import('@blade-ai/agent-sdk/server/postgres');",
-    "const otel = await import('@blade-ai/agent-sdk/server/otel');",
-    "const testing = await import('@blade-ai/agent-sdk/server/testing');",
-    "console.log(core.PermissionMode === root.PermissionMode, model.PROVIDER_TYPES === root.PROVIDER_TYPES, middleware.composeMiddleware === root.composeMiddleware, tools.defineTool === root.defineTool, protocol.AGENT_PROTOCOL_VERSION === browser.AGENT_PROTOCOL_VERSION, node.createSession === advanced.createSession, session.createSession === advanced.createServerSession, server.AgentServer === infra.AgentServer, typeof postgres.PostgresRuntimeStore, typeof otel.OpenTelemetryAgentServerTelemetry, testing.assertRuntimeStoreConformance === infra.assertRuntimeStoreConformance);",
-  ].join(' '),
-]);
-assertIncludes(
-  compatibilityOutput,
-  'true true true true true true true true function function true',
-  'deprecated compatibility aliases',
-);
-
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
-verifyBrowserSafeDist('dist/core/index.js');
-verifyBrowserSafeDist('dist/middleware/index.js');
-verifyBrowserSafeDist('dist/model/index.js');
 verifyBrowserSafeDist('dist/protocol/index.js');
 verifyBrowserSafeDist('dist/server/testing/index.js');
-verifyBrowserSafeDist('dist/tools/index.js');
 
 const tempDir = mkdtempSync(join(repoRoot, '.tmp-entrypoints-'));
 try {

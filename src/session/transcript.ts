@@ -62,8 +62,6 @@ export interface TranscriptMessage {
   provenance?: ConversationMessage['provenance'];
   correlation?: ConversationMessage['correlation'];
   extensions?: JsonObject;
-  /** Legacy pre-v7 flattened message metadata. */
-  customMetadata?: JsonObject;
 }
 
 export interface TranscriptPart {

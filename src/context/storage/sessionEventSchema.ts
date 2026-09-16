@@ -125,7 +125,6 @@ const SessionEventSchema = z.discriminatedUnion('type', [
             .strict()
             .optional(),
           extensions: z.record(z.string(), JsonValueSchema).optional(),
-          customMetadata: z.record(z.string(), JsonValueSchema).optional(),
         })
         .passthrough(),
     })

@@ -10,10 +10,8 @@ import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { MessageRole } from '../types/constants.js';
 import {
   type EventId,
-  InputId,
   MessageId,
   type PartId,
-  RequestId,
   SessionId,
   ToolUseId,
 } from '../types/identifiers.js';
@@ -191,34 +189,6 @@ function stringifyContent(value: unknown): string {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function legacyMessageEnvelope(
-  metadata?: JsonObject,
-): Pick<ConversationMessage, 'providerOptions' | 'provenance' | 'correlation' | 'extensions'> {
-  if (!metadata) {
-    return {};
-  }
-
-  const { _systemSource, inputId, requestId, deepseekCache, deepseek, ...extensions } = metadata;
-  const deepseekOptions = isJsonObject(deepseek) ? deepseek : undefined;
-  return {
-    providerOptions:
-      deepseekOptions || deepseekCache !== undefined
-        ? {
-            deepseek: {
-              ...deepseekOptions,
-              ...(deepseekCache !== undefined ? { cache: deepseekCache } : {}),
-            },
-          }
-        : undefined,
-    provenance: isConversationMessageSource(_systemSource) ? { source: _systemSource } : undefined,
-    correlation:
-      typeof inputId === 'string' && typeof requestId === 'string'
-        ? { inputId: InputId(inputId), requestId: RequestId(requestId) }
-        : undefined,
-    extensions: Object.keys(extensions).length > 0 ? extensions : undefined,
-  };
 }
 
 function inferRole(partType: string): MessageRole {
@@ -414,10 +384,9 @@ export class JsonlSessionStore implements SessionStore {
         record.message.id = data.messageId;
         record.message.modelIdentity = data.modelIdentity ? { ...data.modelIdentity } : undefined;
 
-        const legacyEnvelope = legacyMessageEnvelope(data.customMetadata);
-        record.message.providerOptions = data.providerOptions ?? legacyEnvelope.providerOptions;
-        record.message.provenance = data.provenance ?? legacyEnvelope.provenance;
-        record.message.correlation = data.correlation ?? legacyEnvelope.correlation;
+        record.message.providerOptions = data.providerOptions;
+        record.message.provenance = data.provenance;
+        record.message.correlation = data.correlation;
         record.message.telemetry =
           data.model || data.usage
             ? {
@@ -430,7 +399,7 @@ export class JsonlSessionStore implements SessionStore {
                   : undefined,
               }
             : undefined;
-        record.message.extensions = data.extensions ?? legacyEnvelope.extensions;
+        record.message.extensions = data.extensions;
 
         continue;
       }
@@ -695,18 +664,10 @@ export class JsonlSessionStore implements SessionStore {
       }
       case 'image': {
         const payload = isJsonObject(part.payload) ? part.payload : {};
-        // `dataUrl` is the canonical field written by PersistentStore; `url` is
-        // accepted as a legacy / external-source fallback.
-        const url =
-          typeof payload.dataUrl === 'string'
-            ? payload.dataUrl
-            : typeof payload.url === 'string'
-              ? payload.url
-              : '';
         const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
           type: 'image_url',
           image_url: {
-            url,
+            url: typeof payload.dataUrl === 'string' ? payload.dataUrl : '',
           },
         });
         record.message.content = toMessageContent(nextParts);
@@ -779,17 +740,13 @@ export class JsonlSessionStore implements SessionStore {
         const text = typeof payload.text === 'string' ? payload.text : '';
         record.message.role = 'system';
         record.message.content = text;
-        const legacyEnvelope = legacyMessageEnvelope(
-          isJsonObject(payload.metadata) ? payload.metadata : undefined,
-        );
         record.message.provenance =
-          (isJsonObject(payload.provenance) &&
-          isConversationMessageSource(payload.provenance.source)
+          isJsonObject(payload.provenance) && isConversationMessageSource(payload.provenance.source)
             ? { source: payload.provenance.source }
-            : undefined) ?? legacyEnvelope.provenance;
-        record.message.extensions =
-          (isJsonObject(payload.extensions) ? payload.extensions : undefined) ??
-          legacyEnvelope.extensions;
+            : undefined;
+        record.message.extensions = isJsonObject(payload.extensions)
+          ? payload.extensions
+          : undefined;
         summaryMessageIds.add(record.id);
         onSummary(text);
         break;

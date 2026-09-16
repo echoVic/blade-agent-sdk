@@ -31,12 +31,9 @@ describe('Session module boundaries', () => {
 
   it('owns the SessionRunner contract under advanced', () => {
     const advancedRunner = resolve('src/advanced/SessionRunner.ts');
-    const compatibilityRunner = resolve('src/server/SessionRunner.ts');
 
     expect(existsSync(advancedRunner)).toBe(true);
     expect(readFileSync(advancedRunner, 'utf8')).toContain('export interface SessionRunner');
-    expect(readFileSync(compatibilityRunner, 'utf8')).toContain(
-      "from '../advanced/SessionRunner.js'",
-    );
+    expect(existsSync(resolve('src/server/SessionRunner.ts'))).toBe(false);
   });
 });

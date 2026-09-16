@@ -32,12 +32,10 @@ import {
   type ToolUseId as ToolUseIdType,
 } from '../../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../../types/json.js';
-import type { ContextData, ConversationContext, SessionContext } from '../types.js';
 import { JSONLStore } from './JSONLStore.js';
 import {
   detectGitBranch,
   getSessionFilePathFromStorageRoot,
-  listProjectDirectories,
   normalizeSessionStorageRoot,
 } from './pathUtils.js';
 
@@ -471,65 +469,6 @@ export class PersistentStore implements SessionRepository, SessionEventStore {
     }
   }
 
-  /**
-   * 保存完整上下文数据（向后兼容方法）
-   * 将 ContextData 转为 JSONL 格式保存
-   */
-  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
-    try {
-      await this.createSession(sessionId);
-      const { conversation } = contextData.layers;
-      for (const msg of conversation.messages) {
-        await this.saveMessage(sessionId, msg.role, msg.content, null);
-      }
-    } catch (error) {
-      console.warn(`[PersistentStore] 保存上下文失败 (session: ${sessionId}):`, error);
-    }
-  }
-
-  /**
-   * 加载会话上下文（从 JSONL 重建）
-   */
-  async loadSession(sessionId: SessionId): Promise<SessionContext | null> {
-    const state = await this.getSessionStore().loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-
-    return {
-      sessionId,
-      userId: undefined,
-      preferences: {},
-      configuration: {},
-      startTime: state.createdAt,
-    };
-  }
-
-  /**
-   * 加载对话上下文（从 JSONL 重建）
-   */
-  async loadConversation(sessionId: SessionId): Promise<ConversationContext | null> {
-    const state = await this.getSessionStore().loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-
-    return {
-      messages: state.timeline.map((entry) => ({
-        id: entry.id,
-        role: entry.message.role,
-        content:
-          typeof entry.message.content === 'string'
-            ? entry.message.content
-            : JSON.stringify(entry.message.content),
-        timestamp: entry.createdAt,
-      })),
-      summary: state.summary,
-      topics: [],
-      lastActivity: state.lastActivity,
-    };
-  }
-
   async loadState(sessionId: SessionId) {
     return this.getSessionStore().loadState(sessionId);
   }
@@ -680,13 +619,6 @@ export class PersistentStore implements SessionRepository, SessionEventStore {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }
-
-  /**
-   * 获取所有项目列表
-   */
-  async listAllProjects(): Promise<string[]> {
-    return listProjectDirectories(this.storageRoot);
   }
 
   private buildPartEntries(

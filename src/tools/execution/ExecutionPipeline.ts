@@ -7,7 +7,7 @@ import { isSteeringInterruptSignal } from '../../types/abort.js';
 import { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { JsonObject } from '../../types/json.js';
-import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../../types/permissions.js';
+import type { PermissionHandler, PermissionsConfig } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import { resolveBehavior, ToolKind } from '../behavior.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
@@ -147,7 +147,6 @@ export class ExecutionPipeline {
       {
         permissionMode: defaultPermissionMode,
         permissionHandler: config.permissionHandler,
-        canUseTool: config.canUseTool,
       },
     );
     this.fileLockStage = new FileLockStage(this.logger, this.guard);
@@ -474,13 +473,7 @@ export interface ExecutionPipelineConfig {
   enableMetrics?: boolean;
   permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
-  /**
-   * Full permission callback. When provided, it takes precedence over the
-   * legacy canUseTool callback.
-   */
   permissionHandler?: PermissionHandler;
-  /** Legacy permission callback, used only when permissionHandler is absent. */
-  canUseTool?: CanUseTool;
   hookRuntime?: HookRuntime;
   logger?: InternalLogger;
   /**

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionRunnerContext } from '../../advanced/SessionRunner.js';
 import { resumeSession } from '../../session/Session.js';
 import type { ISession, SessionStreamEvent } from '../../session/types.js';
 import { RequestId, SessionId } from '../../types/identifiers.js';
 import { SdkSessionRunner } from '../SdkSessionRunner.js';
-import type { SessionRunnerContext } from '../SessionRunner.js';
 
 vi.mock('../../session/Session.js', () => ({ resumeSession: vi.fn() }));
 

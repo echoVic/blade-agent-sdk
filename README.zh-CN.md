@@ -215,7 +215,7 @@ const agent = await createAgent({
 `advanced.hooks` 只包含进程内 TypeScript callback，对应 8 种 Session hook
 事件。Shell hooks 使用 CLI/宿主配置中的 `HookConfig`，不能传给
 `createAgent()`。底层集成仍可使用 `SessionOptions.permissionMode` 和
-`permissionHandler`；`canUseTool` 已弃用。
+`permissionHandler`。
 
 ## 包入口
 
@@ -238,12 +238,14 @@ import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/ot
 
 - 根入口：`createAgent`、`defineTool`、middleware、模型契约、常量和公共类型
 - `/browser`：browser-safe `AgentClient`、协议契约和事件解析器
+- `/protocol`：wire protocol schema 与解析器
 - `/server/infra`：`AgentServer`、`AgentWorker`、Runtime Store 契约和 conformance suite
+- `/server/testing`：Runtime Store conformance helper
 - `/advanced`：底层 local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter
 
 原 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
-`/tools`、`/protocol` 和 `/server/testing` 路径作为 deprecated compatibility
-alias 保留到 Phase 3。PostgreSQL 与 OpenTelemetry 可选 adapter 继续使用
+`/tools` compatibility alias 已删除。PostgreSQL 与 OpenTelemetry 可选
+adapter 继续使用
 `/server/postgres` 和 `/server/otel`，避免导入 `/server/infra` 时强制安装其
 peer dependency。
 

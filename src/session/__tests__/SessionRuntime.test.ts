@@ -1049,8 +1049,8 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('should let permission hooks modify input before canUseTool runs', async () => {
-    const canUseTool = vi.fn(async (_toolName: string, input: JsonObject) => ({
+  it('should let permission hooks modify input before the permission handler runs', async () => {
+    const permissionHandler = vi.fn(async ({ input }: { input: JsonObject }) => ({
       behavior: 'allow' as const,
       updatedInput: input,
     }));
@@ -1064,7 +1064,7 @@ describe('SessionRuntime', () => {
     const runtime = new SessionRuntime(
       SessionId('session-4'),
       createOptions({
-        canUseTool,
+        permissionHandler,
         tools: [
           {
             ...customTool,
@@ -1107,10 +1107,12 @@ describe('SessionRuntime', () => {
       ),
     );
 
-    expect(canUseTool).toHaveBeenCalledWith(
-      'CustomTool',
-      expect.objectContaining({ value: 'from-permission-hook' }),
-      expect.objectContaining({ affectedPaths: [] }),
+    expect(permissionHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'CustomTool',
+        input: expect.objectContaining({ value: 'from-permission-hook' }),
+        affectedPaths: [],
+      }),
     );
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ value: 'from-permission-hook' }),

@@ -23,12 +23,14 @@ JavaScript package export.
 |-------|---------|----------|
 | `@blade-ai/agent-sdk` | Node.js | Default `createAgent`, tool authoring, and public type entry |
 | `@blade-ai/agent-sdk/browser` | Browser and Node.js | `AgentClient`, protocol schemas, parsers, events, and constants |
+| `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Wire protocol schemas and parsers |
 | `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, Runtime Store contracts, and conformance suites |
+| `@blade-ai/agent-sdk/server/testing` | Node.js | Runtime Store conformance helpers |
 | `@blade-ai/agent-sdk/advanced` | Node.js | Local/server Sessions, `SessionRunner`, execution hosts, and Node adapters |
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
-`/tools`, `/protocol`, and `/server/testing` paths are deprecated compatibility
-aliases. Optional PostgreSQL and OTel adapters retain `/server/postgres` and
+and `/tools` compatibility aliases have been removed. Optional PostgreSQL and
+OTel adapters retain `/server/postgres` and
 `/server/otel` so canonical imports do not force-load peer dependencies.
 The package is ESM-only. Browser calls to server-only APIs resolve to explicit
 stubs.
@@ -271,7 +273,6 @@ Types and errors:
 
 - `DurableExecutionLeaseOptions`
 - `DurableExecutionLeaseStore`
-- `HistoryRepairStore`
 - `DurableExecutionLeaseSnapshot`
 - `DurableExecutionFence`
 - `DurableExecutionLeaseErrorCode`
@@ -507,13 +508,10 @@ Helpers:
 - `createCompositePermissionHandler`
 - `createModePermissionHandler`
 - `createPathSafetyPermissionHandler`
-- `createPermissionHandlerFromCanUseTool`
 - `createRuleBasedPermissionHandler`
 
 Types:
 
-- `CanUseTool`
-- `CanUseToolOptions`
 - `ConfirmationDetails` (`abortSignal` is the active Request signal)
 - `ConfirmationHandler`
 - `ConfirmationResponse`

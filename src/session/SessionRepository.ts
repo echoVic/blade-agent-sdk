@@ -1,5 +1,4 @@
 import { nanoid } from 'nanoid';
-import type { ContextData } from '../context/types.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
 import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
@@ -124,7 +123,6 @@ export interface SessionEventStore {
     metadata: SessionRepositoryCompactionMetadata,
     parentMessageId?: MessageId | null,
   ): Promise<MessageId>;
-  saveContext(sessionId: SessionId, contextData: ContextData): Promise<void>;
   /**
    * Record how far the message projection is complete. Committed with the
    * projection, so a later request cannot advance past a recorded gap.
@@ -224,8 +222,6 @@ export class NoopSessionRepository implements SessionRepository, SessionEventSto
   ): Promise<MessageId> {
     return MessageId(nanoid());
   }
-
-  async saveContext(_sessionId: SessionId, _contextData: ContextData): Promise<void> {}
 
   async loadState(_sessionId: SessionId): Promise<SessionState | null> {
     return null;

@@ -84,7 +84,7 @@ type PermissionResult =
 ## 底层 Session API
 
 `createSession()` 继续提供 `permissionMode` 和 `permissionHandler`，供框架与
-运行时集成使用。`canUseTool` 只为旧集成保留，已弃用；新代码不应同时维护三套入口。
+运行时集成使用。
 
 权限回调中的信号归属于当前 Request。SDK 会将权限回调、工具输入校验、工具级
 权限检查和交互式确认与此信号竞速；交互式处理器通过

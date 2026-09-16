@@ -223,20 +223,6 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
     expect(recorded?.eventId).toBe(first.eventId);
   });
 
-  it('recognises a key written by the pre-7.4.5 event-id shape', async () => {
-    const store = new InMemoryAgentServerStore();
-    // 7.4.4 and earlier used the key as the event's own id and had no key record.
-    const legacy = await store.appendEvent(tenantId, sessionId, event);
-
-    const repeat = await store.appendEvent(tenantId, sessionId, event, {
-      idempotencyKey: String(legacy.eventId),
-    });
-
-    expect(repeat.eventId).toBe(legacy.eventId);
-    expect(repeat.sequence).toBe(legacy.sequence);
-    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(1);
-  });
-
   it('keeps appending without a key', async () => {
     const store = new InMemoryAgentServerStore();
     await store.appendEvent(tenantId, sessionId, event);

@@ -389,27 +389,9 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     return this.readIdempotencyRecord(scopedKey(tenantId, sessionId), idempotencyKey);
   }
 
-  /**
-   * The synchronous critical section for idempotent appends.
-   *
-   * Stores written before the key record existed (7.4.4 and earlier) kept the key
-   * as the event's own id, so a miss is looked up in the log and adopted in place.
-   */
   private readIdempotencyRecord(key: string, idempotencyKey: string): AgentServerEvent | null {
     const existing = this.eventKeys.get(key)?.get(idempotencyKey);
-    if (existing) {
-      return structuredClone(existing);
-    }
-    const legacy = this.eventLogs
-      .get(key)
-      ?.events.find((candidate) => candidate.eventId === idempotencyKey);
-    if (!legacy) {
-      return null;
-    }
-    const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
-    keys.set(idempotencyKey, structuredClone(legacy));
-    this.eventKeys.set(key, keys);
-    return structuredClone(legacy);
+    return existing ? structuredClone(existing) : null;
   }
 
   async readEvents(

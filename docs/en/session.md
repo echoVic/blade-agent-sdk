@@ -746,7 +746,6 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |
 | `permissionMode` | `PermissionMode` | Built-in approval mode |
 | `permissionHandler` | callback | Low-level custom permission policy |
-| `canUseTool` | callback | Deprecated compatibility callback |
 | `systemPrompt` | `string` | Session system prompt |
 | `maxTurns` | `number` | Agent turn limit |
 | `agents` | `Record<string, AgentDefinition>` | Session-local subagents |

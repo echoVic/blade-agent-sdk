@@ -48,19 +48,6 @@ export type PermissionResult =
       updatedInput?: JsonObject;
     };
 
-export interface CanUseToolOptions {
-  signal: AbortSignal;
-  toolKind: ToolKind;
-  sideEffect: ToolSideEffect;
-  affectedPaths: string[];
-}
-
-export type CanUseTool = (
-  toolName: string,
-  input: JsonObject,
-  options: CanUseToolOptions,
-) => Promise<PermissionResult>;
-
 export interface PermissionHandlerRequest {
   toolName: string;
   input: JsonObject;
@@ -86,16 +73,6 @@ interface PathSafetyPermissionOptions {
 }
 
 type CompositePermissionStrategy = 'first-wins' | 'deny-wins';
-
-export function createPermissionHandlerFromCanUseTool(canUseTool: CanUseTool): PermissionHandler {
-  return async (request) =>
-    canUseTool(request.toolName, request.input, {
-      signal: request.signal,
-      toolKind: request.toolKind,
-      sideEffect: request.toolMeta.sideEffect,
-      affectedPaths: request.affectedPaths,
-    });
-}
 
 export function createModePermissionHandler(
   defaultMode: PermissionMode = PermissionMode.DEFAULT,

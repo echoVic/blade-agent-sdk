@@ -184,15 +184,16 @@ model-facing function declarations use `ModelToolDefinition`.
 ## Export rules
 
 - Source modules import owner files directly to avoid root-barrel cycles.
-- Barrels use explicit exports to describe public contracts instead of broad
-  `export *` aggregation of domain types.
+- Barrels re-export owner modules directly instead of routing through
+  domain-level compatibility barrels.
 - The root entry assembles application APIs and public types; `/browser`
   remains browser-safe.
 - Filesystem, shell, process, low-level Session, and integration APIs are
   exported by `/advanced`.
 - `AgentServer`, Workers, Runtime Stores, and telemetry adapters are exported
   by `/server/infra`.
-- Legacy subpaths are deprecated compatibility aliases and receive no new API.
+- The legacy `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
+  and `/tools` subpaths have been removed.
 - Compile-time assertion helpers are internal and are not part of the npm API.
 
 ## Change checklist

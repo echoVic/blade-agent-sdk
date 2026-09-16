@@ -86,46 +86,18 @@ export type {
 } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Middleware and plugins ---
-export * from './middleware/index.js';
-export type {
-  BuiltinProviderType,
-  ConversationMessage,
-  ConversationMessageSource,
-  ModelConfig,
-  ModelContent,
-  ModelIdentity,
-  ModelImageContent,
-  ModelMessage,
-  ModelMessageProviderOptions,
-  ModelProviderOptions,
-  ModelResponse,
-  ModelRetryConfig,
-  ModelRetryEvent,
-  ModelService,
-  ModelServiceConfig,
-  ModelSideQueryOptions,
-  ModelStreamChunk,
-  ModelStreamToolCall,
-  ModelTextContent,
-  ModelToolCall,
-  ModelToolCallDelta,
-  ModelToolDefinition,
-  ModelUsage,
-  OutputFormat,
-  ProviderConnectionConfig,
-  ProviderType,
-  QuerySource,
-  TokenUsage,
-} from './model/index.js';
+export * from './middleware/AgentPlugin.js';
+export * from './middleware/composeMiddleware.js';
+export * from './middleware/ModelMiddleware.js';
+export * from './middleware/ToolMiddleware.js';
 // --- Model contracts ---
-export {
-  CONVERSATION_MESSAGE_SOURCES,
-  isBuiltinProviderType,
-  isConversationMessageSource,
-  normalizeModelUsage,
-  PROVIDER_TYPES,
-  resolveModelIdentity,
-} from './model/index.js';
+export * from './model/config.js';
+export * from './model/conversation.js';
+export * from './model/identity.js';
+export type * from './model/message.js';
+export type * from './model/retry.js';
+export type * from './model/service.js';
+export * from './model/usage.js';
 // --- Observability ---
 export type {
   AgentTrace,
@@ -203,9 +175,21 @@ export {
 export type { ProviderAdapter } from './services/ProviderRegistry.js';
 export { ProviderRegistry } from './services/ProviderRegistry.js';
 export * from './session/events/core.js';
+export type { ForkOptions, ResumeOptions } from './session/Session.js';
+// --- Session ---
+export { createSession, forkSession, prompt, resumeSession } from './session/Session.js';
+export type {
+  SessionEventStore,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from './session/SessionRepository.js';
 export type {
   AgentDefinition,
-  ForkOptions,
   ForkSessionOptions,
   ForkSessionResult,
   HookCallback,
@@ -218,32 +202,16 @@ export type {
   ModelInfo,
   PendingSessionInput,
   PromptResult,
-  ResumeOptions,
   SendOptions,
-  SessionEventStore,
   SessionHandoffResult,
   SessionHookEvent,
   SessionOptions,
-  SessionRepository,
-  SessionRepositoryCompactionMetadata,
-  SessionRepositoryHealth,
-  SessionRepositoryMessageMetadata,
-  SessionRepositoryStorageStats,
-  SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef,
   SessionStreamEvent,
   StreamOptions,
   SubagentInfo,
   ToolExecutionRecord,
-} from './session/index.js';
-// --- Session ---
-export {
-  createSession,
-  forkSession,
-  InputPriority,
-  prompt,
-  resumeSession,
-} from './session/index.js';
+} from './session/types.js';
+export { InputPriority } from './session/types.js';
 export type {
   SkillActivationContext,
   SkillDefinition,
@@ -290,11 +258,7 @@ export type {
   ToolSettledLifecycle,
   ToolYield,
 } from './tools/types/index.js';
-export {
-  collectToolExecution,
-  completeToolExecution,
-  ToolErrorType,
-} from './tools/types/index.js';
+export { collectToolExecution, completeToolExecution, ToolErrorType } from './tools/types/index.js';
 export {
   HookEvent,
   MessageRole,
@@ -330,8 +294,6 @@ export {
 export type { JsonObject, JsonValue } from './types/json.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
-  CanUseTool,
-  CanUseToolOptions,
   PermissionHandler,
   PermissionHandlerRequest,
   PermissionResult,
@@ -344,7 +306,6 @@ export {
   createCompositePermissionHandler,
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
 } from './types/permissions.js';
 // --- Error utilities ---

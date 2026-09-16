@@ -224,9 +224,7 @@ const agent = await createAgent({
 });
 ```
 
-`SessionOptions.permissionHandler` remains the low-level runtime extension
-point. `canUseTool` is deprecated and retained only for existing Session
-integrations.
+`SessionOptions.permissionHandler` remains the low-level runtime extension point.
 
 ## Ordering and errors
 
