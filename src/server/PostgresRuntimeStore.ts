@@ -49,13 +49,11 @@ import {
   EventId,
   EventSequence,
   ExecutionLeaseId,
-  FencingToken,
   type InputId,
   MessageId,
   type RequestId,
   SessionId,
   ToolUseId,
-  WorkerId,
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
@@ -66,7 +64,7 @@ import {
   postgresJsonObject,
   postgresTimestamp,
 } from './PostgresContext.js';
-import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
+import { type PostgresEffectRow, PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
 import {
   RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
@@ -81,22 +79,6 @@ import {
   RuntimeStoreError,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
-import type {
-  RuntimeEffectClaim,
-  RuntimeEffectClaimOptions,
-  RuntimeEffectFailureOptions,
-  RuntimeEffectLease,
-  RuntimeEffectReconciliation,
-  RuntimeQueueMetrics,
-  RuntimeRecoveryResult,
-  RuntimeSessionClaim,
-  RuntimeSessionClaimOptions,
-  RuntimeSessionRoute,
-  RuntimeSessionSettlement,
-  RuntimeSessionTransition,
-  RuntimeWorkerRecord,
-  RuntimeWorkerRegistration,
-} from './WorkerRuntime.js';
 
 const DEFAULT_MAX_EVENTS_PER_SESSION = 10_000;
 const DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION = 100_000;
@@ -140,29 +122,6 @@ interface ProjectionRow extends QueryResultRow {
   projection_offset: string | number;
   state: unknown;
   updated_at: Date | string;
-}
-
-interface EffectRow extends QueryResultRow {
-  tenant_id: string;
-  session_id: string;
-  command_id: string;
-  effect_id: string;
-  effect_type: string;
-  payload: unknown;
-  idempotency_key: string;
-  execution_mode: 'idempotent' | 'at_most_once';
-  status: RuntimeEffectStatus;
-  attempts: number;
-  available_at: Date | string;
-  created_at: Date | string;
-  worker_id: string | null;
-  lease_id: string | null;
-  fencing_token: string | number;
-  lease_expires_at: Date | string | null;
-  started_at: Date | string | null;
-  completed_at: Date | string | null;
-  result: unknown | null;
-  error: unknown | null;
 }
 
 function asSessionState(value: unknown): SessionState {
@@ -301,15 +260,13 @@ function messageEnvelope(
   };
 }
 
-export class PostgresRuntimeStore implements RuntimeStore {
-  private readonly db: PostgresContext;
+export class PostgresRuntimeStore extends PostgresWorkerRuntime implements RuntimeStore {
   private readonly ownsPool: boolean;
   private readonly maxAgentEventsPerSession: number;
   private readonly maxDurableEventsPerSession: number;
   private readonly maxDomainEventsPerSession: number;
   private readonly maxTranscriptEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
-  private readonly workerRuntime: PostgresWorkerRuntime;
   private initialization?: Promise<void>;
 
   constructor(options: PostgresRuntimeStoreOptions = {}) {
@@ -322,12 +279,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ...options.poolConfig,
         connectionString: options.connectionString ?? options.poolConfig?.connectionString,
       });
-    this.ownsPool = !options.pool;
-    this.db = new PostgresContext(
+    const db = new PostgresContext(
       pool,
       options.schema ?? 'public',
       options.tablePrefix ?? 'blade_runtime',
     );
+    super(db);
+    this.ownsPool = !options.pool;
     this.maxAgentEventsPerSession =
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
     this.maxDurableEventsPerSession =
@@ -337,7 +295,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
     this.maxTranscriptEventsPerSession =
       options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant = options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
-    this.workerRuntime = new PostgresWorkerRuntime(this.db, () => this.initialize());
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
       ['maxDurableEventsPerSession', this.maxDurableEventsPerSession],
@@ -951,7 +908,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       predicates.push(`status = $${values.length}`);
     }
     values.push(limit);
-    const result = await this.db.client().query<EffectRow>(
+    const result = await this.db.client().query<PostgresEffectRow>(
       `SELECT *
          FROM ${this.db.table('outbox')}
         WHERE ${predicates.join(' AND ')}
@@ -993,182 +950,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
   }
 
-  registerWorker(registration: RuntimeWorkerRegistration): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.registerWorker(registration);
-  }
-
-  heartbeatWorker(workerId: WorkerId, ttlMs: number): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.heartbeatWorker(workerId, ttlMs);
-  }
-
-  drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.drainWorker(workerId);
-  }
-
-  getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null> {
-    return this.workerRuntime.getWorker(workerId);
-  }
-
-  enqueueSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: {
-      readonly priority?: number;
-      readonly metadata?: JsonObject;
-    },
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.enqueueSession(tenantId, sessionId, options);
-  }
-
-  claimSession(options: RuntimeSessionClaimOptions): Promise<RuntimeSessionClaim | null> {
-    return this.workerRuntime.claimSession(options);
-  }
-
-  renewSessionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    ttlMs: number,
-  ): Promise<RuntimeSessionClaim> {
-    return this.workerRuntime.renewSessionLease(tenantId, lease, ttlMs);
-  }
-
-  transitionSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    transition: RuntimeSessionTransition,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.transitionSession(tenantId, lease, transition);
-  }
-
-  settleSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    settlement: RuntimeSessionSettlement,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.settleSession(tenantId, lease, settlement);
-  }
-
-  handoffSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    metadata?: JsonObject,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.handoffSession(tenantId, lease, metadata);
-  }
-
-  preemptSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: {
-      readonly reason?: JsonObject;
-      readonly requeue?: boolean;
-    },
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.preemptSession(tenantId, sessionId, options);
-  }
-
-  getSessionRoute(tenantId: string, sessionId: SessionId): Promise<RuntimeSessionRoute | null> {
-    return this.workerRuntime.getSessionRoute(tenantId, sessionId);
-  }
-
-  listWorkerSessions(workerId: WorkerId): Promise<readonly RuntimeSessionRoute[]> {
-    return this.workerRuntime.listWorkerSessions(workerId);
-  }
-
-  getQueueMetrics(tenantId?: string): Promise<RuntimeQueueMetrics> {
-    return this.workerRuntime.getQueueMetrics(tenantId);
-  }
-
-  recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
-    return this.workerRuntime.recoverExpiredWork();
-  }
-
-  claimEffects(options: RuntimeEffectClaimOptions): Promise<readonly RuntimeEffectClaim[]> {
-    return this.workerRuntime.claimEffects(options);
-  }
-
-  renewEffectLease(lease: RuntimeEffectLease, ttlMs: number): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.renewEffectLease(lease, ttlMs);
-  }
-
-  startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.startEffect(lease);
-  }
-
-  completeEffect(lease: RuntimeEffectLease, result?: JsonObject): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.completeEffect(lease, result);
-  }
-
-  failEffect(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-    options?: RuntimeEffectFailureOptions,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.failEffect(lease, error, options);
-  }
-
-  markEffectUncertain(lease: RuntimeEffectLease, error: JsonObject): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.markEffectUncertain(lease, error);
-  }
-
-  reconcileEffect(
-    tenantId: string,
-    effectId: string,
-    outcome: RuntimeEffectReconciliation,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.reconcileEffect(tenantId, effectId, outcome);
-  }
-
-  requiresExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: DurableEventOperationOptions,
-  ): Promise<boolean> {
-    return this.workerRuntime.requiresExecutionLease(tenantId, sessionId, options);
-  }
-
-  acquireExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options: DurableExecutionLeaseAcquireOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.acquireExecutionLease(tenantId, sessionId, options);
-  }
-
-  renewExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    ttlMs: number,
-    options?: DurableEventOperationOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.renewExecutionLease(tenantId, lease, ttlMs, options);
-  }
-
-  assertExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.workerRuntime.assertExecutionLease(tenantId, lease, options);
-  }
-
-  withExecutionLease<T>(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    operation: () => Promise<T>,
-    options?: DurableEventOperationOptions,
-  ): Promise<T> {
-    return this.workerRuntime.withExecutionLease(tenantId, lease, operation, options);
-  }
-
-  releaseExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.workerRuntime.releaseExecutionLease(tenantId, lease, options);
-  }
-
   async appendDurableEvents(
     tenantId: string,
     sessionId: SessionId,
@@ -1195,7 +976,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     });
     options.signal?.throwIfAborted();
     const appended = await this.db.transaction(async (client) => {
-      await this.workerRuntime.assertExecutionFenceWithClient(
+      await this.assertExecutionFenceWithClient(
         client,
         tenantId,
         sessionId,
@@ -1794,7 +1575,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           `Unsupported Runtime Store schema version: ${String(storedVersion.rows[0]?.value)}`,
         );
       }
-      await this.workerRuntime.createSchema(client, previousSchemaVersion);
+      await this.createWorkerSchema(client, previousSchemaVersion);
       await client.query(
         `INSERT INTO ${this.db.table('metadata')} AS metadata (key, value)
          VALUES ('schema_version', $1)
@@ -2030,7 +1811,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<RuntimeEffectRecord[]> {
     const effects: RuntimeEffectRecord[] = [];
     for (const effect of commit.effects ?? []) {
-      const result = await client.query<EffectRow>(
+      const result = await client.query<PostgresEffectRow>(
         `INSERT INTO ${this.db.table('outbox')} (
            tenant_id, effect_id, session_id, command_id, effect_type,
            payload, idempotency_key, available_at, execution_mode
@@ -2139,7 +1920,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         ORDER BY sequence ASC`,
       [commit.tenantId, commit.sessionId, commit.command.commandId],
     );
-    const effects = await client.query<EffectRow>(
+    const effects = await client.query<PostgresEffectRow>(
       `SELECT *
          FROM ${this.db.table('outbox')}
         WHERE tenant_id = $1 AND session_id = $2 AND command_id = $3
@@ -2185,33 +1966,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
           updatedAt: postgresTimestamp(row.updated_at),
         }
       : null;
-  }
-
-  private effectRecord(row: EffectRow): RuntimeEffectRecord {
-    return {
-      tenantId: row.tenant_id,
-      sessionId: SessionId(row.session_id),
-      commandId: CommandId(row.command_id),
-      effectId: row.effect_id,
-      type: row.effect_type,
-      payload: postgresJsonObject(row.payload),
-      idempotencyKey: row.idempotency_key,
-      executionMode: row.execution_mode,
-      status: row.status,
-      attempts: row.attempts,
-      availableAt: postgresTimestamp(row.available_at),
-      createdAt: postgresTimestamp(row.created_at),
-      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
-      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(postgresInteger(row.fencing_token) > 0
-        ? { fencingToken: FencingToken(postgresInteger(row.fencing_token)) }
-        : {}),
-      ...(row.lease_expires_at ? { leaseExpiresAt: postgresTimestamp(row.lease_expires_at) } : {}),
-      ...(row.started_at ? { startedAt: postgresTimestamp(row.started_at) } : {}),
-      ...(row.completed_at ? { completedAt: postgresTimestamp(row.completed_at) } : {}),
-      ...(row.result ? { result: postgresJsonObject(row.result) } : {}),
-      ...(row.error ? { error: postgresJsonObject(row.error) } : {}),
-    };
   }
 }
 

@@ -1,6 +1,8 @@
 import type { Pool, PoolClient } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 import * as postgres from '../PostgresContext.js';
+import { PostgresRuntimeStore } from '../PostgresRuntimeStore.js';
+import { PostgresWorkerRuntime } from '../PostgresWorkerRuntime.js';
 
 const { PostgresContext, quotePostgresIdentifier } = postgres;
 
@@ -68,5 +70,11 @@ describe('PostgresContext', () => {
     expect(decoded).toEqual(source);
     expect(decoded).not.toBe(source);
     expect(() => jsonObject({ missing: undefined }, 'payload')).toThrow(/payload/);
+  });
+
+  it('uses the worker runtime directly instead of forwarding every method', () => {
+    expect(Object.getPrototypeOf(PostgresRuntimeStore.prototype)).toBe(
+      PostgresWorkerRuntime.prototype,
+    );
   });
 });
