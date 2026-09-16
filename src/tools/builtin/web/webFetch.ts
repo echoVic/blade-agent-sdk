@@ -9,7 +9,6 @@ import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
 import type { WebFetchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
@@ -181,61 +180,59 @@ export const webFetchTool = createTool({
   interruptBehavior: 'cancel',
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      url: Type.String({ format: 'url', description: 'URL to request' }),
-      method: Type.Enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'], {
-        default: 'GET',
-        description: 'HTTP method',
-      }),
-      extract_content: ToolSchemas.flag({
-        defaultValue: false,
-        description:
-          'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
-      }),
-      jina_options: Type.Optional(
-        Type.Object(
-          {
-            with_generated_alt: ToolSchemas.flag({
-              defaultValue: false,
-              description: 'Generate alt text for images',
-            }),
-            with_links_summary: ToolSchemas.flag({
-              defaultValue: false,
-              description: 'Include summary of all links',
-            }),
-            wait_for_selector: Type.Optional(
-              Type.String({ description: 'Wait for specific CSS selector to load' }),
-            ),
-          },
-          {
-            description: 'Jina Reader advanced options (only used when extract_content is true)',
-          },
-        ),
-      ),
-      headers: Type.Optional(
-        Type.Record(Type.String(), Type.String(), {
-          description: 'Request headers (optional)',
-        }),
-      ),
-      body: Type.Optional(Type.String({ description: 'Request body (optional)' })),
-      timeout: ToolSchemas.timeout(1000, 120000, 30000),
-      follow_redirects: ToolSchemas.flag({
-        defaultValue: true,
-        description: 'Follow redirects',
-      }),
-      max_redirects: Type.Integer({
-        minimum: 0,
-        maximum: 10,
-        default: 5,
-        description: 'Maximum redirect hops',
-      }),
-      return_headers: ToolSchemas.flag({
-        defaultValue: false,
-        description: 'Return response headers',
-      }),
+  schema: Type.Object({
+    url: Type.String({ format: 'url', description: 'URL to request' }),
+    method: Type.Enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'], {
+      default: 'GET',
+      description: 'HTTP method',
     }),
-  ),
+    extract_content: ToolSchemas.flag({
+      defaultValue: false,
+      description:
+        'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
+    }),
+    jina_options: Type.Optional(
+      Type.Object(
+        {
+          with_generated_alt: ToolSchemas.flag({
+            defaultValue: false,
+            description: 'Generate alt text for images',
+          }),
+          with_links_summary: ToolSchemas.flag({
+            defaultValue: false,
+            description: 'Include summary of all links',
+          }),
+          wait_for_selector: Type.Optional(
+            Type.String({ description: 'Wait for specific CSS selector to load' }),
+          ),
+        },
+        {
+          description: 'Jina Reader advanced options (only used when extract_content is true)',
+        },
+      ),
+    ),
+    headers: Type.Optional(
+      Type.Record(Type.String(), Type.String(), {
+        description: 'Request headers (optional)',
+      }),
+    ),
+    body: Type.Optional(Type.String({ description: 'Request body (optional)' })),
+    timeout: ToolSchemas.timeout(1000, 120000, 30000),
+    follow_redirects: ToolSchemas.flag({
+      defaultValue: true,
+      description: 'Follow redirects',
+    }),
+    max_redirects: Type.Integer({
+      minimum: 0,
+      maximum: 10,
+      default: 5,
+      description: 'Maximum redirect hops',
+    }),
+    return_headers: ToolSchemas.flag({
+      defaultValue: false,
+      description: 'Return response headers',
+    }),
+  }),
 
   resolveBehavior: (params) => {
     const method = params?.method ?? 'GET';

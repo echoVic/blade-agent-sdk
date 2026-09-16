@@ -49,11 +49,11 @@ import type {
   ProviderType,
   RuntimeAccess,
   RuntimePatch,
+  SdkMcpServerHandle,
   SessionEventStore,
   SessionHandoffErrorCode,
   SessionHandoffResult,
   SessionOptions,
-  SessionPersistence,
   SessionRepository,
   ToolEffect,
   ToolEffectYield,
@@ -383,6 +383,9 @@ describe('root exports', () => {
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<DurableExecutionLeaseStore['acquireExecutionLease']>().toBeFunction();
     expectTypeOf<DurableExecutionLeaseStore['withExecutionLease']>().toBeFunction();
+    expectTypeOf<
+      Parameters<typeof DurableExecutionLease.acquire>[0]
+    >().toEqualTypeOf<DurableExecutionLeaseStore>();
     expectTypeOf<DurableExecutionFence['fencingToken']>().toEqualTypeOf<
       ReturnType<typeof FencingToken>
     >();
@@ -395,16 +398,19 @@ describe('root exports', () => {
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined
     >();
+    expectTypeOf<SessionOptions['durableExecutionLeaseStore']>().toEqualTypeOf<
+      DurableExecutionLeaseStore | undefined
+    >();
     expectTypeOf<SessionOptions['sessionRepository']>().toEqualTypeOf<
       SessionRepository | undefined
     >();
     expectTypeOf<SessionOptions['sessionEventStore']>().toEqualTypeOf<
       SessionEventStore | undefined
     >();
-    expectTypeOf<SessionPersistence>().toMatchTypeOf<SessionRepository>();
     expectTypeOf<SessionOptions['executionLease']>().toEqualTypeOf<
       DurableExecutionLeaseOptions | undefined
     >();
+    expectTypeOf<SdkMcpServerHandle['type']>().toEqualTypeOf<'in-process'>();
     expectTypeOf<
       ReturnType<ISession['getExecutionLease']>
     >().toEqualTypeOf<DurableExecutionLeaseSnapshot | null>();

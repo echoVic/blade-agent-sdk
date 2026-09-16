@@ -14,7 +14,8 @@ import {
   createSession as createServerSession,
   resumeSession as resumeServerSession,
 } from '../Session.js';
-import { isSessionEventStore, type SessionRepository } from '../SessionRepository.js';
+import type { SessionRepository } from '../SessionRepository.js';
+import { hasSessionPersistence } from '../SessionState.js';
 import type { TranscriptEvent } from '../transcript.js';
 
 function createWorkspaceRoot(): string {
@@ -51,13 +52,25 @@ function createOptions(workspaceRoot: string) {
 }
 
 describe('Session persistence', () => {
-  it('recognizes only complete transcript event Stores', () => {
+  it('requires the event Store to be configured explicitly', () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistence = new PersistentStore(workspaceRoot);
+
     expect(
-      isSessionEventStore({
-        saveMessage: async () => 'message-1',
-      } as never),
+      hasSessionPersistence({
+        ...createOptions(workspaceRoot),
+        storagePath: undefined,
+        sessionRepository: persistence,
+      }),
     ).toBe(false);
-    expect(isSessionEventStore(new PersistentStore(createWorkspaceRoot()))).toBe(true);
+    expect(
+      hasSessionPersistence({
+        ...createOptions(workspaceRoot),
+        storagePath: undefined,
+        sessionRepository: persistence,
+        sessionEventStore: persistence,
+      }),
+    ).toBe(true);
   });
 
   it('requires an event writer when a read-only repository is configured', async () => {
@@ -105,6 +118,7 @@ describe('Session persistence', () => {
       ...createOptions(createWorkspaceRoot()),
       storagePath: undefined,
       sessionRepository: repository,
+      sessionEventStore: repository,
     });
     await session.close();
 
@@ -113,6 +127,7 @@ describe('Session persistence', () => {
       sessionId: session.sessionId,
       storagePath: undefined,
       sessionRepository: repository,
+      sessionEventStore: repository,
     });
 
     expect(resumed.sessionId).toBe(session.sessionId);

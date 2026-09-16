@@ -69,6 +69,7 @@ export class SdkSessionRunner implements SessionRunner {
       configured.sessionRepository ||
       configured.sessionEventStore ||
       configured.durableEventStore ||
+      configured.durableExecutionLeaseStore ||
       configured.executionLease
     ) {
       throw new TypeError('SdkSessionRunner owns Session persistence and execution lease options');
@@ -80,6 +81,7 @@ export class SdkSessionRunner implements SessionRunner {
       sessionRepository: tenantStore,
       sessionEventStore: tenantStore,
       durableEventStore: tenantStore,
+      durableExecutionLeaseStore: tenantStore,
       executionLease: {
         ownerId: lease.ownerId,
         leaseId: lease.leaseId,

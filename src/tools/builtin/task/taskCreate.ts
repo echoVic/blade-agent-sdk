@@ -3,7 +3,6 @@ import type { JsonValue } from '../../../types/json.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -24,26 +23,24 @@ Use this tool proactively when:
 
 All tasks are created with status \`pending\`.`,
   },
-  schema: lazySchema(() =>
-    Type.Object({
-      subject: Type.String({
-        description:
-          'A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")',
-      }),
-      description: Type.String({ description: 'What needs to be done' }),
-      activeForm: Type.Optional(
-        Type.String({
-          description:
-            'Present continuous form shown in spinner when in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.',
-        }),
-      ),
-      metadata: Type.Optional(
-        Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
-          description: 'Arbitrary metadata to attach to the task',
-        }),
-      ),
+  schema: Type.Object({
+    subject: Type.String({
+      description:
+        'A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")',
     }),
-  ),
+    description: Type.String({ description: 'What needs to be done' }),
+    activeForm: Type.Optional(
+      Type.String({
+        description:
+          'Present continuous form shown in spinner when in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.',
+      }),
+    ),
+    metadata: Type.Optional(
+      Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
+        description: 'Arbitrary metadata to attach to the task',
+      }),
+    ),
+  }),
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute(input, context) {
     const store = TaskStore.getInstance(requireSessionId(context));

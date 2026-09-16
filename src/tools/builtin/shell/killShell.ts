@@ -4,7 +4,6 @@ import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 
 export const killShellTool = createTool({
@@ -14,14 +13,12 @@ export const killShellTool = createTool({
   kind: ToolKind.Execute,
   sideEffect: 'idempotent',
 
-  schema: lazySchema(() =>
-    Type.Object({
-      shell_id: Type.String({
-        minLength: 1,
-        description: 'Background Shell ID to terminate',
-      }),
+  schema: Type.Object({
+    shell_id: Type.String({
+      minLength: 1,
+      description: 'Background Shell ID to terminate',
     }),
-  ),
+  }),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

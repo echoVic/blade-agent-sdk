@@ -12,7 +12,6 @@ import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
 import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { buildShellEnvironment } from './environment.js';
@@ -40,25 +39,23 @@ export const bashTool = createTool({
   maxResultSizeChars: 200_000, // ~200KB before externalization
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      command: ToolSchemas.command({
-        description: 'Bash command to execute',
-      }),
-      timeout: ToolSchemas.timeout(1000, 300000, 30000),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            'Working directory (optional; applies only to this command). To persist, use cd',
-        }),
-      ),
-      env: ToolSchemas.environment(),
-      run_in_background: ToolSchemas.flag({
-        defaultValue: false,
-        description: 'Run in background (suitable for long-running commands)',
-      }),
+  schema: Type.Object({
+    command: ToolSchemas.command({
+      description: 'Bash command to execute',
     }),
-  ),
+    timeout: ToolSchemas.timeout(1000, 300000, 30000),
+    cwd: Type.Optional(
+      Type.String({
+        description:
+          'Working directory (optional; applies only to this command). To persist, use cd',
+      }),
+    ),
+    env: ToolSchemas.environment(),
+    run_in_background: ToolSchemas.flag({
+      defaultValue: false,
+      description: 'Run in background (suitable for long-running commands)',
+    }),
+  }),
 
   // 工具描述
   description: {

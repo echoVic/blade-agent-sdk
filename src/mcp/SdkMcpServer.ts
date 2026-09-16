@@ -40,6 +40,7 @@ export interface SdkTool<TSchema extends Type.TObject = Type.TObject> {
  * This enables reconnection and multiple client connections.
  */
 export interface SdkMcpServerHandle {
+  readonly type: 'in-process';
   name: string;
   version: string;
   /**
@@ -156,6 +157,7 @@ export async function createSdkMcpServer(config: {
   };
 
   return {
+    type: 'in-process',
     name: config.name,
     version: config.version,
     createClientTransport,

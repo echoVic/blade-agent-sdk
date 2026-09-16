@@ -2,7 +2,6 @@ import Type from 'typebox';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryWriteSchema = Type.Union([
   Type.Object({
@@ -37,7 +36,7 @@ Operations:
 
 Memory types: user, feedback, project, reference`,
   },
-  schema: lazySchema(() => memoryWriteSchema),
+  schema: memoryWriteSchema,
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute(params, context) {
     const manager = context.memoryManager;

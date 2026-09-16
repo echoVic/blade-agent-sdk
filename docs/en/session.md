@@ -267,10 +267,11 @@ local Session closed and must be recovered from the durable journal.
 `activeShellIds` fields for orchestration.
 
 Without `executionLease`, this API remains a cooperative shutdown barrier:
-stop routing new work to the old worker before calling it. With a lease-capable
-`DurableEventStore`, handoff keeps the current lease until execution, transcript
-writes, and journal finalization settle, then releases it before returning.
-The successor acquires a higher fencing token when it calls `resumeSession()`.
+stop routing new work to the old worker before calling it. With an explicit
+`durableExecutionLeaseStore` and `executionLease`, handoff keeps the current
+lease until execution, transcript writes, and journal finalization settle, then
+releases it before returning. The successor acquires a higher fencing token
+when it calls `resumeSession()`.
 
 ## Fence execution across workers
 
@@ -290,6 +291,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableExecutionLeaseStore: eventStore,
   durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
@@ -318,9 +320,11 @@ local expiry watchdog also closes the lease if heartbeat scheduling stalls; a
 stricter `executionLease.storeTimeoutMs` is preserved under the Session limit.
 
 Once a Session enables an execution lease, its fencing requirement is
-permanent. After the old lease expires or is released, `resumeSession()` without
-`executionLease` still fails with `DURABLE_EXECUTION_LEASE_REQUIRED`; the
-successor must first acquire a lease with a higher token. Normal `close()` waits
+permanent. A caller opts into that check explicitly through
+`durableExecutionLeaseStore`. After the old lease expires or is released,
+`resumeSession()` without `executionLease` still fails with
+`DURABLE_EXECUTION_LEASE_REQUIRED`; the successor must first acquire a lease
+with a higher token. Normal `close()` waits
 for background agents and Session-owned shells to stop before it commits the
 durable close and releases the lease. If runtime cleanup fails, it retains the
 lease and allows the caller to retry `close()`.
@@ -358,7 +362,7 @@ try {
   const coordinator = await DurableSessionRecoveryCoordinator.open(
     eventStore,
     sessionId,
-    { executionLease: lease },
+    { executionLease: lease, executionLeaseStore: eventStore },
   );
   // Reconcile or prepare recovery while the fence remains active.
 } finally {
@@ -757,6 +761,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `storagePath` | `string` | Enables JSONL persistence |
 | `persistSession` | `boolean` | Disable persistence explicitly |
 | `durableEventStore` | `DurableEventStore` | Opt-in durable execution journal |
+| `durableExecutionLeaseStore` | `DurableExecutionLeaseStore` | Explicit lease and sticky-fencing state port |
 | `durableStoreTimeoutMs` | `number` | Per-call durable Store deadline; defaults to `15000` |
 | `executionLease` | `DurableExecutionLeaseOptions` | Opt-in worker ownership, heartbeat, and fencing |
 | `outputFormat` | `OutputFormat` | Structured output schema |

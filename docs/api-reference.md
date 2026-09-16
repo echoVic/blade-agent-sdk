@@ -74,7 +74,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
 | `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
-| `isDurableExecutionLeaseStore` | durable events | 检查 Store 是否实现完整 execution lease 协议 |
 | `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
 | `JsonlDurableEventStore` | advanced | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
@@ -138,7 +137,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SessionOptions` | Session 创建选项 |
 | `SessionRepository` | transcript 的只读 projection 端口 |
 | `SessionEventStore` | transcript domain event append 端口 |
-| `SessionPersistence` | 组合 read projection 与 event append 的兼容端口 |
+| `HistoryRepairStore` | history repair 所需的完整 transcript 读写与 durable event 读取端口 |
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
@@ -226,7 +225,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
-| `DurableExecutionLeaseStore` | 粘性 `requiresExecutionLease`、原子 acquire/renew/release/assert、`withExecutionLease` 与 fenced append 接口 |
+| `DurableExecutionLeaseStore` | 显式配置的粘性 fencing Store，提供 acquire/renew/release/assert 与 `withExecutionLease` |
 | `DurableExecutionLeaseOptions` | Session lease 的 owner、TTL、heartbeat 和可选 lease ID |
 | `DurableExecutionLeaseSnapshot` / `DurableExecutionFence` | 当前租约快照及传递给 Store/工具的 fence |
 | `DurableExecutionLeaseErrorCode` | lease 配置、冲突、缺少 fence、失租、损坏与写入错误码 |
@@ -296,7 +295,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
-| `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema + async function 或 generator 定义 |
+| `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema 与返回 JSON 数据的 async function |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolExecution` | 工具的异步生成器执行契约 |
 | `ToolExecutionLifecycle` | Request 级工具 scheduled / settled 持久化边界 |
@@ -396,7 +395,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `McpToolDefinition` | MCP 工具定义 |
 | `McpToolResponse` | MCP 工具响应（ToolResponse 别名） |
 | `SdkTool` | SDK MCP 工具 |
-| `SdkMcpServerHandle` | MCP Server 句柄 |
+| `SdkMcpServerHandle` | 通过 `type: 'in-process'` 判别的进程内 MCP Server 句柄 |
 
 ### 权限
 

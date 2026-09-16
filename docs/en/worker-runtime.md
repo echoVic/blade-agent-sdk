@@ -79,9 +79,9 @@ Four contracts matter when you use it:
   cancelled, the runner returns `{ status: 'suspended' }` and the Worker hands
   the Session off instead of reporting a stale result as a normal completion.
 - **It owns persistence and the execution lease.** If `resolveSessionOptions`
-  returns `sessionRepository`, `sessionEventStore`, `durableEventStore`, or
-  `executionLease`, the runner throws a `TypeError`. On completion it merges
-  `durableHandoff` into route metadata.
+  returns `sessionRepository`, `sessionEventStore`, `durableEventStore`,
+  `durableExecutionLeaseStore`, or `executionLease`, the runner throws a
+  `TypeError`. On completion it merges `durableHandoff` into route metadata.
 
 Use `ExecutionHostSessionRunner` when the workload needs an isolated workspace.
 It persists checkpoint references in route metadata so a successor worker can
@@ -207,6 +207,7 @@ and lease ID to the Session:
 const session = await resumeSession({
   ...sessionOptions,
   sessionId: claim.route.sessionId,
+  durableExecutionLeaseStore: runtimeStore.forTenant(claim.route.tenantId),
   executionLease: {
     ownerId: claim.lease.ownerId,
     leaseId: claim.lease.leaseId,

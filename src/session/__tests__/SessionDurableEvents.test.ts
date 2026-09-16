@@ -220,6 +220,27 @@ afterEach(async () => {
 });
 
 describe('Session durable events', () => {
+  it('does not infer execution lease support from durableEventStore methods', async () => {
+    const { root, store } = createStore();
+    const acquire = vi
+      .spyOn(store, 'acquireExecutionLease')
+      .mockRejectedValue(new Error('lease capability was inferred'));
+
+    await expect(
+      createSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        executionLease: {
+          ownerId: WorkerId('worker-without-explicit-lease-store'),
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
+    });
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
   it('applies the Session durable Store deadline during initialization', async () => {
     vi.useFakeTimers();
     const store = new HangingReadStore();
@@ -254,6 +275,7 @@ describe('Session durable events', () => {
       persistSession: true,
       storagePath: root,
       durableStoreTimeoutMs: 1_000,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-strict-lease-timeout'),
         ttlMs: 10_000,
@@ -279,6 +301,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-lease-only-timeout'),
         ttlMs: 10_000,
@@ -1613,6 +1636,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-first'),
         leaseId: ExecutionLeaseId('lease-first'),
@@ -1633,6 +1657,7 @@ describe('Session durable events', () => {
         persistSession: true,
         storagePath: root,
         sessionId: first.sessionId,
+        durableExecutionLeaseStore: store,
         executionLease: {
           ownerId: WorkerId('worker-second'),
           leaseId: ExecutionLeaseId('lease-second'),
@@ -1661,6 +1686,7 @@ describe('Session durable events', () => {
         persistSession: true,
         storagePath: root,
         sessionId: first.sessionId,
+        durableExecutionLeaseStore: store,
       }),
     ).rejects.toMatchObject({
       code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
@@ -1672,6 +1698,7 @@ describe('Session durable events', () => {
       persistSession: true,
       storagePath: root,
       sessionId: first.sessionId,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-second'),
         leaseId: ExecutionLeaseId('lease-second'),
@@ -1724,6 +1751,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-first'),
         leaseId: ExecutionLeaseId('lease-first'),
@@ -1858,6 +1886,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-release-retry'),
         ttlMs: 10_000,
@@ -1883,6 +1912,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-runtime-close-retry'),
         ttlMs: 10_000,
@@ -1920,6 +1950,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-session-end-retry'),
         ttlMs: 10_000,
@@ -1962,6 +1993,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-handoff-cleanup-retry'),
         ttlMs: 10_000,
@@ -1999,6 +2031,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-handoff-hook-cleanup'),
         ttlMs: 10_000,
@@ -2057,6 +2090,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-handoff-permission-cleanup'),
         ttlMs: 10_000,
@@ -2138,6 +2172,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      durableExecutionLeaseStore: store,
       executionLease: {
         ownerId: WorkerId('worker-close-shell'),
         ttlMs: 10_000,
@@ -2189,6 +2224,7 @@ describe('Session durable events', () => {
         ...options(store),
         persistSession: true,
         storagePath: root,
+        durableExecutionLeaseStore: store,
         executionLease: {
           ownerId: WorkerId('worker-initialization-loss'),
           ttlMs: 10_000,
@@ -2219,6 +2255,7 @@ describe('Session durable events', () => {
         ...options(store),
         persistSession: true,
         storagePath: root,
+        durableExecutionLeaseStore: store,
         executionLease: {
           ownerId: WorkerId('worker-abandoned-initialization'),
           ttlMs: 10_000,

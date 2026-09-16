@@ -30,6 +30,7 @@ describe('SdkMcpServer', () => {
       version: '1.0.0',
       tools: [greet],
     });
+    expect(handle.type).toBe('in-process');
     client = new Client({ name: 'typebox-client', version: '1.0.0' });
     await client.connect(await handle.createClientTransport());
 

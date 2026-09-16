@@ -98,14 +98,11 @@ interface SessionRepository extends SessionStore {
 interface SessionEventStore {
   // append transcript events
 }
-
-interface SessionPersistence
-  extends SessionRepository, SessionEventStore {}
 ```
 
 - `SessionRepository` 是只读投影和存储管理端口。
 - `SessionEventStore` 是 transcript 追加端口。
-- `SessionPersistence` 只用于同一 backend 同时实现两者的 adapter。
+- 同一个 adapter 可以显式实现两个端口，但 SDK 不再提供组合别名或自动能力探测。
 - `Session` 必须同时获得兼容的读写端口，禁止写入一个 backend、从另一个
   backend 恢复。
 - 本地 JSONL 与 PostgreSQL adapter 负责把存储 DTO 转回领域类型。

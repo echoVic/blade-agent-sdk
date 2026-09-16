@@ -26,7 +26,6 @@ import { createTool } from '../../core/createTool.js';
 import { type ExecutionContext, getRuntimeAccess } from '../../types/execution.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 function getTaskDescription(): string {
@@ -80,36 +79,34 @@ export const taskTool = createTool({
   requiresRuntime: true,
   isReadOnly: true,
   isConcurrencySafe: false,
-  schema: lazySchema(() =>
-    Type.Object({
-      subagent_type: Type.String({
-        description: 'Subagent type to use (e.g., "Explore", "Plan")',
-      }),
-      description: Type.String({
-        minLength: 3,
-        maxLength: 100,
-        description: 'Short task description (3-5 words)',
-      }),
-      prompt: Type.String({
-        minLength: 10,
-        description: 'Detailed task instructions',
-      }),
-      run_in_background: ToolSchemas.flag({
-        defaultValue: false,
-        description:
-          'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
-      }),
-      resume: Type.Optional(
-        Type.String({
-          description:
-            'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.',
-        }),
-      ),
-      subagent_session_id: Type.Optional(
-        Type.String({ description: 'Internal subagent session id for tracking' }),
-      ),
+  schema: Type.Object({
+    subagent_type: Type.String({
+      description: 'Subagent type to use (e.g., "Explore", "Plan")',
     }),
-  ),
+    description: Type.String({
+      minLength: 3,
+      maxLength: 100,
+      description: 'Short task description (3-5 words)',
+    }),
+    prompt: Type.String({
+      minLength: 10,
+      description: 'Detailed task instructions',
+    }),
+    run_in_background: ToolSchemas.flag({
+      defaultValue: false,
+      description:
+        'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
+    }),
+    resume: Type.Optional(
+      Type.String({
+        description:
+          'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.',
+      }),
+    ),
+    subagent_session_id: Type.Optional(
+      Type.String({ description: 'Internal subagent session id for tracking' }),
+    ),
+  }),
   description: {
     short: 'Launch a new agent to handle complex, multi-step tasks autonomously',
     long: getTaskDescription(),

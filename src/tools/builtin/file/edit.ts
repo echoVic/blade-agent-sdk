@@ -8,7 +8,6 @@ import type { ExecutionContext } from '../../types/execution.js';
 import type { EditErrorMetadata, EditMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
 import { flexibleMatch, type MatchResult, MatchStrategy, unescapeString } from './editCorrector.js';
@@ -29,22 +28,20 @@ export const editTool = createTool({
   isConcurrencySafe: false, // 文件编辑不支持并发
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      file_path: ToolSchemas.filePath({
-        description: 'Absolute path of the file to edit',
-      }),
-      old_string: Type.String({
-        minLength: 1,
-        description: 'String to replace',
-      }),
-      new_string: Type.String({ description: 'Replacement string (can be empty)' }),
-      replace_all: Type.Boolean({
-        default: false,
-        description: 'Replace all matches (default: first only)',
-      }),
+  schema: Type.Object({
+    file_path: ToolSchemas.filePath({
+      description: 'Absolute path of the file to edit',
     }),
-  ),
+    old_string: Type.String({
+      minLength: 1,
+      description: 'String to replace',
+    }),
+    new_string: Type.String({ description: 'Replacement string (can be empty)' }),
+    replace_all: Type.Boolean({
+      default: false,
+      description: 'Replace all matches (default: first only)',
+    }),
+  }),
 
   resolveBehavior: (params) => {
     const isDestructive = params ? isSensitivePath(params.file_path) : false;

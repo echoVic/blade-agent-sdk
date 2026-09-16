@@ -4,7 +4,6 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryReadSchema = Type.Union([
   Type.Object({
@@ -49,7 +48,7 @@ Operations:
 - search: Search memories by query (returns summaries; case-insensitive substring match on name, description, body)
 - index: Read the derived memory index content`,
   },
-  schema: lazySchema(() => memoryReadSchema),
+  schema: memoryReadSchema,
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute(params, context) {
     const manager = context.memoryManager;

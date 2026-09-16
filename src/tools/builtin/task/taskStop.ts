@@ -4,7 +4,6 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -19,11 +18,9 @@ export const taskStopTool = createTool({
     short: 'Stop a running background task',
     long: 'Use this tool to stop a running background task (spawned via the Agent tool with run_in_background=true). This marks the task as completed and records the stop time.',
   },
-  schema: lazySchema(() =>
-    Type.Object({
-      taskId: Type.String({ description: 'The ID of the background task to stop' }),
-    }),
-  ),
+  schema: Type.Object({
+    taskId: Type.String({ description: 'The ID of the background task to stop' }),
+  }),
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute({ taskId }, context) {
     const agentManager = context.backgroundAgentManager;

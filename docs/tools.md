@@ -5,7 +5,8 @@ TypeBox，返回的 `ToolDefinition` 可以直接传给 Agent 或 Session。
 
 ## defineTool
 
-普通 async function 的返回值会自动包装为内部 generator；默认值（例如省略的
+`execute` 必须返回业务 JSON 数据的 Promise，该值会自动包装为内部 generator；
+默认值（例如省略的
 `sideEffect`）由 Session Registry 编译工具时补齐。
 
 ```ts
@@ -26,8 +27,8 @@ const searchTool = defineTool({
 });
 ```
 
-直接返回的 JSON 值会成为成功结果的 `model` 和 `data`。需要发送进度、消息或
-effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
+返回的 JSON 值会成为成功结果的 `model` 和 `data`。自定义工具通过抛出异常报告
+失败，不接受 `ToolResult` 或 async generator，避免根据返回对象形状猜测语义。
 
 TypeBox schema 是参数类型、运行时校验与模型侧 JSON Schema 的单一事实源。
 `execute` 参数由 `Type.Static<TSchema>` 自动推导；异构工具集合的类型擦除只发生在
@@ -291,9 +292,9 @@ type ToolYield =
 type ToolExecution = AsyncGenerator<ToolYield, ToolResult, void>;
 ```
 
-`defineTool()` 同时接受普通 async function 和 async generator。普通 async
-function 会自动包装成 `ToolExecution`；需要中间事件时使用 async generator。
-需要只消费最终结果时使用 `collectToolExecution(execution)`。
+`ToolExecution` 是 SDK 内部运行时协议。公开的 `defineTool()` 只接受返回
+`Promise<JsonValue>` 的 async function，并由 Registry 编译为该协议；它不根据
+返回值字段或迭代器方法猜测结果类型。
 
 ::: warning data 必须是 JSON 值
 `data` 是供调用方消费的结构化结果，类型约束为 `JsonValue`。大型结果的
@@ -321,15 +322,10 @@ const tool = defineTool<typeof parameters, { count: number }>({
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
   parameters,
-  async *execute(params) {
+  async execute(params) {
     // params.query: string, params.limit?: number —— 无需 cast
     const results = await searchDocuments(params.query, params.limit ?? 10);
-    return {
-      status: 'success',
-      model: JSON.stringify(results),
-      display: { summary: `找到 ${results.length} 条结果` },
-      data: { count: results.length },
-    };
+    return { count: results.length };
   },
 });
 ```

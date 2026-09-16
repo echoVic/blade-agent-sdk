@@ -26,7 +26,6 @@ import type { SessionDurableRecorder } from './events/SessionDurableRecorder.js'
 import { SERVER_SESSION_HOST, type SessionHostProfile } from './SessionHostProfile.js';
 import { SessionInputInbox } from './SessionInputInbox.js';
 import {
-  isSessionEventStore,
   NoopSessionRepository,
   type SessionEventStore,
   type SessionRepository,
@@ -93,10 +92,7 @@ export interface DurableSessionOrigin {
 }
 
 export function hasSessionPersistence(options: SessionOptions): boolean {
-  return (
-    options.sessionRepository !== undefined &&
-    (options.sessionEventStore !== undefined || isSessionEventStore(options.sessionRepository))
-  );
+  return options.sessionRepository !== undefined && options.sessionEventStore !== undefined;
 }
 
 export class SessionState {
@@ -162,9 +158,7 @@ export class SessionState {
     this.durableStoreTimeoutMs = resolveDurableStoreTimeoutMs(options.durableStoreTimeoutMs);
     this.confirmationHandler =
       options.confirmationHandlerFactory?.(this.sessionId) ?? options.confirmationHandler;
-    const eventStore =
-      options.sessionEventStore ??
-      (isSessionEventStore(options.sessionRepository) ? options.sessionRepository : undefined);
+    const eventStore = options.sessionEventStore;
     if (
       options.persistSession !== false &&
       ((options.sessionRepository && !eventStore) || (!options.sessionRepository && eventStore))

@@ -3,7 +3,6 @@ import type { JsonValue } from '../../../types/json.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 const ReadMcpResourceParamsSchema = Type.Object({
   uri: Type.String({ description: 'The URI of the MCP resource to read' }),
@@ -64,7 +63,7 @@ The resource content can be text (returned as-is) or binary data (returned as ba
       'Read from specific server: ReadMcpResource({ uri: "db://table/record", serverName: "database-server" })',
     ],
   },
-  schema: lazySchema(() => ReadMcpResourceParamsSchema),
+  schema: ReadMcpResourceParamsSchema,
 
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute(params: ReadMcpResourceParams, context) {

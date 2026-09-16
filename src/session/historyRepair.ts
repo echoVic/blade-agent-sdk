@@ -1,5 +1,6 @@
 import type { ConversationMessage } from '../model/conversation.js';
 import type {
+  EventSequence,
   InputId,
   MessageId,
   RequestId,
@@ -8,6 +9,7 @@ import type {
   TurnId,
 } from '../types/identifiers.js';
 import type { JsonValue } from '../types/json.js';
+import type { DurableEventStore } from './events/DurableEventStore.js';
 import {
   type DurableRequestProjection,
   type DurableSessionProjection,
@@ -35,11 +37,7 @@ const TURN_TERMINAL_TYPES: readonly string[] = [
 ];
 const TERMINAL_TYPES = new Set<string>([...REQUEST_TERMINAL_TYPES, ...TURN_TERMINAL_TYPES]);
 
-export type HistoryRepairReason =
-  | 'repaired'
-  | 'no-gap'
-  | 'no-journal'
-  | 'insufficient-durable-data';
+export type HistoryRepairReason = 'repaired' | 'no-gap' | 'insufficient-durable-data';
 
 export interface HistoryRepairResult {
   readonly repaired: boolean;
@@ -52,19 +50,17 @@ export interface HistoryRepairResult {
   readonly missing: readonly string[];
 }
 
+export type HistoryRepairStore = Pick<SessionRepository, 'loadState'> &
+  Pick<
+    SessionEventStore,
+    'saveAppliedInputMessage' | 'saveMessage' | 'saveToolResult' | 'saveToolUse'
+  > &
+  Required<Pick<SessionEventStore, 'clearHistoryGap'>> &
+  Pick<DurableEventStore, 'read'>;
+
 export interface HistoryRepairOptions {
-  /** The tenant-scoped persistence port: transcript writes plus durable reads. */
-  readonly persistence: SessionRepository &
-    Partial<SessionEventStore> & {
-      readonly read?: (
-        sessionId: SessionId,
-        options?: { after?: number; limit?: number },
-      ) => Promise<{
-        events: readonly DurableEventEnvelope[];
-        hasMore: boolean;
-        nextCursor?: number | null;
-      }>;
-    };
+  /** Complete tenant-scoped repair port: transcript writes plus durable reads. */
+  readonly persistence: HistoryRepairStore;
   readonly sessionId: SessionId;
   readonly signal?: AbortSignal;
 }
@@ -180,10 +176,6 @@ export async function repairSessionHistory(
   if (!hasHistoryGap(progress)) {
     return { ...empty, reason: 'no-gap', missing: [] };
   }
-  if (typeof persistence.read !== 'function') {
-    return { ...empty, reason: 'no-journal', missing: ['durable-journal'] };
-  }
-
   const events = await readJournal(persistence, sessionId, signal);
   const history = projectDurableHistory(events);
   const scope = resolveRepairScope(history, progress);
@@ -208,26 +200,22 @@ export async function repairSessionHistory(
   };
 
   if (!hasUserMessage(transcript.messages, request.inputId) && typeof request.input === 'string') {
-    if (typeof persistence.saveAppliedInputMessage !== 'function') {
-      missing.add(`user:${String(request.inputId)}`);
-    } else {
-      const written = await persistence.saveAppliedInputMessage(
-        sessionId,
-        request.inputId,
-        request.requestId,
-        request.input,
-        parentMessageId,
-      );
-      parentMessageId = written;
-      transcript.messages.push({
-        id: written,
-        role: 'user',
-        content: request.input,
-        correlation: { inputId: request.inputId, requestId: request.requestId },
-      });
-      repairedMessages += 1;
-      userMessages += 1;
-    }
+    const written = await persistence.saveAppliedInputMessage(
+      sessionId,
+      request.inputId,
+      request.requestId,
+      request.input,
+      parentMessageId,
+    );
+    parentMessageId = written;
+    transcript.messages.push({
+      id: written,
+      role: 'user',
+      content: request.input,
+      correlation: { inputId: request.inputId, requestId: request.requestId },
+    });
+    repairedMessages += 1;
+    userMessages += 1;
   }
 
   if (turns.length === 0) {
@@ -242,58 +230,51 @@ export async function repairSessionHistory(
       toolCallIds.add(String(attempt.toolCallId));
     }
 
-    if (
-      typeof persistence.saveToolUse === 'function' &&
-      typeof persistence.saveToolResult === 'function'
-    ) {
-      for (const attempt of turn.toolAttempts) {
-        if (attempt.status !== 'completed' && attempt.status !== 'failed') {
-          continue;
-        }
-        // A tool *declaration* in an assistant message only proves the model asked
-        // for the call; it says nothing about whether the result was persisted.
-        if (hasToolResult(transcript, attempt.toolCallId)) {
-          continue;
-        }
-        const { messageId } = await persistence.saveToolUse(
-          sessionId,
-          attempt.toolName,
-          attempt.input as JsonValue,
-          parentMessageId,
-          undefined,
-          attempt.toolCallId,
-        );
-        await persistence.saveToolResult(
-          sessionId,
-          attempt.toolCallId,
-          attempt.toolName,
-          (attempt.result ?? null) as JsonValue,
-          messageId,
-          attempt.error?.message,
-        );
-        parentMessageId = messageId;
-        transcript.toolCalls.push({
-          id: attempt.toolCallId,
-          name: attempt.toolName,
-          input: attempt.input as JsonValue,
-          output: (attempt.result ?? null) as JsonValue,
-          messageId,
-          timestamp: Date.now(),
-          status: attempt.status === 'failed' ? 'error' : 'success',
-          ...(attempt.error?.message ? { error: attempt.error.message } : {}),
-        });
-        transcript.messages.push({
-          id: messageId,
-          role: 'tool',
-          content: '',
-          tool_call_id: String(attempt.toolCallId),
-          name: attempt.toolName,
-        });
-        repairedMessages += 1;
-        toolMessages += 1;
+    for (const attempt of turn.toolAttempts) {
+      if (attempt.status !== 'completed' && attempt.status !== 'failed') {
+        continue;
       }
-    } else {
-      missing.add('tool-messages');
+      // A tool *declaration* in an assistant message only proves the model asked
+      // for the call; it says nothing about whether the result was persisted.
+      if (hasToolResult(transcript, attempt.toolCallId)) {
+        continue;
+      }
+      const { messageId } = await persistence.saveToolUse(
+        sessionId,
+        attempt.toolName,
+        attempt.input as JsonValue,
+        parentMessageId,
+        undefined,
+        attempt.toolCallId,
+      );
+      await persistence.saveToolResult(
+        sessionId,
+        attempt.toolCallId,
+        attempt.toolName,
+        (attempt.result ?? null) as JsonValue,
+        messageId,
+        attempt.error?.message,
+      );
+      parentMessageId = messageId;
+      transcript.toolCalls.push({
+        id: attempt.toolCallId,
+        name: attempt.toolName,
+        input: attempt.input as JsonValue,
+        output: (attempt.result ?? null) as JsonValue,
+        messageId,
+        timestamp: Date.now(),
+        status: attempt.status === 'failed' ? 'error' : 'success',
+        ...(attempt.error?.message ? { error: attempt.error.message } : {}),
+      });
+      transcript.messages.push({
+        id: messageId,
+        role: 'tool',
+        content: '',
+        tool_call_id: String(attempt.toolCallId),
+        name: attempt.toolName,
+      });
+      repairedMessages += 1;
+      toolMessages += 1;
     }
 
     const response = turn.modelAttempts.find(
@@ -312,33 +293,29 @@ export async function repairSessionHistory(
       requiresAssistant &&
       !hasAssistantMessage(transcript.messages, toolCallIds, response.content)
     ) {
-      if (typeof persistence.saveMessage !== 'function') {
-        missing.add('assistant-message');
-      } else {
-        await persistence.saveMessage(sessionId, 'assistant', response.content, parentMessageId, {
-          reasoningContent: response.reasoningContent,
-          toolCalls: response.toolCalls?.map((call) => ({
-            id: call.id,
-            type: 'function' as const,
-            function: { name: call.name, arguments: call.arguments },
-          })),
-        });
-        transcript.messages.push({
-          role: 'assistant',
-          content: response.content,
-          ...(response.toolCalls
-            ? {
-                tool_calls: response.toolCalls.map((call) => ({
-                  id: call.id,
-                  type: 'function' as const,
-                  function: { name: call.name, arguments: call.arguments },
-                })),
-              }
-            : {}),
-        });
-        repairedMessages += 1;
-        assistantMessages += 1;
-      }
+      await persistence.saveMessage(sessionId, 'assistant', response.content, parentMessageId, {
+        reasoningContent: response.reasoningContent,
+        toolCalls: response.toolCalls?.map((call) => ({
+          id: call.id,
+          type: 'function' as const,
+          function: { name: call.name, arguments: call.arguments },
+        })),
+      });
+      transcript.messages.push({
+        role: 'assistant',
+        content: response.content,
+        ...(response.toolCalls
+          ? {
+              tool_calls: response.toolCalls.map((call) => ({
+                id: call.id,
+                type: 'function' as const,
+                function: { name: call.name, arguments: call.arguments },
+              })),
+            }
+          : {}),
+      });
+      repairedMessages += 1;
+      assistantMessages += 1;
     }
   }
 
@@ -396,7 +373,7 @@ export async function repairSessionHistory(
     };
   }
 
-  await persistence.clearHistoryGap?.(sessionId, repairedMessages, {
+  await persistence.clearHistoryGap(sessionId, repairedMessages, {
     coveredRequestId: request.requestId,
   });
   return {
@@ -512,17 +489,11 @@ async function readJournal(
   sessionId: SessionId,
   signal?: AbortSignal,
 ): Promise<readonly DurableEventEnvelope[]> {
-  const read = persistence.read;
-  if (!read) {
-    return [];
-  }
   const events: DurableEventEnvelope[] = [];
-  let after: number | undefined;
+  let after: EventSequence | undefined;
   for (let page = 0; page < REPAIR_PAGE_LIMIT; page += 1) {
     signal?.throwIfAborted();
-    // The receiver is kept: a tenant-scoped adapter resolves its runtime through
-    // `this`, so detaching the method breaks every real adapter.
-    const result = await read.call(persistence, sessionId, {
+    const result = await persistence.read(sessionId, {
       ...(after === undefined ? {} : { after }),
       limit: REPAIR_PAGE_SIZE,
     });

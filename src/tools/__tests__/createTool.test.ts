@@ -9,7 +9,6 @@ import {
   type ToolResult,
   type ToolYield,
 } from '../types/result.js';
-import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
   describe('TypeBox contract', () => {
@@ -260,32 +259,6 @@ describe('createTool', () => {
       expect(declaration.parameters.type).toBe('object');
     });
 
-    it('precomputes lazy schemas once when compiling the tool', () => {
-      let schemaInitCount = 0;
-      const lazyTool = createTool({
-        name: 'LazyTool',
-        displayName: 'Lazy Tool',
-        kind: ToolKind.ReadOnly,
-        sideEffect: 'pure',
-        description: { short: 'Lazy tool' },
-        schema: lazySchema(() => {
-          schemaInitCount += 1;
-          return Type.Object({
-            value: Type.String(),
-          });
-        }),
-        execute: ({ value }) =>
-          completeToolExecution({
-            status: 'success',
-            model: value,
-          }),
-      });
-
-      expect(schemaInitCount).toBe(1);
-      lazyTool.prepare({ value: 'hello' });
-      expect(schemaInitCount).toBe(1);
-    });
-
     it('should use dynamic descriptions for concrete invocations while preserving static declarations', () => {
       const describedTool = createTool({
         name: 'DescribeTool',
@@ -476,46 +449,6 @@ describe('createTool', () => {
           throw new Error('consumer failed');
         }),
       ).rejects.toThrow('consumer failed');
-    });
-
-    it('rejects Promise-returning tool implementations at runtime', async () => {
-      const invalidTool = createTool({
-        name: 'InvalidTool',
-        displayName: 'Invalid Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Invalid legacy tool' },
-        schema: Type.Object({}),
-        execute: (async () => ({
-          status: 'success',
-          model: 'legacy result',
-        })) as never,
-      });
-
-      await expect(collectToolExecution(invalidTool.execute({}, {}))).rejects.toMatchObject({
-        name: 'ToolExecutionError',
-        code: 'TOOL_EXECUTION_ERROR',
-        toolName: 'InvalidTool',
-      });
-    });
-
-    it('rejects Promise-returning definitions through the direct tool API', async () => {
-      const invalidTool = toolFromDefinition({
-        name: 'InvalidDefinition',
-        sideEffect: 'pure',
-        description: 'Invalid legacy tool definition',
-        parameters: Type.Object({}),
-        execute: (async () => ({
-          status: 'success',
-          model: 'legacy result',
-        })) as never,
-      });
-
-      await expect(collectToolExecution(invalidTool.execute({}, {}))).rejects.toMatchObject({
-        name: 'ToolExecutionError',
-        code: 'TOOL_EXECUTION_ERROR',
-        toolName: 'InvalidDefinition',
-      });
     });
 
     it('should expose tool-level checkPermissions when configured', async () => {
@@ -723,8 +656,8 @@ describe('createTool', () => {
           name: 'Unlabelled',
           description: 'No side effect declared',
           parameters: Type.Object({}),
-          execute() {
-            return completeToolExecution({ status: 'success', model: 'ok' });
+          async execute() {
+            return 'ok';
           },
         }).sideEffect,
       ).toBeUndefined();
@@ -772,10 +705,7 @@ describe('createTool', () => {
         parameters: Type.Object({ city: Type.String() }),
         async execute({ city }) {
           expectTypeOf(city).toEqualTypeOf<string>();
-          return {
-            status: 'success',
-            model: `${city}: clear`,
-          };
+          return `${city}: clear`;
         },
       });
       const tool = toolFromDefinition(definition);
@@ -803,6 +733,28 @@ describe('createTool', () => {
         status: 'success',
         model: { weather: 'Tokyo: clear' },
         data: { weather: 'Tokyo: clear' },
+      });
+    });
+
+    it('treats status and model fields as ordinary user data', async () => {
+      const data = {
+        status: 'success',
+        model: 'domain-model',
+      } as const;
+      const definition = defineTool({
+        name: 'StatusData',
+        description: 'Returns domain data with result-like field names',
+        parameters: Type.Object({}),
+        async execute() {
+          return data;
+        },
+      });
+      const tool = toolFromDefinition(definition);
+
+      await expect(collectToolExecution(tool.execute({}, {}))).resolves.toEqual({
+        status: 'success',
+        model: data,
+        data,
       });
     });
 

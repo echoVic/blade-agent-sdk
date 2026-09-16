@@ -34,7 +34,6 @@ import type { ExecutionContext } from '../../types/execution.js';
 import type { GlobMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 
 /**
@@ -70,28 +69,26 @@ export const globTool = createTool({
   interruptBehavior: 'cancel',
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      pattern: ToolSchemas.glob({
-        description: 'Glob pattern string (supports *, ?, ** wildcards)',
-      }),
-      path: Type.Optional(Type.String({ description: 'Search path (optional, defaults to cwd)' })),
-      max_results: Type.Integer({
-        minimum: 1,
-        maximum: 1000,
-        default: 100,
-        description: 'Maximum number of results',
-      }),
-      include_directories: Type.Boolean({
-        default: false,
-        description: 'Include directories in results',
-      }),
-      case_sensitive: Type.Boolean({
-        default: false,
-        description: 'Case sensitive matching',
-      }),
+  schema: Type.Object({
+    pattern: ToolSchemas.glob({
+      description: 'Glob pattern string (supports *, ?, ** wildcards)',
     }),
-  ),
+    path: Type.Optional(Type.String({ description: 'Search path (optional, defaults to cwd)' })),
+    max_results: Type.Integer({
+      minimum: 1,
+      maximum: 1000,
+      default: 100,
+      description: 'Maximum number of results',
+    }),
+    include_directories: Type.Boolean({
+      default: false,
+      description: 'Include directories in results',
+    }),
+    case_sensitive: Type.Boolean({
+      default: false,
+      description: 'Case sensitive matching',
+    }),
+  }),
 
   validateInput: async (params, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {

@@ -147,33 +147,11 @@ export interface SessionEventStore {
   ): Promise<void>;
 }
 
-/** Compatibility port for backends that expose reads and appends together. */
-export interface SessionPersistence extends SessionRepository, SessionEventStore {}
-
-export function isSessionEventStore(
-  value: SessionRepository | SessionEventStore | undefined,
-): value is SessionEventStore {
-  if (!value) {
-    return false;
-  }
-  return [
-    'createSession',
-    'saveMessage',
-    'saveInputEnqueued',
-    'saveAppliedInputMessage',
-    'saveInputCancelled',
-    'saveToolUse',
-    'saveToolResult',
-    'saveCompaction',
-    'saveContext',
-  ].every((method) => typeof Reflect.get(value, method) === 'function');
-}
-
 /**
  * Non-persistent repository used when callers intentionally run an ephemeral
  * Session without a shared store.
  */
-export class NoopSessionRepository implements SessionPersistence {
+export class NoopSessionRepository implements SessionRepository, SessionEventStore {
   async initialize(): Promise<void> {}
 
   async createSession(

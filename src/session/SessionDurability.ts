@@ -51,6 +51,9 @@ export class SessionDurability {
 
     const journal = await DurableSessionJournal.open(eventStore, this.state.sessionId, {
       ...(this.state.executionLease ? { executionLease: this.state.executionLease } : {}),
+      ...(this.state.options.durableExecutionLeaseStore
+        ? { executionLeaseStore: this.state.options.durableExecutionLeaseStore }
+        : {}),
       storeTimeoutMs: this.state.durableStoreTimeoutMs,
     });
     const projection = journal.getProjection();

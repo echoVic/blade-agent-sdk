@@ -14,7 +14,6 @@ import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
@@ -33,24 +32,22 @@ export const taskOutputTool = createTool({
   sideEffect: 'non_idempotent',
   services: ['backgroundAgentManager'],
 
-  schema: lazySchema(() =>
-    Type.Object({
-      task_id: Type.String({
-        minLength: 1,
-        description: 'The task ID to get output from',
-      }),
-      block: ToolSchemas.flag({
-        defaultValue: true,
-        description: 'Whether to wait for completion',
-      }),
-      timeout: Type.Integer({
-        minimum: 0,
-        maximum: 600000,
-        default: 30000,
-        description: 'Max wait time in ms',
-      }),
+  schema: Type.Object({
+    task_id: Type.String({
+      minLength: 1,
+      description: 'The task ID to get output from',
     }),
-  ),
+    block: ToolSchemas.flag({
+      defaultValue: true,
+      description: 'Whether to wait for completion',
+    }),
+    timeout: Type.Integer({
+      minimum: 0,
+      maximum: 600000,
+      default: 30000,
+      description: 'Max wait time in ms',
+    }),
+  }),
 
   description: {
     short: 'Retrieves output from a running or completed task',

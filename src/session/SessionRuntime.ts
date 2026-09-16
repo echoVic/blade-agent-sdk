@@ -9,10 +9,8 @@ import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
-import type { McpServerConfig } from '../mcp/config.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
-import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import { PluginHost } from '../middleware/PluginHost.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
@@ -56,12 +54,6 @@ import type {
   McpToolInfo,
   SessionOptions,
 } from './types.js';
-
-function isSdkMcpServerHandle(
-  config: McpServerConfig | SdkMcpServerHandle,
-): config is SdkMcpServerHandle {
-  return 'createClientTransport' in config && 'server' in config;
-}
 
 function resolveStorageRoot(storagePath?: string): string | undefined {
   if (!storagePath) {
@@ -509,7 +501,7 @@ export class SessionRuntime {
     }
 
     for (const [name, config] of Object.entries(this.options.mcpServers)) {
-      if (isSdkMcpServerHandle(config)) {
+      if (config.type === 'in-process') {
         await this.mcpRegistry.registerInProcessServer(name, config);
         continue;
       }
@@ -537,7 +529,7 @@ export class SessionRuntime {
       throw new Error(`MCP server "${serverName}" not found in configuration`);
     }
 
-    if (isSdkMcpServerHandle(config)) {
+    if (config.type === 'in-process') {
       await this.mcpRegistry.registerInProcessServer(serverName, config);
       return;
     }

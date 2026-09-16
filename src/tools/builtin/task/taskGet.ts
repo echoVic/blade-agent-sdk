@@ -3,7 +3,6 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -22,11 +21,9 @@ Use when:
 - To understand task dependencies (what it blocks, what blocks it)
 - After being assigned a task, to get complete requirements`,
   },
-  schema: lazySchema(() =>
-    Type.Object({
-      taskId: Type.String({ description: 'The ID of the task to retrieve' }),
-    }),
-  ),
+  schema: Type.Object({
+    taskId: Type.String({ description: 'The ID of the task to retrieve' }),
+  }),
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute({ taskId }, context) {
     const store = TaskStore.getInstance(requireSessionId(context));

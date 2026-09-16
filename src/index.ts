@@ -224,7 +224,6 @@ export type {
   SessionHandoffResult,
   SessionHookEvent,
   SessionOptions,
-  SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,

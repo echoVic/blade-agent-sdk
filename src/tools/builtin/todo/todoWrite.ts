@@ -4,7 +4,6 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TodoManager } from './TodoManager.js';
 import type { TodoItem, TodoStats } from './types.js';
@@ -21,13 +20,11 @@ export const todoWriteTool = createTool({
   sideEffect: 'idempotent',
   isConcurrencySafe: false,
 
-  schema: lazySchema(() =>
-    Type.Object({
-      todos: Type.Array(TodoItemSchema, {
-        minItems: 1,
-      }),
+  schema: Type.Object({
+    todos: Type.Array(TodoItemSchema, {
+      minItems: 1,
     }),
-  ),
+  }),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Replace structural capability detection with explicit persistence, execution-lease, MCP handle, schema, and defineTool result contracts.",
+  "zh-CN": "以显式的持久化、执行租约、MCP 句柄、schema 与 defineTool 返回契约替代结构化能力探测。"
+}

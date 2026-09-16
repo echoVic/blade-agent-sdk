@@ -1,7 +1,6 @@
 import Type from 'typebox';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -24,7 +23,7 @@ Returns a summary of each task:
 
 Prefer working on tasks in ID order (lowest ID first) when multiple tasks are available.`,
   },
-  schema: lazySchema(() => Type.Object({})),
+  schema: Type.Object({}),
   async *execute(_input, context) {
     const store = TaskStore.getInstance(requireSessionId(context));
     const tasks = await store.list();

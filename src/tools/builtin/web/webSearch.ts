@@ -13,7 +13,6 @@ import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext } from '../../types/execution.js';
 import type { WebSearchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { getSearchCache } from './SearchCache.js';
 import { getAllProviders, getProviderCount, type SearchProvider } from './searchProviders.js';
 
@@ -340,24 +339,22 @@ export const webSearchTool = createTool({
   sideEffect: 'pure',
   interruptBehavior: 'cancel',
 
-  schema: lazySchema(() =>
-    Type.Object({
-      query: Type.String({
-        minLength: 2,
-        description: 'Search query',
-      }),
-      allowed_domains: Type.Optional(
-        Type.Array(Type.String({ minLength: 1 }), {
-          description: 'Return results only from these domains (optional)',
-        }),
-      ),
-      blocked_domains: Type.Optional(
-        Type.Array(Type.String({ minLength: 1 }), {
-          description: 'Exclude results from these domains (optional)',
-        }),
-      ),
+  schema: Type.Object({
+    query: Type.String({
+      minLength: 2,
+      description: 'Search query',
     }),
-  ),
+    allowed_domains: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: 'Return results only from these domains (optional)',
+      }),
+    ),
+    blocked_domains: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: 'Exclude results from these domains (optional)',
+      }),
+    ),
+  }),
 
   description: {
     short: 'Search the web and use the results to inform responses',

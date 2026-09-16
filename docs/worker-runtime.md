@@ -73,8 +73,9 @@ worker lease。单轮完成后路由进入 `idle` 并释放 lease；后续输入
 - **失去路由即挂起**：worker 被 drain 或取消时 runner 返回 `{ status: 'suspended' }`，
   由 Worker 走 handoff，而不是把过期结果当作正常结束。
 - **独占 persistence 与 executionLease**：`resolveSessionOptions` 若返回
-  `sessionRepository`、`sessionEventStore`、`durableEventStore` 或 `executionLease`
-  会直接抛 `TypeError`；结束时 runner 会把 `durableHandoff` 合并进 route metadata。
+  `sessionRepository`、`sessionEventStore`、`durableEventStore`、
+  `durableExecutionLeaseStore` 或 `executionLease` 会直接抛 `TypeError`；结束时
+  runner 会把 `durableHandoff` 合并进 route metadata。
 
 需要隔离 workspace 时使用 `ExecutionHostSessionRunner`。它会在 route metadata
 中持久化 checkpoint 引用，后继 worker 可通过同一个 `ExecutionHost` backend
@@ -194,6 +195,7 @@ Session 后，应把 claim 中的 owner 和 lease ID 传给 Session：
 const session = await resumeSession({
   ...sessionOptions,
   sessionId: claim.route.sessionId,
+  durableExecutionLeaseStore: runtimeStore.forTenant(claim.route.tenantId),
   executionLease: {
     ownerId: claim.lease.ownerId,
     leaseId: claim.lease.leaseId,

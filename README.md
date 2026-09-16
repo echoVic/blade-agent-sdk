@@ -193,8 +193,8 @@ const weather = defineTool({
 });
 ```
 
-Use `async *execute` when the tool needs to yield typed progress, messages, or
-effects. Generator tools keep the existing `ToolResult` terminal contract.
+`defineTool.execute` always returns JSON data. Throw an error to report failure;
+the SDK does not infer result semantics from returned object fields.
 
 ## Permissions and Hooks
 
@@ -281,7 +281,7 @@ pnpm add fs-native-extensions        # cross-process Node JSONL locks
 
 Sessions are ephemeral unless a read-side `SessionRepository` and write-side
 `SessionEventStore` are configured. A local Agent converts
-`advanced.storagePath` into one local JSONL `SessionPersistence`
+`advanced.storagePath` into one local JSONL storage
 implementation:
 
 ```ts

@@ -118,7 +118,8 @@ describe('repository fixture tools', () => {
       { file_path: 'src/../src/greeting.sh' },
       { file_path: `${GREETING_PATH}; touch injected` },
       { file_path: GREETING_PATH, command: 'id' },
-    ]) expect((await invoke('RepoRead', input)).status).toBe('error');
+    ])
+      await expect(invoke('RepoRead', input)).rejects.toThrow();
     for (const input of [
       { ...writeInput, file_path: TEST_PATH },
       { ...writeInput, content: '\0' },
@@ -126,16 +127,18 @@ describe('repository fixture tools', () => {
       { ...writeInput, expected_content: '\0' },
       { ...writeInput, content: null },
       { ...writeInput, command: 'id' },
-    ]) expect((await invoke('RepoWrite', input)).status).toBe('error');
-    expect((await invoke('RepoRunTests', { command: 'id' })).status).toBe('error');
+    ])
+      await expect(invoke('RepoWrite', input)).rejects.toThrow();
+    await expect(invoke('RepoRunTests', { command: 'id' })).rejects.toThrow();
     expect(host.exec).not.toHaveBeenCalled();
     expect(getHandle).not.toHaveBeenCalled();
   });
 
   it('checks expected content byte-for-byte and makes a retry idempotent', async () => {
     const { invoke, directory, checkpoint, host } = await setup();
-    const stale = await invoke('RepoWrite', { ...writeInput, expected_content: ORIGINAL_GREETING.trimEnd() });
-    expect(stale.status).toBe('error');
+    await expect(
+      invoke('RepoWrite', { ...writeInput, expected_content: ORIGINAL_GREETING.trimEnd() }),
+    ).rejects.toThrow(/changed since it was read/);
     expect(await readFile(join(directory, GREETING_PATH), 'utf8')).toBe(ORIGINAL_GREETING);
     expect(checkpoint).not.toHaveBeenCalled();
     expect((await invoke('RepoWrite', writeInput)).model).toMatchObject({ changed: true });
@@ -163,17 +166,17 @@ describe('repository fixture tools', () => {
     const { invoke, directory, checkpoint } = await setup();
     await rm(join(directory, GREETING_PATH));
     await symlink('../test/greeting.test.sh', join(directory, GREETING_PATH));
-    expect((await invoke('RepoRead', { file_path: GREETING_PATH })).status).toBe('error');
-    expect((await invoke('RepoWrite', writeInput)).status).toBe('error');
-    expect((await invoke('RepoRunTests', {})).status).toBe('error');
+    await expect(invoke('RepoRead', { file_path: GREETING_PATH })).rejects.toThrow();
+    await expect(invoke('RepoWrite', writeInput)).rejects.toThrow();
+    await expect(invoke('RepoRunTests', {})).rejects.toThrow();
     expect(checkpoint).not.toHaveBeenCalled();
     await rm(join(directory, 'src'), { recursive: true });
     await symlink('test', join(directory, 'src'));
-    expect((await invoke('RepoRead', { file_path: GREETING_PATH })).status).toBe('error');
+    await expect(invoke('RepoRead', { file_path: GREETING_PATH })).rejects.toThrow();
     await rm(join(directory, 'src'));
     await cp(join(fixture, 'src'), join(directory, 'src'), { recursive: true });
     await writeFile(join(directory, TEST_PATH), 'touch test-should-not-run\n');
-    expect((await invoke('RepoRunTests', {})).status).toBe('error');
+    await expect(invoke('RepoRunTests', {})).rejects.toThrow();
     await expect(readFile(join(directory, 'test-should-not-run'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

@@ -8,7 +8,6 @@ import type { ExecutionContext } from '../../types/execution.js';
 import type { ReadMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 
@@ -33,24 +32,22 @@ export const readTool = createTool({
   maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      file_path: ToolSchemas.filePath({
-        description: 'File path to read (must be absolute)',
-      }),
-      offset: Type.Optional(
-        ToolSchemas.lineNumber({
-          description: 'Starting line number (0-based, text files only)',
-        }),
-      ),
-      limit: Type.Optional(
-        ToolSchemas.lineLimit({
-          description: 'Number of lines to read (text files only)',
-        }),
-      ),
-      encoding: ToolSchemas.encoding(),
+  schema: Type.Object({
+    file_path: ToolSchemas.filePath({
+      description: 'File path to read (must be absolute)',
     }),
-  ),
+    offset: Type.Optional(
+      ToolSchemas.lineNumber({
+        description: 'Starting line number (0-based, text files only)',
+      }),
+    ),
+    limit: Type.Optional(
+      ToolSchemas.lineLimit({
+        description: 'Number of lines to read (text files only)',
+      }),
+    ),
+    encoding: ToolSchemas.encoding(),
+  }),
 
   validateInput: async (params, context) => {
     try {

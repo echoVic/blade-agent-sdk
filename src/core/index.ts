@@ -75,7 +75,6 @@ export * from '../session/events/core.js';
 export type {
   PersistedToolUse,
   SessionEventStore,
-  SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,

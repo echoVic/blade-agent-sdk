@@ -6,7 +6,7 @@ import type { ToolBehavior, ToolKind, ToolSideEffect } from '../behavior.js';
 import type { ToolInvocation } from '../core/ToolInvocation.js';
 import type { ToolServiceMap, ToolServiceName } from '../services.js';
 import type { ExecutionContext, RuntimeAccess } from './execution.js';
-import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
+import type { ToolExecution, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
   name: string;
@@ -25,8 +25,6 @@ export interface ToolDescription {
   }>;
   important?: string[];
 }
-
-export type ToolSchema<TSchema extends Type.TSchema = Type.TSchema> = TSchema | (() => TSchema);
 
 export type ToolDescriptionResolver<TParams = JsonObject> = (params?: TParams) => ToolDescription;
 
@@ -110,7 +108,7 @@ export type ToolDefinitionInput<
   execute: (
     params: Type.Static<TSchema>,
     context: ToolDefinitionContext<TServices, TRequiresRuntime>,
-  ) => ToolExecution<TData> | Promise<TData | ToolResult<TData>>;
+  ) => Promise<TData>;
 };
 
 /**
@@ -144,7 +142,7 @@ export interface ToolConfig<
   interruptBehavior?: 'cancel' | 'block';
   services?: readonly TServices[];
   requiresRuntime?: TRequiresRuntime;
-  schema: ToolSchema<TSchema>;
+  schema: TSchema;
   description: ToolDescription;
   describe?: ToolDescriptionResolver<Type.Static<TSchema>>;
   exposure?: ToolExposureConfig;

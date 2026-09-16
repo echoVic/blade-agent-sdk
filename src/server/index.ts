@@ -12,6 +12,7 @@ export {
   type HistoryRepairOptions,
   type HistoryRepairReason,
   type HistoryRepairResult,
+  type HistoryRepairStore,
   projectDurableHistory,
   repairSessionHistory,
 } from '../session/historyRepair.js';

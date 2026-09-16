@@ -36,7 +36,6 @@ export {
   type DurableExecutionLeaseStore,
   DurableExecutionLeaseTimeoutError,
   executionFence,
-  isDurableExecutionLeaseStore,
   type PersistedDurableExecutionLeaseState,
   parsePersistedDurableExecutionLeaseState,
 } from './DurableExecutionLeaseStore.js';

@@ -9,7 +9,6 @@ import {
   type DurableExecutionLeaseStore,
   DurableExecutionLeaseTimeoutError,
   executionFence,
-  isDurableExecutionLeaseStore,
   isExecutionLeaseFailure,
 } from './DurableExecutionLeaseStore.js';
 import {
@@ -250,17 +249,10 @@ export class DurableExecutionLease {
   }
 
   static async acquire(
-    store: DurableEventStore,
+    store: DurableExecutionLeaseStore,
     sessionId: SessionId,
     options: DurableExecutionLeaseOptions,
   ): Promise<DurableExecutionLease> {
-    if (!isDurableExecutionLeaseStore(store)) {
-      throw new DurableExecutionLeaseError(
-        'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
-        'The configured DurableEventStore does not support execution leases',
-        { sessionId },
-      );
-    }
     const ttlMs = options.ttlMs ?? DEFAULT_EXECUTION_LEASE_TTL_MS;
     if (!Number.isSafeInteger(ttlMs) || ttlMs < 2) {
       throw new DurableExecutionLeaseError(

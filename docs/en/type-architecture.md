@@ -104,15 +104,12 @@ interface SessionRepository extends SessionStore {
 interface SessionEventStore {
   // append transcript events
 }
-
-interface SessionPersistence
-  extends SessionRepository, SessionEventStore {}
 ```
 
 - `SessionRepository` owns read projections and storage management.
 - `SessionEventStore` owns transcript appends.
-- `SessionPersistence` is only for adapters that implement both against one
-  backend.
+- One adapter may explicitly implement both ports, but the SDK no longer
+  provides a combined alias or detects capabilities at runtime.
 - A Session requires compatible read and write ports. It must never write to
   one backend and resume from another.
 - Local JSONL and PostgreSQL adapters convert persistence DTOs back into domain

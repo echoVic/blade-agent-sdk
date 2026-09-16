@@ -5,7 +5,8 @@ TypeBox parameter schema and returns a `ToolDefinition` accepted directly by
 Agent and Session.
 
 Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
-`defineTool()` also accepts a regular async function and wraps its return value.
+`defineTool()` accepts one public execution contract: an async function that
+returns JSON data. The SDK wraps that data as an internal successful result.
 
 ## defineTool
 
@@ -28,8 +29,9 @@ const searchDocs = defineTool({
 ```
 
 The returned JSON value becomes both `model` and `data` on the internal success
-result. Use `async *execute` and return a complete `ToolResult` when the tool
-must emit progress, messages, or effects.
+result. Throw an error to report failure. Public definitions do not return
+`ToolResult` or async generators, so result meaning never depends on object
+shape or iterator methods.
 
 The TypeBox schema is the single source of truth for parameter inference,
 runtime validation, and the model-facing JSON Schema. `execute` parameters are
@@ -116,10 +118,10 @@ type ToolExecution<TData extends JsonValue = JsonValue> =
   AsyncGenerator<ToolYield, ToolResult<TData>, void>;
 ```
 
-`defineTool()` accepts both regular async functions and async generators. It
-wraps regular async functions as `ToolExecution`; use an async generator when
-the tool emits intermediate events. Use `collectToolExecution(execution)` when
-a consumer only needs the return value.
+`ToolExecution` is the SDK's internal runtime protocol. Public `defineTool()`
+callbacks return `Promise<JsonValue>` and are compiled into that protocol by
+the Registry; the SDK does not infer result kinds from fields or iterator
+methods.
 
 ## ToolResult
 
@@ -147,9 +149,11 @@ type ToolResult =
   value. Large-result artifact persistence applies to `model`, not `data`.
 - Failed results require both `status: 'error'` and `error`.
 
-## Progress, messages, and effects
+## Runtime progress, messages, and effects
 
-Yield events in the order they happen:
+The compiled runtime `Tool` protocol can yield events in the order they happen.
+This protocol is used by SDK-owned tools and middleware; it is not a second
+`defineTool()` return shape:
 
 ```ts
 async *execute(params) {

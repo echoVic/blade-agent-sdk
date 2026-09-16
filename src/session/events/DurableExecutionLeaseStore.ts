@@ -212,20 +212,6 @@ export interface DurableExecutionLeaseStore extends DurableEventStore {
   ): Promise<void>;
 }
 
-export function isDurableExecutionLeaseStore(
-  store: DurableEventStore,
-): store is DurableExecutionLeaseStore {
-  const candidate = store as Partial<DurableExecutionLeaseStore>;
-  return (
-    typeof candidate.requiresExecutionLease === 'function' &&
-    typeof candidate.acquireExecutionLease === 'function' &&
-    typeof candidate.renewExecutionLease === 'function' &&
-    typeof candidate.assertExecutionLease === 'function' &&
-    typeof candidate.withExecutionLease === 'function' &&
-    typeof candidate.releaseExecutionLease === 'function'
-  );
-}
-
 export function executionFence(lease: DurableExecutionLease): DurableExecutionFence {
   return {
     leaseId: lease.leaseId,

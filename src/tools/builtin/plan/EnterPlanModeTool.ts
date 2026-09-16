@@ -2,7 +2,6 @@ import Type from 'typebox';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * EnterPlanMode tool
@@ -15,7 +14,7 @@ export const enterPlanModeTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => Type.Object({})),
+  schema: Type.Object({}),
 
   // 工具描述
   description: {

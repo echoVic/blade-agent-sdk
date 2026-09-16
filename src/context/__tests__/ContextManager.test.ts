@@ -62,6 +62,7 @@ describe('ContextManager', () => {
         },
       },
       persistentStore,
+      persistentStore,
     );
 
     const sessionId = SessionId('session-1');
@@ -111,6 +112,7 @@ describe('ContextManager', () => {
           compressionEnabled: true,
         },
       },
+      persistentStore,
       persistentStore,
     );
     await contextManager.initialize();

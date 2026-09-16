@@ -240,6 +240,8 @@ attempt (by `toolCallId`), and the turn's assistant output (matched through the 
 calls it requested). Repair only writes data — it never re-runs a model call or a
 tool — writes nothing on a second pass, and leaves the gap open with
 `insufficient-durable-data` when the journal itself was trimmed.
+Callers provide a complete `HistoryRepairStore`; repair does not probe optional
+methods to infer capabilities.
 
 Repair is scoped to the request and turn the *gap* belongs to, read from the gap
 record itself, and it reads the journal as a history: a request that finished
@@ -343,8 +345,9 @@ window, `STALE_CURSOR` tells the client to reload Session state.
 These ports have different responsibilities. A production implementation may
 place them in one database, but must not partially commit a boundary that
 requires both. When multiple workers may open the same Session, configure a
-fencing-capable `DurableExecutionLeaseStore` and a unique
-`executionLease.ownerId` for each worker.
+fencing-capable `DurableExecutionLeaseStore` explicitly through
+`durableExecutionLeaseStore`, plus a unique `executionLease.ownerId` for each
+worker.
 
 The included `InMemoryAgentServerStore` is for one process and tests only. It
 does not provide cross-process idempotency, global quotas, or highly available

@@ -562,11 +562,11 @@ export class SessionLifecycle {
         { sessionId: this.state.sessionId },
       );
     }
-    const store = this.state.options.durableEventStore;
+    const store = this.state.options.durableExecutionLeaseStore;
     if (!store) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
-        'Session execution leases require durableEventStore',
+        'Session execution leases require durableExecutionLeaseStore',
         { sessionId: this.state.sessionId },
       );
     }

@@ -13,21 +13,28 @@ import { defineTool } from '../../index.js';
 import type { JsonValue } from '../../types/json.js';
 import type { ToolServiceMap, ToolServiceName } from '../services.js';
 import type { RuntimeAccess } from '../types/execution.js';
-import type { ErasedToolDefinition, Tool } from '../types/tool.js';
+import type { ErasedToolDefinition, Tool, ToolConfig } from '../types/tool.js';
 
 describe('Tool type ownership', () => {
+  it('accepts direct TypeBox schemas without a factory union', () => {
+    const schema = Type.Object({ query: Type.String() });
+
+    expectTypeOf<ToolConfig<typeof schema>['schema']>().toEqualTypeOf<typeof schema>();
+  });
+
   it('infers authoring params from the TypeBox schema', () => {
     const schema = Type.Object({
       query: Type.String(),
       limit: Type.Optional(Type.Number()),
     });
-    type Definition = ToolDefinitionInput<typeof schema>;
+    type Definition = ToolDefinitionInput<typeof schema, { found: boolean }>;
     type Params = Parameters<Definition['execute']>[0];
 
     expectTypeOf<Params>().toEqualTypeOf<{
       query: string;
       limit?: number;
     }>();
+    expectTypeOf<ReturnType<Definition['execute']>>().toEqualTypeOf<Promise<{ found: boolean }>>();
   });
 
   it('preserves the TypeBox schema generic through defineTool', () => {
@@ -177,7 +184,6 @@ describe('Tool type ownership', () => {
       'src/session/SessionRuntime.ts',
       'src/tools/builtin/memory/memoryRead.ts',
       'src/tools/builtin/memory/memoryWrite.ts',
-      'src/tools/validation/lazySchema.ts',
       'src/tools/validation/toolInput.ts',
     ].map((file) => readFileSync(resolve(file), 'utf8'));
     const combined = sources.join('\n');
@@ -190,6 +196,8 @@ describe('Tool type ownership', () => {
     expect(combined).not.toMatch(/params as \{ operation: string \}/);
     expect(combined).not.toMatch(/schema as \(\) => TSchema/);
     expect(combined).not.toMatch(/current as Record<string, unknown>/);
+    expect(createToolSource).not.toMatch(/\bisToolResult\b/);
+    expect(createToolSource).not.toMatch(/\bisAsyncGenerator\b/);
     expect(createToolSource).toContain('function executeErasedDefinition');
     expect(createToolSource.match(/\[params, context\] as never/g)).toHaveLength(1);
     expect(createToolSource.match(/\bas JSONSchema7\b/g)).toHaveLength(1);

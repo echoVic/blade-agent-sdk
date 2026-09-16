@@ -4,7 +4,8 @@ import { nanoid } from 'nanoid';
 import type { ModelContent, ModelToolCall } from '../../model/message.js';
 import type {
   PersistedToolUse,
-  SessionPersistence,
+  SessionEventStore,
+  SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryMessageMetadata,
   SessionRepositorySubagentInfo,
@@ -80,7 +81,7 @@ function parseToolCallArguments(value: string): JsonValue {
  * 持久化存储实现 - JSONL 格式
  * 存储路径: {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export class PersistentStore implements SessionPersistence {
+export class PersistentStore implements SessionRepository, SessionEventStore {
   private readonly storageRoot: string;
   private readonly projectPath?: string;
   private readonly maxSessions: number;

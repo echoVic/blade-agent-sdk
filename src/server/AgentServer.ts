@@ -263,7 +263,8 @@ export class AgentServer {
           if (
             sessionOptions.sessionRepository ||
             sessionOptions.sessionEventStore ||
-            sessionOptions.durableEventStore
+            sessionOptions.durableEventStore ||
+            sessionOptions.durableExecutionLeaseStore
           ) {
             throw new AgentProtocolError(
               'SESSION_CONFLICT',
@@ -278,6 +279,7 @@ export class AgentServer {
             sessionRepository: tenantStore,
             sessionEventStore: tenantStore,
             durableEventStore: tenantStore,
+            durableExecutionLeaseStore: tenantStore,
           };
         },
         publish: (tenantId, sessionId, type, data, requestId) =>

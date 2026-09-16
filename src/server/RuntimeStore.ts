@@ -1,7 +1,7 @@
 import { SdkError } from '../errors/SdkError.js';
 import type { AgentCommandResult } from '../protocol/index.js';
 import type { DurableExecutionLeaseStore } from '../session/events/DurableExecutionLeaseStore.js';
-import type { SessionPersistence } from '../session/SessionRepository.js';
+import type { SessionEventStore, SessionRepository } from '../session/SessionRepository.js';
 import type {
   CommandId,
   EventId,
@@ -142,7 +142,10 @@ export interface RuntimeStore extends AgentServerStore, WorkerRuntimeStore {
   close(): Promise<void>;
 }
 
-export interface RuntimeTenantStore extends SessionPersistence, DurableExecutionLeaseStore {}
+export interface RuntimeTenantStore
+  extends SessionRepository,
+    SessionEventStore,
+    DurableExecutionLeaseStore {}
 
 export type RuntimeStoreErrorCode =
   | 'RUNTIME_STORE_COMMAND_CONFLICT'

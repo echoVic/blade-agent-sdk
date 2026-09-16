@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
-import type { SessionPersistence } from '../SessionRepository.js';
+import type { SessionEventStore, SessionRepository } from '../SessionRepository.js';
 
 interface RepositoryFixture {
-  readonly repository: SessionPersistence;
+  readonly repository: SessionRepository & SessionEventStore;
 }
 
 function sessionPersistenceContract(name: string, createFixture: () => RepositoryFixture): void {
-  describe(`${name} SessionPersistence conformance`, () => {
+  describe(`${name} Session repository and event-store conformance`, () => {
     it('uses one backend for append operations and read projections', async () => {
       const { repository } = createFixture();
       const sessionId = SessionId('contract-session');

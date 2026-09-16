@@ -4,7 +4,6 @@ import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { requireSessionId } from '../sessionContext.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -24,31 +23,29 @@ Use \`deleted\` to permanently remove a task.
 
 ONLY mark a task as completed when you have FULLY accomplished it.`,
   },
-  schema: lazySchema(() =>
-    Type.Object({
-      taskId: Type.String({ description: 'The ID of the task to update' }),
-      status: Type.Optional(Type.Enum(['pending', 'in_progress', 'completed', 'deleted'])),
-      subject: Type.Optional(Type.String()),
-      description: Type.Optional(Type.String()),
-      activeForm: Type.Optional(Type.String()),
-      owner: Type.Optional(Type.String()),
-      metadata: Type.Optional(
-        Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
-          description: 'Metadata keys to merge into the task. Set a key to null to delete it.',
-        }),
-      ),
-      addBlocks: Type.Optional(
-        Type.Array(Type.String(), {
-          description: 'Task IDs that this task blocks',
-        }),
-      ),
-      addBlockedBy: Type.Optional(
-        Type.Array(Type.String(), {
-          description: 'Task IDs that must complete before this one can start',
-        }),
-      ),
-    }),
-  ),
+  schema: Type.Object({
+    taskId: Type.String({ description: 'The ID of the task to update' }),
+    status: Type.Optional(Type.Enum(['pending', 'in_progress', 'completed', 'deleted'])),
+    subject: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+    activeForm: Type.Optional(Type.String()),
+    owner: Type.Optional(Type.String()),
+    metadata: Type.Optional(
+      Type.Record(Type.String(), Type.Unsafe<JsonValue>({}), {
+        description: 'Metadata keys to merge into the task. Set a key to null to delete it.',
+      }),
+    ),
+    addBlocks: Type.Optional(
+      Type.Array(Type.String(), {
+        description: 'Task IDs that this task blocks',
+      }),
+    ),
+    addBlockedBy: Type.Optional(
+      Type.Array(Type.String(), {
+        description: 'Task IDs that must complete before this one can start',
+      }),
+    ),
+  }),
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
   async *execute({ taskId, ...input }, context) {
     const store = TaskStore.getInstance(requireSessionId(context));

@@ -17,6 +17,7 @@ export {
   type HistoryRepairOptions,
   type HistoryRepairReason,
   type HistoryRepairResult,
+  type HistoryRepairStore,
   repairSessionHistory,
 } from './historyRepair.js';
 export type { ForkOptions, ResumeOptions } from './Session.js';
@@ -24,7 +25,6 @@ export { createSession, forkSession, prompt, resumeSession } from './Session.js'
 export type {
   PersistedToolUse,
   SessionEventStore,
-  SessionPersistence,
   SessionRepository,
   SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,
@@ -33,7 +33,6 @@ export type {
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
 } from './SessionRepository.js';
-export { isSessionEventStore } from './SessionRepository.js';
 export {
   parseSessionStreamEvent,
   sessionStreamEventSchema,

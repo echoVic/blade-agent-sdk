@@ -1042,15 +1042,18 @@ interface SessionOptions {
 
 `allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
 
-### ToolDefinition
+### ToolDefinitionInput
 
 ```ts
-interface ToolDefinition<TSchema extends Type.TSchema = Type.TSchema> {
+interface ToolDefinitionInput<
+  TSchema extends Type.TSchema = Type.TSchema,
+  TData extends JsonValue = JsonValue,
+> {
   name: string;
   description: string | ToolDescription;
   parameters: TSchema;              // TypeBox schema
   sideEffect?: ToolSideEffect;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution;
+  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => Promise<TData>;
   kind?: ToolKind;
 }
 ```
@@ -1072,20 +1075,10 @@ const weatherTool = defineTool({
   }),
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
-  async *execute(params, context) {
+  async execute(params) {
     const { city, unit = 'celsius' } = params;
-    yield {
-      kind: 'progress',
-      message: `正在查询 ${city}`,
-    };
     const weather = await fetchWeatherAPI(city, unit);
-    return {
-      status: 'success',
-      model: JSON.stringify(weather),
-      display: {
-        summary: `${city}: ${weather.temperature}°${unit === 'celsius' ? 'C' : 'F'}`,
-      },
-    };
+    return { city, unit, temperature: weather.temperature };
   },
 });
 
@@ -1468,9 +1461,10 @@ Request 前失败；应先等待或终止这些后台工作后重试。如果取
 `activeShellIds` 字段供调度层处理。
 
 未配置 `executionLease` 时，该 API 仍只是协作式 shutdown barrier；调用前必须
-停止向旧 worker 路由新工作。配置支持租约的 `DurableEventStore` 后，handoff
-会在执行、transcript 写入及 journal 收敛期间继续持有当前租约，并在返回前释放；
-继任 worker 调用 `resumeSession()` 时会取得更高的 fencing token。
+停止向旧 worker 路由新工作。显式配置 `durableExecutionLeaseStore` 与
+`executionLease` 后，handoff 会在执行、transcript 写入及 journal 收敛期间继续
+持有当前租约，并在返回前释放；继任 worker 调用 `resumeSession()` 时会取得更高
+的 fencing token。
 
 ## 跨 worker 执行 fencing
 
@@ -1489,6 +1483,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableExecutionLeaseStore: eventStore,
   durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
@@ -1514,8 +1509,9 @@ operation timeout 会中止 execution lease。即使 heartbeat 调度停滞，�
 时钟的本地 expiry watchdog 也会关闭 lease；更严格的
 `executionLease.storeTimeoutMs` 不会被 Session 上限覆盖。
 
-Session 一旦启用过 execution lease，fencing 要求会永久保留。旧租约过期或释放
-后，未配置 `executionLease` 的 `resumeSession()` 仍会收到
+Session 一旦启用过 execution lease，fencing 要求会永久保留。恢复方通过
+`durableExecutionLeaseStore` 显式启用该检查；旧租约过期或释放后，未配置
+`executionLease` 的 `resumeSession()` 仍会收到
 `DURABLE_EXECUTION_LEASE_REQUIRED`；继任 worker 必须先获取更高 token 的 lease。
 正常 `close()` 会先取消并等待后台 Agent、终止 Session shell，再提交 durable
 关闭并释放 lease；如果 Runtime 清理失败，则保留 lease，并允许调用方重试
@@ -1552,7 +1548,7 @@ try {
   const coordinator = await DurableSessionRecoveryCoordinator.open(
     eventStore,
     sessionId,
-    { executionLease: lease },
+    { executionLease: lease, executionLeaseStore: eventStore },
   );
   // 在 fence 有效期间执行对账或准备恢复。
 } finally {
@@ -1774,6 +1770,7 @@ async function analyzeCodeManual() {
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
 | `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用消息历史持久化                         |
 | `durableEventStore` | `DurableEventStore`                                  | —  | —           | opt-in durable 执行事件 Store                                 |
+| `durableExecutionLeaseStore` | `DurableExecutionLeaseStore`              | —  | —           | 显式 lease 与 sticky fencing 状态端口                          |
 | `durableStoreTimeoutMs` | `number`                                         | —  | `15000`     | 单次 durable Store 调用 deadline（毫秒）                         |
 | `executionLease` | `DurableExecutionLeaseOptions`                         | —  | —           | opt-in worker 所有权、heartbeat 与 fencing                     |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |

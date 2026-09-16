@@ -7,7 +7,6 @@ import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/execution.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * Skill tool
@@ -26,14 +25,12 @@ export const skillTool = createTool({
   sideEffect: 'non_idempotent',
   services: ['skillRegistry'],
 
-  schema: lazySchema(() =>
-    Type.Object({
-      skill: Type.String({
-        description: 'The skill name. E.g., "commit-message" or "code-review"',
-      }),
-      args: Type.Optional(Type.String({ description: 'Optional arguments for the skill' })),
+  schema: Type.Object({
+    skill: Type.String({
+      description: 'The skill name. E.g., "commit-message" or "code-review"',
     }),
-  ),
+    args: Type.Optional(Type.String({ description: 'Optional arguments for the skill' })),
+  }),
 
   description: {
     short: 'Execute a skill within the main conversation',

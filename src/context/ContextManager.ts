@@ -3,7 +3,6 @@ import { ConfigError } from '../errors/ConfigError.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelContent, ModelMessage } from '../model/message.js';
 import {
-  isSessionEventStore,
   NoopSessionRepository,
   type PersistedToolUse,
   type SessionEventStore,
@@ -71,8 +70,7 @@ export class ContextManager {
     eventStore?: SessionEventStore,
   ) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
-    const compatibleEventStore =
-      eventStore ?? (isSessionEventStore(repository) ? repository : undefined);
+    const compatibleEventStore = eventStore;
     if (
       persistenceEnabled &&
       ((repository && !compatibleEventStore) || (!repository && compatibleEventStore))

@@ -401,6 +401,7 @@ describe('LoopRunner', () => {
     it('persists streaming tool turns in provider-compatible order', async () => {
       const workspaceRoot = mkdtempSync(join(tmpdir(), 'loop-runner-persistence-'));
       const sessionId = SessionId('streaming-tool-session');
+      const persistence = new PersistentStore(workspaceRoot);
       const contextManager = new ContextManager(
         {
           projectPath: workspaceRoot,
@@ -411,7 +412,8 @@ describe('LoopRunner', () => {
             compressionEnabled: true,
           },
         },
-        new PersistentStore(workspaceRoot),
+        persistence,
+        persistence,
       );
       await contextManager.initialize();
       await contextManager.createSession(undefined, {}, { sessionId });

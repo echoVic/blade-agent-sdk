@@ -138,10 +138,9 @@ not combine it with PostgreSQL transcript storage in production.
 ## Session projection
 
 `SessionRepository` now describes only the read/projection API.
-`SessionEventStore` describes transcript appends, while `SessionPersistence`
-combines both for compatibility. The existing `JsonlSessionRepository`
-continues to implement the combined interface, so local Node.js usage is
-unchanged.
+`SessionEventStore` describes transcript appends. One adapter may implement
+both independent ports, but callers inject them separately and Session does not
+infer capabilities from an object's method set.
 
 ```ts
 interface SessionRepository extends SessionStore {

@@ -2,7 +2,6 @@ import Type from 'typebox';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * Option schema - 选项定义
@@ -65,7 +64,7 @@ export const askUserQuestionTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() => askUserQuestionSchema),
+  schema: askUserQuestionSchema,
 
   description: {
     short: 'Ask user questions to gather preferences or clarify requirements',

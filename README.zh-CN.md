@@ -186,8 +186,8 @@ const weather = defineTool({
 });
 ```
 
-需要产生类型化进度、消息或 effect 时，继续使用 `async *execute`。generator
-工具保留现有的 `ToolResult` 终态契约。
+`defineTool.execute` 始终返回 JSON 数据；失败时抛出异常。SDK 不会根据返回对象
+中的字段猜测结果语义。
 
 ## 权限与 Hooks
 
@@ -271,7 +271,7 @@ pnpm add fs-native-extensions        # Node JSONL 跨进程锁
 
 未同时配置只读 `SessionRepository` 与只写 `SessionEventStore` 时，Session
 只保存在内存中。local Agent 会把 `advanced.storagePath` 转换为同时实现两者的
-本地 JSONL `SessionPersistence`：
+本地 JSONL 存储适配器：
 
 ```ts
 import { createAgent } from '@blade-ai/agent-sdk';

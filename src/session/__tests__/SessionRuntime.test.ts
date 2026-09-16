@@ -199,12 +199,12 @@ describe('SessionRuntime', () => {
       parameters: Type.Object({}),
       services: ['subagentRegistry'] as const,
       requiresRuntime: true,
-      execute(_params, context) {
+      async execute(_params, context) {
         injectedSubagentRegistry = context.subagentRegistry;
         injectedRuntime = context.runtime;
         // @ts-expect-error The tool did not declare the skillRegistry service.
         leakedSkillRegistry = context.skillRegistry;
-        return completeToolExecution({ status: 'success', model: 'ok' });
+        return 'ok';
       },
     });
     const runtime = new SessionRuntime(
@@ -345,7 +345,7 @@ describe('SessionRuntime', () => {
       sideEffect: 'non_idempotent',
       description: { short: 'Wait until cancelled' },
       parameters: Type.Object({}),
-      async *execute(_params, context) {
+      async execute(_params, context) {
         await new Promise<void>((_resolve, reject) => {
           context.signal?.addEventListener(
             'abort',
@@ -356,10 +356,7 @@ describe('SessionRuntime', () => {
             { once: true },
           );
         });
-        return {
-          status: 'success',
-          model: 'unexpected',
-        };
+        return 'completed';
       },
     });
     const runtime = new SessionRuntime(
@@ -416,14 +413,10 @@ describe('SessionRuntime', () => {
       sideEffect: 'non_idempotent',
       description: { short: 'Ignore cancellation until released' },
       parameters: Type.Object({}),
-      // biome-ignore lint/correctness/useYield: exercises an uncooperative terminal execution
-      async *execute() {
+      async execute() {
         started.resolve();
         await release.promise;
-        return {
-          status: 'success',
-          model: 'late success',
-        };
+        return 'late success';
       },
     });
     const runtime = new SessionRuntime(
@@ -636,11 +629,8 @@ describe('SessionRuntime', () => {
       sideEffect: 'pure',
       description: { short: 'Plugin test tool' },
       parameters: Type.Object({ value: Type.Optional(Type.String()) }),
-      execute(params) {
-        return completeToolExecution({
-          status: 'success',
-          model: params.value ?? 'missing',
-        });
+      async execute(params) {
+        return params.value ?? 'missing';
       },
     });
     const runtime = new SessionRuntime(

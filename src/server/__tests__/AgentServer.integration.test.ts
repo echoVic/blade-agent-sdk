@@ -105,6 +105,7 @@ function createTestServer() {
       },
       model: 'test-model',
       sessionRepository: repository,
+      sessionEventStore: repository,
     }),
     requirePersistentSessions: true,
     eventPollIntervalMs: 5,
@@ -168,6 +169,7 @@ describe('AgentServer', () => {
 
   it('reserves active Session capacity across concurrent creates', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agent-server-session-capacity-'));
+    const repository = new PersistentStore(root);
     let signalOptionsStarted: (() => void) | undefined;
     let releaseOptions: (() => void) | undefined;
     const optionsStarted = new Promise<void>((resolve) => {
@@ -190,7 +192,8 @@ describe('AgentServer', () => {
             apiKey: 'test-key',
           },
           model: 'test-model',
-          sessionRepository: new PersistentStore(root),
+          sessionRepository: repository,
+          sessionEventStore: repository,
         };
       },
     });
@@ -224,6 +227,7 @@ describe('AgentServer', () => {
 
   it('keeps an uncertain command sealed when completion persistence fails', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agent-server-completion-failure-'));
+    const repository = new PersistentStore(root);
     const store = new FailOnceCompletionStore();
     const server = new AgentServer({
       store,
@@ -233,7 +237,8 @@ describe('AgentServer', () => {
           apiKey: 'test-key',
         },
         model: 'test-model',
-        sessionRepository: new PersistentStore(root),
+        sessionRepository: repository,
+        sessionEventStore: repository,
       }),
     });
     const createCommand = command(AgentCommandType.SESSION_CREATE, 'uncertain-create', {});
@@ -287,6 +292,7 @@ describe('AgentServer', () => {
 
   it('keeps telemetry failures outside command and event semantics', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agent-server-telemetry-failure-'));
+    const repository = new PersistentStore(root);
     const server = new AgentServer({
       telemetry: {
         recordCommand() {
@@ -305,7 +311,8 @@ describe('AgentServer', () => {
           apiKey: 'test-key',
         },
         model: 'test-model',
-        sessionRepository: new PersistentStore(root),
+        sessionRepository: repository,
+        sessionEventStore: repository,
       }),
     });
 
@@ -429,6 +436,7 @@ describe('AgentServer', () => {
         provider: { type: 'openai-compatible' as const, apiKey: 'test-key' },
         model: 'test-model',
         sessionRepository: repository,
+        sessionEventStore: repository,
       }),
       requirePersistentSessions: true,
       eventPollIntervalMs: 5,

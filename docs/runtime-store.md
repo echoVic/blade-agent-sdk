@@ -134,8 +134,8 @@ PostgreSQL transcript 混用。
 ## Session projection
 
 `SessionRepository` 从本版本开始只描述 read/projection API。
-`SessionEventStore` 描述 append API，`SessionPersistence` 是兼容两者的组合。
-现有 `JsonlSessionRepository` 继续实现组合接口，因此 Node 本地用法不变。
+`SessionEventStore` 描述 append API。实现可以同时实现两个独立端口，但 Session
+要求调用方分别显式注入，且不会根据对象的方法集合自动推断能力。
 
 ```ts
 interface SessionRepository extends SessionStore {

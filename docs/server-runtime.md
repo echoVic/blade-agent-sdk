@@ -217,6 +217,7 @@ attempt、fencing token 与 worker，同时给出本服务是否已加载该 Ses
 （按 `inputId`）、完成的工具调用（按 `toolCallId`）、该轮次的 assistant 输出（按它请求的
 工具调用匹配）。修复只写数据，不重跑模型或工具；重复执行不会产生重复消息；journal 本身
 已被裁剪、无法补齐时保持缺口并返回 `insufficient-durable-data`。
+调用方必须提供完整的 `HistoryRepairStore`，不能依赖可选方法探测降级能力。
 
 修复的作用域是**缺口所属的请求与轮次**（从缺口记录本身读出），并且把 journal 当历史来读：
 即使执行投影已经丢弃了正常结束的请求，它仍然可以被修复。assistant 消息里的工具调用声明
@@ -303,7 +304,8 @@ SSE 使用 pull-based `ReadableStream`，每次 pull 最多写一个 frame，
 
 这些端口职责不同。生产实现可以落在同一个数据库中，但不得在失败时只提交其中一半。
 需要多 worker 打开同一 Session 时，还必须配置支持 fencing 的
-`DurableExecutionLeaseStore` 和每个 worker 唯一的 `executionLease.ownerId`。
+`DurableExecutionLeaseStore`，通过 `durableExecutionLeaseStore` 显式注入，并为
+每个 worker 配置唯一的 `executionLease.ownerId`。
 
 SDK 附带的 `InMemoryAgentServerStore` 只用于单进程和测试。它不提供跨进程幂等、
 全局配额或高可用 event replay。

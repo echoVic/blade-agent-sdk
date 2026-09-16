@@ -1,13 +1,11 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
-import { ToolExecutionError } from '../../errors/ToolExecutionError.js';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import { isToolSideEffect, resolveBehavior, type ToolBehavior, ToolKind } from '../behavior.js';
 import { selectToolServices, type ToolServiceName, type ToolServices } from '../services.js';
 import { type ExecutionContext, getRuntimeAccess } from '../types/execution.js';
 import {
   type ToolExecution,
-  type ToolResult,
   type ToolValidationError,
   validationErrorToToolResult,
 } from '../types/result.js';
@@ -22,7 +20,6 @@ import type {
   ToolExposureMode,
   ToolValidationOutcome,
 } from '../types/tool.js';
-import { resolveToolSchema } from '../validation/lazySchema.js';
 import { type CompiledToolInput, compileToolInput } from '../validation/toolInput.js';
 import { createToolInvocation, type ToolInvocation } from './ToolInvocation.js';
 
@@ -94,11 +91,7 @@ function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool {
   };
 
   const executePrepared = (params: JsonObject, context: ExecutionContext): ToolExecution => {
-    const execution = assembly.execute(assembly.parse(params), context);
-    if (!isToolExecution(execution)) {
-      throw new ToolExecutionError(assembly.name, 'execute() must return an AsyncGenerator');
-    }
-    return execution;
+    return assembly.execute(assembly.parse(params), context);
   };
   const tool: Tool = {
     name: assembly.name,
@@ -177,8 +170,7 @@ export function createTool<
   TRequiresRuntime extends boolean = false,
 >(config: ToolConfig<TSchema, TServices, TRequiresRuntime>): Tool {
   type TParams = Type.Static<TSchema>;
-  const schema = resolveToolSchema(config.schema);
-  const input: CompiledToolInput<TSchema> = compileToolInput(schema);
+  const input: CompiledToolInput<TSchema> = compileToolInput<TSchema>(config.schema);
   const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
 
   if (!isToolSideEffect(config.sideEffect)) {
@@ -207,7 +199,7 @@ export function createTool<
     declaration: Object.freeze({
       name: config.name,
       description: formatToolDescription(config.description),
-      parameters: toFunctionSchema(schema),
+      parameters: toFunctionSchema(config.schema),
       ...(config.strict ? { strict: true } : {}),
     }),
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
@@ -462,49 +454,17 @@ export function defineTool<
 }
 
 function normalizeToolExecution<TData extends JsonValue>(
-  execution: ToolExecution<TData> | Promise<TData | ToolResult<TData>>,
+  execution: Promise<TData>,
 ): ToolExecution<TData> {
+  // biome-ignore lint/correctness/useYield: adapts one terminal Promise to the runtime stream.
   return (async function* () {
-    if (isAsyncGenerator(execution)) {
-      return yield* execution;
-    }
-    const result = await execution;
-    if (isToolResult(result)) {
-      return result;
-    }
+    const data = await execution;
     return {
       status: 'success',
-      model: result,
-      data: result,
+      model: data,
+      data,
     };
   })();
-}
-
-function isToolResult<TData extends JsonValue>(
-  value: TData | ToolResult<TData>,
-): value is ToolResult<TData> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    'status' in value &&
-    'model' in value &&
-    (value.status === 'success' || value.status === 'error')
-  );
-}
-
-function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is ToolExecution<TData> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  return (
-    typeof Reflect.get(value, 'next') === 'function' &&
-    typeof Reflect.get(value, Symbol.asyncIterator) === 'function'
-  );
-}
-
-function isToolExecution(value: unknown): value is ToolExecution {
-  return isAsyncGenerator(value);
 }
 
 function requireJsonObject(value: unknown, toolName: string): JsonObject {

@@ -1,7 +1,6 @@
 import Type from 'typebox';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 export const discoverToolsTool = createTool({
   name: 'DiscoverTools',
@@ -16,21 +15,19 @@ export const discoverToolsTool = createTool({
 
 This tool searches deferred/discoverable tools, returns the best matches, and activates them for subsequent turns in the current session.`,
   },
-  schema: lazySchema(() =>
-    Type.Object({
-      query: Type.String({
-        minLength: 1,
-        description: 'Search query for hidden tools',
-      }),
-      max_results: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 10,
-          description: 'Maximum tools to activate',
-        }),
-      ),
+  schema: Type.Object({
+    query: Type.String({
+      minLength: 1,
+      description: 'Search query for hidden tools',
     }),
-  ),
+    max_results: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: 10,
+        description: 'Maximum tools to activate',
+      }),
+    ),
+  }),
   async *execute(params, context) {
     const maxResults = params.max_results ?? 5;
     const matches = context.discoverableCatalog

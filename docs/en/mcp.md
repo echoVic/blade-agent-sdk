@@ -31,6 +31,9 @@ const session = await createSession({
 });
 ```
 
+The returned handle carries `type: 'in-process'`, which discriminates it from
+external MCP server configurations.
+
 ### stdio
 
 ```ts

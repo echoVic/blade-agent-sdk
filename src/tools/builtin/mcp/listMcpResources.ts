@@ -3,7 +3,6 @@ import type { JsonValue } from '../../../types/json.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 const ListMcpResourcesParamsSchema = Type.Object({
   serverName: Type.Optional(
@@ -68,7 +67,7 @@ access their contents.`,
       'List resources from specific server: ListMcpResources({ serverName: "my-server" })',
     ],
   },
-  schema: lazySchema(() => ListMcpResourcesParamsSchema),
+  schema: ListMcpResourcesParamsSchema,
 
   async *execute(params: ListMcpResourcesParams, context) {
     const registry = context.mcpRegistry;

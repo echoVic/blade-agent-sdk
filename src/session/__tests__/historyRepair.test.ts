@@ -1,7 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
-import { InputId, MessageId, RequestId, SessionId, ToolUseId } from '../../types/identifiers.js';
+import { describe, expect, it, type Mocked, vi } from 'vitest';
+import {
+  EventSequence,
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+  ToolUseId,
+} from '../../types/identifiers.js';
+import type { DurableEventReadOptions } from '../events/types.js';
 import { mergeHistoryProgress } from '../historyProgress.js';
-import { projectDurableHistory, repairSessionHistory } from '../historyRepair.js';
+import {
+  type HistoryRepairStore,
+  projectDurableHistory,
+  repairSessionHistory,
+} from '../historyRepair.js';
 import type { SessionState } from '../SessionStore.js';
 
 const sessionId = SessionId('session-repair');
@@ -282,15 +294,7 @@ function stateWithGap(overrides: Partial<SessionState> = {}): SessionState {
   } as SessionState;
 }
 
-interface RepairPersistenceDouble {
-  loadState: ReturnType<typeof vi.fn>;
-  saveAppliedInputMessage: ReturnType<typeof vi.fn>;
-  saveMessage: ReturnType<typeof vi.fn>;
-  saveToolUse: ReturnType<typeof vi.fn>;
-  saveToolResult: ReturnType<typeof vi.fn>;
-  clearHistoryGap: ReturnType<typeof vi.fn>;
-  read: ReturnType<typeof vi.fn>;
-}
+type RepairPersistenceDouble = Mocked<HistoryRepairStore>;
 
 function createPersistence(
   state: SessionState,
@@ -374,7 +378,7 @@ describe('repairSessionHistory', () => {
     const state = stateWithGap();
     const persistence = createPersistence(state);
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({
       repaired: true,
@@ -418,7 +422,7 @@ describe('repairSessionHistory', () => {
     const state = stateWithGap();
     const persistence = createPersistence(state, journalWithCompletedRequest());
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({
       repaired: true,
@@ -441,7 +445,7 @@ describe('repairSessionHistory', () => {
     const state = stateWithGap();
     const persistence = createPersistence(state, journalWithTwoTurns());
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({ repaired: true, assistantMessages: 2, missing: [] });
     expect(persistence.saveMessage).toHaveBeenCalledWith(
@@ -471,7 +475,7 @@ describe('repairSessionHistory', () => {
     });
     const persistence = createPersistence(state, journalWithCompletedRequest());
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({ repaired: false, reason: 'insufficient-durable-data' });
     expect(result.missing).toContain('request:request-other');
@@ -482,7 +486,7 @@ describe('repairSessionHistory', () => {
   it('writes nothing on a second pass and still closes the gap', async () => {
     const state = stateWithGap();
     const persistence = createPersistence(state);
-    await repairSessionHistory({ persistence: persistence as never, sessionId });
+    await repairSessionHistory({ persistence, sessionId });
     persistence.saveAppliedInputMessage.mockClear();
     persistence.saveMessage.mockClear();
     persistence.saveToolResult.mockClear();
@@ -519,7 +523,7 @@ describe('repairSessionHistory', () => {
     });
     state.historyProgress = { state: 'failed', updatedAt: 4, detail: 'write failed' };
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result.repaired).toBe(true);
     expect(result.repairedMessages).toBe(0);
@@ -555,7 +559,7 @@ describe('repairSessionHistory', () => {
     } as Partial<SessionState>);
     const persistence = createPersistence(state);
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result.repaired).toBe(true);
     // A declaration is not a result: the result has to be written.
@@ -569,17 +573,14 @@ describe('repairSessionHistory', () => {
     );
   });
 
-  it('keeps the gap open when the store cannot persist a tool result', async () => {
+  it('propagates a tool result write failure without clearing the gap', async () => {
     const state = stateWithGap();
     const persistence = createPersistence(state);
-    // Stands in for a backend without the tool-message capability.
-    (persistence as unknown as Record<string, unknown>).saveToolUse = undefined;
-    (persistence as unknown as Record<string, unknown>).saveToolResult = undefined;
+    persistence.saveToolResult.mockRejectedValue(new Error('tool result write failed'));
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
-
-    expect(result).toMatchObject({ repaired: false, reason: 'insufficient-durable-data' });
-    expect(result.missing).toContain('tool-messages');
+    await expect(repairSessionHistory({ persistence, sessionId })).rejects.toThrow(
+      'tool result write failed',
+    );
     expect(persistence.clearHistoryGap).not.toHaveBeenCalled();
   });
 
@@ -590,7 +591,7 @@ describe('repairSessionHistory', () => {
     // gap is closed would present a partial rebuild as a whole history.
     persistence.saveMessage.mockImplementation(async () => MessageId('message-assistant'));
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({ repaired: false, reason: 'insufficient-durable-data' });
     expect(result.missing).toContain('assistant-message');
@@ -602,9 +603,10 @@ describe('repairSessionHistory', () => {
     const events = journalWithCompletedRequest();
     // A real tenant adapter resolves its runtime through `this`, so detaching the
     // method from the object breaks it.
-    class TenantAdapter {
+    class TenantAdapter implements HistoryRepairStore {
+      readCalled = false;
       private readonly runtime = {
-        read: async (_id: SessionId, options: { after?: number } = {}) => {
+        read: async (_id: SessionId, options: DurableEventReadOptions = {}) => {
           const remaining =
             options.after === undefined
               ? events
@@ -612,7 +614,12 @@ describe('repairSessionHistory', () => {
                   (event) =>
                     Number((event as { sequence: number }).sequence) > Number(options.after),
                 );
-          return { events: remaining, hasMore: false, nextCursor: null };
+          return {
+            events: remaining,
+            hasMore: false,
+            nextCursor: null,
+            headSequence: EventSequence(events.length),
+          };
         },
       };
       async loadState() {
@@ -633,7 +640,8 @@ describe('repairSessionHistory', () => {
       async clearHistoryGap() {
         state.historyProgress = { state: 'complete', updatedAt: 3 };
       }
-      read(session: SessionId, options?: { after?: number; limit?: number }) {
+      read(session: SessionId, options?: DurableEventReadOptions) {
+        this.readCalled = true;
         if (!this.runtime) {
           throw new TypeError("Cannot read properties of undefined (reading 'runtime')");
         }
@@ -641,19 +649,21 @@ describe('repairSessionHistory', () => {
       }
     }
 
+    const persistence = new TenantAdapter();
     const result = await repairSessionHistory({
-      persistence: new TenantAdapter() as never,
+      persistence,
       sessionId,
     });
 
-    expect(result.reason).not.toBe('no-journal');
+    expect(persistence.readCalled).toBe(true);
+    expect(result.reason).toBe('insufficient-durable-data');
   });
 
   it('leaves the gap open when the journal cannot supply the missing pieces', async () => {
     const state = stateWithGap();
     const persistence = createPersistence(state, []);
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({ repaired: false, reason: 'insufficient-durable-data' });
     expect(result.missing).toContain('active-request');
@@ -665,7 +675,7 @@ describe('repairSessionHistory', () => {
     const state = stateWithGap({ historyProgress: { state: 'in_progress', updatedAt: 5 } });
     const persistence = createPersistence(state);
 
-    const result = await repairSessionHistory({ persistence: persistence as never, sessionId });
+    const result = await repairSessionHistory({ persistence, sessionId });
 
     expect(result).toMatchObject({ repaired: false, reason: 'no-gap' });
     expect(persistence.read).not.toHaveBeenCalled();

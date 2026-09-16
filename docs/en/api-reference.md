@@ -70,7 +70,7 @@ Types:
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionRepository`,
-`SessionEventStore`, `SessionPersistence`, `SessionStreamEvent`,
+`SessionEventStore`, `SessionStreamEvent`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolExecutionRecord`,
 `ToolDefinition`, and `ToolResult`.
 
@@ -248,7 +248,6 @@ Runtime:
 - `DurableExecutionLease`
 - `DurableExecutionLeaseError`
 - `executionFence`
-- `isDurableExecutionLeaseStore`
 - `DURABLE_EXECUTION_LEASE_FORMAT`
 - `JsonlDurableEventStore` (`/advanced`)
 - `DurableEventSubscription`
@@ -272,6 +271,7 @@ Types and errors:
 
 - `DurableExecutionLeaseOptions`
 - `DurableExecutionLeaseStore`
+- `HistoryRepairStore`
 - `DurableExecutionLeaseSnapshot`
 - `DurableExecutionFence`
 - `DurableExecutionLeaseErrorCode`
@@ -365,7 +365,7 @@ Authoring and execution:
 
 | Export | Purpose |
 |--------|---------|
-| `defineTool` | Define an async-function or generator tool with TypeBox |
+| `defineTool` | Define a TypeBox-validated async tool that returns JSON data |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
 | `getBuiltinTools` | Build the `/advanced` local tool set |
@@ -426,6 +426,8 @@ Types:
 - `McpToolResponse`
 - `SdkMcpServerHandle`
 - `SdkTool`
+
+`SdkMcpServerHandle` is discriminated by `type: 'in-process'`.
 
 There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from `/advanced`.
 

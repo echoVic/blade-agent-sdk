@@ -53,7 +53,10 @@ import type {
   DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
 import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
-import type { DurableExecutionLease as DurableExecutionLeaseSnapshot } from './events/DurableExecutionLeaseStore.js';
+import type {
+  DurableExecutionLease as DurableExecutionLeaseSnapshot,
+  DurableExecutionLeaseStore,
+} from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
@@ -311,6 +314,8 @@ export interface SessionOptions {
   /** Append-only transcript event port paired with sessionRepository. */
   sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
+  /** Explicit Store for execution lease ownership and sticky fencing checks. */
+  durableExecutionLeaseStore?: DurableExecutionLeaseStore;
   /**
    * Storage for subagent Sessions.
    *
@@ -321,6 +326,7 @@ export interface SessionOptions {
   agentSessionRepository?: AgentSessionRepository;
   /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;
+  /** Requires durableExecutionLeaseStore. */
   executionLease?: DurableExecutionLeaseOptions;
 
   outputFormat?: OutputFormat;

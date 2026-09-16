@@ -10,7 +10,6 @@ import type { ExecutionContext } from '../../types/execution.js';
 import type { WriteMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
 import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
@@ -30,19 +29,17 @@ export const writeTool = createTool({
   isConcurrencySafe: false, // 文件写入不支持并发
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      file_path: ToolSchemas.filePath({
-        description: 'Absolute file path to write',
-      }),
-      content: Type.String({ description: 'Content to write' }),
-      encoding: ToolSchemas.encoding(),
-      create_directories: Type.Boolean({
-        default: true,
-        description: 'Automatically create missing parent directories',
-      }),
+  schema: Type.Object({
+    file_path: ToolSchemas.filePath({
+      description: 'Absolute file path to write',
     }),
-  ),
+    content: Type.String({ description: 'Content to write' }),
+    encoding: ToolSchemas.encoding(),
+    create_directories: Type.Boolean({
+      default: true,
+      description: 'Automatically create missing parent directories',
+    }),
+  }),
 
   resolveBehavior: (params) => {
     const isDestructive = params ? isSensitivePath(params.file_path) : false;

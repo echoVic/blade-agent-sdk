@@ -674,6 +674,7 @@ const lease = await DurableExecutionLease.acquire(store, sessionId, {
 });
 const journal = await DurableSessionJournal.open(store, sessionId, {
   executionLease: lease,
+  executionLeaseStore: store,
   storeTimeoutMs: 15_000,
 });
 ```
@@ -685,19 +686,20 @@ writer receives `DURABLE_EXECUTION_LEASE_LOST`, while an unfenced append during
 an active lease receives `DURABLE_EXECUTION_LEASE_REQUIRED`. Fencing is sticky:
 once a Store creates lease state for a Session, every later append and
 Journal/Recovery Coordinator open requires a new active lease even after the
-previous lease expires or is released. `requiresExecutionLease()` provides an
-early entry-point check; the transactional append check remains authoritative.
-Short internal persistence operations can use `withExecutionLease()` to run
-under the same ownership lock and avoid racing transcript writes with takeover.
-Do not hold this boundary around long-running model or tool I/O.
+previous lease expires or is released. Callers provide the
+`requiresExecutionLease()` check explicitly through `executionLeaseStore`; the
+transactional append check remains authoritative. Short internal persistence
+operations can use `withExecutionLease()` to run under the same ownership lock
+and avoid racing transcript writes with takeover. Do not hold this boundary
+around long-running model or tool I/O.
 
 The process-local lease handle heartbeats automatically. Any renewal or
 validation failure aborts `lease.signal` and remains fail-closed. Session
-integrates this handle when `SessionOptions.executionLease` is configured:
-model calls and tool side effects validate ownership immediately before I/O,
-Journal commits carry the fence, and subagent state and output writes run under
-the same ownership boundary. Lease loss closes local execution without writing
-a false durable terminal event.
+integrates this handle when `SessionOptions.durableExecutionLeaseStore` and
+`executionLease` are configured: model calls and tool side effects validate
+ownership immediately before I/O, Journal commits carry the fence, and subagent
+state and output writes run under the same ownership boundary. Lease loss closes
+local execution without writing a false durable terminal event.
 
 The fence protects SDK lifecycle commits. External resources modified by a tool
 must also compare `ExecutionContext.executionFence.fencingToken`; otherwise an
