@@ -1,630 +1,22 @@
-import { execSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { join, relative } from 'node:path';
-
-// ESM-safe require for optional CJS packages (e.g. @vscode/ripgrep).
-// Bare `require()` is undefined in Node ESM; createRequire provides it.
-const _require = createRequire(import.meta.url);
-
-import picomatch from 'picomatch';
 import Type from 'typebox';
-import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
-import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
 import type { GrepMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
-import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
+import { buildRipgrepArgs, runRipgrep, validateSearchPath } from './searchRunner.js';
 
-/**
- * 搜索策略枚举
- */
-enum SearchStrategy {
-  RIPGREP = 'ripgrep',
-  GIT_GREP = 'git-grep',
-  SYSTEM_GREP = 'system-grep',
-  FALLBACK = 'fallback',
-}
-
-/**
- * 搜索结果条目
- */
 interface GrepMatch {
   file_path: string;
   line_number?: number;
   content?: string;
-  context_before?: string[];
-  context_after?: string[];
   count?: number;
 }
 
-/**
- * 获取平台特定的 ripgrep 路径
- */
-function getPlatformRipgrepPath(): string | null {
-  const platform = process.platform;
-  const arch = process.arch;
+type OutputMode = 'content' | 'files_with_matches' | 'count';
 
-  const platformMap: Record<string, string> = {
-    'darwin-arm64': 'darwin-arm64/rg',
-    'darwin-x64': 'darwin-x64/rg',
-    'linux-arm64': 'linux-arm64/rg',
-    'linux-x64': 'linux-x64/rg',
-    'win32-x64': 'win32-x64/rg.exe',
-  };
-
-  const key = `${platform}-${arch}`;
-  const relativePath = platformMap[key];
-
-  if (!relativePath) {
-    return null;
-  }
-
-  // 尝试从模块安装目录查找（用于 npm 包）
-  try {
-    const moduleDir = new URL(`../../../../vendor/ripgrep/${relativePath}`, import.meta.url)
-      .pathname;
-    if (existsSync(moduleDir)) {
-      return moduleDir;
-    }
-  } catch {
-    // 忽略错误
-  }
-
-  return null;
-}
-
-/**
- * 获取 ripgrep 可执行文件路径
- * 优先级:
- * 1. 系统安装的 rg（优先使用，可能是最新版本）
- * 2. 项目内置的 vendor/ripgrep 中的二进制文件（性能最优）
- * 3. @vscode/ripgrep 包提供的 rg（可选依赖，作为备选）
- */
-function getRipgrepPath(): string | null {
-  // 策略 1: 尝试使用系统安装的 ripgrep
-  try {
-    const cmd =
-      process.platform === 'win32'
-        ? 'where rg'
-        : 'command -v rg 2>/dev/null || which rg 2>/dev/null';
-    const out = execSync(cmd, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    })
-      .split(/\r?\n/)[0]
-      .trim();
-    if (out) {
-      return out;
-    }
-  } catch {
-    // 系统 rg 不可用，继续尝试其他策略
-  }
-
-  // 策略 2: 尝试使用内置的 vendor ripgrep
-  const vendorRg = getPlatformRipgrepPath();
-  if (vendorRg && existsSync(vendorRg)) {
-    return vendorRg;
-  }
-
-  // 策略 3: 尝试使用 @vscode/ripgrep（可选依赖）
-  // 注意：这里使用同步的 require 是安全的，因为它是可选依赖
-  // 如果不存在，catch 块会捕获错误
-  try {
-    const vsRipgrep = _require('@vscode/ripgrep');
-    if (vsRipgrep?.rgPath && existsSync(vsRipgrep.rgPath)) {
-      return vsRipgrep.rgPath;
-    }
-  } catch {
-    // @vscode/ripgrep 不可用，继续尝试其他策略
-  }
-
-  return null;
-}
-
-/**
- * 检查是否在 git 仓库中
- */
-async function isGitRepository(path: string): Promise<boolean> {
-  try {
-    execSync('git rev-parse --git-dir', {
-      cwd: path,
-      stdio: 'ignore',
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 检查系统 grep 是否可用
- */
-function isSystemGrepAvailable(): boolean {
-  try {
-    execSync('grep --version', {
-      stdio: 'ignore',
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 执行 ripgrep 搜索
- */
-async function executeRipgrep(
-  args: string[],
-  _outputMode: string,
-  signal: AbortSignal,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const rgPath = getRipgrepPath();
-  if (!rgPath) {
-    throw new Error('ripgrep not available');
-  }
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(rgPath, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code || 0,
-      });
-    });
-
-    child.on('error', (error) => {
-      reject(error);
-    });
-
-    // 处理中止信号
-    const abortHandler = () => {
-      child.kill('SIGTERM');
-      reject(new Error('搜索被用户中止'));
-    };
-
-    signal.addEventListener('abort', abortHandler);
-
-    child.on('close', () => {
-      signal.removeEventListener('abort', abortHandler);
-    });
-  });
-}
-
-/**
- * 执行 git grep 搜索（降级策略 1）
- */
-async function executeGitGrep(
-  pattern: string,
-  path: string,
-  options: {
-    caseInsensitive?: boolean;
-    glob?: string;
-    contextLines?: number;
-  },
-  signal: AbortSignal,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const args = ['grep', '-n']; // -n 显示行号
-
-  if (options.caseInsensitive) {
-    args.push('-i');
-  }
-
-  if (options.contextLines !== undefined) {
-    args.push(`-C${options.contextLines}`);
-  }
-
-  args.push('-e', pattern);
-
-  // git grep 不直接支持 glob，但可以使用 -- 限制路径
-  if (options.glob) {
-    args.push('--', options.glob);
-  }
-
-  return new Promise((resolve, reject) => {
-    const process = spawn('git', args, {
-      cwd: path,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    process.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    process.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    process.on('close', (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code || 0,
-      });
-    });
-
-    process.on('error', (error) => {
-      reject(error);
-    });
-
-    const abortHandler = () => {
-      process.kill('SIGTERM');
-      reject(new Error('搜索被用户中止'));
-    };
-
-    signal.addEventListener('abort', abortHandler);
-
-    process.on('close', () => {
-      signal.removeEventListener('abort', abortHandler);
-    });
-  });
-}
-
-/**
- * 执行系统 grep 搜索（降级策略 2）
- */
-async function executeSystemGrep(
-  pattern: string,
-  path: string,
-  options: {
-    caseInsensitive?: boolean;
-    contextLines?: number;
-  },
-  signal: AbortSignal,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const args = ['-rn']; // -r 递归, -n 显示行号
-
-  if (options.caseInsensitive) {
-    args.push('-i');
-  }
-
-  if (options.contextLines !== undefined) {
-    args.push(`-C${options.contextLines}`);
-  }
-
-  // 排除常见目录
-  for (const dir of DEFAULT_EXCLUDE_DIRS) {
-    args.push(`--exclude-dir=${dir.replace(/^\./, '')}`);
-  }
-
-  args.push('-e', pattern, path);
-
-  return new Promise((resolve, reject) => {
-    const process = spawn('grep', args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    process.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    process.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    process.on('close', (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code || 0,
-      });
-    });
-
-    process.on('error', (error) => {
-      reject(error);
-    });
-
-    const abortHandler = () => {
-      process.kill('SIGTERM');
-      reject(new Error('搜索被用户中止'));
-    };
-
-    signal.addEventListener('abort', abortHandler);
-
-    process.on('close', () => {
-      signal.removeEventListener('abort', abortHandler);
-    });
-  });
-}
-
-/**
- * 纯 JavaScript 实现的搜索（最终降级方案）
- */
-async function executeFallbackGrep(
-  pattern: string,
-  path: string,
-  options: {
-    caseInsensitive?: boolean;
-    glob?: string;
-    multiline?: boolean;
-  },
-  signal: AbortSignal,
-): Promise<{ matches: GrepMatch[]; totalFiles: number }> {
-  const matches: GrepMatch[] = [];
-  const regex = new RegExp(pattern, options.caseInsensitive ? 'gi' : 'g');
-
-  // 获取所有文件
-  const files = await getAllFiles(path, signal);
-  let processedFiles = 0;
-
-  for (const file of files) {
-    signal.throwIfAborted();
-
-    // 检查是否应该排除此文件
-    if (shouldExcludeFile(file)) {
-      continue;
-    }
-
-    // 如果指定了 glob，检查是否匹配
-    if (options.glob && !matchGlob(file, options.glob)) {
-      continue;
-    }
-
-    try {
-      const content = await readFile(file, 'utf-8');
-      const lines = content.split('\n');
-
-      lines.forEach((line, index) => {
-        if (regex.test(line)) {
-          matches.push({
-            file_path: relative(path, file),
-            line_number: index + 1,
-            content: line,
-          });
-        }
-      });
-
-      processedFiles++;
-    } catch (_error) {}
-  }
-
-  return { matches, totalFiles: processedFiles };
-}
-
-/**
- * 递归获取所有文件
- */
-async function getAllFiles(dir: string, signal: AbortSignal): Promise<string[]> {
-  const files: string[] = [];
-
-  async function walk(currentPath: string) {
-    signal.throwIfAborted();
-
-    try {
-      const entries = await readdir(currentPath, { withFileTypes: true });
-
-      for (const entry of entries) {
-        signal.throwIfAborted();
-
-        const fullPath = join(currentPath, entry.name);
-
-        if (entry.isDirectory()) {
-          // 检查是否应该排除此目录
-          if (!shouldExcludeFile(fullPath)) {
-            await walk(fullPath);
-          }
-        } else if (entry.isFile()) {
-          files.push(fullPath);
-        }
-      }
-    } catch (_error) {
-      // 忽略无法访问的目录
-    }
-  }
-
-  await walk(dir);
-  return files;
-}
-
-/**
- * 检查文件/目录是否应该被排除
- */
-function shouldExcludeFile(path: string): boolean {
-  for (const pattern of DEFAULT_EXCLUDE_DIRS) {
-    if (path.includes(pattern)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * 使用 picomatch 进行 glob 匹配
- */
-function matchGlob(filePath: string, pattern: string): boolean {
-  const isMatch = picomatch(pattern);
-  return isMatch(filePath);
-}
-
-/**
- * 构建 ripgrep 命令参数
- */
-function buildRipgrepArgs(options: {
-  pattern: string;
-  path: string;
-  glob?: string;
-  type?: string;
-  output_mode: string;
-  case_insensitive: boolean;
-  line_numbers: boolean;
-  context_before?: number;
-  context_after?: number;
-  context?: number;
-  head_limit?: number;
-  offset?: number;
-  multiline: boolean;
-}): string[] {
-  const args: string[] = [];
-
-  // 基本选项
-  if (options.case_insensitive) {
-    args.push('-i');
-  }
-
-  if (options.multiline) {
-    args.push('-U', '--multiline-dotall');
-  }
-
-  // 输出模式
-  switch (options.output_mode) {
-    case 'files_with_matches':
-      args.push('-l');
-      break;
-    case 'count':
-      args.push('-c');
-      break;
-    case 'content':
-      if (options.line_numbers) {
-        args.push('-n');
-      }
-      break;
-  }
-
-  // 上下文行
-  if (options.context !== undefined && options.output_mode === 'content') {
-    args.push('-C', options.context.toString());
-  } else {
-    if (options.context_before !== undefined && options.output_mode === 'content') {
-      args.push('-B', options.context_before.toString());
-    }
-    if (options.context_after !== undefined && options.output_mode === 'content') {
-      args.push('-A', options.context_after.toString());
-    }
-  }
-
-  // 文件类型过滤
-  if (options.type) {
-    args.push('--type', options.type);
-  }
-
-  // 默认排除常见目录
-  for (const dir of DEFAULT_EXCLUDE_DIRS) {
-    args.push('--glob', `!${dir}/**`);
-  }
-
-  // 用户自定义 Glob 模式
-  if (options.glob) {
-    args.push('--glob', options.glob);
-  }
-
-  // 结果限制
-  if (options.head_limit !== undefined) {
-    const totalLimit = (options.offset ?? 0) + options.head_limit;
-    args.push('-m', totalLimit.toString());
-  }
-
-  // 搜索模式
-  args.push(options.pattern);
-
-  // 搜索路径
-  args.push(options.path);
-
-  return args;
-}
-
-/**
- * 解析 ripgrep/git grep/system grep 输出
- */
-function parseGrepOutput(output: string, outputMode: string): GrepMatch[] {
-  if (!output.trim()) {
-    return [];
-  }
-
-  const lines = output.trim().split('\n');
-  const matches: GrepMatch[] = [];
-
-  switch (outputMode) {
-    case 'files_with_matches':
-      return lines.map((line) => ({
-        file_path: line.trim(),
-      }));
-
-    case 'count':
-      return lines.map((line) => {
-        const [filePath, count] = line.split(':');
-        return {
-          file_path: filePath,
-          count: parseInt(count, 10),
-        };
-      });
-
-    case 'content':
-      for (const line of lines) {
-        const match = parseContentLine(line);
-        if (match) {
-          matches.push(match);
-        }
-      }
-      return matches;
-
-    default:
-      return [];
-  }
-}
-
-/**
- * 解析内容行
- */
-function parseContentLine(line: string): GrepMatch | null {
-  // 匹配格式: filename:line_number:content 或 filename:content
-  const colonIndex = line.indexOf(':');
-  if (colonIndex === -1) return null;
-
-  const filePath = line.substring(0, colonIndex);
-  const remainder = line.substring(colonIndex + 1);
-
-  // 检查是否有行号
-  const secondColonIndex = remainder.indexOf(':');
-  if (secondColonIndex !== -1 && /^\d+$/.test(remainder.substring(0, secondColonIndex))) {
-    // 有行号的格式
-    const lineNumber = parseInt(remainder.substring(0, secondColonIndex), 10);
-    const content = remainder.substring(secondColonIndex + 1);
-
-    return {
-      file_path: filePath,
-      line_number: lineNumber,
-      content: content,
-    };
-  } else {
-    // 无行号的格式
-    return {
-      file_path: filePath,
-      content: remainder,
-    };
-  }
-}
-
-/**
- * GrepTool - 内容搜索工具
- * 支持多级降级策略：ripgrep -> git grep -> system grep -> JavaScript fallback
- */
 export const grepTool = createTool({
   name: 'Grep',
   group: 'filesystem',
@@ -632,373 +24,173 @@ export const grepTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
   interruptBehavior: 'cancel',
-  maxResultSizeChars: 100_000, // ~100KB before externalization
-
-  // TypeBox schema definition
+  maxResultSizeChars: 100_000,
   schema: Type.Object({
     pattern: ToolSchemas.pattern({
       description: 'The regular expression pattern to search for in file contents',
     }),
     path: Type.Optional(
       Type.String({
-        description:
-          'File or directory to search in (rg PATH). Defaults to current working directory',
+        description: 'File or directory to search in. Defaults to the current working directory',
       }),
     ),
     glob: Type.Optional(
-      Type.String({
-        description: 'Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob',
-      }),
+      Type.String({ description: 'Glob pattern to filter files, for example "*.{ts,tsx}"' }),
     ),
     type: Type.Optional(
-      Type.String({
-        description:
-          'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types',
-      }),
+      Type.String({ description: 'Ripgrep file type such as js, py, rust, or go' }),
     ),
     output_mode: Type.Enum(['content', 'files_with_matches', 'count'], {
       default: 'files_with_matches',
-      description:
-        'Output mode: "content" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), "files_with_matches" shows file paths (supports head_limit), "count" shows match counts (supports head_limit). Defaults to "files_with_matches"',
+      description: 'Return matching content, file paths, or per-file match counts',
     }),
-    '-i': Type.Optional(Type.Boolean({ description: 'Case insensitive search (rg -i)' })),
+    '-i': Type.Optional(Type.Boolean({ description: 'Case insensitive search' })),
     '-n': Type.Boolean({
       default: true,
-      description:
-        'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true',
+      description: 'Show line numbers when output_mode is content',
     }),
     '-B': Type.Optional(
-      Type.Integer({
-        minimum: 0,
-        description:
-          'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise',
-      }),
+      Type.Integer({ minimum: 0, description: 'Context lines before each content match' }),
     ),
     '-A': Type.Optional(
-      Type.Integer({
-        minimum: 0,
-        description:
-          'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise',
-      }),
+      Type.Integer({ minimum: 0, description: 'Context lines after each content match' }),
     ),
     '-C': Type.Optional(
-      Type.Integer({
-        minimum: 0,
-        description:
-          'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise',
-      }),
+      Type.Integer({ minimum: 0, description: 'Context lines before and after content matches' }),
     ),
     head_limit: Type.Optional(
-      Type.Integer({
-        minimum: 1,
-        description:
-          'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults based on "cap" experiment value: 0 (unlimited), 20, or 100',
-      }),
+      Type.Integer({ minimum: 1, description: 'Maximum returned lines or entries' }),
     ),
     offset: Type.Optional(
-      Type.Integer({
-        minimum: 0,
-        description:
-          'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0',
-      }),
+      Type.Integer({ minimum: 0, description: 'Entries to skip before applying head_limit' }),
     ),
     multiline: Type.Boolean({
       default: false,
-      description:
-        'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false',
+      description: 'Allow patterns to span lines and dot to match newlines',
     }),
   }),
-
-  validateInput: async (params, context) => {
-    if (!hasFilesystemCapability(context.contextSnapshot)) {
-      return {
-        message: 'No filesystem access in current context',
-        model: 'No filesystem access in the current runtime context.',
-        errorType: ToolErrorType.PERMISSION_DENIED,
-      };
-    }
-    const searchRoot = params.path ?? context.contextSnapshot?.cwd;
-    if (!searchRoot) {
-      return {
-        message: 'No search path available',
-        model: 'No search path provided and no filesystem working directory is available.',
-        errorType: ToolErrorType.VALIDATION_ERROR,
-      };
-    }
-    try {
-      params.path = await resolveAuthorizedFilesystemPath(searchRoot, context.contextSnapshot, {
-        cwd: context.contextSnapshot?.cwd,
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        message,
-        model: message,
-        errorType: ToolErrorType.PERMISSION_DENIED,
-      };
-    }
-    return undefined;
-  },
-
-  // 工具描述（对齐 Claude Code 官方）
+  validateInput: validateSearchPath,
   description: {
-    short: 'A powerful search tool built on ripgrep',
-    long: `A powerful search tool built on ripgrep
-
-  Usage:
-  - ALWAYS use Grep for search tasks. NEVER invoke \`grep\` or \`rg\` as a Bash command. The Grep tool has been optimized for correct permissions and access.
-  - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
-  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
-  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
-  - Use Task tool for open-ended searches requiring multiple rounds
-  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
-  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
-`,
+    short: 'Search file contents with ripgrep',
+    long: 'Supports regular expressions, glob and file-type filters, context, counts, and multiline search.',
+    usageNotes: [
+      'Use Grep instead of invoking grep or rg through Bash',
+      'Use output_mode "content" when matching lines are needed',
+      'Use the Agent tool for open-ended searches requiring multiple rounds',
+    ],
   },
-
-  // 执行函数
-  async *execute(params, context: ExecutionContext) {
+  async *execute(params, context) {
     const {
       pattern,
-      path,
       glob,
       type,
-      output_mode,
-      '-i': caseInsensitive,
-      '-n': lineNumbers = true,
+      output_mode: outputMode,
+      '-i': caseInsensitive = false,
+      '-n': lineNumbers,
       '-B': contextBefore,
       '-A': contextAfter,
       '-C': contextLines,
-      head_limit,
-      offset,
+      head_limit: headLimit,
+      offset = 0,
       multiline,
     } = params;
+    const searchPath = params.path as string;
     const signal = context.signal ?? new AbortController().signal;
+    yield {
+      kind: 'progress',
+      message: `Searching for pattern "${pattern}"...`,
+      data: { pattern },
+    };
 
     try {
-      if (!hasFilesystemCapability(context.contextSnapshot)) {
-        return {
-          status: 'error',
-          model: 'No filesystem access in the current runtime context.',
-          error: {
-            type: ToolErrorType.PERMISSION_DENIED,
-            message: 'No filesystem access in current context',
-          },
-        };
-      }
-
-      const searchPath = path ?? context.contextSnapshot?.cwd;
-      if (!searchPath) {
-        return {
-          status: 'error',
-          model: 'No search path provided and no filesystem working directory is available.',
-          error: {
-            type: ToolErrorType.VALIDATION_ERROR,
-            message: 'No search path available',
-          },
-        };
-      }
-
-      yield {
-        kind: 'progress',
-        message: `使用智能搜索策略查找模式 "${pattern}"...`,
-        data: { pattern },
-      };
-
-      let result: { stdout: string; stderr: string; exitCode: number } | null = null;
-      let strategy: SearchStrategy = SearchStrategy.RIPGREP;
-      let matches: GrepMatch[] = [];
-
-      // 策略 1: 尝试使用 ripgrep
-      const rgPath = getRipgrepPath();
-      if (rgPath) {
-        try {
-          yield {
-            kind: 'message',
-            content: { summary: `使用 ripgrep (${rgPath})` },
-          };
-
-          const args = buildRipgrepArgs({
-            pattern,
-            path: searchPath,
-            glob,
-            type,
-            output_mode,
-            case_insensitive: caseInsensitive ?? false,
-            line_numbers: lineNumbers,
-            context_before: contextBefore,
-            context_after: contextAfter,
-            context: contextLines,
-            head_limit,
-            offset,
-            multiline: multiline ?? false,
-          });
-
-          result = await executeRipgrep(args, output_mode, signal);
-          strategy = SearchStrategy.RIPGREP;
-        } catch {
-          yield {
-            kind: 'message',
-            content: { summary: 'ripgrep 失败，尝试降级策略...' },
-          };
-          result = null;
-        }
-      }
-
-      // 策略 2: 降级到 git grep (如果在 git 仓库中)
-      if (!result && (await isGitRepository(searchPath))) {
-        try {
-          yield {
-            kind: 'message',
-            content: { summary: '使用 git grep' },
-          };
-
-          result = await executeGitGrep(
-            pattern,
-            searchPath,
-            {
-              caseInsensitive: caseInsensitive ?? false,
-              glob,
-              contextLines,
-            },
-            signal,
-          );
-          strategy = SearchStrategy.GIT_GREP;
-        } catch {
-          yield {
-            kind: 'message',
-            content: { summary: 'git grep 失败，继续尝试其他策略...' },
-          };
-          result = null;
-        }
-      }
-
-      // 策略 3: 降级到系统 grep
-      if (!result && isSystemGrepAvailable()) {
-        try {
-          yield {
-            kind: 'message',
-            content: { summary: '使用系统 grep' },
-          };
-
-          result = await executeSystemGrep(
-            pattern,
-            searchPath,
-            {
-              caseInsensitive: caseInsensitive ?? false,
-              contextLines,
-            },
-            signal,
-          );
-          strategy = SearchStrategy.SYSTEM_GREP;
-        } catch {
-          yield {
-            kind: 'message',
-            content: { summary: '系统 grep 失败，使用纯 JavaScript 实现...' },
-          };
-          result = null;
-        }
-      }
-
-      // 策略 4: 最终降级到纯 JavaScript 实现
-      if (!result) {
-        yield {
-          kind: 'message',
-          content: { summary: '使用纯 JavaScript 搜索实现' },
-        };
-
-        const fallbackResult = await executeFallbackGrep(
+      const result = await runRipgrep(
+        buildRipgrepArgs({
           pattern,
-          searchPath,
-          {
-            caseInsensitive: caseInsensitive ?? false,
-            glob,
-            multiline: multiline ?? false,
-          },
-          signal,
-        );
-
-        matches = fallbackResult.matches;
-        strategy = SearchStrategy.FALLBACK;
-
-        // 为了统一处理，创建一个假的 result 对象
-        result = {
-          stdout: '', // 不使用
-          stderr: '',
-          exitCode: 0,
-        };
-      } else {
-        // 解析 grep 输出
-        matches = parseGrepOutput(result.stdout, output_mode);
-      }
-
-      // 应用 offset 裁剪（如果指定）
-      const originalTotal = matches.length;
-      if (offset !== undefined && offset > 0) {
-        matches = matches.slice(offset);
-      }
-
-      // 应用 head_limit 裁剪（如果指定）
-      if (head_limit !== undefined && matches.length > head_limit) {
-        matches = matches.slice(0, head_limit);
-      }
-
-      const metadata: GrepMetadata = {
-        search_pattern: pattern,
-        search_path: searchPath,
-        output_mode,
-        case_insensitive: caseInsensitive ?? false,
-        total_matches: matches.length,
-        original_total: originalTotal,
-        offset: offset,
-        head_limit: head_limit,
-        strategy,
-        exit_code: result?.exitCode,
-        summary: `搜索 "${pattern}": 找到 ${matches.length} 个匹配`,
-      };
-
-      if (result && result.exitCode !== 0 && result.stderr) {
+          path: searchPath,
+          glob,
+          type,
+          outputMode,
+          caseInsensitive,
+          lineNumbers,
+          contextBefore,
+          contextAfter,
+          context: contextLines,
+          multiline,
+        }),
+        signal,
+      );
+      if (result.exitCode > 1) {
         return {
           status: 'error',
           model: `Search execution failed: ${result.stderr}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
-            message: result.stderr,
+            message: result.stderr || `ripgrep exited with code ${result.exitCode}`,
           },
         };
       }
 
-      return {
-        status: 'success',
-        model: toJsonValue(matches),
-        metadata,
+      const parsed = parseGrepOutput(result.stdout, outputMode);
+      const matches = parsed.slice(
+        offset,
+        headLimit === undefined ? undefined : offset + headLimit,
+      );
+      const metadata: GrepMetadata = {
+        search_pattern: pattern,
+        search_path: searchPath,
+        output_mode: outputMode,
+        case_insensitive: caseInsensitive,
+        total_matches: matches.length,
+        original_total: parsed.length,
+        offset,
+        head_limit: headLimit,
+        strategy: 'ripgrep',
+        exit_code: result.exitCode,
+        summary: `搜索 "${pattern}": 找到 ${matches.length} 个匹配`,
       };
+      return { status: 'success', model: toJsonValue(matches), metadata };
     } catch (error) {
-      if (getErrorName(error) === 'AbortError') {
-        return {
-          status: 'error',
-          model: 'Search aborted',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: '操作被中止',
-          },
-        };
-      }
-
+      const aborted = signal.aborted || getErrorName(error) === 'AbortError';
       return {
         status: 'error',
-        model: `Search failed: ${getErrorMessage(error)}`,
+        model: aborted ? 'Search aborted' : `Search failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: getErrorMessage(error),
+          message: aborted ? '操作被中止' : getErrorMessage(error),
           details: error,
         },
       };
     }
   },
-
   preparePermissionMatcher: (params) => ({
     signatureContent: params.pattern,
     abstractRule: '*',
   }),
 });
+
+function parseGrepOutput(output: string, mode: OutputMode): GrepMatch[] {
+  const lines = output.trim() ? output.trimEnd().split(/\r?\n/) : [];
+  if (mode === 'files_with_matches') {
+    return lines.map((file_path) => ({ file_path }));
+  }
+  if (mode === 'count') {
+    return lines.flatMap((line) => {
+      const match = /^(.*):(\d+)$/.exec(line);
+      return match ? [{ file_path: match[1], count: Number(match[2]) }] : [];
+    });
+  }
+  return lines.flatMap((line) => {
+    const numbered = /^(.*?):(\d+):(.*)$/.exec(line);
+    if (numbered) {
+      return [
+        {
+          file_path: numbered[1],
+          line_number: Number(numbered[2]),
+          content: numbered[3],
+        },
+      ];
+    }
+    const plain = /^(.*?):(.*)$/.exec(line);
+    return plain ? [{ file_path: plain[1], content: plain[2] }] : [];
+  });
+}

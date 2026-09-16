@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MessageId, SessionId } from '../../../../types/identifiers.js';
 import { FileAccessTracker } from '../FileAccessTracker.js';
-import { runWriteGuard } from '../writeGuard.js';
+import { runWriteGuard } from '../operationCore.js';
 
 const tempDirs: string[] = [];
 

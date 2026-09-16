@@ -181,6 +181,12 @@ SDK 提供一个静态内置工具数组；连接 MCP 后还会追加远端动�
 `Task` 使用当前 Session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，仅在配置 `SessionOptions.memoryManager` 后注册。
 :::
 
+内置工具的实现按能力边界共享四个窄核心：文件读写由
+`file/operationCore.ts` 统一授权路径、写前校验与错误结果；`Glob`/`Grep`
+由 `search/searchRunner.ts` 统一搜索路径和执行；`WebFetch`/`WebSearch` 由
+`web/webRequest.ts` 统一超时、中止、代理与请求策略；结构化任务 CRUD
+集中声明在 `task/taskCrud.ts`，并共同使用 `TaskStore`。
+
 ::: info 工具排序
 SDK 发送给 LLM 的工具列表按以下规则排序：**内置工具在前，MCP 工具在后**，每组内按名称字母序排列。这意味着内置工具在 LLM 的上下文中优先级更高。
 :::

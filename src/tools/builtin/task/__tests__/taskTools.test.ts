@@ -12,11 +12,8 @@ import { collectToolExecution } from '../../../types/result.js';
 import type { Tool } from '../../../types/tool.js';
 import { getBuiltinTools } from '../../index.js';
 import { taskTool } from '../task.js';
-import { taskCreateTool } from '../taskCreate.js';
-import { taskGetTool } from '../taskGet.js';
-import { taskListTool } from '../taskList.js';
+import { taskCreateTool, taskGetTool, taskListTool, taskUpdateTool } from '../taskCrud.js';
 import { taskStopTool } from '../taskStop.js';
-import { taskUpdateTool } from '../taskUpdate.js';
 
 const { streamChat, createAgent, destroyAgent } = vi.hoisted(() => ({
   streamChat:

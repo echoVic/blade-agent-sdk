@@ -1,335 +1,16 @@
 import Type from 'typebox';
-import {
-  type Dispatcher,
-  ProxyAgent,
-  type Response as UndiciResponse,
-  fetch as undiciFetch,
-} from 'undici';
-import type { JsonValue } from '../../../types/json.js';
-import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
 import type { WebSearchMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
-import { getSearchCache } from './SearchCache.js';
-import { getAllProviders, getProviderCount, type SearchProvider } from './searchProviders.js';
+import { searchProviderCount, searchWeb, type WebSearchResult } from './webRequest.js';
 
-// ============================================================================
-// 类型定义
-// ============================================================================
+export type { WebSearchResult } from './webRequest.js';
 
-export interface WebSearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-  display_url: string;
-  source: string;
-}
-
-interface WebSearchPayload {
-  query: string;
-  results: WebSearchResult[];
-  provider: string;
-  total_results: number;
-  fetched_at: string;
-}
-
-// ============================================================================
-// 配置常量
-// ============================================================================
-
-const SEARCH_TIMEOUT = 15000; // 15 秒
+const SEARCH_TIMEOUT = 15_000;
 const MAX_RESULTS = 8;
-
-/** 重试配置 */
-const RETRY_CONFIG = {
-  maxRetries: 3,
-  baseDelay: 1000, // 1s → 2s → 4s
-  maxDelay: 8000,
-};
-
-// ============================================================================
-// 代理支持
-// ============================================================================
-
-/**
- * 获取代理 Agent（如果配置了代理环境变量）
- */
-function getProxyAgent(): ProxyAgent | undefined {
-  const proxyUrl =
-    process.env.HTTPS_PROXY ||
-    process.env.HTTP_PROXY ||
-    process.env.https_proxy ||
-    process.env.http_proxy;
-
-  if (proxyUrl) {
-    try {
-      return new ProxyAgent(proxyUrl);
-    } catch (_error) {
-      // 代理配置无效，忽略
-      console.warn(`Invalid proxy URL: ${proxyUrl}`);
-    }
-  }
-  return undefined;
-}
-
-// ============================================================================
-// 网络请求函数
-// ============================================================================
-
-/**
- * 带超时的 fetch 请求
- */
-async function fetchWithTimeout(
-  url: string,
-  options: { headers: Record<string, string>; method?: string; body?: string },
-  timeout: number,
-  externalSignal?: AbortSignal,
-  dispatcher?: Dispatcher,
-): Promise<UndiciResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  const abortListener = () => controller.abort();
-  externalSignal?.addEventListener('abort', abortListener);
-
-  try {
-    const response = await undiciFetch(url, {
-      ...options,
-      signal: controller.signal,
-      dispatcher,
-    });
-    return response;
-  } catch (error) {
-    if (getErrorName(error) === 'AbortError') {
-      throw new Error('搜索请求超时或被中止');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener('abort', abortListener);
-  }
-}
-
-/**
- * 带重试的 fetch 请求（指数退避）
- */
-async function fetchWithRetry(
-  url: string,
-  options: { headers: Record<string, string>; method?: string; body?: string },
-  timeout: number,
-  signal?: AbortSignal,
-  dispatcher?: Dispatcher,
-): Promise<Response> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < RETRY_CONFIG.maxRetries; attempt++) {
-    try {
-      return await fetchWithTimeout(url, options, timeout, signal, dispatcher);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(getErrorMessage(error));
-
-      // 如果是用户中止，立即抛出
-      if (signal?.aborted) {
-        throw error;
-      }
-
-      // 如果还有重试机会
-      if (attempt < RETRY_CONFIG.maxRetries - 1) {
-        const delay = Math.min(RETRY_CONFIG.baseDelay * 2 ** attempt, RETRY_CONFIG.maxDelay);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError;
-}
-
-// ============================================================================
-// 多提供商故障转移
-// ============================================================================
-
-/**
- * 使用单个提供商搜索
- */
-async function searchWithProvider(
-  provider: SearchProvider,
-  query: string,
-  timeout: number,
-  signal?: AbortSignal,
-  dispatcher?: Dispatcher,
-): Promise<{ results: WebSearchResult[]; providerName: string }> {
-  // 检查缓存
-  const cache = getSearchCache();
-  const cachedResults = cache.get(provider.name, query);
-
-  if (cachedResults) {
-    return {
-      results: cachedResults,
-      providerName: `${provider.name} (cached)`,
-    };
-  }
-
-  // SDK 提供商（如 Exa）直接调用 searchFn，绕过 HTTP
-  if (provider.kind === 'sdk') {
-    try {
-      const results = await provider.searchFn(query);
-
-      // 写入缓存
-      cache.set(provider.name, query, results);
-
-      return { results, providerName: provider.name };
-    } catch (error) {
-      throw new Error(`SDK search failed: ${getErrorMessage(error)}`);
-    }
-  }
-
-  // HTTP 提供商
-  const url = provider.buildUrl(query);
-  const method = provider.method || 'GET';
-  const headers = provider.getHeaders();
-
-  // 构建请求选项
-  const options: { headers: Record<string, string>; method?: string; body?: string } = {
-    headers,
-    method,
-  };
-
-  // 如果是 POST 请求，添加请求体
-  if (method === 'POST' && provider.buildBody) {
-    options.body = JSON.stringify(provider.buildBody(query));
-  }
-
-  const response = await fetchWithRetry(url, options, timeout, signal, dispatcher);
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  const rawText = await response.text();
-  let data: JsonValue;
-  try {
-    data = JSON.parse(rawText);
-  } catch {
-    throw new Error('Failed to parse search result JSON');
-  }
-
-  const results = provider.parseResponse(data);
-
-  // 写入缓存
-  cache.set(provider.name, query, results);
-
-  return { results, providerName: provider.name };
-}
-
-/**
- * 多提供商故障转移搜索
- */
-async function searchWithFallback(
-  query: string,
-  timeout: number,
-  signal?: AbortSignal,
-): Promise<{ results: WebSearchResult[]; providerName: string }> {
-  const providers = getAllProviders();
-  const dispatcher = getProxyAgent();
-  const errors: string[] = [];
-
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[i];
-
-    // 如果用户中止，立即退出
-    if (signal?.aborted) {
-      throw new Error('搜索被用户中止');
-    }
-
-    try {
-      return await searchWithProvider(provider, query, timeout, signal, dispatcher);
-    } catch (error) {
-      const errorMsg = `${provider.name}: ${getErrorMessage(error)}`;
-      errors.push(errorMsg);
-
-      // 如果是最后一个提供商，抛出错误
-      if (i === providers.length - 1) {
-        throw new Error(`所有搜索提供商都失败了:\n${errors.join('\n')}`);
-      }
-
-      // 继续尝试下一个提供商
-    }
-  }
-
-  // 不应该到达这里
-  throw new Error('No search providers available');
-}
-
-// ============================================================================
-// 域名过滤
-// ============================================================================
-
-function extractHostname(url: string): string | null {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function flattenDomain(domain: string): string {
-  return domain.trim().toLowerCase();
-}
-
-function normalizeDomainList(domains?: string[]): string[] {
-  if (!domains || domains.length === 0) {
-    return [];
-  }
-  return domains.map(flattenDomain).filter(Boolean);
-}
-
-function matchesDomain(hostname: string, domain: string): boolean {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
-}
-
-function applyDomainFilters(
-  results: WebSearchResult[],
-  allowedDomains: string[],
-  blockedDomains: string[],
-): WebSearchResult[] {
-  return results.filter((result) => {
-    const hostname = extractHostname(result.url);
-    if (!hostname) {
-      return false;
-    }
-
-    if (
-      blockedDomains.length > 0 &&
-      blockedDomains.some((domain) => matchesDomain(hostname, domain))
-    ) {
-      return false;
-    }
-
-    if (
-      allowedDomains.length > 0 &&
-      !allowedDomains.some((domain) => matchesDomain(hostname, domain))
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-// ============================================================================
-// 格式化
-// ============================================================================
-
-function sanitizeQuery(query: string): string {
-  const trimmed = query.trim().toLowerCase();
-  return trimmed.length > 80 ? trimmed.slice(0, 80) : trimmed;
-}
-
-// ============================================================================
-// 工具定义
-// ============================================================================
 
 export const webSearchTool = createTool({
   name: 'WebSearch',
@@ -338,122 +19,62 @@ export const webSearchTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'pure',
   interruptBehavior: 'cancel',
-
   schema: Type.Object({
-    query: Type.String({
-      minLength: 2,
-      description: 'Search query',
-    }),
+    query: Type.String({ minLength: 2, description: 'Search query' }),
     allowed_domains: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
-        description: 'Return results only from these domains (optional)',
+        description: 'Return results only from these domains',
       }),
     ),
     blocked_domains: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
-        description: 'Exclude results from these domains (optional)',
+        description: 'Exclude results from these domains',
       }),
     ),
   }),
-
   description: {
-    short: 'Search the web and use the results to inform responses',
-    long: `
-- Search the web and use the results to inform responses
-- Provides up-to-date information for current events and recent data
-- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
-- Use this tool for accessing information beyond the model's knowledge cutoff
-- Searches are performed automatically within a single API call
-- **Automatic failover**: Uses multiple search providers (DuckDuckGo, SearXNG) with automatic fallback
-- **Retry mechanism**: Automatically retries failed requests with exponential backoff
-- **Proxy support**: Respects HTTPS_PROXY/HTTP_PROXY environment variables
-
-CRITICAL REQUIREMENT - You MUST follow this:
-  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
-  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
-  - This is MANDATORY - never skip including sources in your response
-  - Example format:
-
-    [Your answer here]
-
-    Sources:
-    - [Source Title 1](https://example.com/1)
-    - [Source Title 2](https://example.com/2)
-
-Usage notes:
-  - Domain filtering is supported to include or block specific websites
-
-IMPORTANT - Use the correct year in search queries:
-  - You MUST use the current year when searching for recent information, documentation, or current events.
-  - Example: If the user asks for "latest React docs", search for "React documentation 2025", NOT "React documentation 2024"
-`,
+    short: 'Search the web and use current results to inform responses',
+    long: 'Uses DuckDuckGo and SearXNG with automatic fallback, retry, proxy support, and domain filtering.',
+    important: [
+      'Include a Sources section with relevant result URLs in the final response',
+      'Use the current year in queries for recent information',
+    ],
   },
-
-  async *execute(params, context: ExecutionContext) {
+  async *execute(params, context) {
     const { query } = params;
-    const allowedDomains = normalizeDomainList(params.allowed_domains);
-    const blockedDomains = normalizeDomainList(params.blocked_domains);
+    const allowedDomains = normalizeDomains(params.allowed_domains);
+    const blockedDomains = normalizeDomains(params.blocked_domains);
     const signal = context.signal ?? new AbortController().signal;
-
     yield {
       kind: 'progress',
       message: `Searching: "${query}"`,
-      data: { query, providerCount: getProviderCount() },
+      data: { query, providerCount: searchProviderCount },
     };
 
     try {
-      // 使用多提供商故障转移搜索
-      const { results: rawResults, providerName } = await searchWithFallback(
+      const { results, provider } = await searchWeb(query, SEARCH_TIMEOUT, signal);
+      yield { kind: 'message', content: { summary: `Search completed with ${provider}` } };
+      const filtered = filterDomains(results, allowedDomains, blockedDomains);
+      const limited = filtered.slice(0, MAX_RESULTS);
+      const fetchedAt = new Date().toISOString();
+      const payload = {
         query,
-        SEARCH_TIMEOUT,
-        signal,
-      );
-      yield {
-        kind: 'message',
-        content: { summary: `Search completed with ${providerName}` },
+        results: limited,
+        provider,
+        total_results: filtered.length,
+        fetched_at: fetchedAt,
       };
-
-      // 应用域名过滤
-      const filteredResults = applyDomainFilters(rawResults, allowedDomains, blockedDomains);
-      const limitedResults = filteredResults.slice(0, MAX_RESULTS);
-
-      const resultPayload: WebSearchPayload = {
-        query,
-        results: limitedResults,
-        provider: providerName,
-        total_results: filteredResults.length,
-        fetched_at: new Date().toISOString(),
-      };
-
       const metadata: WebSearchMetadata = {
         query,
-        provider: providerName,
-        fetched_at: resultPayload.fetched_at,
-        total_results: filteredResults.length,
-        returned_results: limitedResults.length,
+        provider,
+        fetched_at: fetchedAt,
+        total_results: filtered.length,
+        returned_results: limited.length,
         allowed_domains: allowedDomains,
         blocked_domains: blockedDomains,
+        summary: `搜索 "${query}": ${limited.length} 条结果`,
       };
-
-      if (limitedResults.length === 0) {
-        return {
-          status: 'success',
-          model: toJsonValue(resultPayload),
-          metadata: {
-            ...metadata,
-            summary: `搜索 "${query}": 0 条结果`,
-          },
-        };
-      }
-
-      return {
-        status: 'success',
-        model: toJsonValue(resultPayload),
-        metadata: {
-          ...metadata,
-          summary: `搜索 "${query}": ${limitedResults.length} 条结果`,
-        },
-      };
+      return { status: 'success', model: toJsonValue(payload), metadata };
     } catch (error) {
       return {
         status: 'error',
@@ -461,18 +82,34 @@ IMPORTANT - Use the correct year in search queries:
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),
-          details: {
-            query,
-            allowedDomains,
-            blockedDomains,
-          },
+          details: { query, allowedDomains, blockedDomains },
         },
       };
     }
   },
-
-  preparePermissionMatcher: (params) => ({
-    signatureContent: `search:${sanitizeQuery(params.query)}`,
+  preparePermissionMatcher: ({ query }) => ({
+    signatureContent: `search:${query.trim().toLowerCase().slice(0, 80)}`,
     abstractRule: 'search:*',
   }),
 });
+
+function normalizeDomains(domains?: string[]): string[] {
+  return domains?.map((domain) => domain.trim().toLowerCase()).filter(Boolean) ?? [];
+}
+
+function filterDomains(
+  results: WebSearchResult[],
+  allowed: string[],
+  blocked: string[],
+): WebSearchResult[] {
+  return results.filter(({ url }) => {
+    let hostname: string;
+    try {
+      hostname = new URL(url).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+    const matches = (domain: string) => hostname === domain || hostname.endsWith(`.${domain}`);
+    return !blocked.some(matches) && (allowed.length === 0 || allowed.some(matches));
+  });
+}

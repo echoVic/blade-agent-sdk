@@ -134,7 +134,7 @@ classification, durable/trace terminalization, and cleanup are owned by
 consumes, and publishes. Agent and Session streaming share one bounded
 `AsyncChannel`, and every orchestration function is below 150 LOC.
 
-### Task 6: Consolidate built-in tools
+### Task 6: Consolidate built-in tools [COMPLETED]
 
 Unify filesystem guards, search execution, web request handling, task CRUD, and
 common tool result/error plumbing.
@@ -146,6 +146,18 @@ Acceptance:
 - Declarative task CRUD definitions over one store adapter.
 - No built-in tool file over 700 LOC.
 - Production LOC reduction target: at least 3,000 additional lines.
+
+Result: production TypeScript is **56,422 LOC**, down **3,691 lines** in this
+task and **27,383 lines** from baseline. Filesystem tools share one operation
+core for authorized paths, permission signatures, write guards, snapshots,
+tracking, and failures. Glob and Grep share one search runner, while WebFetch
+and WebSearch share one timeout/request pipeline with SSRF-safe redirects,
+retry, proxy, provider, and cache ownership. Four task CRUD files became one
+declarative module over `TaskStore`; Task and TaskOutput now use flat execution
+routes. The JavaScript/Git/system Grep fallbacks, Exa MCP search path, standalone
+search cache/provider layers, fuzzy Edit diagnostics, and duplicate file
+tracking branches were removed. Built-in production code is **7,447 LOC**, and
+every built-in file is below 700 lines.
 
 ### Task 7: Simplify providers, execution hosts, and remaining god files
 

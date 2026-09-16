@@ -1,353 +1,132 @@
-import { promises as fs } from 'node:fs';
-import { basename, dirname, extname } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
-import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
 import type { WriteMetadata } from '../../types/metadata.js';
-import { ToolErrorType } from '../../types/result.js';
-import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
+import {
+  filePermission,
+  operationFailure,
+  recordWriteComplete,
+  runWriteGuard,
+  validateFilePath,
+} from './operationCore.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
-import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
-/**
- * WriteTool - File writer
- * Uses the shared TypeBox validation design
- */
 export const writeTool = createTool({
   name: 'Write',
   group: 'filesystem',
   displayName: 'File Write',
   kind: ToolKind.Write,
   sideEffect: 'idempotent',
-  strict: true, // 启用 OpenAI Structured Outputs
-  isConcurrencySafe: false, // 文件写入不支持并发
-
-  // TypeBox schema definition
+  strict: true,
+  isConcurrencySafe: false,
   schema: Type.Object({
-    file_path: ToolSchemas.filePath({
-      description: 'Absolute file path to write',
-    }),
+    file_path: ToolSchemas.filePath({ description: 'Absolute file path to write' }),
     content: Type.String({ description: 'Content to write' }),
     encoding: ToolSchemas.encoding(),
     create_directories: Type.Boolean({
       default: true,
-      description: 'Automatically create missing parent directories',
+      description: 'Create missing parent directories',
     }),
   }),
-
-  resolveBehavior: (params) => {
-    const isDestructive = params ? isSensitivePath(params.file_path) : false;
-    return {
-      kind: ToolKind.Write,
-      isReadOnly: false,
-      isConcurrencySafe: false,
-      isDestructive,
-    };
-  },
-
-  validateInput: async (params, context) => {
-    try {
-      params.file_path = await resolveAuthorizedFilesystemPath(
-        params.file_path,
-        context.contextSnapshot,
-        { allowMissing: true },
-      );
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        message,
-        model: message,
-        errorType: ToolErrorType.PERMISSION_DENIED,
-      };
-    }
-    return undefined;
-  },
-
-  // 工具描述（对齐 Claude Code 官方）
+  resolveBehavior: (params) => ({
+    kind: ToolKind.Write,
+    isReadOnly: false,
+    isConcurrencySafe: false,
+    isDestructive: params ? isSensitivePath(params.file_path) : false,
+  }),
+  validateInput: (params, context) => validateFilePath(params, 'file_path', context, true),
   description: {
-    short: 'Writes a file to the local filesystem',
-    long: `Writes a file to the local filesystem.`,
+    short: 'Write a local file',
     usageNotes: [
-      'This tool will overwrite the existing file if there is one at the provided path.',
-      "If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.",
-      'ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.',
-      'NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.',
-      'Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.',
+      'Read an existing file before overwriting it',
+      'Prefer Edit for focused changes to existing files',
+      'Create documentation only when the user requests it',
     ],
   },
-
-  // 执行函数
-  async *execute(params, context: ExecutionContext) {
-    const { file_path, content, encoding, create_directories } = params;
+  async *execute(params, context) {
+    const {
+      file_path: filePath,
+      content,
+      encoding,
+      create_directories: createDirectories,
+    } = params;
     const { sessionId, messageId } = context;
     const signal = context.signal ?? new AbortController().signal;
+    const fs = getFileSystemService();
+    yield { kind: 'message', content: { summary: '开始写入文件...' } };
 
     try {
-      yield {
-        kind: 'message',
-        content: { summary: '开始写入文件...' },
-      };
-
-      // 获取文件系统服务
-      const fsService = getFileSystemService();
-
-      // 检查并创建目录（统一使用 FileSystemService）
-      if (create_directories) {
-        const dir = dirname(file_path);
-        try {
-          await fsService.mkdir(dir, { recursive: true, mode: 0o755 });
-        } catch (error) {
-          if (getErrorCode(error) !== 'EEXIST') {
-            throw error;
-          }
-        }
-      }
-
-      if (typeof signal.throwIfAborted === 'function') {
-        signal.throwIfAborted();
-      }
-
-      // 检查文件是否存在（统一使用 FileSystemService）
-      let fileExists = false;
-      let oldContent: string | null = null;
-      try {
-        fileExists = await fsService.exists(file_path);
-        // 如果文件存在且是文本文件，读取旧内容用于生成 diff
-        if (fileExists && encoding === 'utf8') {
-          try {
-            oldContent = await fsService.readTextFile(file_path);
-          } catch (error) {
-            console.warn('[WriteTool] 读取旧文件内容失败:', error);
-          }
-        }
-      } catch {
-        // 检查失败，假设文件不存在
-      }
-
-      // Read-before-write、外部修改检查、快照创建（仅对已存在文件）
+      if (createDirectories) await fs.mkdir(dirname(filePath), { recursive: true, mode: 0o755 });
+      signal.throwIfAborted();
+      const exists = await fs.exists(filePath);
+      const oldContent = exists && encoding === 'utf8' ? await readExistingText(filePath) : null;
       const guard = await runWriteGuard({
-        filePath: file_path,
+        filePath,
         sessionId,
         messageId,
         operation: 'write',
-        fileExists,
+        fileExists: exists,
         storageRoot: context.bladeConfig?.storageRoot,
       });
-      if (guard.blocked) {
-        return guard.blocked;
-      }
-      const snapshotCreated = guard.snapshotCreated;
+      if (guard.blocked) return guard.blocked;
+      signal.throwIfAborted();
 
-      if (typeof signal.throwIfAborted === 'function') {
-        signal.throwIfAborted();
-      }
+      if (encoding === 'utf8') await fs.writeTextFile(filePath, content);
+      else await writeFile(filePath, Buffer.from(content, encoding));
+      await recordWriteComplete(filePath, sessionId, 'write');
+      signal.throwIfAborted();
 
-      // 根据编码写入文件
-      if (encoding === 'utf8') {
-        // 文本文件：使用 FileSystemService 写入
-        await fsService.writeTextFile(file_path, content);
-      } else {
-        // 二进制文件写入
-        let writeBuffer: Buffer;
-
-        if (encoding === 'base64') {
-          writeBuffer = Buffer.from(content, 'base64');
-        } else if (encoding === 'binary') {
-          writeBuffer = Buffer.from(content, 'binary');
-        } else {
-          writeBuffer = Buffer.from(content, 'utf8');
-        }
-
-        await fs.writeFile(file_path, writeBuffer);
-      }
-
-      // 更新文件访问记录（记录写入操作）
-      await recordWriteComplete(file_path, sessionId, 'write');
-
-      if (typeof signal.throwIfAborted === 'function') {
-        signal.throwIfAborted();
-      }
-
-      // 验证写入是否成功（统一使用 FileSystemService）
-      const stats = await fsService.stat(file_path);
-
-      // 计算写入的行数（仅对文本文件）
-      const lineCount = encoding === 'utf8' ? content.split('\n').length : 0;
-      const fileName = basename(file_path);
-
-      // 生成 diff（如果是覆盖现有文本文件）
-      let diffSnippet: string | null = null;
-      if (oldContent && encoding === 'utf8' && oldContent !== content) {
-        // 文件大小限制：超过 1MB 跳过 diff 生成（避免性能问题）
-        const MAX_DIFF_SIZE = 1024 * 1024; // 1MB
-        if (oldContent.length < MAX_DIFF_SIZE && content.length < MAX_DIFF_SIZE) {
-          diffSnippet = generateDiffSnippet(oldContent, content, 4);
-        }
-      }
-
+      const stats = await fs.stat(filePath);
+      const modified = stats?.mtime.toISOString();
+      const diff =
+        oldContent !== null &&
+        oldContent !== content &&
+        oldContent.length < 1_048_576 &&
+        content.length < 1_048_576
+          ? generateDiffSnippet(oldContent, content, 4)
+          : null;
       const metadata: WriteMetadata = {
-        file_path,
+        file_path: filePath,
         content_size: content.length,
         file_size: stats?.size,
         encoding,
-        created_directories: create_directories,
-        snapshot_created: snapshotCreated, // 是否创建了快照
+        created_directories: createDirectories,
+        snapshot_created: guard.snapshotCreated,
         snapshot_warning: guard.snapshotWarning,
         session_id: sessionId,
         message_id: messageId,
-        last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
-        has_diff: !!diffSnippet, // 是否生成了 diff
+        last_modified: modified,
+        has_diff: Boolean(diff),
         summary:
           encoding === 'utf8'
-            ? `写入 ${lineCount} 行到 ${fileName}`
-            : `写入 ${stats?.size ? formatFileSize(stats.size) : 'unknown'} 到 ${fileName}`,
+            ? `写入 ${content.split('\n').length} 行到 ${basename(filePath)}`
+            : `写入 ${stats?.size ?? 0} bytes 到 ${basename(filePath)}`,
         kind: 'edit',
-        oldContent: oldContent || '', // 新文件为空字符串
-        newContent: encoding === 'utf8' ? content : undefined, // 仅文本文件
+        oldContent: oldContent ?? '',
+        newContent: encoding === 'utf8' ? content : undefined,
       };
-
       return {
         status: 'success',
-        model: toJsonValue({
-          file_path,
-          size: stats?.size,
-          modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
-        }),
+        model: toJsonValue({ file_path: filePath, size: stats?.size, modified }),
         metadata,
       };
     } catch (error) {
-      if (getErrorName(error) === 'AbortError') {
-        return {
-          status: 'error',
-          model: 'File write aborted',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: '操作被中止',
-          },
-        };
-      }
-
-      return {
-        status: 'error',
-        model: `File write failed: ${getErrorMessage(error)}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: getErrorMessage(error),
-          details: error,
-        },
-      };
+      return operationFailure('File write', error, 'File write aborted');
     }
   },
-
-  preparePermissionMatcher: (params) => {
-    const ext = extname(params.file_path);
-    return {
-      signatureContent: params.file_path,
-      abstractRule: ext ? `**/*${ext}` : '**/*',
-    };
-  },
+  preparePermissionMatcher: ({ file_path }) => filePermission(file_path),
 });
 
-/**
- * 生成文件内容预览（Markdown 代码块格式）
- */
-function _generateContentPreview(filePath: string, content: string): string | null {
-  // 获取文件扩展名，用于语法高亮
-  const ext = extname(filePath).toLowerCase();
-  const languageMap: Record<string, string> = {
-    '.ts': 'typescript',
-    '.tsx': 'tsx',
-    '.js': 'javascript',
-    '.jsx': 'jsx',
-    '.py': 'python',
-    '.go': 'go',
-    '.rs': 'rust',
-    '.java': 'java',
-    '.c': 'c',
-    '.cpp': 'cpp',
-    '.h': 'c',
-    '.hpp': 'cpp',
-    '.cs': 'csharp',
-    '.rb': 'ruby',
-    '.php': 'php',
-    '.swift': 'swift',
-    '.kt': 'kotlin',
-    '.scala': 'scala',
-    '.sh': 'bash',
-    '.bash': 'bash',
-    '.zsh': 'zsh',
-    '.json': 'json',
-    '.yaml': 'yaml',
-    '.yml': 'yaml',
-    '.toml': 'toml',
-    '.xml': 'xml',
-    '.html': 'html',
-    '.css': 'css',
-    '.scss': 'scss',
-    '.sass': 'sass',
-    '.less': 'less',
-    '.md': 'markdown',
-    '.sql': 'sql',
-    '.graphql': 'graphql',
-    '.proto': 'protobuf',
-  };
-
-  const language = languageMap[ext] || '';
-
-  // 限制预览长度（最多 100 行或 5000 字符）
-  const MAX_LINES = 100;
-  const MAX_CHARS = 5000;
-
-  let previewContent = content;
-  let truncated = false;
-
-  // 按行数截断
-  const lines = content.split('\n');
-  if (lines.length > MAX_LINES) {
-    previewContent = lines.slice(0, MAX_LINES).join('\n');
-    truncated = true;
+async function readExistingText(filePath: string): Promise<string | null> {
+  try {
+    return await getFileSystemService().readTextFile(filePath);
+  } catch {
+    return null;
   }
-
-  // 按字符数截断
-  if (previewContent.length > MAX_CHARS) {
-    previewContent = previewContent.substring(0, MAX_CHARS);
-    truncated = true;
-  }
-
-  // 生成 Markdown 代码块
-  let preview = '📄 文件内容:\n\n';
-  preview += `\`\`\`${language}\n`;
-  preview += previewContent;
-  if (!previewContent.endsWith('\n')) {
-    preview += '\n';
-  }
-  preview += '```';
-
-  if (truncated) {
-    preview += `\n\n⚠️ 内容已截断（完整文件共 ${lines.length} 行，${content.length} 字符）`;
-  }
-
-  return preview;
-}
-
-/**
- * 格式化文件大小
- */
-function formatFileSize(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let size = bytes;
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex++;
-  }
-
-  return `${size.toFixed(1)}${units[unitIndex]}`;
 }

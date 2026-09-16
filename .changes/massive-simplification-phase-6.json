@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Consolidate built-in filesystem, search, web, and task tools around shared operation cores; remove legacy Grep fallbacks, Exa MCP search, standalone search cache/provider modules, and duplicate task CRUD implementations.",
+  "zh-CN": "将内置文件、搜索、网络与任务工具收敛到共享操作核心；移除旧 Grep 降级链、Exa MCP 搜索、独立搜索缓存/provider 模块及重复的任务 CRUD 实现。"
+}

@@ -473,3 +473,20 @@ defineTool(def)                          // 纯数据 + 依赖声明
 - [x] 依赖注入走路线 1（消灭工厂）+ 按需声明粒度。
 - [x] `ToolServiceMap` key 沿用现有字段名。
 - [x] DiscoverTools 走窄只读 `DiscoverableCatalogView`。
+
+---
+
+## 16. 内置工具运行时所有权
+
+内置工具不再各自维护路径校验、进程、HTTP 或 CRUD 胶水：
+
+| Owner | 责任 |
+|-------|------|
+| `file/operationCore.ts` | 授权路径、permission signature、read-before-write、快照、访问记录、统一失败结果 |
+| `search/searchRunner.ts` | 搜索根目录、Glob 执行、ripgrep 参数与进程生命周期 |
+| `web/webRequest.ts` | 超时/中止、SSRF 与重定向校验、代理、搜索 provider、重试和 TTL cache |
+| `task/taskCrud.ts` | `TaskCreate/Get/List/Update` 声明与单一 `TaskStore` adapter |
+
+删除的并行实现包括 Git/system/JavaScript Grep fallback、Exa MCP 搜索、
+`SearchCache`、`searchProviders`、四个单独的 task CRUD 文件和 `writeGuard`。
+新增 built-in 架构测试固定这些 owner，并约束每个生产文件不超过 700 行。

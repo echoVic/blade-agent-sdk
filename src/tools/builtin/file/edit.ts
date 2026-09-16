@@ -1,676 +1,221 @@
-import { basename, extname } from 'node:path';
+import { basename } from 'node:path';
 import Type from 'typebox';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
-import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { getErrorCode, getErrorMessage } from '../../../utils/errorUtils.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
-import type { EditErrorMetadata, EditMetadata } from '../../types/metadata.js';
+import type { EditMetadata } from '../../types/metadata.js';
 import { ToolErrorType } from '../../types/result.js';
-import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
 import { flexibleMatch, type MatchResult, MatchStrategy, unescapeString } from './editCorrector.js';
+import {
+  filePermission,
+  operationFailure,
+  recordWriteComplete,
+  runWriteGuard,
+  validateFilePath,
+} from './operationCore.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
-import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
-/**
- * EditTool - File edit tool
- * Uses the shared TypeBox validation design
- */
 export const editTool = createTool({
   name: 'Edit',
   group: 'filesystem',
   displayName: 'File Edit',
   kind: ToolKind.Write,
   sideEffect: 'non_idempotent',
-  strict: true, // 启用 OpenAI Structured Outputs
-  isConcurrencySafe: false, // 文件编辑不支持并发
-
-  // TypeBox schema definition
+  strict: true,
+  isConcurrencySafe: false,
   schema: Type.Object({
-    file_path: ToolSchemas.filePath({
-      description: 'Absolute path of the file to edit',
-    }),
-    old_string: Type.String({
-      minLength: 1,
-      description: 'String to replace',
-    }),
-    new_string: Type.String({ description: 'Replacement string (can be empty)' }),
-    replace_all: Type.Boolean({
-      default: false,
-      description: 'Replace all matches (default: first only)',
-    }),
+    file_path: ToolSchemas.filePath({ description: 'Absolute path of the file to edit' }),
+    old_string: Type.String({ minLength: 1, description: 'String to replace' }),
+    new_string: Type.String({ description: 'Replacement string, which may be empty' }),
+    replace_all: Type.Boolean({ default: false, description: 'Replace every match' }),
   }),
-
-  resolveBehavior: (params) => {
-    const isDestructive = params ? isSensitivePath(params.file_path) : false;
-    return {
-      kind: ToolKind.Write,
-      isReadOnly: false,
-      isConcurrencySafe: false,
-      isDestructive,
-    };
-  },
-
+  resolveBehavior: (params) => ({
+    kind: ToolKind.Write,
+    isReadOnly: false,
+    isConcurrencySafe: false,
+    isDestructive: params ? isSensitivePath(params.file_path) : false,
+  }),
   validateInput: async (params, context) => {
-    try {
-      params.file_path = await resolveAuthorizedFilesystemPath(
-        params.file_path,
-        context.contextSnapshot,
-      );
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        message,
-        model: message,
-        errorType: ToolErrorType.PERMISSION_DENIED,
-      };
-    }
-    const { old_string, new_string } = params;
-    if (old_string === new_string) {
-      return {
-        message: 'New string is identical to old string',
-        model: 'New string is identical; no replacement needed',
-      };
-    }
-    return undefined;
+    const pathError = await validateFilePath(params, 'file_path', context);
+    return (
+      pathError ??
+      (params.old_string === params.new_string
+        ? {
+            message: 'New string is identical to old string',
+            model: 'New string is identical; no replacement needed',
+          }
+        : undefined)
+    );
   },
-
-  // 工具描述（对齐 Claude Code 官方）
   description: {
-    short: 'Performs exact string replacements in files',
-    long: `Performs exact string replacements in files.`,
+    short: 'Replace exact text in a local file',
     usageNotes: [
-      'You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.',
-      'When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.',
-      'ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.',
-      'Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.',
-      'The edit will FAIL if old_string is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use replace_all to change every instance of old_string.',
-      'Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.',
+      'Read the file before editing it',
+      'Provide enough surrounding context for a unique match',
+      'Use replace_all only when every occurrence should change',
     ],
   },
-
-  // 执行函数
-  async *execute(params, context: ExecutionContext) {
-    const { file_path, old_string, new_string, replace_all } = params;
+  async *execute(params, context) {
+    const {
+      file_path: filePath,
+      old_string: oldString,
+      new_string: newString,
+      replace_all: replaceAll,
+    } = params;
     const { sessionId, messageId } = context;
     const signal = context.signal ?? new AbortController().signal;
+    const fs = getFileSystemService();
+    yield { kind: 'message', content: { summary: 'Starting to read file...' } };
 
     try {
-      yield {
-        kind: 'message',
-        content: { summary: 'Starting to read file...' },
-      };
-
-      // 获取文件系统服务
-      const fsService = getFileSystemService();
-
-      // 读取文件内容（统一使用 FileSystemService）
       let content: string;
       try {
-        content = await fsService.readTextFile(file_path);
+        content = await fs.readTextFile(filePath);
       } catch (error) {
-        if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error)?.includes('not found')) {
+        if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error).includes('not found')) {
           return {
             status: 'error',
-            model: `File not found: ${file_path}`,
-            error: {
-              type: ToolErrorType.EXECUTION_ERROR,
-              message: `文件不存在`,
-            },
+            model: `File not found: ${filePath}`,
+            error: { type: ToolErrorType.EXECUTION_ERROR, message: '文件不存在' },
           };
         }
         throw error;
       }
-
-      if (typeof signal.throwIfAborted === 'function') {
-        signal.throwIfAborted();
-      }
-
-      // Read-before-write、外部修改检查、快照创建
+      signal.throwIfAborted();
       const guard = await runWriteGuard({
-        filePath: file_path,
+        filePath,
         sessionId,
         messageId,
         operation: 'edit',
         fileExists: true,
         storageRoot: context.bladeConfig?.storageRoot,
       });
-      if (guard.blocked) {
-        return guard.blocked;
-      }
+      if (guard.blocked) return guard.blocked;
 
-      // 智能匹配并查找匹配项
-      const matchResult = smartMatch(content, old_string);
-
-      if (!matchResult.matched) {
-        // 🔥 生成富文本错误信息,帮助 LLM 快速恢复
-        const errorDetails = generateRichErrorMessage(content, old_string, file_path);
-
+      const match = smartMatch(content, oldString);
+      if (!match.matched) {
         return {
           status: 'error',
-          model: errorDetails.model,
+          model: `String not found in ${filePath}. Read the file again and provide an exact match with surrounding context.`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '未找到匹配内容',
-            details: errorDetails.metadata,
+            details: { searchStringLength: oldString.length },
           },
         };
       }
-
-      const actualString = matchResult.matched;
-
-      // 记录使用的匹配策略（用于调试和优化）
-      if (matchResult.strategy !== MatchStrategy.EXACT) {
-        console.log(`[SmartEdit] 使用策略: ${matchResult.strategy}`);
-      }
-
-      // 使用实际匹配的字符串查找所有位置（传入已匹配的字符串，避免重复 smartMatch）
-      const matches = findMatchesWithActual(content, actualString);
-
-      // 🔴 对齐 Claude Code 官方：多重匹配时直接失败
-      if (matches.length > 1 && !replace_all) {
-        // 计算每个匹配项的行号和上下文预览
-        const lines = content.split(/\r\n|\n|\r/);
-        let currentPos = 0;
-        const matchLocations: { line: number; column: number; context: string }[] = [];
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-          const line = lines[lineNum];
-          const lineStart = currentPos;
-          const lineEnd = currentPos + line.length;
-
-          // matches 是索引数组
-          for (const matchIndex of matches) {
-            if (matchIndex >= lineStart && matchIndex < lineEnd) {
-              // 获取周围1行作为上下文预览
-              const contextStart = Math.max(0, lineNum - 1);
-              const contextEnd = Math.min(lines.length - 1, lineNum + 1);
-              const contextLines = lines.slice(contextStart, contextEnd + 1);
-              const contextPreview = contextLines
-                .map((l) => l.trim())
-                .join(' ')
-                .slice(0, 80); // 限制长度
-
-              matchLocations.push({
-                line: lineNum + 1,
-                column: matchIndex - lineStart + 1,
-                context: contextPreview,
-              });
-            }
-          }
-
-          const newlineLength = content.startsWith('\r\n', lineEnd)
-            ? 2
-            : content[lineEnd] === '\n' || content[lineEnd] === '\r'
-              ? 1
-              : 0;
-          currentPos = lineEnd + newlineLength;
-        }
-
-        // LLM 友好的错误消息（引导性、鼓励重试）
-        const llmMessage = [
-          `⚠️  EDIT PAUSED: old_string matches ${matches.length} locations (must be unique).`,
-          ``,
-          `**Matches found at:**`,
-          ...matchLocations.map((loc, idx) => `  ${idx + 1}. Line ${loc.line}`),
-          ``,
-          `**Action Required:** Add 3-5 lines of surrounding context to make old_string unique.`,
-          ``,
-          `**Tips for quick success:**`,
-          `• Include the function/class name that wraps the target code`,
-          `• Add 2-3 lines before and after the target`,
-          `• Include unique comments or variable names nearby`,
-          `• Or use replace_all=true to change all ${matches.length} occurrences`,
-          ``,
-          `🤖 **Auto-retry expected** - This usually resolves in 1-2 attempts.`,
-        ].join('\n');
-
-        // 直接失败（对齐 Claude Code 官方行为）
+      const locations = locateMatches(content, match.matched);
+      if (locations.length > 1 && !replaceAll) {
         return {
           status: 'error',
-          model: llmMessage,
+          model: `old_string matches ${locations.length} locations. Include more context or set replace_all=true.`,
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'old_string is not unique',
-            details: {
-              matches: matchLocations.map((loc) => ({
-                line: loc.line,
-                column: loc.column,
-              })),
-              count: matches.length,
-            },
+            details: { matches: locations, count: locations.length },
           },
         };
-      } else {
-        yield {
-          kind: 'progress',
-          message: `找到 ${matches.length} 个匹配项，开始替换...`,
-          data: { matches: matches.length },
-        };
       }
 
-      // 执行替换（使用实际匹配的字符串）
-      let newContent: string;
-      let replacedCount: number;
-
-      if (replace_all) {
-        // 替换所有匹配项
-        newContent = content.split(actualString).join(new_string);
-        replacedCount = matches.length;
-      } else {
-        // 只替换第一个匹配项
-        const firstMatchIndex = content.indexOf(actualString);
-        newContent =
-          content.substring(0, firstMatchIndex) +
-          new_string +
-          content.substring(firstMatchIndex + actualString.length);
-        replacedCount = 1;
-      }
-
-      if (typeof signal.throwIfAborted === 'function') {
-        signal.throwIfAborted();
-      }
-
-      // 写入文件（统一使用 FileSystemService）
-      await fsService.writeTextFile(file_path, newContent);
-
-      // 更新文件访问记录（记录编辑操作）
-      await recordWriteComplete(file_path, sessionId, 'edit');
-
-      // 验证写入成功（统一使用 FileSystemService）
-      const stats = await fsService.stat(file_path);
-
-      // 生成差异片段（仅显示第一个替换的上下文）
-      const diffSnippet = generateDiffSnippetWithMatch(
-        content,
-        newContent,
-        actualString,
-        new_string,
-        4, // 上下文行数
-      );
-
-      // 生成 summary 用于流式显示
-      const fileName = basename(file_path);
-      const summary =
-        replacedCount === 1
-          ? `替换 1 处匹配到 ${fileName}`
-          : `替换 ${replacedCount} 处匹配到 ${fileName}`;
-
+      yield {
+        kind: 'progress',
+        message: `找到 ${locations.length} 个匹配项，开始替换...`,
+        data: { matches: locations.length },
+      };
+      const newContent = replaceAll
+        ? content.split(match.matched).join(newString)
+        : replaceFirst(content, match.matched, newString);
+      const replacedCount = replaceAll ? locations.length : 1;
+      signal.throwIfAborted();
+      await fs.writeTextFile(filePath, newContent);
+      await recordWriteComplete(filePath, sessionId, 'edit');
+      const stats = await fs.stat(filePath);
       const metadata: EditMetadata = {
-        file_path,
-        matches_found: matches.length,
+        file_path: filePath,
+        matches_found: locations.length,
         replacements_made: replacedCount,
-        replace_all,
-        old_string_length: old_string.length,
-        new_string_length: new_string.length,
+        replace_all: replaceAll,
+        old_string_length: oldString.length,
+        new_string_length: newString.length,
         original_size: content.length,
         new_size: newContent.length,
         size_diff: newContent.length - content.length,
-        last_modified: stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
+        last_modified: stats?.mtime.toISOString(),
         snapshot_created: guard.snapshotCreated,
         snapshot_warning: guard.snapshotWarning,
         session_id: sessionId,
         message_id: messageId,
-        diff_snippet: diffSnippet,
-        summary,
+        diff_snippet: generateDiffSnippetWithMatch(
+          content,
+          newContent,
+          match.matched,
+          newString,
+          4,
+        ),
+        summary: `替换 ${replacedCount} 处匹配到 ${basename(filePath)}`,
         kind: 'edit',
         oldContent: content,
-        newContent: newContent,
+        newContent,
       };
-
       return {
         status: 'success',
         model: {
-          file_path,
+          file_path: filePath,
           replacements: replacedCount,
-          total_matches: matches.length,
+          total_matches: locations.length,
         },
         metadata,
       };
     } catch (error) {
-      if (getErrorName(error) === 'AbortError') {
-        return {
-          status: 'error',
-          model: 'File edit aborted',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: '操作被中止',
-          },
-        };
-      }
-
-      return {
-        status: 'error',
-        model: `File edit failed: ${getErrorMessage(error)}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: getErrorMessage(error),
-          details: error,
-        },
-      };
+      return operationFailure('File edit', error, 'File edit aborted');
     }
   },
-
-  preparePermissionMatcher: (params) => {
-    const ext = extname(params.file_path);
-    return {
-      signatureContent: params.file_path,
-      abstractRule: ext ? `**/*${ext}` : '**/*',
-    };
-  },
+  preparePermissionMatcher: ({ file_path }) => filePermission(file_path),
 });
 
-/**
- * 智能引号标准化
- * 将智能引号转换为普通引号
- *
- * @param text 要标准化的文本
- * @returns 标准化后的文本
- */
-function normalizeQuotes(text: string): string {
-  return text
-    .replaceAll('\u2018', "'") // ' → '
-    .replaceAll('\u2019', "'") // ' → '
-    .replaceAll('\u201c', '"') // " → "
-    .replaceAll('\u201d', '"'); // " → "
-}
-
-/**
- * 智能匹配字符串
- * 渐进式匹配：依次尝试多种策略
- *
- * @param content 文件内容
- * @param searchString 要搜索的字符串
- * @returns { matched: string | null, strategy: MatchStrategy }
- */
-function smartMatch(content: string, searchString: string): MatchResult {
-  // 策略 1: 精确匹配
-  if (content.includes(searchString)) {
-    return { matched: searchString, strategy: MatchStrategy.EXACT };
+function smartMatch(content: string, search: string): MatchResult {
+  if (content.includes(search)) return { matched: search, strategy: MatchStrategy.EXACT };
+  const normalize = (value: string) =>
+    value
+      .replaceAll('\u2018', "'")
+      .replaceAll('\u2019', "'")
+      .replaceAll('\u201c', '"')
+      .replaceAll('\u201d', '"');
+  const normalizedIndex = normalize(content).indexOf(normalize(search));
+  if (normalizedIndex >= 0) {
+    return {
+      matched: content.slice(normalizedIndex, normalizedIndex + search.length),
+      strategy: MatchStrategy.NORMALIZE_QUOTES,
+    };
   }
-
-  // 策略 2: 标准化引号后匹配
-  const normalizedSearch = normalizeQuotes(searchString);
-  const normalizedContent = normalizeQuotes(content);
-
-  const quoteIndex = normalizedContent.indexOf(normalizedSearch);
-  if (quoteIndex !== -1) {
-    // 返回原文件中的实际字符串（保持格式）
-    const actualString = content.substring(quoteIndex, quoteIndex + searchString.length);
-    return { matched: actualString, strategy: MatchStrategy.NORMALIZE_QUOTES };
-  }
-
-  // 策略 3: 反转义后匹配
-  const unescaped = unescapeString(searchString);
-  if (unescaped !== searchString && content.includes(unescaped)) {
+  const unescaped = unescapeString(search);
+  if (unescaped !== search && content.includes(unescaped)) {
     return { matched: unescaped, strategy: MatchStrategy.UNESCAPE };
   }
-
-  // 策略 4: 弹性缩进匹配
-  const flexible = flexibleMatch(content, searchString);
-  if (flexible) {
-    return { matched: flexible, strategy: MatchStrategy.FLEXIBLE };
-  }
-
-  // 所有策略都失败
-  return { matched: null, strategy: MatchStrategy.FAILED };
+  const flexible = flexibleMatch(content, search);
+  return flexible
+    ? { matched: flexible, strategy: MatchStrategy.FLEXIBLE }
+    : { matched: null, strategy: MatchStrategy.FAILED };
 }
 
-/**
- * 查找所有匹配项的位置（非重叠匹配）
- * 与实际替换方式保持一致：split/join 或 substring 都是非重叠的
- *
- * 示例：
- * - content = 'aaaa', searchString = 'aa'
- * - 重叠匹配会找到 3 个：位置 0, 1, 2
- * - 非重叠匹配只找到 2 个：位置 0, 2（与 split/join 一致）
- */
-function _findMatches(content: string, searchString: string): number[] {
-  // 先尝试智能匹配
-  const matchResult = smartMatch(content, searchString);
-  if (!matchResult.matched) {
-    return []; // 未找到匹配
-  }
-
-  return findMatchesWithActual(content, matchResult.matched);
+function replaceFirst(content: string, search: string, replacement: string): string {
+  const index = content.indexOf(search);
+  return content.slice(0, index) + replacement + content.slice(index + search.length);
 }
 
-/**
- * 使用已知的匹配字符串查找所有位置（避免重复 smartMatch）
- * 内部辅助函数，用于优化性能
- */
-function findMatchesWithActual(content: string, actualString: string): number[] {
-  // 防御性检查：空字符串会导致死循环
-  if (actualString.length === 0) {
-    return [];
+function locateMatches(content: string, search: string): Array<{ line: number; column: number }> {
+  const locations: Array<{ line: number; column: number }> = [];
+  for (
+    let index = content.indexOf(search);
+    index >= 0;
+    index = content.indexOf(search, index + search.length)
+  ) {
+    const before = content.slice(0, index);
+    const lines = before.split(/\r\n|\n|\r/);
+    locations.push({ line: lines.length, column: (lines.at(-1)?.length ?? 0) + 1 });
   }
-
-  // 使用非重叠匹配：每次找到后跳过整个匹配长度
-  // 这与 split/join 和 substring 替换方式一致
-  const matches: number[] = [];
-  let index = content.indexOf(actualString);
-
-  while (index !== -1) {
-    matches.push(index);
-    // 跳过整个匹配长度，避免重叠（对齐实际替换行为）
-    index = content.indexOf(actualString, index + actualString.length);
-  }
-
-  return matches;
-}
-
-// diff 生成函数已移动到 diffUtils.ts，供 Edit 和 Write 工具共享
-
-/**
- * 生成富文本错误信息
- * 当 Edit 工具匹配失败时,提供详细的上下文和恢复建议
- */
-function generateRichErrorMessage(
-  fileContent: string,
-  searchString: string,
-  filePath: string,
-): {
-  model: string;
-  metadata: EditErrorMetadata;
-} {
-  const lines = fileContent.split('\n');
-  const totalLines = lines.length;
-
-  // 1. 计算搜索字符串的预期位置(基于模糊匹配)
-  const fuzzyMatches = findFuzzyMatches(fileContent, searchString, 3);
-
-  // 2. 提取文件摘录(显示前后各10行)
-  let excerptStartLine = 0;
-  let excerptEndLine = Math.min(20, totalLines);
-
-  // 如果找到模糊匹配,以最佳匹配为中心
-  if (fuzzyMatches.length > 0) {
-    const bestMatch = fuzzyMatches[0];
-    excerptStartLine = Math.max(0, bestMatch.lineNumber - 10);
-    excerptEndLine = Math.min(totalLines, bestMatch.lineNumber + 10);
-  }
-
-  const excerptLines = lines.slice(excerptStartLine, excerptEndLine);
-  const excerpt = excerptLines
-    .map((line, idx) => {
-      const lineNum = excerptStartLine + idx + 1;
-      return `    ${lineNum.toString().padStart(4)}: ${line}`;
-    })
-    .join('\n');
-
-  // 3. 生成 LLM 可读的错误信息
-  let modelContent = `String not found in file.
-
-File: ${filePath}
-Total lines: ${totalLines}
-
-`;
-
-  // 显示搜索字符串(截断长文本)
-  const searchPreview =
-    searchString.length > 300 ? `${searchString.substring(0, 300)}\n... (truncated)` : searchString;
-
-  modelContent += `You tried to match:\n${searchPreview}\n\n`;
-
-  // 显示文件摘录
-  if (fuzzyMatches.length > 0) {
-    modelContent += `File content around possible matches (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
-  } else {
-    modelContent += `File content preview (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
-  }
-
-  // 显示模糊匹配建议
-  if (fuzzyMatches.length > 0) {
-    modelContent += `Possible similar matches found:\n`;
-    fuzzyMatches.forEach((match, idx) => {
-      const preview = match.text.length > 100 ? `${match.text.substring(0, 100)}...` : match.text;
-      modelContent += `  ${idx + 1}. Line ${match.lineNumber} (similarity: ${Math.round(match.similarity * 100)}%)\n     ${preview.replace(/\n/g, '\\n')}\n`;
-    });
-    modelContent += '\n';
-  }
-
-  // 提供恢复建议
-  modelContent += `Recovery suggestions:
-1. Use the Read tool to verify the current file content
-2. Check for typos, whitespace differences, or quote mismatches
-3. Provide more surrounding context to make the match unique
-4. If the code structure is different than expected, consider using the Write tool instead
-
-Common issues:
-- Line breaks: Ensure \\n characters match exactly
-- Indentation: Spaces vs tabs mismatch
-- Smart quotes: " " vs " (use straight quotes)
-- Outdated mental model: File may have changed since you last read it`;
-
-  return {
-    model: modelContent,
-    metadata: {
-      searchStringLength: searchString.length,
-      fuzzyMatches: fuzzyMatches.map((m) => ({
-        line: m.lineNumber,
-        similarity: m.similarity,
-        preview: m.text.substring(0, 100),
-      })),
-      excerptRange: [excerptStartLine + 1, excerptEndLine],
-      totalLines,
-    },
-  };
-}
-
-/**
- * 查找模糊匹配项
- * 使用 Levenshtein 距离计算相似度
- */
-function findFuzzyMatches(
-  fileContent: string,
-  searchString: string,
-  maxResults = 3,
-): Array<{ text: string; lineNumber: number; similarity: number }> {
-  const lines = fileContent.split('\n');
-  const searchLines = searchString.split('\n');
-
-  // 如果搜索字符串是单行,按行匹配
-  if (searchLines.length === 1) {
-    const matches = lines
-      .map((line, idx) => ({
-        text: line,
-        lineNumber: idx + 1,
-        similarity: calculateSimilarity(searchString.trim(), line.trim()),
-      }))
-      .filter((m) => m.similarity > 0.5) // 相似度阈值
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, maxResults);
-
-    return matches;
-  }
-
-  // 如果搜索字符串是多行,按窗口匹配
-  const windowSize = searchLines.length;
-  const matches: Array<{ text: string; lineNumber: number; similarity: number }> = [];
-
-  for (let i = 0; i <= lines.length - windowSize; i++) {
-    const window = lines.slice(i, i + windowSize).join('\n');
-    const similarity = calculateSimilarity(searchString, window);
-
-    if (similarity > 0.5) {
-      matches.push({
-        text: window,
-        lineNumber: i + 1,
-        similarity,
-      });
-    }
-  }
-
-  return matches.sort((a, b) => b.similarity - a.similarity).slice(0, maxResults);
-}
-
-/**
- * 计算两个字符串的相似度(简化版 Levenshtein)
- * 返回 0-1 之间的值,1 表示完全相同
- */
-function calculateSimilarity(str1: string, str2: string): number {
-  // 标准化:移除多余空格,统一引号（包括智能引号）
-  const normalize = (s: string) =>
-    s
-      .trim()
-      .replace(/\s+/g, ' ')
-      // 统一智能双引号 (\u201c \u201d) 和直引号 (") → "
-      .replace(/[\u201c\u201d"]/g, '"')
-      // 统一智能单引号 (\u2018 \u2019) 和直引号 (') → '
-      .replace(/[\u2018\u2019']/g, "'");
-
-  const s1 = normalize(str1);
-  const s2 = normalize(str2);
-
-  if (s1 === s2) return 1.0;
-
-  // 计算 Levenshtein 距离
-  const len1 = s1.length;
-  const len2 = s2.length;
-
-  if (len1 === 0) return len2 === 0 ? 1.0 : 0.0;
-  if (len2 === 0) return 0.0;
-
-  // 使用简化算法:只计算前 200 个字符(性能优化)
-  const maxLen = 200;
-  const substr1 = s1.substring(0, maxLen);
-  const substr2 = s2.substring(0, maxLen);
-
-  const distance = levenshteinDistance(substr1, substr2);
-  const maxLength = Math.max(substr1.length, substr2.length);
-
-  return 1 - distance / maxLength;
-}
-
-/**
- * Levenshtein 距离算法
- */
-function levenshteinDistance(str1: string, str2: string): number {
-  const len1 = str1.length;
-  const len2 = str2.length;
-
-  // 创建距离矩阵
-  const matrix: number[][] = Array(len1 + 1)
-    .fill(null)
-    .map(() => Array(len2 + 1).fill(0));
-
-  // 初始化第一行和第一列
-  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
-
-  // 填充矩阵
-  for (let i = 1; i <= len1; i++) {
-    for (let j = 1; j <= len2; j++) {
-      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1, // 删除
-        matrix[i][j - 1] + 1, // 插入
-        matrix[i - 1][j - 1] + cost, // 替换
-      );
-    }
-  }
-
-  return matrix[len1][len2];
+  return locations;
 }

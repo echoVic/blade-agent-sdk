@@ -1,29 +1,14 @@
-/**
- * TaskOutput Tool - 统一的后台任务输出获取工具
- *
- * 支持获取：
- * - 后台 shell 输出 (bash_xxx)
- * - 后台 agent 输出
- */
-
+import { setTimeout as delay } from 'node:timers/promises';
 import Type from 'typebox';
 import type { IBackgroundAgentManager } from '../../../agent/types.js';
 import { AgentId } from '../../../types/identifiers.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ToolResult } from '../../types/result.js';
-import { ToolErrorType } from '../../types/result.js';
+import { ToolErrorType, type ToolResult } from '../../types/result.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
-/**
- * TaskOutput 工具
- *
- * 统一接口获取后台任务输出，支持：
- * - background shells (bash_id)
- * - async agents
- */
 export const taskOutputTool = createTool({
   name: 'TaskOutput',
   group: 'task',
@@ -31,145 +16,67 @@ export const taskOutputTool = createTool({
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
   services: ['backgroundAgentManager'],
-
   schema: Type.Object({
-    task_id: Type.String({
-      minLength: 1,
-      description: 'The task ID to get output from',
-    }),
-    block: ToolSchemas.flag({
-      defaultValue: true,
-      description: 'Whether to wait for completion',
-    }),
+    task_id: Type.String({ minLength: 1, description: 'Background task ID' }),
+    block: ToolSchemas.flag({ defaultValue: true, description: 'Wait for completion' }),
     timeout: Type.Integer({
       minimum: 0,
-      maximum: 600000,
-      default: 30000,
-      description: 'Max wait time in ms',
+      maximum: 600_000,
+      default: 30_000,
+      description: 'Maximum wait in milliseconds',
     }),
   }),
-
   description: {
-    short: 'Retrieves output from a running or completed task',
-    long: `
-- Retrieves output from a running or completed task (background shell, agent, or remote session)
-- Takes a task_id parameter identifying the task
-- Returns the task output along with status information
-- Use block=true (default) to wait for task completion
-- Use block=false for non-blocking check of current status
-- Task IDs can be found using the /tasks command
-- Works with all task types: background shells, async agents, and remote sessions
-`.trim(),
+    short: 'Read output from a background shell or agent',
     usageNotes: [
-      'task_id is required - the ID returned when starting a background task',
-      'block=true (default) waits for task completion',
-      'block=false returns current status immediately',
-      'timeout defaults to 30000ms (30 seconds), max 600000ms (10 minutes)',
-    ],
-    examples: [
-      {
-        description: 'Get output from a background shell',
-        params: {
-          task_id: 'bash_abc123',
-          block: true,
-          timeout: 30000,
-        },
-      },
-      {
-        description: 'Check agent status without blocking',
-        params: {
-          task_id: 'session_xyz789',
-          block: false,
-        },
-      },
+      'Use the ID returned by Bash or Task',
+      'Set block=false to return the current state immediately',
     ],
   },
-
   // biome-ignore lint/correctness/useYield: terminal-only tool execution
-  async *execute(params, context) {
-    const { task_id, block, timeout } = params;
-    const agentManager = context.backgroundAgentManager;
-
-    // 根据 task_id 前缀判断类型
-    if (task_id.startsWith('bash_')) {
-      return handleShellOutput(task_id, block, timeout);
+  async *execute({ task_id: taskId, block, timeout }, context) {
+    const shells = BackgroundShellManager.getInstance();
+    if (taskId.startsWith('bash_') || shells.getProcess(taskId)) {
+      return shellOutput(taskId, block, timeout, shells);
     }
-    const shellManager = BackgroundShellManager.getInstance();
-
-    if (shellManager.getProcess(task_id)) {
-      return handleShellOutput(task_id, block, timeout);
+    const agentId = AgentId(taskId);
+    if (await context.backgroundAgentManager.getAgent(agentId)) {
+      return agentOutput(agentId, block, timeout, context.backgroundAgentManager);
     }
-    if (await agentManager.getAgent(AgentId(task_id))) {
-      return handleAgentOutput(AgentId(task_id), block, timeout, agentManager);
-    }
-
-    return {
-      status: 'error',
-      model: `Unknown task ID: ${task_id}.`,
-      error: {
-        type: ToolErrorType.VALIDATION_ERROR,
-        message: `Unknown task ID: ${task_id}`,
-      },
-      metadata: {
-        summary: '未找到任务',
-      },
-    };
+    return failure(
+      `Unknown task ID: ${taskId}.`,
+      `Unknown task ID: ${taskId}`,
+      '未找到任务',
+      ToolErrorType.VALIDATION_ERROR,
+    );
   },
-
-  preparePermissionMatcher: (params) => ({
-    signatureContent: params.task_id,
+  preparePermissionMatcher: ({ task_id }) => ({
+    signatureContent: task_id,
     abstractRule: '*',
   }),
 });
 
-/**
- * 处理后台 Shell 输出
- */
-async function handleShellOutput(
+async function shellOutput(
   taskId: string,
   block: boolean,
   timeout: number,
+  manager: BackgroundShellManager,
 ): Promise<ToolResult> {
-  const manager = BackgroundShellManager.getInstance();
-
-  // 获取进程信息
-  const processInfo = manager.getProcess(taskId);
-  if (!processInfo) {
-    return {
-      status: 'error',
-      model: `Shell not found: ${taskId}`,
-      error: {
-        type: ToolErrorType.EXECUTION_ERROR,
-        message: 'Shell 会话不存在或已清理',
-      },
-      metadata: {
-        summary: '获取输出失败',
-      },
-    };
+  let process = manager.getProcess(taskId);
+  if (!process) {
+    return failure(`Shell not found: ${taskId}`, 'Shell 会话不存在或已清理');
   }
-
-  // 如果需要阻塞等待且进程仍在运行
-  if (block && processInfo.status === 'running') {
-    // 等待进程完成或超时
-    await waitForShellCompletion(taskId, timeout);
+  if (block && process.status === 'running') {
+    const deadline = Date.now() + timeout;
+    while (process?.status === 'running' && Date.now() < deadline) {
+      await delay(Math.min(100, Math.max(0, deadline - Date.now())));
+      process = manager.getProcess(taskId);
+    }
   }
-
-  // 获取输出
   const snapshot = manager.consumeOutput(taskId);
   if (!snapshot) {
-    return {
-      status: 'error',
-      model: `Failed to get output for shell: ${taskId}`,
-      error: {
-        type: ToolErrorType.EXECUTION_ERROR,
-        message: 'Failed to consume output',
-      },
-      metadata: {
-        summary: '获取输出失败',
-      },
-    };
+    return failure(`Failed to get output for shell: ${taskId}`, 'Failed to consume output');
   }
-
   const payload = {
     task_id: snapshot.id,
     type: 'shell',
@@ -183,60 +90,23 @@ async function handleShellOutput(
     stdout: snapshot.stdout,
     stderr: snapshot.stderr,
   };
-
-  return {
-    status: 'success',
-    model: toJsonValue(payload),
-    metadata: {
-      summary: `获取任务输出: ${taskId}`,
-      ...payload,
-    },
-  };
+  return success(taskId, payload);
 }
 
-/**
- * 处理后台 Agent 输出
- */
-async function handleAgentOutput(
+async function agentOutput(
   taskId: AgentId,
   block: boolean,
   timeout: number,
   manager: IBackgroundAgentManager,
 ): Promise<ToolResult> {
-  // 获取会话信息
   let session = await manager.getAgent(taskId);
-  if (!session) {
-    return {
-      status: 'error',
-      model: `Agent not found: ${taskId}`,
-      error: {
-        type: ToolErrorType.EXECUTION_ERROR,
-        message: 'Agent 会话不存在或已清理',
-      },
-      metadata: {
-        summary: '获取输出失败',
-      },
-    };
-  }
-
-  // 如果需要阻塞等待且 agent 仍在运行
+  if (!session) return failure(`Agent not found: ${taskId}`, 'Agent 会话不存在或已清理');
   if (block && session.status === 'running') {
     session = await manager.waitForCompletion(taskId, timeout);
     if (!session) {
-      return {
-        status: 'error',
-        model: `Failed to wait for agent: ${taskId}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: 'Wait for completion failed',
-        },
-        metadata: {
-          summary: '获取输出失败',
-        },
-      };
+      return failure(`Failed to wait for agent: ${taskId}`, 'Wait for completion failed');
     }
   }
-
   const payload = {
     task_id: session.id,
     type: 'agent',
@@ -250,23 +120,20 @@ async function handleAgentOutput(
     stats: session.stats,
     progress: session.progress,
   };
-
-  const subagentStatus =
+  const status =
     session.status === 'completed'
       ? 'completed'
       : session.status === 'failed'
         ? 'failed'
         : 'running';
-
   return {
-    status: 'success',
-    model: toJsonValue(payload),
+    ...success(taskId, payload),
     metadata: {
       summary: `获取任务输出: ${taskId}`,
       ...payload,
       subagentSessionId: session.id,
       subagentType: session.subagentType,
-      subagentStatus,
+      subagentStatus: status,
       subagentSummary:
         typeof session.result?.message === 'string'
           ? session.result.message.slice(0, 500)
@@ -275,51 +142,24 @@ async function handleAgentOutput(
   };
 }
 
-/**
- * 等待 Shell 完成
- */
-async function waitForShellCompletion(taskId: string, timeout: number): Promise<void> {
-  const manager = BackgroundShellManager.getInstance();
-  const startTime = Date.now();
-
-  return new Promise((resolve) => {
-    const checkInterval = setInterval(() => {
-      const processInfo = manager.getProcess(taskId);
-
-      // 进程不存在或已完成
-      if (!processInfo || processInfo.status !== 'running') {
-        clearInterval(checkInterval);
-        resolve();
-        return;
-      }
-
-      // 超时
-      if (Date.now() - startTime >= timeout) {
-        clearInterval(checkInterval);
-        resolve();
-        return;
-      }
-    }, 100); // 每 100ms 检查一次
-  });
+function success(taskId: string, payload: object): ToolResult {
+  return {
+    status: 'success',
+    model: toJsonValue(payload),
+    metadata: { summary: `获取任务输出: ${taskId}`, ...payload },
+  };
 }
 
-/**
- * 获取状态对应的 emoji
- */
-function _getStatusEmoji(status: string): string {
-  switch (status) {
-    case 'running':
-      return '⏳';
-    case 'completed':
-    case 'exited':
-      return '✅';
-    case 'failed':
-    case 'error':
-      return '❌';
-    case 'killed':
-    case 'cancelled':
-      return '✂️';
-    default:
-      return '❓';
-  }
+function failure(
+  model: string,
+  message: string,
+  summary = '获取输出失败',
+  type = ToolErrorType.EXECUTION_ERROR,
+): ToolResult {
+  return {
+    status: 'error',
+    model,
+    error: { type, message },
+    metadata: { summary },
+  };
 }

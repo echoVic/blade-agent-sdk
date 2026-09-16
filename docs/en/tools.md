@@ -420,6 +420,13 @@ and the operation fails closed.
 | Memory | `MemoryRead`, `MemoryWrite` (requires `SessionOptions.memoryManager`) |
 | MCP resources | `ListMcpResources`, `ReadMcpResource` |
 
+Built-in implementations share four narrow capability owners.
+`file/operationCore.ts` owns authorized paths, write guards, and file-operation
+failures; `search/searchRunner.ts` owns search paths and execution;
+`web/webRequest.ts` owns timeouts, cancellation, proxies, redirects, providers,
+and caching; `task/taskCrud.ts` declares all structured task CRUD tools over one
+`TaskStore`.
+
 Built-in contracts:
 
 | Tool | Kind | Side effect |
