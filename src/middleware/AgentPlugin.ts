@@ -1,4 +1,8 @@
-import type { HookCallback, SessionHookEvent, SessionTool } from '../session/types.js';
+import type Type from 'typebox';
+import type { HookCallback, SessionHookEvent } from '../session/types.js';
+import type { ToolServiceName } from '../tools/services.js';
+import type { ToolDefinition } from '../tools/types/tool.js';
+import type { JsonValue } from '../types/json.js';
 import type { ModelMiddleware } from './ModelMiddleware.js';
 import type { ToolMiddleware } from './ToolMiddleware.js';
 
@@ -24,7 +28,7 @@ export interface AgentPlugin {
   readonly name: string;
   readonly middleware?: AgentMiddlewareConfig;
   readonly hooks?: Partial<Record<SessionHookEvent, readonly HookCallback[]>>;
-  readonly tools?: readonly SessionTool[];
+  readonly tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
 }
 
 export function definePlugin<const TPlugin extends AgentPlugin>(plugin: TPlugin): TPlugin {

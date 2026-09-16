@@ -1034,7 +1034,7 @@ const currentContext = session.getDefaultContext();
 
 ```ts
 interface SessionOptions {
-  tools?: SessionTool[];         // ToolDefinition 或完整 Tool
+  tools?: readonly ToolDefinition[]; // defineTool() 返回的工具声明
   allowedTools?: string[];       // 工具白名单（仅允许列出的工具）
   disallowedTools?: string[];    // 工具黑名单（排除列出的工具）
 }
@@ -1755,7 +1755,7 @@ async function analyzeCodeManual() {
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
 | `toolSourcePolicy` | `ToolSourcePolicy`                                     | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
-| `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
+| `tools`           | `readonly ToolDefinition[]`                              | —  | —           | `defineTool()` 返回的工具声明                                 |
 | `toolTimeoutMs`   | `number`                                                 | —  | `600000`    | 单次工具调用的总时限（毫秒）                                   |
 | `webFetch`        | `WebFetchSecurityPolicy`                                 | —  | 安全默认值      | WebFetch 主机白名单、黑名单与私网访问策略                        |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |

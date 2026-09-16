@@ -183,7 +183,7 @@ export interface AgentOptions {
   profile?: 'local' | 'server';
   provider?: ProviderType;
   baseUrl?: string;
-  tools?: readonly SessionTool[];
+  tools?: readonly ToolDefinition[];
   systemPrompt?: string;
   temperature?: number;
   maxOutputTokens?: number;
@@ -319,7 +319,6 @@ type ErasedToolDefinition =
         context: ExecutionContext,
       ): ToolExecution<JsonValue>;
     };
-type SessionTool = ErasedToolDefinition | Tool;
 ```
 
 完整转换链为：
@@ -328,15 +327,15 @@ type SessionTool = ErasedToolDefinition | Tool;
 TypeBox TSchema
   → defineTool()
   → typed ToolDefinition
-  → SessionTool boundary erases heterogeneous params
+  → Session boundary erases heterogeneous params internally
   → toolFromDefinition()
   → runtime Tool
-  → ToolRegistry / ToolCatalog
+  → ToolRegistry
 ```
 
-`AgentOptions.tools` 和 `SessionOptions.tools` 接受 authoring definition 或已经编译的
-`Tool`。`defineTool()`、`createTool()` 与 `toolFromDefinition()` 共享同一个 TypeBox
-编译路径，错误参数不能进入 description、permission、behavior 或 execute callback。
+`AgentOptions.tools`、`SessionOptions.tools` 和 `AgentPlugin.tools` 只接受 authoring
+definition，不接受已经编译的 runtime `Tool`。`defineTool()` 是公开 authoring 入口；
+内部编译路径保证错误参数不能进入 description、permission、behavior 或 execute callback。
 MCP 客户端收到的 raw JSON Schema 是协议适配边界：它直接由 TypeBox 的 JSON Schema
 validator 编译，不转换成另一种 authoring schema。Wire、durable 和 MCP SDK 自身的
 Zod parser 不属于 Tool authoring API，继续由各自 owner 管理。

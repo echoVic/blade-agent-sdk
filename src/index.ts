@@ -233,7 +233,6 @@ export type {
   SessionRepositorySubagentInfo,
   SessionRepositorySubagentRef,
   SessionStreamEvent,
-  SessionTool,
   StreamOptions,
   SubagentInfo,
   ToolExecutionRecord,

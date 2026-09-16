@@ -94,10 +94,11 @@ export interface ToolDefinition<
   exposure?: ToolExposureConfig;
   services?: readonly TServices[];
   requiresRuntime?: TRequiresRuntime;
-  execute: (
+  /** Method variance keeps schema-specific definitions assignable to heterogeneous collections. */
+  execute(
     params: Type.Static<TSchema>,
     context: ToolDefinitionContext<TServices, TRequiresRuntime>,
-  ) => ToolExecution<TData>;
+  ): ToolExecution<TData>;
 }
 
 export type ToolDefinitionInput<

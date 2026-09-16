@@ -1,3 +1,4 @@
+import type Type from 'typebox';
 import type { AgentSessionRepository } from '../agent/subagents/AgentSessionRepository.js';
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
@@ -24,6 +25,7 @@ import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { SkillDefinition } from '../skills/types.js';
 import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
 import type { ToolSourcePolicy } from '../tools/registry/ToolRegistry.js';
+import type { ToolServiceName } from '../tools/services.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
   ToolDisplayContent,
@@ -31,7 +33,7 @@ import type {
   ToolModelContent,
   ToolProgress,
 } from '../tools/types/result.js';
-import type { ErasedToolDefinition, Tool } from '../tools/types/tool.js';
+import type { ToolDefinition } from '../tools/types/tool.js';
 import type { HookEvent, PermissionMode, SessionStreamEventType } from '../types/constants.js';
 import type {
   EventSequence,
@@ -244,8 +246,6 @@ export interface AgentDefinition {
   model?: string;
 }
 
-export type SessionTool = ErasedToolDefinition | Tool;
-
 export interface SessionOptions {
   provider: ProviderConnectionConfig;
   /** Instance-scoped custom provider adapters. */
@@ -265,8 +265,8 @@ export interface SessionOptions {
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   /** Enables the built-in MemoryRead and MemoryWrite tools for this Session. */
   memoryManager?: MemoryManager;
-  // never 用于擦除异构工具的参数类型，不会泄漏到各工具自己的 execute 实现。
-  tools?: SessionTool[];
+  /** Custom tool definitions returned by defineTool(). */
+  tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
 
   permissionMode?: PermissionMode;
   /** Full permission callback. Takes precedence when canUseTool is also provided. */

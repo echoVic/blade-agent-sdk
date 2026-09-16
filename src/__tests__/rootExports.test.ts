@@ -55,7 +55,6 @@ import type {
   SessionOptions,
   SessionPersistence,
   SessionRepository,
-  SessionTool,
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
@@ -318,7 +317,6 @@ describe('root exports', () => {
     expectTypeOf<ProviderRegistryErrorCode>().toEqualTypeOf<
       'PROVIDER_ADAPTER_INVALID' | 'PROVIDER_ADAPTER_DUPLICATE' | 'PROVIDER_ADAPTER_NOT_FOUND'
     >();
-    expectTypeOf<typeof memoryReadTool>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
     expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<'event' | 'caught_up'>();

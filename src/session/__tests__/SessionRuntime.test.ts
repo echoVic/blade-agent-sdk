@@ -13,8 +13,7 @@ import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecut
 import { SandboxService } from '../../sandbox/SandboxService.js';
 import { ToolKind } from '../../tools/behavior.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
-import { memoryReadTool } from '../../tools/builtin/memory/index.js';
-import { createTool, defineTool } from '../../tools/core/createTool.js';
+import { defineTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
@@ -339,13 +338,13 @@ describe('SessionRuntime', () => {
     'throw',
   ] as const)('preserves the Session tool timeout when a failure hook returns %s', async (hookBehavior) => {
     let observedAbort = false;
-    const slowTool = createTool({
+    const slowTool = defineTool({
       name: 'SlowTool',
       displayName: 'Slow Tool',
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Wait until cancelled' },
-      schema: Type.Object({}),
+      parameters: Type.Object({}),
       async *execute(_params, context) {
         await new Promise<void>((_resolve, reject) => {
           context.signal?.addEventListener(
@@ -410,13 +409,13 @@ describe('SessionRuntime', () => {
     vi.useFakeTimers();
     const started = deferred();
     const release = deferred();
-    const slowTool = createTool({
+    const slowTool = defineTool({
       name: 'UncooperativeTool',
       displayName: 'Uncooperative Tool',
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Ignore cancellation until released' },
-      schema: Type.Object({}),
+      parameters: Type.Object({}),
       // biome-ignore lint/correctness/useYield: exercises an uncooperative terminal execution
       async *execute() {
         started.resolve();
@@ -630,13 +629,13 @@ describe('SessionRuntime', () => {
 
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
-    const pluginTool = createTool({
+    const pluginTool = defineTool({
       name: 'PluginTool',
       displayName: 'Plugin Tool',
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Plugin test tool' },
-      schema: Type.Object({ value: Type.Optional(Type.String()) }),
+      parameters: Type.Object({ value: Type.Optional(Type.String()) }),
       execute(params) {
         return completeToolExecution({
           status: 'success',
@@ -838,85 +837,6 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().getAll()).toEqual([]);
-
-    await runtime.close();
-  });
-
-  it('should register complete Tool instances without adapting away their behavior', async () => {
-    const execute = vi.fn(({ value }: { value: string }) =>
-      completeToolExecution({
-        status: 'success',
-        model: value,
-      }),
-    );
-    const runtimeTool = createTool({
-      name: 'RuntimeTool',
-      displayName: 'Runtime Tool',
-      kind: ToolKind.ReadOnly,
-      sideEffect: 'pure',
-      interruptBehavior: 'cancel',
-      strict: true,
-      schema: Type.Object({
-        value: Type.String(),
-      }),
-      description: {
-        short: 'Runtime tool',
-      },
-      execute,
-    });
-    const memoryManager = new MemoryManager({
-      save: vi.fn(),
-      get: vi.fn(),
-      list: vi.fn(async () => []),
-      delete: vi.fn(),
-    });
-    const runtime = new SessionRuntime(
-      SessionId('session-complete-tools'),
-      createOptions({
-        allowedTools: ['RuntimeTool', 'MemoryRead'],
-        tools: [runtimeTool],
-        memoryManager,
-      }),
-      {
-        models: [],
-      },
-      PermissionMode.DEFAULT,
-      createFilesystemContext(workspaceRoot),
-      NOOP_LOGGER,
-    );
-
-    await runtime.initialize();
-
-    expect(runtime.getToolRegistry().get('RuntimeTool')).toBe(runtimeTool);
-    expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryReadTool);
-    expect(runtime.getToolRegistry().get('RuntimeTool')?.staticBehavior.interruptBehavior).toBe(
-      'cancel',
-    );
-
-    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-    assertDefined(executionPipeline);
-    const invalidResult = await collectToolExecution(
-      executionPipeline.execute('RuntimeTool', {}, {}),
-    );
-    expect(invalidResult.status).toBe('error');
-    expect(execute).not.toHaveBeenCalled();
-
-    const validResult = await collectToolExecution(
-      executionPipeline.execute('RuntimeTool', { value: 'validated' }, {}),
-    );
-    expect(validResult).toMatchObject({
-      status: 'success',
-      model: 'validated',
-    });
-    expect(execute).toHaveBeenCalledOnce();
-
-    const memoryResult = await collectToolExecution(
-      executionPipeline.execute('MemoryRead', { operation: 'list' }, {}),
-    );
-    expect(memoryResult).toMatchObject({
-      status: 'success',
-      model: [],
-    });
 
     await runtime.close();
   });

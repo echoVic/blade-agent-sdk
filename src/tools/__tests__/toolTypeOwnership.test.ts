@@ -2,11 +2,18 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Type from 'typebox';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { ToolDefinitionInput } from '../../index.js';
+import type {
+  AgentOptions,
+  AgentPlugin,
+  SessionOptions,
+  ToolDefinition,
+  ToolDefinitionInput,
+} from '../../index.js';
 import { defineTool } from '../../index.js';
-import type { ToolServiceMap } from '../services.js';
+import type { JsonValue } from '../../types/json.js';
+import type { ToolServiceMap, ToolServiceName } from '../services.js';
 import type { RuntimeAccess } from '../types/execution.js';
-import type { ErasedToolDefinition } from '../types/tool.js';
+import type { ErasedToolDefinition, Tool } from '../types/tool.js';
 
 describe('Tool type ownership', () => {
   it('infers authoring params from the TypeBox schema', () => {
@@ -75,10 +82,25 @@ describe('Tool type ownership', () => {
   it('owns heterogeneous definition erasure in the Tool module', () => {
     const sessionTypes = readFileSync(resolve('src/session/types.ts'), 'utf8');
     const toolTypes = readFileSync(resolve('src/tools/types/tool.ts'), 'utf8');
+    type SessionDefinition = NonNullable<SessionOptions['tools']>[number];
+    type AgentDefinition = NonNullable<AgentOptions['tools']>[number];
+    type PluginDefinition = NonNullable<AgentPlugin['tools']>[number];
+    type PublicToolDefinition = ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>;
 
     expectTypeOf<ErasedToolDefinition>().toHaveProperty('execute');
+    expectTypeOf<SessionDefinition>().toEqualTypeOf<PublicToolDefinition>();
+    expectTypeOf<AgentDefinition>().toEqualTypeOf<PublicToolDefinition>();
+    expectTypeOf<PluginDefinition>().toEqualTypeOf<PublicToolDefinition>();
+    const runtimeToolAcceptance: [
+      Tool extends SessionDefinition ? true : false,
+      Tool extends AgentDefinition ? true : false,
+      Tool extends PluginDefinition ? true : false,
+    ] = [false, false, false];
+    expect(runtimeToolAcceptance).toEqual([false, false, false]);
     expect(toolTypes).toContain('export type ErasedToolDefinition');
-    expect(sessionTypes).toContain('SessionTool = ErasedToolDefinition | Tool');
+    expect(sessionTypes).toContain('ToolDefinition<Type.TSchema');
+    expect(sessionTypes).not.toMatch(/\bErasedToolDefinition\b/);
+    expect(sessionTypes).not.toMatch(/\bSessionTool\b/);
     expect(sessionTypes).not.toContain('ToolDefinition<never>');
     for (const entrypoint of [
       'src/index.ts',
@@ -87,6 +109,25 @@ describe('Tool type ownership', () => {
       'src/tools/index.ts',
     ]) {
       expect(readFileSync(resolve(entrypoint), 'utf8')).not.toMatch(/\bErasedToolDefinition\b/);
+    }
+  });
+
+  it('does not recover runtime tools through structural detection', () => {
+    for (const entrypoint of [
+      'src/index.ts',
+      'src/session/index.ts',
+      'src/agent/createAgent.ts',
+      'src/middleware/AgentPlugin.ts',
+    ]) {
+      const source = readFileSync(resolve(entrypoint), 'utf8');
+      expect(source).not.toMatch(/\bSessionTool\b/);
+      expect(source).not.toMatch(/\bisRuntimeTool\b/);
+      expect(source).not.toMatch(/\bErasedToolDefinition\b/);
+    }
+    for (const runtimeModule of ['src/middleware/PluginHost.ts', 'src/session/SessionRuntime.ts']) {
+      const source = readFileSync(resolve(runtimeModule), 'utf8');
+      expect(source).not.toMatch(/\bSessionTool\b/);
+      expect(source).not.toMatch(/\bisRuntimeTool\b/);
     }
   });
 

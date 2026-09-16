@@ -1,3 +1,4 @@
+import type Type from 'typebox';
 import type { ProviderConnectionConfig } from '../model/config.js';
 import { withNodeSessionRepository } from '../node/withNodeSessionRepository.js';
 import type { RuntimeContext } from '../runtime/index.js';
@@ -9,11 +10,13 @@ import type {
   SendOptions,
   SessionHookEvent,
   SessionOptions,
-  SessionTool,
 } from '../session/types.js';
 import type { ToolKind } from '../tools/behavior.js';
+import type { ToolServiceName } from '../tools/services.js';
+import type { ToolDefinition } from '../tools/types/tool.js';
 import type { PermissionDecision } from '../types/constants.js';
 import { PermissionMode } from '../types/constants.js';
+import type { JsonValue } from '../types/json.js';
 import type {
   PermissionHandler,
   PermissionHandlerRequest,
@@ -71,7 +74,7 @@ export interface AgentOptions {
   profile?: AgentProfile;
   provider?: ProviderConnectionConfig['type'];
   baseUrl?: string;
-  tools?: readonly SessionTool[];
+  tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
   systemPrompt?: string;
   temperature?: number;
   maxOutputTokens?: number;

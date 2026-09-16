@@ -142,7 +142,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
-| `SessionTool` | Session 接受的 `ToolDefinition` 或完整 `Tool` 联合类型 |
 | `SendOptions` | send() 选项 |
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |

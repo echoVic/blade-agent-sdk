@@ -70,7 +70,7 @@ Types:
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionRepository`,
-`SessionEventStore`, `SessionPersistence`, `SessionTool`, `SessionStreamEvent`,
+`SessionEventStore`, `SessionPersistence`, `SessionStreamEvent`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolExecutionRecord`,
 `ToolDefinition`, and `ToolResult`.
 

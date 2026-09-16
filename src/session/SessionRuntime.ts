@@ -35,7 +35,7 @@ import {
   type ToolSourceInfo,
 } from '../tools/registry/ToolRegistry.js';
 import type { ToolServices } from '../tools/services.js';
-import type { Tool } from '../tools/types/tool.js';
+import type { ErasedToolDefinition, Tool } from '../tools/types/tool.js';
 import type { PermissionMode } from '../types/constants.js';
 import { HookEvent } from '../types/constants.js';
 import type { AgentId, SessionId } from '../types/identifiers.js';
@@ -55,21 +55,12 @@ import type {
   McpServerStatus,
   McpToolInfo,
   SessionOptions,
-  SessionTool,
 } from './types.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle,
 ): config is SdkMcpServerHandle {
   return 'createClientTransport' in config && 'server' in config;
-}
-
-function isRuntimeTool(tool: SessionTool): tool is Tool {
-  return (
-    typeof Reflect.get(tool, 'prepare') === 'function' &&
-    typeof Reflect.get(tool, 'execute') === 'function' &&
-    typeof Reflect.get(tool, 'declaration') === 'object'
-  );
 }
 
 function resolveStorageRoot(storagePath?: string): string | undefined {
@@ -497,14 +488,14 @@ export class SessionRuntime {
       sourceId: 'session',
     } as const;
     for (const tool of this.options.tools) {
-      this.registerSessionTool(tool, source);
+      this.registerToolDefinition(tool, source);
     }
   }
 
   private registerPluginTools(): void {
     const registrations = this.pluginHost.getTools();
     for (const { pluginName, tool } of registrations) {
-      this.registerSessionTool(tool, {
+      this.registerToolDefinition(tool, {
         kind: 'custom',
         trustLevel: 'workspace',
         sourceId: `plugin:${pluginName}`,
@@ -573,12 +564,8 @@ export class SessionRuntime {
     }
   }
 
-  private registerSessionTool(tool: SessionTool, source: ToolSourceInfo): void {
+  private registerToolDefinition(tool: ErasedToolDefinition, source: ToolSourceInfo): void {
     if (!this.isToolAllowed(tool.name)) {
-      return;
-    }
-    if (isRuntimeTool(tool)) {
-      this.toolRegistry.register(tool, source);
       return;
     }
     this.toolRegistry.registerDefinition(tool, source);

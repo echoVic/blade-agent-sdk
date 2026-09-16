@@ -1,4 +1,5 @@
-import type { HookCallback, SessionHookEvent, SessionTool } from '../session/types.js';
+import type { HookCallback, SessionHookEvent } from '../session/types.js';
+import type { ErasedToolDefinition } from '../tools/types/tool.js';
 import type { HookEvent } from '../types/constants.js';
 import type { AgentMiddlewareConfig, AgentPlugin } from './AgentPlugin.js';
 import type { ModelMiddleware } from './ModelMiddleware.js';
@@ -8,7 +9,7 @@ const PLUGIN_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 
 export interface PluginToolRegistration {
   readonly pluginName: string;
-  readonly tool: SessionTool;
+  readonly tool: ErasedToolDefinition;
 }
 
 interface PluginHostOptions {

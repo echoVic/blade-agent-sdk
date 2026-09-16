@@ -69,7 +69,6 @@ export type {
   SessionHookEvent,
   SessionOptions,
   SessionStreamEvent,
-  SessionTool,
   StreamOptions,
   SubagentInfo,
   ToolExecutionRecord,

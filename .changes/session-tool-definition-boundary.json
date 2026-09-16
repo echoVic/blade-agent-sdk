@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Require Session, Agent, and plugin tool inputs to be definitions returned by `defineTool()`; compiled runtime `Tool` objects are no longer accepted.",
+  "zh-CN": "Session、Agent 与插件的工具输入仅接受 `defineTool()` 返回的声明，不再接受已编译的 runtime `Tool` 对象。"
+}
