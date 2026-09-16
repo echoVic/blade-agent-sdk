@@ -703,7 +703,7 @@ Permission 和输入应用事件，并保证：
   `model_request_completed`、`model_request_failed` 或
   `model_request_aborted`。
 - `tool_scheduled` 通过 `modelAttemptId` 绑定产生它的模型调用，并同时保存
-  provider 原始 `modelInput` 与参数修复后的执行 `input`；schema v3 projector
+  provider 原始 `modelInput` 与参数修复后的执行 `input`；schema v4 projector
   会校验工具 ID、名称和原始参数。流式工具提前调度时，完整模型响应一旦收敛就会
   在等待工具终态前持久化并反向校验。
 - 工具副作用开始前已提交 `tool_started`。

@@ -7,8 +7,8 @@ import {
   DurableEventSubscriptionError,
   type DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
+import { resumableDurableRequest } from './events/DurableRecoveryPlan.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
-import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
 import {
   DurableSessionRecoveryRequiredError,
   SessionDurableRecorder,
@@ -83,13 +83,13 @@ export class SessionDurability {
     if (projection.status === 'closed') {
       throw new SessionDurableRecorderError(`Durable Session ${this.state.sessionId} is closed`);
     }
-    const resumeDecision = new DurableSessionRecoveryCoordinator(journal).planResume();
-    if (resumeDecision.action === 'recovery_required') {
-      throw new DurableSessionRecoveryRequiredError(resumeDecision.recoveryPlan);
-    }
-    if (resumeDecision.action === 'resume_accepted_request') {
-      this.state.durableAcceptedRequest = resumeDecision.request;
-      this.state.options.model = resumeDecision.request.model;
+    const recoveryPlan = journal.getRecoveryPlan();
+    const request = resumableDurableRequest(projection, recoveryPlan);
+    if (request) {
+      this.state.durableAcceptedRequest = request;
+      this.state.options.model = request.model;
+    } else if (recoveryPlan.action !== 'none') {
+      throw new DurableSessionRecoveryRequiredError(recoveryPlan);
     }
     this.state.durableJournal = journal;
   }

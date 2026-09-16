@@ -47,7 +47,7 @@ import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2 | 3 | 4;
+  schemaVersion: 4;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -91,7 +91,7 @@ are rejected before append.
 | `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
 | `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
 | `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
-| `tool_scheduled` | Request, Turn, `toolAttemptId` (`modelAttemptId` and `modelInput` are forbidden in schema v2 and required from v3) | `toolCallId`, `toolName`, `input`, `sideEffect`, `interruptBehavior` |
+| `tool_scheduled` | Request, Turn, `modelAttemptId`, `toolAttemptId` | `toolCallId`, `toolName`, `modelInput`, `input`, `sideEffect`, `interruptBehavior` |
 | `tool_started` | Request, Turn, `toolAttemptId` | Tool identity, final `input`, resolved `sideEffect` |
 | `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
 | `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
@@ -101,7 +101,7 @@ are rejected before append.
 | `permission_resolved` | Request, Turn, `toolAttemptId` | `permissionRequestId`, `decision`, optional `message` |
 | `input_applied` | `requestId`, optional `turnId` | `inputId`, `priority` |
 
-`request_accepted.recovery` always retains the v2
+`request_accepted.recovery` uses the
 `{ requestId, turnId, turn }` wire shape. A pre-Turn Request rollover writes a
 synthetic Turn in the same command to provide provenance. The projector exposes
 that meaning as `recoveryKind: 'pre_turn_request'` without adding fields to the
@@ -332,9 +332,8 @@ The projector fails closed and verifies at least these invariants:
 After any validation failure, the projector instance remains failed. Discard it,
 repair the canonical journal, and replay from the beginning rather than skipping
 the invalid event.
-For compatibility with existing schema-v2 journals, an absent Request-terminal
-causation remains readable. The current Session writer binds every standalone
-Request terminal event to the latest Request boundary, while
+The Session writer binds every standalone Request terminal event to the latest
+Request boundary, while
 `reconcileRequestOutcome()` binds the caller-confirmed terminal Turn event.
 Journal preview rejects new unanchored or stale-boundary writes. An adjacent
 Turn/Request termination in one command does not need to reference an event ID
@@ -567,21 +566,14 @@ CAS command:
 3. accept a new continuation Request containing the original input, durable
    tool outcomes, and source Request/Turn provenance.
 
-The continuation marks tools that never executed as `not_started` and
+The continuation marks tools that never executed as `not_started`, marks
 retry-safe tools that crossed the execution boundary as
-`interrupted_before_trusted_completion`. Restored message history omits old
-tool calls without paired results; the new user continuation carries the
-durable recovery facts instead, avoiding both cross-store synthetic results
-and provider-invalid dangling tool calls. Multimodal original inputs retain
-their content parts instead of being flattened into JSON text. A permitted but
-not-yet-started tool uses the permission-updated input and is conservatively
-classified as `non_idempotent`. Unfinished tools from a `failed` or `aborted`
-Model Attempt are marked `discarded_unconfirmed_model_response` and must not be
-retried. A continuation retains at most the latest 16
-Model Attempts. Each model response/error and tool input, result, error, and
-permission value is limited to 4,000 serialized characters. Oversized values carry
-`kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix
-metadata so the model cannot mistake the preview for a complete result.
+`interrupted_before_trusted_completion`, and retains authoritative results for
+completed tools. Restored message history omits old tool calls without paired
+results; the new user continuation carries the durable recovery facts instead,
+avoiding both cross-store synthetic results and provider-invalid dangling tool
+calls. Multimodal original inputs retain their content parts instead of being
+flattened into JSON text.
 
 ```ts
 await coordinator.prepareTurnRecovery({
@@ -613,21 +605,16 @@ execution started raises
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER` and remains fail-closed; the API does not use
 prompting to bypass an unknown side effect.
 
-The current writer uses schema v4. Schema v3 added `modelAttemptId` and the
-complete model-request lifecycle. In v3 and later,
-`tool_scheduled.modelAttemptId` explicitly identifies the Model Attempt that
-produced the call, `modelInput` preserves the provider's original arguments,
-and `input` holds repaired execution input. Schema v4 adds the optional
-`modelIdentity` object to `model_request_started`. The projector
+The current runtime reads and writes schema v4 only.
+`tool_scheduled.modelAttemptId` identifies the Model Attempt that produced the
+call, `modelInput` preserves the provider's original arguments, and `input`
+holds repaired execution input. `model_request_started.modelIdentity` may
+record provider identity. The projector
 uses canonical JSON to match the tool ID, name, and original arguments to the
 confirmed model response. If streaming dispatches a tool before
 `model_request_completed`, the terminal model event validates all previously
-scheduled tools when it arrives. Readers remain compatible with schema-v2 and
-schema-v3 logs and may append later v4 batches to the same Session. Schema
-versions may only increase: an older batch after a newer one is corrupt, v2
-cannot contain v3 model events, and v2/v3 cannot contain v4 provider identity.
-Version 1 logs are not inferred silently and must be migrated before this
-runtime can resume them.
+scheduled tools when it arrives. Older schemas are neither inferred nor
+upgraded in place; migrate them offline to v4 before this runtime resumes them.
 
 ### Store deadlines and cooperative cancellation
 
@@ -783,7 +770,8 @@ encryption, retention, and access control at the deployment boundary.
 
 ## Consistency boundary
 
-`JsonlDurableEventStore` provides mutually exclusive reads, atomic
+`JsonlDurableEventStore` separates the event log and execution-lease sidecar
+into focused internal components while sharing one Session advisory lock. It provides mutually exclusive reads, atomic
 compare-and-append, and execution leases with monotonic fencing tokens across
 Node.js processes on the same host. Lease state and event appends share the
 same Session lock. This guarantee requires a local filesystem with working

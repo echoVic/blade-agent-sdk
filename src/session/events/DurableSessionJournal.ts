@@ -289,6 +289,11 @@ export class DurableSessionJournal {
     return events ? structuredClone(events) : null;
   }
 
+  replay(commandId: CommandId): DurableCommandCommitResult | null {
+    const events = this.commandEvents.get(commandId);
+    return events ? resultFromExisting('replayed', commandId, events) : null;
+  }
+
   refresh(): Promise<DurableSessionProjection> {
     return this.runExclusive(async () => {
       await this.reload();

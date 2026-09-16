@@ -37,10 +37,7 @@ interface AcquisitionState {
   readonly ttlMs: number;
   readonly heartbeatIntervalMs: number;
   readonly storeTimeoutMs: number;
-  uncertain: boolean;
-  resolved: boolean;
-  evictionDeadline: number;
-  evictionTimer: ReturnType<typeof setTimeout> | null;
+  retainUntil: number;
 }
 
 const ACQUISITION_STATES = new WeakMap<
@@ -53,26 +50,12 @@ function getAcquisitionState(
   sessionId: SessionId,
   ownerId: WorkerId,
 ): AcquisitionState | undefined {
-  return ACQUISITION_STATES.get(store)?.get(sessionId)?.get(ownerId);
-}
-
-function setAcquisitionState(
-  store: DurableExecutionLeaseStore,
-  sessionId: SessionId,
-  ownerId: WorkerId,
-  state: AcquisitionState,
-): void {
-  let sessions = ACQUISITION_STATES.get(store);
-  if (!sessions) {
-    sessions = new Map();
-    ACQUISITION_STATES.set(store, sessions);
+  const state = ACQUISITION_STATES.get(store)?.get(sessionId)?.get(ownerId);
+  if (state && !state.attemptPromise && state.retainUntil <= performance.now()) {
+    clearAcquisitionState(store, sessionId, ownerId, state);
+    return undefined;
   }
-  let owners = sessions.get(sessionId);
-  if (!owners) {
-    owners = new Map();
-    sessions.set(sessionId, owners);
-  }
-  owners.set(ownerId, state);
+  return state;
 }
 
 function clearAcquisitionState(
@@ -85,10 +68,6 @@ function clearAcquisitionState(
   const owners = sessions?.get(sessionId);
   if (owners?.get(ownerId) !== state) {
     return;
-  }
-  if (state.evictionTimer) {
-    clearTimeout(state.evictionTimer);
-    state.evictionTimer = null;
   }
   owners.delete(ownerId);
   if (owners.size === 0) {
@@ -134,11 +113,17 @@ function beginAcquisition(
         },
       );
     }
-    if (existing.evictionTimer) {
-      clearTimeout(existing.evictionTimer);
-      existing.evictionTimer = null;
-    }
     return existing;
+  }
+  let sessions = ACQUISITION_STATES.get(store);
+  if (!sessions) {
+    sessions = new Map();
+    ACQUISITION_STATES.set(store, sessions);
+  }
+  let owners = sessions.get(sessionId);
+  if (!owners) {
+    owners = new Map();
+    sessions.set(sessionId, owners);
   }
   const state: AcquisitionState = {
     leaseId: requestedLeaseId ?? ExecutionLeaseId(nanoid()),
@@ -146,12 +131,9 @@ function beginAcquisition(
     ttlMs,
     heartbeatIntervalMs,
     storeTimeoutMs,
-    uncertain: false,
-    resolved: false,
-    evictionDeadline: 0,
-    evictionTimer: null,
+    retainUntil: 0,
   };
-  setAcquisitionState(store, sessionId, ownerId, state);
+  owners.set(ownerId, state);
   return state;
 }
 
@@ -161,7 +143,6 @@ function completeAcquisition(
   ownerId: WorkerId,
   state: AcquisitionState,
 ): void {
-  state.resolved = true;
   clearAcquisitionState(store, sessionId, ownerId, state);
 }
 
@@ -173,49 +154,18 @@ function failAcquisition(
   outcomeUnknown: boolean,
   retentionMs: number,
 ): void {
-  if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
+  if (getAcquisitionState(store, sessionId, ownerId) !== state) {
     return;
   }
-  state.uncertain ||= outcomeUnknown;
-  if (!state.uncertain) {
+  if (!outcomeUnknown) {
     clearAcquisitionState(store, sessionId, ownerId, state);
     return;
   }
-  if (state.evictionTimer) {
-    clearTimeout(state.evictionTimer);
-  }
   const now = performance.now();
-  state.evictionDeadline = Math.max(
-    state.evictionDeadline,
+  state.retainUntil = Math.max(
+    state.retainUntil,
     now + Math.min(retentionMs, Number.MAX_SAFE_INTEGER - now),
   );
-  scheduleAcquisitionEviction(store, sessionId, ownerId, state);
-}
-
-function scheduleAcquisitionEviction(
-  store: DurableExecutionLeaseStore,
-  sessionId: SessionId,
-  ownerId: WorkerId,
-  state: AcquisitionState,
-): void {
-  const remainingMs = state.evictionDeadline - performance.now();
-  state.evictionTimer = setTimeout(
-    () => {
-      state.evictionTimer = null;
-      if (state.resolved || getAcquisitionState(store, sessionId, ownerId) !== state) {
-        return;
-      }
-      if (state.evictionDeadline > performance.now()) {
-        scheduleAcquisitionEviction(store, sessionId, ownerId, state);
-        return;
-      }
-      if (state.attemptPromise === null) {
-        clearAcquisitionState(store, sessionId, ownerId, state);
-      }
-    },
-    Math.min(Math.max(0, remainingMs), MAX_DURABLE_STORE_TIMEOUT_MS),
-  );
-  state.evictionTimer.unref?.();
 }
 
 /**

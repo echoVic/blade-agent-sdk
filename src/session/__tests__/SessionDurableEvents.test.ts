@@ -296,6 +296,7 @@ describe('Session durable events', () => {
   });
 
   it('keeps a lease-only Store deadline scoped to the lease', async () => {
+    vi.useFakeTimers();
     const { root, store } = createStore();
     const session = await createSession({
       ...options(store),
@@ -311,9 +312,21 @@ describe('Session durable events', () => {
     });
 
     const subscription = await session.subscribeDurableEvents();
+    let storeSignal: AbortSignal | undefined;
+    vi.spyOn(store, 'read').mockImplementation(async (_sessionId, readOptions) => {
+      storeSignal = readOptions?.signal;
+      return await new Promise<never>(() => {});
+    });
+    let settled = false;
+    const pending = subscription.next().finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(storeSignal).toBeDefined());
 
-    expect((subscription as unknown as { storeTimeoutMs: number }).storeTimeoutMs).toBe(15_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe(false);
     await subscription.return();
+    await expect(pending).resolves.toEqual({ done: true, value: undefined });
     await session.close();
   });
 

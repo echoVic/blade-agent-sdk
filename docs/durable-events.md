@@ -43,7 +43,7 @@ import { JsonlDurableEventStore } from '@blade-ai/agent-sdk/advanced';
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2 | 3 | 4;
+  schemaVersion: 4;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -86,7 +86,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `model_request_completed` | Request、Turn、`modelAttemptId` | 完整模型 `response` |
 | `model_request_failed` | Request、Turn、`modelAttemptId` | `error` |
 | `model_request_aborted` | Request、Turn、`modelAttemptId` | `reason` |
-| `tool_scheduled` | Request、Turn、`toolAttemptId`（`modelAttemptId` 与 `modelInput` 在 schema v2 被禁止、v3+ 起必需） | `toolCallId`、`toolName`、`input`、`sideEffect`、`interruptBehavior` |
+| `tool_scheduled` | Request、Turn、`modelAttemptId`、`toolAttemptId` | `toolCallId`、`toolName`、`modelInput`、`input`、`sideEffect`、`interruptBehavior` |
 | `tool_started` | Request、Turn、`toolAttemptId` | 工具标识、最终 `input`、解析后的 `sideEffect` |
 | `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
 | `tool_failed` | Request、Turn、`toolAttemptId` | 工具标识、`error` |
@@ -96,7 +96,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `permission_resolved` | Request、Turn、`toolAttemptId` | `permissionRequestId`、`decision`、可选 `message` |
 | `input_applied` | `requestId`、可选 `turnId` | `inputId`、`priority` |
 
-`request_accepted.recovery` 始终使用 v2 的
+`request_accepted.recovery` 使用
 `{ requestId, turnId, turn }` wire shape。首个 Turn 前的 Request rollover 会
 在同一 command 中写入一个 synthetic Turn 作为 provenance；projector 通过
 `recoveryKind: 'pre_turn_request'` 暴露该语义，而不扩展持久化的 recovery
@@ -317,7 +317,6 @@ const recovery = projector.recoveryPlan();
 
 任一事件校验失败后 projector 实例会保持 failed 状态；调用方必须丢弃该实例，
 修复 canonical journal 后从头重新投影，不能跳过坏事件继续运行。
-为兼容既有 schema v2 日志，缺失的 Request 终态 causation 仍可读取；当前
 Session writer 会把所有独立 Request 终态绑定到最后一次 Request 边界，
 `reconcileRequestOutcome()` 则绑定调用方确认过的最后 Turn 终止事件。Journal
 preview 会拒绝新的无锚点或 stale-boundary 写入。同一 command 中紧邻的
@@ -531,18 +530,11 @@ Turn，或重试时改用其他锚点，提交会 fail closed。
    continuation Request。
 
 continuation 会把从未执行的工具标记为 `not_started`，把已开始但可安全重试的
-工具标记为 `interrupted_before_trusted_completion`。恢复后的消息历史会丢弃
-没有配对结果的旧 tool call；上述 durable 状态随新的 user continuation 一起
-送入模型，因此不会构造跨 Store 的伪造 tool result，也不会留下 provider
-不接受的悬空 tool call。多模态原始输入仍以原始 content parts 传递，不会降级
-成 JSON 文本。权限恢复为 `allow` 但尚未执行的工具使用权限阶段更新后的输入，
-并按 `non_idempotent` 保守分类。来自 `failed` / `aborted` Model Attempt 的
-未完成工具标记为 `discarded_unconfirmed_model_response`，不得重试。continuation
-最多保留最近 16 次 Model
-Attempt；每个模型 response/error 及工具的 input、result、error 和 permission
-最多保留 4,000 个序列化字符；超限值会携带
-`kind: "truncated_recovery_value"`、原始长度和 JSON 前后缀，模型不会把预览误认
-为完整结果。
+工具标记为 `interrupted_before_trusted_completion`，并保留已完成工具的权威
+结果。恢复后的消息历史会丢弃没有配对结果的旧 tool call；上述 durable 状态随
+新的 user continuation 一起送入模型，因此不会构造跨 Store 的伪造 tool result，
+也不会留下 provider 不接受的悬空 tool call。多模态原始输入仍以原始 content
+parts 传递，不会降级成 JSON 文本。
 
 ```ts
 await coordinator.prepareTurnRecovery({
@@ -572,17 +564,13 @@ provenance 还要求前置 synthetic `turn_started`。`requestId` 和 `turnId` �
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER`，必须保持 fail-closed；该 API 不使用提示词
 绕过未知副作用。
 
-当前 writer 使用 schema v4。Schema v3 为模型调用增加了 `modelAttemptId` 和完整
-生命周期事件；v3 及后续版本的 `tool_scheduled.modelAttemptId` 显式绑定产生该
+当前 runtime 只读写 schema v4。`tool_scheduled.modelAttemptId` 显式绑定产生该
 工具调用的 Model Attempt，`modelInput` 保存 provider 原始参数，`input` 保存参数
-修复后的执行值。Schema v4 在 `model_request_started` 中增加可选的
-`modelIdentity` 对象。projector 以 canonical JSON 校验工具 ID、
+修复后的执行值；`model_request_started.modelIdentity` 可记录 provider 身份。
+projector 以 canonical JSON 校验工具 ID、
 名称和原始参数与已确认模型响应完全一致。即使流式工具在
 `model_request_completed` 前开始调度，模型终态到达时也会反向校验已调度工具。
-Reader 可继续读取 schema v2 和 v3 日志，并允许在同一 Session 后续追加 v4
-batch；schema 版本只能单调升级，旧版本 batch 不能追加到新版本之后，v2 不允许
-包含 v3 模型事件，v2/v3 也不允许包含 v4 Provider 身份。Schema v1 不会被静默
-推断，需要显式迁移后才能由当前 runtime 恢复。
+旧 schema 不会被静默推断或升级；必须先离线迁移到 v4，当前 runtime 才会恢复。
 
 ### Store deadline 与协作取消
 
@@ -716,7 +704,8 @@ Store 视为敏感数据存储，并自行配置加密、保留期限和访问�
 
 ## 一致性边界
 
-`JsonlDurableEventStore` 保证同一主机上多个 Node.js 进程针对同一 Session 的
+`JsonlDurableEventStore` 将事件日志和 execution lease sidecar 分成独立内部
+组件，但二者共享同一 Session advisory lock。它保证同一主机上多个 Node.js 进程针对同一 Session 的
 互斥读写、原子 compare-and-append，以及带单调 fencing token 的执行租约。租约
 状态和 event append 共用同一把 Session 锁。该保证要求本地文件系统正确实现
 advisory lock，不适用于 NFS 等共享网络文件系统。多副本服务必须实现
