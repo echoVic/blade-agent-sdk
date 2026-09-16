@@ -210,8 +210,8 @@ and capacity accounting. Run it against a dedicated schema or test database.
 - Schema initialization requires DDL privileges; production deployments may call `initialize()` during deployment.
 - `close()` closes an internally created Pool; an injected Pool remains caller-owned.
 - `maxAgentEventsPerSession` applies rolling retention to replayable SSE events.
-- `maxDurableEventsPerSession`, `maxDomainEventsPerSession`, and
-  `maxTranscriptEventsPerSession` (each `100000` by default) are hard write
+- `maxDurableEventsPerSession` and `maxDomainEventsPerSession`
+  (each `100000` by default) are hard write
   quotas for non-truncatable streams. The Store rejects an append at the limit
   instead of silently deleting recovery or audit history.
 - `maxSessionsPerTenant` applies only to transcript projection cleanup.

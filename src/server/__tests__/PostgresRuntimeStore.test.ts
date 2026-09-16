@@ -7,7 +7,6 @@ describe('PostgresRuntimeStore event quotas', () => {
   it.each([
     'maxDurableEventsPerSession',
     'maxDomainEventsPerSession',
-    'maxTranscriptEventsPerSession',
   ] as const)('rejects an invalid %s', (option) => {
     expect(
       () =>

@@ -1,22 +1,15 @@
-import { nanoid } from 'nanoid';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
 import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
 import type { MessageRole } from '../types/constants.js';
-import {
-  type InputId,
-  MessageId,
-  type RequestId,
-  type SessionId,
-  ToolUseId,
-} from '../types/identifiers.js';
+import type { InputId, MessageId, RequestId, SessionId, ToolUseId } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { SessionHistoryProgress } from './historyProgress.js';
-import type {
-  SessionSnapshot,
-  SessionState,
-  SessionStore,
-  SessionSummary,
+import {
+  ProjectedSessionRepository,
+  type SessionState,
+  type SessionStateMutation,
+  type SessionStore,
 } from './SessionStore.js';
 import type { PersistedPendingInput } from './transcript.js';
 
@@ -78,7 +71,7 @@ export interface SessionRepository extends SessionStore {
   checkStorageHealth(): Promise<SessionRepositoryHealth>;
 }
 
-/** Append-only transcript event port used to update Session projections. */
+/** Write-side port for atomic Session projection updates. */
 export interface SessionEventStore {
   createSession(sessionId: SessionId, subagentInfo?: SessionRepositorySubagentInfo): Promise<void>;
   saveMessage(
@@ -149,104 +142,26 @@ export interface SessionEventStore {
  * Non-persistent repository used when callers intentionally run an ephemeral
  * Session without a shared store.
  */
-export class NoopSessionRepository implements SessionRepository, SessionEventStore {
+export class NoopSessionRepository extends ProjectedSessionRepository {
   async initialize(): Promise<void> {}
 
-  async createSession(
-    _sessionId: SessionId,
-    _subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void> {}
-
-  async saveMessage(
-    _sessionId: SessionId,
-    _messageRole: MessageRole,
-    _content: string | ModelContent[],
-    _parentMessageId: MessageId | null = null,
-    _metadata?: SessionRepositoryMessageMetadata,
-    _subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    return MessageId(nanoid());
-  }
-
-  async saveInputEnqueued(_sessionId: SessionId, _input: PersistedPendingInput): Promise<void> {}
-
-  async saveAppliedInputMessage(
-    _sessionId: SessionId,
-    _inputId: InputId,
-    _requestId: RequestId,
-    _content: string | ModelContent[],
-    _parentMessageId: MessageId | null = null,
-    _subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    return MessageId(nanoid());
-  }
-
-  async saveInputCancelled(
-    _sessionId: SessionId,
-    _inputId: InputId,
-    _reason: string,
-  ): Promise<void> {}
-
-  async saveToolUse(
-    _sessionId: SessionId,
-    _toolName: string,
-    _toolInput: JsonValue,
-    _parentMessageId: MessageId | null = null,
-    _subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: ToolUseId,
-  ): Promise<PersistedToolUse> {
-    return {
-      messageId: MessageId(nanoid()),
-      toolCallId: requestedToolCallId ?? ToolUseId(nanoid()),
-    };
-  }
-
-  async saveToolResult(
-    _sessionId: SessionId,
-    _toolId: ToolUseId,
-    _toolName: string,
-    _toolOutput: JsonValue,
-    _parentMessageId: MessageId | null = null,
-    _error?: string,
-    _subagentInfo?: SessionRepositorySubagentInfo,
-    _subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<MessageId> {
-    return MessageId(nanoid());
-  }
-
-  async saveCompaction(
-    _sessionId: SessionId,
-    _summary: string,
-    _metadata: SessionRepositoryCompactionMetadata,
-    _parentMessageId: MessageId | null = null,
-  ): Promise<MessageId> {
-    return MessageId(nanoid());
-  }
-
-  async loadState(_sessionId: SessionId): Promise<SessionState | null> {
+  protected async readState(): Promise<SessionState | null> {
     return null;
   }
 
-  async loadMessages(_sessionId: SessionId): Promise<ModelMessage[]> {
+  protected async updateState<T>(
+    _sessionId: SessionId,
+    create: () => SessionState,
+    mutation: SessionStateMutation<T>,
+  ): Promise<T> {
+    return mutation(create(), Date.now());
+  }
+
+  async listSessions(): Promise<[]> {
     return [];
   }
 
-  async forkState(
-    _sessionId: SessionId,
-    _options?: { messageId?: MessageId },
-  ): Promise<SessionSnapshot | null> {
-    return null;
-  }
-
-  async listSessions(): Promise<SessionId[]> {
-    return [];
-  }
-
-  async getSessionSummary(_sessionId: SessionId): Promise<SessionSummary | null> {
-    return null;
-  }
-
-  async deleteSession(_sessionId: SessionId): Promise<void> {}
+  async deleteSession(): Promise<void> {}
 
   async cleanupOldSessions(): Promise<void> {}
 
@@ -264,6 +179,4 @@ export class NoopSessionRepository implements SessionRepository, SessionEventSto
       error: 'Session persistence is disabled',
     };
   }
-  async saveHistoryProgress(): Promise<void> {}
-  async clearHistoryGap(): Promise<void> {}
 }

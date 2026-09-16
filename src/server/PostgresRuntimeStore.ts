@@ -1,7 +1,5 @@
 import { nanoid } from 'nanoid';
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
-import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelContent } from '../model/message.js';
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentCommandResult,
@@ -10,7 +8,6 @@ import {
   parseAgentCommandResult,
   parseAgentServerEvent,
 } from '../protocol/index.js';
-import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import {
   type DurableEventOperationOptions,
   DurableEventSequenceConflictError,
@@ -31,31 +28,23 @@ import {
   type DurableEventReadOptions,
   DurableEventType,
 } from '../session/events/types.js';
-import { mergeHistoryProgress, type SessionHistoryProgress } from '../session/historyProgress.js';
 import type {
-  PersistedToolUse,
-  SessionRepositoryCompactionMetadata,
   SessionRepositoryHealth,
-  SessionRepositoryMessageMetadata,
   SessionRepositoryStorageStats,
-  SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef,
 } from '../session/SessionRepository.js';
-import type { SessionSnapshot, SessionState, SessionSummary } from '../session/SessionStore.js';
-import type { PersistedPendingInput, TranscriptSession } from '../session/transcript.js';
-import type { MessageRole } from '../types/constants.js';
+import {
+  ProjectedSessionRepository,
+  type SessionState,
+  type SessionStateMutation,
+} from '../session/SessionStore.js';
 import {
   CommandId,
   EventId,
   EventSequence,
   ExecutionLeaseId,
-  type InputId,
-  MessageId,
-  type RequestId,
   SessionId,
-  ToolUseId,
 } from '../types/identifiers.js';
-import type { JsonObject, JsonValue } from '../types/json.js';
+import type { JsonObject } from '../types/json.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
 import {
   PostgresContext,
@@ -83,7 +72,6 @@ import {
 const DEFAULT_MAX_EVENTS_PER_SESSION = 10_000;
 const DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION = 100_000;
 const DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION = 100_000;
-const DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION = 100_000;
 const DEFAULT_MAX_SESSIONS_PER_TENANT = 10_000;
 const SESSION_PROJECTION = 'session';
 
@@ -96,7 +84,6 @@ export interface PostgresRuntimeStoreOptions {
   readonly maxAgentEventsPerSession?: number;
   readonly maxDurableEventsPerSession?: number;
   readonly maxDomainEventsPerSession?: number;
-  readonly maxTranscriptEventsPerSession?: number;
   readonly maxSessionsPerTenant?: number;
 }
 
@@ -181,91 +168,11 @@ function assertJsonObject(value: unknown, label: string): void {
   }
 }
 
-function initialSessionState(
-  sessionId: SessionId,
-  now: number,
-  subagentInfo?: SessionRepositorySubagentInfo,
-): SessionState {
-  const timestamp = new Date(now).toISOString();
-  const sessionInfo: Partial<TranscriptSession> = {
-    sessionId,
-    rootId: subagentInfo?.parentSessionId ?? sessionId,
-    parentId: subagentInfo?.parentSessionId,
-    relationType: subagentInfo ? 'subagent' : undefined,
-    status: 'running',
-    agentType: subagentInfo?.subagentType,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  return {
-    sessionId,
-    createdAt: now,
-    lastActivity: now,
-    sessionInfo,
-    timeline: [],
-    messages: [],
-    messageIds: [],
-    summaryMessageIds: [],
-    toolCalls: [],
-    subagentRefs: [],
-    pendingInputs: [],
-  };
-}
-
-function appendMessage(
-  state: SessionState,
-  messageId: MessageId,
-  message: ConversationMessage,
-  createdAt: number,
-  parentMessageId?: MessageId,
-): void {
-  state.timeline.push({
-    id: messageId,
-    parentMessageId,
-    createdAt,
-    message: cloneMessage(message),
-  });
-  state.messages.push(cloneMessage(message));
-  state.messageIds.push(messageId);
-  state.lastActivity = createdAt;
-}
-
-function messageEnvelope(
-  metadata?: SessionRepositoryMessageMetadata,
-): Pick<
-  ConversationMessage,
-  'providerOptions' | 'provenance' | 'correlation' | 'telemetry' | 'extensions'
-> {
-  if (!metadata) {
-    return {};
-  }
-  const model = metadata.modelIdentity?.model ?? metadata.model;
-  return {
-    providerOptions: metadata.providerOptions,
-    provenance: metadata.provenance,
-    correlation: metadata.correlation,
-    telemetry:
-      model || metadata.usage
-        ? {
-            model,
-            usage: metadata.usage
-              ? {
-                  inputTokens: metadata.usage.input_tokens,
-                  outputTokens: metadata.usage.output_tokens,
-                }
-              : undefined,
-          }
-        : undefined,
-    extensions: metadata.extensions,
-  };
-}
-
 export class PostgresRuntimeStore extends PostgresWorkerRuntime implements RuntimeStore {
   private readonly ownsPool: boolean;
   private readonly maxAgentEventsPerSession: number;
   private readonly maxDurableEventsPerSession: number;
   private readonly maxDomainEventsPerSession: number;
-  private readonly maxTranscriptEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
   private initialization?: Promise<void>;
 
@@ -292,14 +199,11 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
       options.maxDurableEventsPerSession ?? DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION;
     this.maxDomainEventsPerSession =
       options.maxDomainEventsPerSession ?? DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION;
-    this.maxTranscriptEventsPerSession =
-      options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
     this.maxSessionsPerTenant = options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
       ['maxDurableEventsPerSession', this.maxDurableEventsPerSession],
       ['maxDomainEventsPerSession', this.maxDomainEventsPerSession],
-      ['maxTranscriptEventsPerSession', this.maxTranscriptEventsPerSession],
       ['maxSessionsPerTenant', this.maxSessionsPerTenant],
     ] as const) {
       if (!Number.isSafeInteger(value) || value < 1) {
@@ -1053,7 +957,7 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
       return;
     }
     try {
-      await this.saveHistoryProgress(tenantId, sessionId, {
+      await this.forTenant(tenantId).saveHistoryProgress?.(sessionId, {
         state: 'complete',
         requestId,
         coveredRequestId: requestId,
@@ -1101,36 +1005,6 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
     return row ? EventSequence(postgresInteger(row.next_sequence) - 1) : null;
   }
 
-  /**
-   * Record how far the message projection is complete, in the projection itself.
-   *
-   * The record is written in the same transaction as the messages it describes, so
-   * the cursor never has to infer progress from the event log. An open gap survives
-   * later successful writes unless the caller is the repair path.
-   */
-  async saveHistoryProgress(
-    tenantId: string,
-    sessionId: SessionId,
-    progress: SessionHistoryProgress,
-    options: { readonly clearGap?: boolean } = {},
-  ): Promise<void> {
-    await this.mutateSessionState(
-      tenantId,
-      sessionId,
-      'transcript.history_progress',
-      { state: progress.state, ...(progress.detail ? { detail: progress.detail } : {}) },
-      (state, now) => {
-        const next = { ...progress, updatedAt: progress.updatedAt || now };
-        const current = state.historyProgress;
-        state.historyProgress = options.clearGap
-          ? // The repair closed the gap, so the failed state no longer blocks the
-            // merge - but the boundary still cannot regress.
-            mergeHistoryProgress(current ? { ...current, state: 'complete' } : undefined, next)
-          : mergeHistoryProgress(current, next);
-      },
-    );
-  }
-
   async loadSessionState(tenantId: string, sessionId: SessionId): Promise<SessionState | null> {
     const projection = await this.getProjection(tenantId, sessionId, SESSION_PROJECTION);
     return projection ? asSessionState(projection.state) : null;
@@ -1139,36 +1013,9 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
   async mutateSessionState<T>(
     tenantId: string,
     sessionId: SessionId,
-    eventType: string,
-    eventData: JsonObject,
-    mutate: (state: SessionState, now: number) => T,
-    subagentInfo?: SessionRepositorySubagentInfo,
+    create: () => SessionState,
+    mutate: SessionStateMutation<T>,
   ): Promise<T> {
-    return this.mutateSessionStateBatch(
-      tenantId,
-      sessionId,
-      [{ type: eventType, data: eventData }],
-      mutate,
-      subagentInfo,
-    );
-  }
-
-  async mutateSessionStateBatch<T>(
-    tenantId: string,
-    sessionId: SessionId,
-    events: readonly {
-      readonly type: string;
-      readonly data: JsonObject;
-    }[],
-    mutate: (state: SessionState, now: number) => T,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<T> {
-    if (events.length === 0) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'A Session projection mutation requires at least one event',
-      );
-    }
     await this.initialize();
     return this.db.transaction(async (client) => {
       await this.db.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
@@ -1183,44 +1030,19 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
       const now = Date.now();
       const state = projectionResult.rows[0]
         ? asSessionState(projectionResult.rows[0].state)
-        : initialSessionState(sessionId, now, subagentInfo);
+        : create();
+      const historyProgress = state.historyProgress;
       const result = mutate(state, now);
-      if (events.some((event) => event.type !== 'transcript.history_progress')) {
-        // Messages and their progress commit together: a reader never sees a
-        // message whose write is not reflected in the recorded progress.
-        state.historyProgress = mergeHistoryProgress(state.historyProgress, {
-          state: state.historyProgress?.state === 'failed' ? 'failed' : 'in_progress',
+      if (state.historyProgress === historyProgress) {
+        state.historyProgress = {
+          ...historyProgress,
+          state: historyProgress?.state === 'failed' ? 'failed' : 'in_progress',
           updatedAt: now,
-        });
+        };
       }
-      const stored = await this.appendStream(
-        client,
-        tenantId,
-        sessionId,
-        'transcript',
-        undefined,
-        events.map((event) => ({ sequence, eventId, recordedAt }) => ({
-          schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
-          eventId,
-          sequence,
-          tenantId,
-          sessionId,
-          commandId: CommandId(`transcript:${eventId}`),
-          type: event.type,
-          data: event.data,
-          occurredAt: recordedAt,
-          recordedAt,
-        })),
-        undefined,
-        this.maxTranscriptEventsPerSession,
-      );
-      const offset = stored.at(-1)?.sequence;
-      if (offset === undefined) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          'A Session projection mutation produced no events',
-        );
-      }
+      const offset = projectionResult.rows[0]
+        ? postgresInteger(projectionResult.rows[0].projection_offset) + 1
+        : 1;
       await client.query(
         `INSERT INTO ${this.db.table('projections')} (
            tenant_id, session_id, projection_name, projection_offset, state, updated_at
@@ -1969,371 +1791,32 @@ export class PostgresRuntimeStore extends PostgresWorkerRuntime implements Runti
   }
 }
 
-class PostgresTenantRuntimeStore implements RuntimeTenantStore {
+class PostgresTenantRuntimeStore extends ProjectedSessionRepository implements RuntimeTenantStore {
   constructor(
     private readonly runtime: PostgresRuntimeStore,
     private readonly tenantId: string,
-  ) {}
+  ) {
+    super();
+  }
 
   initialize(): Promise<void> {
     return this.runtime.initialize();
   }
 
-  async createSession(
-    sessionId: SessionId,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void> {
-    const existing = await this.runtime.loadSessionState(this.tenantId, sessionId);
-    if (existing) {
-      return;
-    }
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.session_created',
-      {
-        ...(subagentInfo
-          ? {
-              parentSessionId: subagentInfo.parentSessionId,
-              subagentType: subagentInfo.subagentType,
-              isSidechain: subagentInfo.isSidechain,
-            }
-          : {}),
-      },
-      () => initialSessionState(sessionId, Date.now(), subagentInfo),
-      subagentInfo,
-    );
-  }
-
-  async saveMessage(
-    sessionId: SessionId,
-    messageRole: MessageRole,
-    content: string | ModelContent[],
-    parentMessageId: MessageId | null = null,
-    metadata?: SessionRepositoryMessageMetadata,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.message_saved',
-      { messageId, role: messageRole },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: messageRole,
-            content: structuredClone(content),
-            reasoningContent: metadata?.reasoningContent,
-            tool_calls: metadata?.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
-            modelIdentity: metadata?.modelIdentity
-              ? structuredClone(metadata.modelIdentity)
-              : undefined,
-            ...messageEnvelope(metadata),
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_enqueued',
-      { inputId: input.inputId },
-      (state, now) => {
-        state.pendingInputs = [
-          ...state.pendingInputs.filter((item) => item.inputId !== input.inputId),
-          {
-            ...input,
-            content: cloneJsonValue(input.content),
-          },
-        ];
-        state.lastActivity = now;
-      },
-    );
-  }
-
-  async saveAppliedInputMessage(
-    sessionId: SessionId,
-    inputId: InputId,
-    requestId: RequestId,
-    content: string | ModelContent[],
-    parentMessageId: MessageId | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_applied',
-      { inputId, requestId, messageId },
-      (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'user',
-            content: structuredClone(content),
-            correlation: { inputId, requestId },
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_cancelled',
-      { inputId, reason },
-      (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
-        state.lastActivity = now;
-      },
-    );
-  }
-
-  async saveToolUse(
-    sessionId: SessionId,
-    toolName: string,
-    toolInput: JsonValue,
-    parentMessageId: MessageId | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: ToolUseId,
-  ): Promise<PersistedToolUse> {
-    const messageId = MessageId(nanoid());
-    const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.tool_use_saved',
-      { messageId, toolCallId, toolName },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'assistant',
-            content: '',
-            tool_calls: [
-              {
-                id: toolCallId,
-                type: 'function',
-                function: {
-                  name: toolName,
-                  arguments: typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput),
-                },
-              },
-            ],
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        state.toolCalls.push({
-          id: toolCallId,
-          name: toolName,
-          input: cloneJsonValue(toolInput),
-          messageId,
-          timestamp: now,
-          status: 'pending',
-        });
-        return { messageId, toolCallId };
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveToolResult(
-    sessionId: SessionId,
-    toolId: ToolUseId,
-    toolName: string,
-    toolOutput: JsonValue,
-    parentMessageId: MessageId | null = null,
-    error?: string,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.tool_result_saved',
-      { messageId, toolId, toolName },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'tool',
-            content: error
-              ? `Error: ${error}`
-              : typeof toolOutput === 'string'
-                ? toolOutput
-                : JSON.stringify(toolOutput),
-            tool_call_id: toolId,
-            name: toolName,
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        const call = [...state.toolCalls]
-          .reverse()
-          .find((item) => item.id === toolId && item.status === 'pending');
-        if (call) {
-          call.output = cloneJsonValue(toolOutput);
-          call.error = error;
-          call.status = error ? 'error' : 'success';
-        }
-        if (subagentRef) {
-          state.subagentRefs.push({
-            messageId,
-            childSessionId: subagentRef.subagentSessionId,
-            agentType: subagentRef.subagentType,
-            status: subagentRef.subagentStatus,
-            summary: subagentRef.subagentSummary,
-            startedAt: new Date(now).toISOString(),
-            finishedAt:
-              subagentRef.subagentStatus === 'running' ? null : new Date(now).toISOString(),
-          });
-        }
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveCompaction(
-    sessionId: SessionId,
-    summary: string,
-    metadata: SessionRepositoryCompactionMetadata,
-    parentMessageId: MessageId | null = null,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.compaction_saved',
-      { messageId, trigger: metadata.trigger },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'system',
-            content: summary,
-            provenance: { source: 'compaction_summary' },
-            extensions: {
-              trigger: metadata.trigger,
-              preTokens: metadata.preTokens,
-              ...(metadata.postTokens !== undefined ? { postTokens: metadata.postTokens } : {}),
-              ...(metadata.filesIncluded ? { filesIncluded: metadata.filesIncluded } : {}),
-            },
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        state.summary = summary;
-        state.summaryMessageIds.push(messageId);
-        return messageId;
-      },
-    );
-  }
-
-  loadState(sessionId: SessionId): Promise<SessionState | null> {
+  protected readState(sessionId: SessionId): Promise<SessionState | null> {
     return this.runtime.loadSessionState(this.tenantId, sessionId);
   }
 
-  saveHistoryProgress(sessionId: SessionId, progress: SessionHistoryProgress): Promise<void> {
-    return this.runtime.saveHistoryProgress(this.tenantId, sessionId, progress);
-  }
-
-  clearHistoryGap(
+  protected updateState<T>(
     sessionId: SessionId,
-    repairedMessages: number,
-    options: { readonly coveredRequestId?: RequestId } = {},
-  ): Promise<void> {
-    return this.runtime.saveHistoryProgress(
-      this.tenantId,
-      sessionId,
-      {
-        state: 'complete',
-        updatedAt: Date.now(),
-        repairedMessages,
-        ...(options.coveredRequestId ? { coveredRequestId: options.coveredRequestId } : {}),
-      },
-      { clearGap: true },
-    );
-  }
-
-  async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
-    const state = await this.loadState(sessionId);
-    return state?.messages.map((message) => cloneMessage(message)) ?? [];
-  }
-
-  async forkState(
-    sessionId: SessionId,
-    options?: { messageId?: MessageId },
-  ): Promise<SessionSnapshot | null> {
-    const state = await this.loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-    let endIndex = state.timeline.length;
-    if (options?.messageId) {
-      const index = state.messageIds.indexOf(options.messageId);
-      if (index === -1) {
-        throw new Error(`Message with ID "${options.messageId}" not found in session history`);
-      }
-      endIndex = index + 1;
-    }
-    const timeline = state.timeline.slice(0, endIndex);
-    const messageIds = timeline.map((entry) => entry.id);
-    return {
-      sessionId,
-      messages: timeline.map((entry) => cloneMessage(entry.message)),
-      messageIds,
-      lastActivity: timeline.at(-1)?.createdAt ?? state.createdAt,
-      summary: [...timeline].reverse().find((entry) => state.summaryMessageIds.includes(entry.id))
-        ?.message.content as string | undefined,
-    };
+    create: () => SessionState,
+    mutation: SessionStateMutation<T>,
+  ): Promise<T> {
+    return this.runtime.mutateSessionState(this.tenantId, sessionId, create, mutation);
   }
 
   listSessions(): Promise<SessionId[]> {
     return this.runtime.listSessionProjectionIds(this.tenantId);
-  }
-
-  async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
-    const state = await this.loadState(sessionId);
-    return state
-      ? {
-          sessionId,
-          lastActivity: state.lastActivity,
-          messageCount: state.messages.filter(
-            (message) => message.role === 'user' || message.role === 'assistant',
-          ).length,
-          topics: [],
-          summaryText: state.summary,
-        }
-      : null;
   }
 
   deleteSession(sessionId: SessionId): Promise<void> {

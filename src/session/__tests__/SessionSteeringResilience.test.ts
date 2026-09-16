@@ -2,11 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { JSONLStore } from '../../context/storage/JSONLStore.js';
-import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
+import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookEvent } from '../../types/constants.js';
-import { SessionId } from '../../types/identifiers.js';
-import type { TranscriptEvent } from '../transcript.js';
 
 // 每个用例可覆盖的 streamChat 实现；默认产出一条成功事件。
 type StreamChatImpl = (
@@ -44,11 +41,6 @@ function baseOptions(storagePath: string) {
     model: 'gpt-4o-mini',
     storagePath,
   };
-}
-
-async function readEvents(storagePath: string, sessionId: string): Promise<TranscriptEvent[]> {
-  const filePath = getSessionFilePathFromStorageRoot(storagePath, SessionId(sessionId));
-  return new JSONLStore(filePath).readAll();
 }
 
 describe('Session steering resilience', () => {
@@ -194,10 +186,9 @@ describe('Session steering resilience', () => {
     // 失败请求收尾后不应把初始输入重新排队。
     expect(session.getPendingInputs()).toHaveLength(0);
 
-    const events = await readEvents(storagePath, sessionId);
-    const appliedForInput = events.filter((event) => event.type === 'input_applied');
-    // 同一初始输入至多写入一次 input_applied，绝不能重复。
-    expect(appliedForInput.length).toBeLessThanOrEqual(1);
+    const state = await new PersistentStore(storagePath).loadState(sessionId);
+    const appliedInput = state?.messages.filter((message) => message.content === 'only once');
+    expect(appliedInput?.length).toBeLessThanOrEqual(1);
 
     await session.close();
   });

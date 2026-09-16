@@ -6,7 +6,7 @@ Session 生命周期投影。
 
 ::: warning 当前集成阶段
 Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
-事件；现有消息 JSONL 保持不变。`resumeSession()` 会自动恢复已接受但尚未跨过
+事件；消息历史独立保存在原子 `SessionState` 投影中。`resumeSession()` 会自动恢复已接受但尚未跨过
 `request_started` 边界的 Request。已开始但尚无 Turn 的 Request，以及活动
 Turn，必须先通过 Recovery Coordinator 原子 rollover；待决权限、未知工具结果、
 未知模型结果和已完成 Turn 的 Request 仍需显式消解。`non_idempotent`

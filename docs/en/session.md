@@ -401,14 +401,13 @@ Session files are written under `{storagePath}/sessions/`. `persistSession: fals
 Caller-supplied Session IDs must be non-empty single path segments; `/`, `\`,
 and NUL are rejected before resolving a transcript path.
 
-Each local transcript append is serialized across Node.js processes with an OS
-advisory lock and synced before the write resolves. A final record without a
-newline is treated as an uncommitted crash tail: reads ignore it and the next
-append truncates it before writing. A malformed complete record fails Session
-loading instead of silently dropping history.
+Each local projection update is serialized across Node.js processes with an OS
+advisory lock, atomically replaced, and synced before the write resolves. A
+malformed projection or mismatched Session ID fails Session loading instead of
+silently dropping history.
 
 The persistent `{sessionId}.jsonl.lock` sidecar is part of the storage protocol.
-Do not delete, replace, or move a transcript or its sidecar while a Session may
+Do not delete, replace, or move a projection or its sidecar while a Session may
 be active. This coordination is for same-host local filesystems, not NFS or
 distributed storage, and requires the native lock targets supported by
 `fs-native-extensions` (macOS, glibc Linux, and Windows on x64/arm64). In-memory

@@ -15,7 +15,6 @@ export function withNodeSessionRepository(options: SessionOptions): SessionOptio
   const persistence = new PersistentStore(
     options.storagePath,
     100,
-    '0.0.10',
     getContextCwd(options.defaultContext),
   );
   return {

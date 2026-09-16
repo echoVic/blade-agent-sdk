@@ -14,7 +14,6 @@ import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { ToolKind } from '../../tools/behavior.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
@@ -441,7 +440,7 @@ describe('LoopRunner', () => {
       );
 
       const result = await runner.runLoop('run both searches', createContext({ sessionId }));
-      const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
+      const state = await new PersistentStore(workspaceRoot).loadState(sessionId);
 
       expect(result.success).toBe(true);
       expect(state?.messages.map((message) => message.role)).toEqual([

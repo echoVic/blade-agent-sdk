@@ -294,7 +294,7 @@ export interface SessionOptions {
    * The /node entry creates a JSONL repository from storagePath when omitted.
    */
   sessionRepository?: SessionRepository;
-  /** Append-only transcript event port paired with sessionRepository. */
+  /** Write-side Session projection port paired with sessionRepository. */
   sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
   /** Explicit Store for execution lease ownership and sticky fencing checks. */

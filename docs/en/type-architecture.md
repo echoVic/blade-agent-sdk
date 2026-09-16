@@ -12,7 +12,7 @@ owner directly, while package entry points only assemble public contracts.
 | Agent | `src/agent/` | Public `AgentOptions` / `AgentResponse` / `UserMessageContent`; internal `AgentRuntimeOptions` / `AgentExecutionContext` |
 | Tool | `src/tools/types/` | `Tool`, `ToolDefinition`, authoring inputs, `ToolResult`, `ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`, `SessionStreamEvent`, `PromptResult` |
-| Transcript | `src/session/transcript.ts` | `TranscriptEvent`, `TranscriptMessage`, `TranscriptPart` |
+| Session projection | `src/session/SessionStore.ts` | `SessionState`, `SessionSnapshot`, `SessionSummary` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`, `DurableSessionProjection` |
 | Remote protocol | `src/protocol/` | `AgentCommand`, `AgentCommandResult`, `AgentServerEvent` |
 | Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeCommandCommit`, `RuntimeDomainEvent`, `RuntimeEffectIntent` |
@@ -82,7 +82,7 @@ Event types remain separate because their lifecycles differ:
 |------|----------|-----------|-------------|
 | `AgentEvent` | One internal Agent loop | No | No |
 | `SessionStreamEvent` | Stream consumed by a Session caller | No | No |
-| `TranscriptEvent` | Conversation and input projection | Yes | No |
+| `SessionState` | Conversation and input projection | Yes | No |
 | `DurableEventEnvelope` | Deterministic recovery journal | Yes | No |
 | `RuntimeDomainEvent` | Atomic runtime transaction | Yes | No |
 | `AgentServerEvent` | AgentClient/AgentServer protocol | Replayable | Yes |
@@ -102,18 +102,18 @@ interface SessionRepository extends SessionStore {
 }
 
 interface SessionEventStore {
-  // append transcript events
+  // update the Session projection
 }
 ```
 
 - `SessionRepository` owns read projections and storage management.
-- `SessionEventStore` owns transcript appends.
+- `SessionEventStore` owns Session projection updates.
 - One adapter may explicitly implement both ports, but the SDK no longer
   provides a combined alias or detects capabilities at runtime.
 - A Session requires compatible read and write ports. It must never write to
   one backend and resume from another.
-- Local JSONL and PostgreSQL adapters convert persistence DTOs back into domain
-  types.
+- Local files and PostgreSQL atomically update the same `SessionState`
+  projection.
 
 ## Branded identifiers
 
@@ -147,7 +147,7 @@ External input follows validate-then-model semantics:
 4. Domain code receives only parsed values.
 
 Recursive JSON schemas come from `src/types/jsonSchema.ts`.
-`SessionStreamEvent`, protocol events, transcript events, and durable events
+`SessionStreamEvent`, protocol events, and durable events
 retain separate schemas because their compatibility and evolution policies
 differ.
 

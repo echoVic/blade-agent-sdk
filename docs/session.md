@@ -309,9 +309,9 @@ for await (const event of output) {
 }
 ```
 
-已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 通过
-JSONL 记录 `input_enqueued`、`input_applied` 或 `input_cancelled`；
-进程重启后，尚未应用的输入会恢复为 `later`，避免绑定到已经失效的请求。
+已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 将输入状态写入
+统一的 `SessionState` 投影；进程重启后，尚未应用的输入会恢复为 `later`，
+避免绑定到已经失效的请求。
 内存模式不会跨进程恢复。配置 `durableEventStore` 时，初始请求内容还会写入
 `request_accepted`；它不会替代 `storagePath` 对后续 steering 队列的恢复。
 
@@ -622,7 +622,7 @@ const session = await createSession({
 
 默认行为：
 
-- 会话历史自动写入本地存储（JSONL 格式）
+- 会话历史自动写入本地原子 `SessionState` 快照
 - 存储路径：`{storagePath}/sessions/{sessionId}.jsonl`
 - 未指定 `storagePath` 时使用内存存储，不创建 Session 文件
 - 可通过 `resumeSession()` 恢复已有会话
@@ -653,13 +653,12 @@ const session = await createSession({
 调用方提供的 Session ID 必须是非空的单一路径段；SDK 会在解析 transcript
 路径前拒绝 `/`、`\` 和 NUL。
 
-每次本地 transcript 追加都会通过操作系统 advisory lock 在多个 Node.js
-进程间串行化，并在写入返回前完成同步。末尾没有换行符的记录视为未提交的崩溃
-尾部：读取时忽略，下一次追加前截断。任何已经完整写入但格式损坏的记录都会使
-Session 加载失败，不会静默丢弃历史。
+每次本地投影更新都会通过操作系统 advisory lock 在多个 Node.js 进程间串行化，
+再以原子替换写入并同步。格式损坏或 Session ID 不匹配的投影会使 Session 加载
+失败，不会静默丢弃历史。
 
 持久的 `{sessionId}.jsonl.lock` sidecar 属于存储协议的一部分。当 Session
-可能仍在运行时，不要删除、替换或移动 transcript 及其 sidecar。该协调只适用于
+可能仍在运行时，不要删除、替换或移动投影文件及其 sidecar。该协调只适用于
 同机本地文件系统，不支持 NFS 或分布式存储，并依赖
 `fs-native-extensions` 支持的原生目标（macOS、glibc Linux 及 Windows 的
 x64/arm64）。原生 addon 不可用时，内存 Session 仍可使用，但

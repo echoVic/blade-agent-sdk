@@ -7,8 +7,8 @@ projection.
 
 ::: warning Integration status
 Session writes durable events only when
-`SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
-format is unchanged. `resumeSession()` automatically restores a Request that
+`SessionOptions.durableEventStore` is explicitly set; message history is stored
+separately as an atomic `SessionState` projection. `resumeSession()` automatically restores a Request that
 was accepted but did not cross the `request_started` boundary. A started
 Request without a Turn, and an active Turn, must first be atomically rolled
 over through the Recovery Coordinator. Pending permissions, unknown tool or

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import type { SessionRepository } from '../../session/SessionRepository.js';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { SessionId } from '../../types/identifiers.js';
 import { ContextManager } from '../ContextManager.js';
 import { PersistentStore } from '../storage/PersistentStore.js';
@@ -50,7 +49,6 @@ describe('ContextManager', () => {
   it('should hydrate conversation history from the unified session store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
-    const sessionStore = new JsonlSessionStore(workspaceRoot);
     const contextManager = new ContextManager(persistentStore, persistentStore);
 
     const sessionId = SessionId('session-1');
@@ -74,7 +72,7 @@ describe('ContextManager', () => {
 
     await contextManager.initialize();
     const loaded = await contextManager.loadSession(sessionId);
-    const state = await sessionStore.loadState(sessionId);
+    const state = await persistentStore.loadState(sessionId);
 
     expect(loaded).toBe(true);
     expect(state).not.toBeNull();

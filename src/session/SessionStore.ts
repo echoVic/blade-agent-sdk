@@ -1,21 +1,29 @@
-import * as fs from 'node:fs/promises';
-import { JSONLStore, JSONLStoreError } from '@/context/storage/JSONLStore.js';
-import {
-  getSessionFilePathFromStorageRoot,
-  normalizeSessionStorageRoot,
-} from '@/context/storage/pathUtils.js';
+import { nanoid } from 'nanoid';
 import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import type { ModelContent } from '../model/message.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
-import { type MessageId, type PartId, SessionId, ToolUseId } from '../types/identifiers.js';
-import type { JsonObject, JsonValue } from '../types/json.js';
-import type { SessionHistoryProgress } from './historyProgress.js';
+import type { MessageRole } from '../types/constants.js';
+import {
+  type InputId,
+  MessageId,
+  type RequestId,
+  type SessionId,
+  ToolUseId,
+} from '../types/identifiers.js';
+import type { JsonValue } from '../types/json.js';
+import { mergeHistoryProgress, type SessionHistoryProgress } from './historyProgress.js';
 import type {
-  PersistedPendingInput,
-  TranscriptEvent,
-  TranscriptPart,
-  TranscriptSession,
-} from './transcript.js';
+  PersistedToolUse,
+  SessionEventStore,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from './SessionRepository.js';
+import type { PersistedPendingInput, TranscriptSession } from './transcript.js';
 
 interface SessionTimelineEntry {
   id: MessageId;
@@ -101,288 +109,380 @@ export class NoopSessionStore implements SessionStore {
   }
 }
 
-interface MessageRecord extends SessionTimelineEntry {
-  parts: Map<PartId, ModelContent>;
+export type SessionStateMutation<T> = (state: SessionState, now: number) => T;
+
+function createSessionState(
+  sessionId: SessionId,
+  now: number,
+  subagent?: SessionRepositorySubagentInfo,
+): SessionState {
+  const timestamp = new Date(now).toISOString();
+  return {
+    sessionId,
+    createdAt: now,
+    lastActivity: now,
+    sessionInfo: {
+      sessionId,
+      rootId: subagent?.parentSessionId ?? sessionId,
+      parentId: subagent?.parentSessionId,
+      relationType: subagent ? 'subagent' : undefined,
+      status: 'running',
+      agentType: subagent?.subagentType,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    timeline: [],
+    messages: [],
+    messageIds: [],
+    summaryMessageIds: [],
+    toolCalls: [],
+    subagentRefs: [],
+    pendingInputs: [],
+  };
 }
 
-interface ProjectionBuilder {
-  sessionId: SessionId;
-  sessionInfo: Partial<TranscriptSession>;
-  createdAt: number;
-  lastActivity: number;
-  messages: Map<MessageId, MessageRecord>;
-  toolCalls: Map<ToolUseId, SessionToolCallState>;
-  subagentRefs: SessionSubagentRef[];
-  summaryMessageIds: MessageId[];
-  pendingInputs: Map<string, PersistedPendingInput>;
-  summary?: string;
+function appendMessage(
+  state: SessionState,
+  id: MessageId,
+  message: ConversationMessage,
+  now: number,
+  parentMessageId?: MessageId,
+): void {
+  state.timeline.push({ id, parentMessageId, createdAt: now, message: cloneMessage(message) });
+  state.messages.push(cloneMessage(message));
+  state.messageIds.push(id);
+  state.lastActivity = now;
+  state.sessionInfo.updatedAt = new Date(now).toISOString();
 }
 
-function corrupt(message: string): never {
-  throw new JSONLStoreError('SESSION_JSONL_CORRUPT_LOG', message);
+function messageMetadata(
+  metadata: SessionRepositoryMessageMetadata = {},
+): Partial<ConversationMessage> {
+  const model = metadata.modelIdentity?.model ?? metadata.model;
+  return {
+    reasoningContent: metadata.reasoningContent,
+    tool_calls: metadata.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
+    modelIdentity: metadata.modelIdentity ? structuredClone(metadata.modelIdentity) : undefined,
+    providerOptions: metadata.providerOptions,
+    provenance: metadata.provenance,
+    correlation: metadata.correlation,
+    telemetry:
+      model || metadata.usage
+        ? {
+            model,
+            usage: metadata.usage
+              ? {
+                  inputTokens: metadata.usage.input_tokens,
+                  outputTokens: metadata.usage.output_tokens,
+                }
+              : undefined,
+          }
+        : undefined,
+    extensions: metadata.extensions,
+  };
 }
 
-function object(value: JsonValue, subject: string): JsonObject {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    corrupt(`${subject} must be an object`);
-  }
-  return value;
-}
-
-function stringValue(value: JsonValue | undefined, subject: string): string {
-  if (typeof value !== 'string') corrupt(`${subject} must be a string`);
-  return value;
-}
-
-function messageContent(parts: Map<PartId, ModelContent>): ModelMessage['content'] {
-  const values = [...parts.values()];
-  return values.length === 1 && values[0]?.type === 'text' ? values[0].text : values;
-}
-
-function requireMessage(builder: ProjectionBuilder, part: TranscriptPart): MessageRecord {
-  const record = builder.messages.get(part.messageId);
-  if (!record) corrupt(`${part.partType} references missing message ${part.messageId}`);
-  return record;
-}
-
-function addPart(record: MessageRecord, part: TranscriptPart, content: ModelContent): void {
-  if (record.parts.has(part.partId)) corrupt(`Duplicate part ID ${part.partId}`);
-  record.parts.set(part.partId, content);
-  record.message.content = messageContent(record.parts);
-}
-
-function applyPart(builder: ProjectionBuilder, part: TranscriptPart): void {
-  const record = requireMessage(builder, part);
-  const payload = object(part.payload, part.partType);
-  switch (part.partType) {
-    case 'text':
-      addPart(record, part, {
-        type: 'text',
-        text: stringValue(payload.text, 'text payload'),
-        ...(objectOrUndefined(payload.providerOptions)
-          ? {
-              providerOptions: payload.providerOptions as Extract<
-                ModelContent,
-                { type: 'text' }
-              >['providerOptions'],
-            }
-          : {}),
-      });
-      return;
-    case 'image':
-      addPart(record, part, {
-        type: 'image_url',
-        image_url: { url: stringValue(payload.dataUrl, 'image payload') },
-      });
-      return;
-    case 'reasoning':
-      record.message.reasoningContent = `${record.message.reasoningContent ?? ''}${stringValue(
-        payload.text,
-        'reasoning payload',
-      )}`;
-      return;
-    case 'tool_call': {
-      if (record.message.role !== 'assistant') {
-        corrupt(`tool_call ${part.partId} belongs to ${record.message.role} message`);
-      }
-      const id = ToolUseId(stringValue(payload.toolCallId, 'tool_call ID'));
-      if (builder.toolCalls.has(id)) corrupt(`Duplicate tool call ID ${id}`);
-      const name = stringValue(payload.toolName, 'tool_call name');
-      const input = cloneJsonValue(payload.input);
-      const call: ModelToolCall = {
-        id,
-        type: 'function',
-        function: {
-          name,
-          arguments: typeof input === 'string' ? input : JSON.stringify(input),
-        },
-      };
-      record.message.tool_calls = [...(record.message.tool_calls ?? []), call];
-      builder.toolCalls.set(id, {
-        id,
-        name,
-        input,
-        messageId: record.id,
-        timestamp: record.createdAt,
-        status: 'pending',
-      });
-      return;
+function readableState(state: SessionState): SessionState {
+  const settled = new Set(
+    state.toolCalls.filter((call) => call.status !== 'pending').map((call) => call.id),
+  );
+  const timeline = state.timeline.flatMap((entry) => {
+    if (
+      entry.message.role === 'tool' &&
+      (!entry.message.tool_call_id || !settled.has(ToolUseId(entry.message.tool_call_id)))
+    ) {
+      return [];
     }
-    case 'tool_result': {
-      if (record.message.role !== 'tool') {
-        corrupt(`tool_result ${part.partId} belongs to ${record.message.role} message`);
-      }
-      const id = ToolUseId(stringValue(payload.toolCallId, 'tool_result ID'));
-      const call = builder.toolCalls.get(id);
-      if (!call || call.status !== 'pending') corrupt(`tool_result has no pending call ${id}`);
-      const name = stringValue(payload.toolName, 'tool_result name');
-      if (name !== call.name) corrupt(`tool_result name does not match call ${id}`);
-      const output = cloneJsonValue(payload.output);
-      const error = typeof payload.error === 'string' ? payload.error : undefined;
-      Object.assign(record.message, {
-        tool_call_id: id,
-        name,
-        content: error ? `Error: ${error}` : stringify(output),
-      });
-      Object.assign(call, { output, error, status: error ? 'error' : 'success' });
-      return;
+    if (entry.message.role !== 'assistant' || !entry.message.tool_calls?.length) return [entry];
+    const toolCalls = entry.message.tool_calls.filter((call) => settled.has(ToolUseId(call.id)));
+    if (toolCalls.length === 0 && entry.message.content === '' && !entry.message.reasoningContent) {
+      return [];
     }
-    case 'summary': {
-      const text = stringValue(payload.text, 'summary payload');
-      record.message.content = text;
-      record.message.provenance = { source: 'compaction_summary' };
-      record.message.extensions = objectOrUndefined(payload.extensions);
-      builder.summary = text;
-      builder.summaryMessageIds.push(record.id);
-      return;
-    }
-    case 'subtask_ref': {
-      const status = payload.status;
-      if (
-        status !== 'running' &&
-        status !== 'completed' &&
-        status !== 'failed' &&
-        status !== 'cancelled'
-      ) {
-        corrupt(`subtask_ref ${part.partId} has invalid status`);
-      }
-      builder.subagentRefs.push({
-        messageId: record.id,
-        childSessionId: SessionId(stringValue(payload.childSessionId, 'subtask session ID')),
-        agentType: stringValue(payload.agentType, 'subtask agent type'),
-        status,
-        ...(typeof payload.summary === 'string' ? { summary: payload.summary } : {}),
-        ...(typeof payload.startedAt === 'string' ? { startedAt: payload.startedAt } : {}),
-        ...(typeof payload.finishedAt === 'string' || payload.finishedAt === null
-          ? { finishedAt: payload.finishedAt }
-          : {}),
-      });
-      return;
-    }
-    default:
-      corrupt(`Unsupported transcript part type ${part.partType}`);
-  }
+    return [{ ...entry, message: { ...entry.message, tool_calls: toolCalls } }];
+  });
+  const messageIds = timeline.map((entry) => entry.id);
+  return {
+    ...state,
+    timeline,
+    messageIds,
+    messages: timeline.map((entry) => cloneMessage(entry.message)),
+    subagentRefs: state.subagentRefs.filter((ref) => messageIds.includes(ref.messageId)),
+  };
 }
 
-function objectOrUndefined(value: JsonValue | undefined): JsonObject | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
-}
-
-function stringify(value: JsonValue): string {
-  return typeof value === 'string' ? value : JSON.stringify(value);
-}
-
-function applyEvent(builder: ProjectionBuilder, event: TranscriptEvent): void {
-  builder.lastActivity = Date.parse(event.timestamp);
-  switch (event.type) {
-    case 'session_created':
-      builder.sessionInfo = { ...event.data, sessionId: builder.sessionId };
-      builder.createdAt = Date.parse(event.data.createdAt);
-      return;
-    case 'session_updated':
-      builder.sessionInfo = { ...builder.sessionInfo, ...event.data, sessionId: builder.sessionId };
-      return;
-    case 'message_created': {
-      if (builder.messages.has(event.data.messageId)) {
-        corrupt(`Duplicate message ID ${event.data.messageId}`);
-      }
-      const { data } = event;
-      const message: ConversationMessage = {
-        id: data.messageId,
-        role: data.role,
-        content: '',
-        modelIdentity: data.modelIdentity,
-        providerOptions: data.providerOptions,
-        provenance: data.provenance,
-        correlation: data.correlation,
-        telemetry:
-          data.model || data.usage
-            ? {
-                model: data.model,
-                usage: data.usage
-                  ? {
-                      inputTokens: data.usage.input_tokens,
-                      outputTokens: data.usage.output_tokens,
-                    }
-                  : undefined,
-              }
-            : undefined,
-        extensions: data.extensions,
-      };
-      builder.messages.set(data.messageId, {
-        id: data.messageId,
-        parentMessageId: data.parentMessageId,
-        createdAt: Date.parse(data.createdAt),
-        message,
-        parts: new Map(),
-      });
-      return;
-    }
-    case 'part_created':
-      applyPart(builder, event.data);
-      return;
-    case 'part_updated': {
-      corrupt(`Unsupported transcript event ${event.type}`);
-      break;
-    }
-    case 'input_enqueued':
-      builder.pendingInputs.set(event.data.inputId, {
-        ...event.data,
-        content: cloneJsonValue(event.data.content),
-      });
-      return;
-    case 'input_applied':
-    case 'input_cancelled':
-      builder.pendingInputs.delete(event.data.inputId);
-      return;
-  }
-}
-
-export class JsonlSessionStore implements SessionStore {
-  private readonly storageRoot: string;
-
-  constructor(storageRoot: string) {
-    this.storageRoot = normalizeSessionStorageRoot(storageRoot);
-  }
+export abstract class ProjectedSessionRepository implements SessionRepository, SessionEventStore {
+  abstract initialize(): Promise<void>;
+  abstract listSessions(): Promise<SessionId[]>;
+  abstract deleteSession(sessionId: SessionId): Promise<void>;
+  abstract cleanupOldSessions(): Promise<void>;
+  abstract getStorageStats(): Promise<SessionRepositoryStorageStats>;
+  abstract checkStorageHealth(): Promise<SessionRepositoryHealth>;
+  protected abstract readState(sessionId: SessionId): Promise<SessionState | null>;
+  protected abstract updateState<T>(
+    sessionId: SessionId,
+    create: () => SessionState,
+    mutation: SessionStateMutation<T>,
+  ): Promise<T>;
 
   async loadState(sessionId: SessionId): Promise<SessionState | null> {
-    const entries = await this.readEntries(sessionId);
-    if (entries.length === 0) return null;
-    if (entries[0]?.type !== 'session_created') {
-      corrupt(`Session ${sessionId} does not start with session_created`);
-    }
-    const initial = entries[0];
-    const builder: ProjectionBuilder = {
+    const state = await this.readState(sessionId);
+    return state ? readableState(state) : null;
+  }
+
+  async createSession(
+    sessionId: SessionId,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<void> {
+    await this.mutate(sessionId, () => undefined, subagentInfo);
+  }
+
+  saveMessage(
+    sessionId: SessionId,
+    role: MessageRole,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
+    metadata?: SessionRepositoryMessageMetadata,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
       sessionId,
-      sessionInfo: { sessionId },
-      createdAt: Date.parse(initial.timestamp),
-      lastActivity: Date.parse(initial.timestamp),
-      messages: new Map(),
-      toolCalls: new Map(),
-      subagentRefs: [],
-      summaryMessageIds: [],
-      pendingInputs: new Map(),
-    };
-    for (const event of entries) applyEvent(builder, event);
-    const timeline = [...builder.messages.values()].map(({ parts: _, ...entry }) => entry);
-    return {
+      (state, now) => {
+        appendMessage(
+          state,
+          id,
+          { id, role, content: structuredClone(content), ...messageMetadata(metadata) },
+          now,
+          parentMessageId ?? undefined,
+        );
+        for (const call of metadata?.toolCalls ?? []) {
+          let input: JsonValue = call.function.arguments;
+          try {
+            input = JSON.parse(call.function.arguments) as JsonValue;
+          } catch {
+            // Preserve provider text when it is not valid JSON.
+          }
+          state.toolCalls.push({
+            id: ToolUseId(call.id),
+            name: call.function.name,
+            input,
+            messageId: id,
+            timestamp: now,
+            status: 'pending',
+          });
+        }
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
+    return this.mutate(sessionId, (state, now) => {
+      state.pendingInputs = [
+        ...state.pendingInputs.filter((item) => item.inputId !== input.inputId),
+        { ...input, content: cloneJsonValue(input.content) },
+      ];
+      state.lastActivity = now;
+    });
+  }
+
+  saveAppliedInputMessage(
+    sessionId: SessionId,
+    inputId: InputId,
+    requestId: RequestId,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
       sessionId,
-      createdAt: builder.createdAt,
-      lastActivity: builder.lastActivity,
-      sessionInfo: builder.sessionInfo,
-      timeline,
-      messages: timeline.map((entry) => cloneMessage(entry.message)),
-      messageIds: timeline.map((entry) => entry.id),
-      summary: builder.summary,
-      summaryMessageIds: builder.summaryMessageIds,
-      toolCalls: [...builder.toolCalls.values()].map((call) => structuredClone(call)),
-      subagentRefs: structuredClone(builder.subagentRefs),
-      pendingInputs: [...builder.pendingInputs.values()].map((input) => structuredClone(input)),
-    };
+      (state, now) => {
+        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
+        appendMessage(
+          state,
+          id,
+          {
+            id,
+            role: 'user',
+            content: structuredClone(content),
+            correlation: { inputId, requestId },
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveInputCancelled(sessionId: SessionId, inputId: InputId): Promise<void> {
+    return this.mutate(sessionId, (state, now) => {
+      state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
+      state.lastActivity = now;
+    });
+  }
+
+  saveToolUse(
+    sessionId: SessionId,
+    toolName: string,
+    input: JsonValue,
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    requestedToolCallId?: ToolUseId,
+  ): Promise<PersistedToolUse> {
+    const messageId = MessageId(nanoid());
+    const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
+    return this.mutate(
+      sessionId,
+      (state, now) => {
+        appendMessage(
+          state,
+          messageId,
+          {
+            id: messageId,
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: toolName,
+                  arguments: typeof input === 'string' ? input : JSON.stringify(input),
+                },
+              },
+            ],
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        state.toolCalls.push({
+          id: toolCallId,
+          name: toolName,
+          input: cloneJsonValue(input),
+          messageId,
+          timestamp: now,
+          status: 'pending',
+        });
+        return { messageId, toolCallId };
+      },
+      subagentInfo,
+    );
+  }
+
+  saveToolResult(
+    sessionId: SessionId,
+    toolId: ToolUseId,
+    toolName: string,
+    output: JsonValue,
+    parentMessageId: MessageId | null = null,
+    error?: string,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    subagentRef?: SessionRepositorySubagentRef,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
+      sessionId,
+      (state, now) => {
+        appendMessage(
+          state,
+          id,
+          {
+            id,
+            role: 'tool',
+            content: error ? `Error: ${error}` : stringify(output),
+            tool_call_id: toolId,
+            name: toolName,
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        const call = state.toolCalls.findLast(
+          (item) => item.id === toolId && item.status === 'pending',
+        );
+        if (call) {
+          Object.assign(call, {
+            output: cloneJsonValue(output),
+            error,
+            status: error ? 'error' : 'success',
+          });
+        }
+        if (subagentRef) {
+          state.subagentRefs.push({
+            messageId: id,
+            childSessionId: subagentRef.subagentSessionId,
+            agentType: subagentRef.subagentType,
+            status: subagentRef.subagentStatus,
+            summary: subagentRef.subagentSummary,
+            startedAt: new Date(now).toISOString(),
+            finishedAt:
+              subagentRef.subagentStatus === 'running' ? null : new Date(now).toISOString(),
+          });
+        }
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveCompaction(
+    sessionId: SessionId,
+    summary: string,
+    metadata: SessionRepositoryCompactionMetadata,
+    parentMessageId: MessageId | null = null,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(sessionId, (state, now) => {
+      appendMessage(
+        state,
+        id,
+        {
+          id,
+          role: 'system',
+          content: summary,
+          provenance: { source: 'compaction_summary' },
+          extensions: {
+            trigger: metadata.trigger,
+            preTokens: metadata.preTokens,
+            ...(metadata.postTokens !== undefined ? { postTokens: metadata.postTokens } : {}),
+            ...(metadata.filesIncluded ? { filesIncluded: metadata.filesIncluded } : {}),
+          },
+        },
+        now,
+        parentMessageId ?? undefined,
+      );
+      state.summary = summary;
+      state.summaryMessageIds.push(id);
+      return id;
+    });
+  }
+
+  saveHistoryProgress(sessionId: SessionId, progress: SessionHistoryProgress): Promise<void> {
+    return this.mutate(sessionId, (state) => {
+      state.historyProgress = mergeHistoryProgress(state.historyProgress, progress);
+    });
+  }
+
+  clearHistoryGap(
+    sessionId: SessionId,
+    repairedMessages: number,
+    options: { readonly coveredRequestId?: RequestId } = {},
+  ): Promise<void> {
+    return this.mutate(sessionId, (state) => {
+      state.historyProgress = mergeHistoryProgress(state.historyProgress, {
+        state: 'complete',
+        updatedAt: Date.now(),
+        repairedMessages,
+        ...(options.coveredRequestId ? { coveredRequestId: options.coveredRequestId } : {}),
+      });
+    });
   }
 
   async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
-    return (await this.loadState(sessionId))?.messages ?? [];
+    return (await this.loadState(sessionId))?.messages.map(cloneMessage) ?? [];
   }
 
   async forkState(
@@ -404,19 +504,8 @@ export class JsonlSessionStore implements SessionStore {
       messages: timeline.map((entry) => cloneMessage(entry.message)),
       messageIds: timeline.map((entry) => entry.id),
       lastActivity: timeline.at(-1)?.createdAt ?? state.createdAt,
-      ...(typeof summary === 'string' ? { summary } : {}),
+      summary: typeof summary === 'string' ? summary : undefined,
     };
-  }
-
-  async listSessions(): Promise<SessionId[]> {
-    try {
-      return (await fs.readdir(this.storageRoot, { withFileTypes: true }))
-        .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
-        .map((file) => SessionId(file.name.slice(0, -'.jsonl'.length)))
-        .sort();
-    } catch {
-      return [];
-    }
   }
 
   async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
@@ -434,16 +523,19 @@ export class JsonlSessionStore implements SessionStore {
       : null;
   }
 
-  private async readEntries(sessionId: SessionId): Promise<TranscriptEvent[]> {
-    const entries = await new JSONLStore(
-      getSessionFilePathFromStorageRoot(this.storageRoot, sessionId),
-    ).readAll();
-    const mismatched = entries.find((event) => event.sessionId !== sessionId);
-    if (mismatched) {
-      corrupt(
-        `Session JSONL record ${mismatched.id} belongs to ${mismatched.sessionId}, expected ${sessionId}`,
-      );
-    }
-    return entries;
+  private mutate<T>(
+    sessionId: SessionId,
+    mutation: SessionStateMutation<T>,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<T> {
+    return this.updateState(
+      sessionId,
+      () => createSessionState(sessionId, Date.now(), subagentInfo),
+      mutation,
+    );
   }
+}
+
+function stringify(value: JsonValue): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }

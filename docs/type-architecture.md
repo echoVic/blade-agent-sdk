@@ -11,7 +11,7 @@ SDK 的类型按领域和边界归属，不按“通用类型”集中堆放。�
 | Agent | `src/agent/` | 公开 `AgentOptions` / `AgentResponse` / `UserMessageContent`，内部 `AgentRuntimeOptions` / `AgentExecutionContext` |
 | Tool | `src/tools/types/` | `Tool`、`ToolDefinition`、authoring input、`ToolResult`、`ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`、`SessionStreamEvent`、`PromptResult` |
-| Transcript | `src/session/transcript.ts` | `TranscriptEvent`、`TranscriptMessage`、`TranscriptPart` |
+| Session projection | `src/session/SessionStore.ts` | `SessionState`、`SessionSnapshot`、`SessionSummary` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`、`DurableSessionProjection` |
 | Remote protocol | `src/protocol/` | `AgentCommand`、`AgentCommandResult`、`AgentServerEvent` |
 | Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeCommandCommit`、`RuntimeDomainEvent`、`RuntimeEffectIntent` |
@@ -77,7 +77,7 @@ Provider 提示放在 `providerOptions` 中。只有不参与 SDK 控制流的�
 |------|----------|------------|------------------|
 | `AgentEvent` | 单次 Agent loop 内部执行 | 否 | 否 |
 | `SessionStreamEvent` | Session 调用方消费的流 | 否 | 否 |
-| `TranscriptEvent` | 对话消息和输入投影 | 是 | 否 |
+| `SessionState` | 对话消息和输入投影 | 是 | 否 |
 | `DurableEventEnvelope` | 确定性恢复 journal | 是 | 否 |
 | `RuntimeDomainEvent` | 原子 runtime transaction | 是 | 否 |
 | `AgentServerEvent` | AgentClient/AgentServer 协议 | 可重放 | 是 |
@@ -96,16 +96,16 @@ interface SessionRepository extends SessionStore {
 }
 
 interface SessionEventStore {
-  // append transcript events
+  // update the Session projection
 }
 ```
 
 - `SessionRepository` 是只读投影和存储管理端口。
-- `SessionEventStore` 是 transcript 追加端口。
+- `SessionEventStore` 是 Session 投影写入端口。
 - 同一个 adapter 可以显式实现两个端口，但 SDK 不再提供组合别名或自动能力探测。
 - `Session` 必须同时获得兼容的读写端口，禁止写入一个 backend、从另一个
   backend 恢复。
-- 本地 JSONL 与 PostgreSQL adapter 负责把存储 DTO 转回领域类型。
+- 本地文件与 PostgreSQL adapter 原子更新同一个 `SessionState` 投影。
 
 ## Branded identifiers
 
@@ -138,7 +138,7 @@ const commandId = CommandId(rawCommandId);
 4. 领域层只接收解析后的类型。
 
 JSON schema 的递归基础定义统一来自 `src/types/jsonSchema.ts`。
-`SessionStreamEvent`、protocol event、transcript event 和 durable event 各自保留
+`SessionStreamEvent`、protocol event 和 durable event 各自保留
 独立 schema，因为它们的兼容性和演进策略不同。
 
 ## Tool 泛型

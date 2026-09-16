@@ -6,6 +6,7 @@ All notable changes to `@blade-ai/agent-sdk` are documented here.
 
 ### Refactoring
 
+- Replace the duplicate transcript event log and replay projector with one atomic `SessionState` projection shared by local and PostgreSQL persistence; legacy transcript event files now fail closed instead of being heuristically repaired.
 - Collapse durable recovery onto a v4-only typed event scope, split projection/reduction, recovery payloads, and JSONL lease persistence into focused modules, and make journal projection the sole authority for recorder and recovery state.
 - Split Session orchestration into bounded lifecycle, request, durability, state, and stream modules, move SessionRunner ownership to the advanced entrypoint, and define the blade-tool-* package convention.
 - Reduce ad hoc type assertions across TypeBox tool compilation, MCP schema adapters, Session tool detection, and built-in memory tools while keeping unavoidable erasure casts at named internal boundaries.
