@@ -110,9 +110,11 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
   };
 
   try {
-    return await (loopOptions
-      ? agent.runAgenticLoop(prompt, chatContext, loopOptions)
-      : agent.runAgenticLoop(prompt, chatContext));
+    const stream = agent.streamChat(prompt, chatContext, loopOptions);
+    while (true) {
+      const next = await stream.next();
+      if (next.done) return next.value;
+    }
   } finally {
     await agent.destroy();
   }

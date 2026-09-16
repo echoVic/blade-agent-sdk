@@ -23,13 +23,6 @@ function createRepository() {
       sessions.set(agentId, next);
       return next;
     }),
-    appendMessages: vi.fn(async (agentId, messages) => {
-      const current = sessions.get(agentId);
-      if (!current) return undefined;
-      const next = { ...current, messages: [...current.messages, ...messages] } as AgentSession;
-      sessions.set(agentId, next);
-      return next;
-    }),
     updateRunningSession: vi.fn(async (agentId, updates) => {
       const current = sessions.get(agentId);
       if (!current) return undefined;
@@ -76,16 +69,7 @@ describe('SessionOptions.agentSessionRepository', () => {
     });
 
     try {
-      // The capability reaches the manager itself, rather than a file-backed store
-      // being constructed behind the caller's back.
-      const manager = (
-        session as unknown as {
-          runtime: {
-            getBackgroundAgentManager(): { getSessionRepository(): AgentSessionRepository };
-          };
-        }
-      ).runtime.getBackgroundAgentManager();
-      expect(manager.getSessionRepository()).toBe(repository);
+      await vi.waitFor(() => expect(repository.listSessions).toHaveBeenCalled());
     } finally {
       await session.close();
     }

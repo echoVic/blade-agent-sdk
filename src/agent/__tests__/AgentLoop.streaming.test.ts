@@ -29,9 +29,6 @@ type BaseConfigOverrides = Partial<
   messages?: ModelMessage[];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
   onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
-  onAfterToolExecEpochDiscard?: NonNullable<
-    NonNullable<AgentLoopConfig['hooks']>['tool']
-  >['afterExecEpochDiscard'];
   onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
   onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
@@ -68,7 +65,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     isYoloMode = false,
     onBeforeToolExec,
     onAfterToolExec,
-    onAfterToolExecEpochDiscard,
     onToolExecutionUpdate,
     onAssistantMessage,
     onComplete,
@@ -108,7 +104,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     tool: {
       beforeExec: onBeforeToolExec,
       afterExec: onAfterToolExec,
-      afterExecEpochDiscard: onAfterToolExecEpochDiscard,
       onUpdate: onToolExecutionUpdate,
     },
     message: {
@@ -149,7 +144,7 @@ async function collectEvents(
 }
 
 describe('agentLoop streaming integration', () => {
-  it('uses StreamingToolExecutor when streaming=true and tools are present, yielding streaming tool events without double-calling onAfterToolExec', async () => {
+  it('streams the model response before running tools through the shared executor', async () => {
     const toolGate = deferred<ToolResult>();
     const streamChat = vi.fn(async function* () {
       yield {
@@ -250,8 +245,8 @@ describe('agentLoop streaming integration', () => {
     const streamEndIndex = eventTypes.indexOf('stream_end');
     const toolResultIndex = eventTypes.indexOf('tool_result');
 
-    expect(toolStartIndex).toBeLessThan(streamEndIndex);
-    expect(streamEndIndex).toBeLessThan(toolResultIndex);
+    expect(streamEndIndex).toBeLessThan(toolStartIndex);
+    expect(toolStartIndex).toBeLessThan(toolResultIndex);
   });
 
   it('keeps the non-streaming path unchanged when streaming=false', async () => {

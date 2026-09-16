@@ -8,15 +8,8 @@ export interface ContextSnapshot {
   readonly turnId: TurnId;
   readonly context: RuntimeContext;
   readonly filesystemRoots: string[];
-  /**
-   * Convenience accessor derived from context.capabilities.filesystem.cwd.
-   */
   readonly cwd: string | undefined;
   readonly environment: Record<string, string>;
-  /**
-   * Effective sandbox policy for this turn, or undefined when the Session declares
-   * none. Tools read this instead of a process-wide setting.
-   */
   readonly sandbox?: SandboxSettings;
 }
 
@@ -59,8 +52,6 @@ export function mergeContext(
       ? {
           ...(baseCapabilities?.filesystem ?? {}),
           ...(overrideCapabilities?.filesystem ?? {}),
-          // Turn-scoped filesystem roots are intentionally replace-only.
-          // This keeps the current turn's accessible roots explicit rather than additive.
           roots:
             overrideCapabilities?.filesystem?.roots ?? baseCapabilities?.filesystem?.roots ?? [],
         }
@@ -70,9 +61,6 @@ export function mergeContext(
     ...defaultContext,
     ...turnContext,
     capabilities: {
-      // Non-filesystem facets currently use shallow whole-facet override.
-      // Omitting a facet in turnContext preserves the default facet, while
-      // providing the same facet replaces its object as a unit.
       ...(baseCapabilities ?? {}),
       ...(overrideCapabilities ?? {}),
       ...(filesystem ? { filesystem } : {}),
@@ -94,47 +82,11 @@ export function createContextSnapshot(
     sessionId,
     turnId: TurnId(turnId),
     context,
-    // Copies, never references: a caller that mutates its configuration array must
-    // not retroactively change a snapshot that was already handed to a tool.
     filesystemRoots: [...filesystemRoots],
     cwd: context.capabilities?.filesystem?.cwd,
     environment: { ...(context.environment ?? {}) },
-    sandbox: snapshotSandboxSettings(context.capabilities?.sandbox),
-  };
-}
-
-/**
- * Sandbox policy is copied deeply enough that later mutation of the source object
- * (or its arrays) cannot change an existing snapshot's behaviour.
- */
-function snapshotSandboxSettings(settings?: SandboxSettings): SandboxSettings | undefined {
-  if (!settings) {
-    return undefined;
-  }
-  return {
-    ...settings,
-    ...(settings.excludedCommands ? { excludedCommands: [...settings.excludedCommands] } : {}),
-    ...(settings.ignoreViolations
-      ? {
-          ignoreViolations: {
-            ...(settings.ignoreViolations.file
-              ? { file: [...settings.ignoreViolations.file] }
-              : {}),
-            ...(settings.ignoreViolations.network
-              ? { network: [...settings.ignoreViolations.network] }
-              : {}),
-          },
-        }
-      : {}),
-    ...(settings.network
-      ? {
-          network: {
-            ...settings.network,
-            ...(settings.network.allowUnixSockets
-              ? { allowUnixSockets: [...settings.network.allowUnixSockets] }
-              : {}),
-          },
-        }
-      : {}),
+    sandbox: context.capabilities?.sandbox
+      ? structuredClone(context.capabilities.sandbox)
+      : undefined,
   };
 }

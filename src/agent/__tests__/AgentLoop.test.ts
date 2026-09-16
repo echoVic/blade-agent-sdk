@@ -125,19 +125,12 @@ type BaseConfigOverrides = Partial<
   >['onTurnLimitCompact'];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
   onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
-  onAfterToolExecEpochDiscard?: NonNullable<
-    NonNullable<AgentLoopConfig['hooks']>['tool']
-  >['afterExecEpochDiscard'];
   onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
   onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
   onReactiveCompact?: NonNullable<
     NonNullable<AgentLoopConfig['hooks']>['recovery']
   >['reactiveCompact'];
-  onRecoveryStateChange?: NonNullable<
-    NonNullable<AgentLoopConfig['hooks']>['recovery']
-  >['onStateChange'];
-  onStopCheck?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['stop']>['check'];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -155,13 +148,10 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     onTurnLimitCompact,
     onBeforeToolExec,
     onAfterToolExec,
-    onAfterToolExecEpochDiscard,
     onToolExecutionUpdate,
     onAssistantMessage,
     onComplete,
     onReactiveCompact,
-    onRecoveryStateChange,
-    onStopCheck,
     ...rest
   } = overrides;
 
@@ -201,7 +191,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     tool: {
       beforeExec: onBeforeToolExec,
       afterExec: onAfterToolExec,
-      afterExecEpochDiscard: onAfterToolExecEpochDiscard,
       onUpdate: onToolExecutionUpdate,
     },
     message: {
@@ -210,10 +199,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     },
     recovery: {
       reactiveCompact: onReactiveCompact,
-      onStateChange: onRecoveryStateChange,
-    },
-    stop: {
-      check: onStopCheck,
     },
   };
 
@@ -489,70 +474,6 @@ describe('agentLoop', () => {
       await loop.return(undefined as never);
 
       expect(retryStreamClosed).toBe(true);
-      expect(onAborted).toHaveBeenCalledWith('request_interrupted');
-    });
-
-    it('closes the fallback provider stream when a tool turn consumer stops', async () => {
-      let streamCalls = 0;
-      let fallbackStreamClosed = false;
-      const onAborted = vi.fn(async () => {});
-      const modelService = {
-        streamChat: vi.fn(async function* (
-          _messages: readonly ModelMessage[],
-          _tools: unknown,
-          signal?: AbortSignal,
-        ) {
-          streamCalls += 1;
-          if (streamCalls === 1) {
-            return;
-          }
-          try {
-            yield { content: 'fallback partial' };
-            await new Promise<void>((_resolve, reject) => {
-              signal?.addEventListener('abort', () => reject(signal.reason), {
-                once: true,
-              });
-            });
-          } finally {
-            fallbackStreamClosed = true;
-          }
-        }),
-        chat: vi.fn(async () => ({
-          content: 'unexpected',
-          toolCalls: [],
-        })),
-        getConfig: () => ({
-          model: 'test-model',
-          maxContextTokens: 128000,
-        }),
-      } as unknown as TurnState['modelService'];
-      const loop = agentLoop(
-        baseConfig({
-          streaming: true,
-          turnState: {
-            modelService,
-            tools: [{ name: 'Read', description: 'read', parameters: {} }],
-          },
-          modelExecutionLifecycle: {
-            onModelRequestStarting: vi.fn(async () => ({
-              onCompleted: vi.fn(async () => {}),
-              onFailed: vi.fn(async () => {}),
-              onAborted,
-            })),
-          },
-        }),
-      );
-
-      await loop.next();
-      await loop.next();
-      await expect(loop.next()).resolves.toMatchObject({
-        value: { type: 'content_delta', delta: 'fallback partial' },
-        done: false,
-      });
-      await loop.return(undefined as never);
-
-      expect(streamCalls).toBe(2);
-      expect(fallbackStreamClosed).toBe(true);
       expect(onAborted).toHaveBeenCalledWith('request_interrupted');
     });
 
@@ -1153,7 +1074,7 @@ describe('agentLoop', () => {
       expect(onReactiveCompact).not.toHaveBeenCalled();
     });
 
-    it('reports recovery state transitions while withholding and retrying a turn', async () => {
+    it('withholds and retries an overflowed turn', async () => {
       const overflowError = new Error('maximum context length exceeded');
       const chatFn = vi
         .fn()
@@ -1167,7 +1088,6 @@ describe('agentLoop', () => {
         yield* [] as never[];
         return true;
       });
-      const onRecoveryStateChange = vi.fn();
 
       const modelService = {
         chat: chatFn,
@@ -1182,38 +1102,12 @@ describe('agentLoop', () => {
         agentLoop(
           baseConfig({
             onReactiveCompact,
-            onRecoveryStateChange,
             turnState: { modelService },
           }),
         ),
       );
 
       expect(result.success).toBe(true);
-      expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          turn: 1,
-          phase: 'started',
-          reason: 'context_overflow',
-          attempt: 1,
-        }),
-      );
-      expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          turn: 1,
-          phase: 'retrying',
-          reason: 'reactive_compact_retry',
-          attempt: 1,
-        }),
-      );
-      expect(onRecoveryStateChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          turn: 1,
-          phase: 'reset',
-          attempt: 0,
-        }),
-      );
     });
 
     it('reports recovery exhaustion when the retry still overflows', async () => {
@@ -1226,7 +1120,6 @@ describe('agentLoop', () => {
         yield* [] as never[];
         return true;
       });
-      const onRecoveryStateChange = vi.fn();
 
       const modelService = {
         chat: chatFn,
@@ -1242,39 +1135,11 @@ describe('agentLoop', () => {
           agentLoop(
             baseConfig({
               onReactiveCompact,
-              onRecoveryStateChange,
               turnState: { modelService },
             }),
           ),
         ),
       ).rejects.toThrow('maximum context length exceeded');
-
-      expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          turn: 1,
-          phase: 'started',
-          reason: 'context_overflow',
-          attempt: 1,
-        }),
-      );
-      expect(onRecoveryStateChange).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          turn: 1,
-          phase: 'retrying',
-          reason: 'reactive_compact_retry',
-          attempt: 1,
-        }),
-      );
-      expect(onRecoveryStateChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          turn: 1,
-          phase: 'failed',
-          reason: 'recovery_exhausted',
-          attempt: 1,
-        }),
-      );
     });
   });
 
@@ -1445,70 +1310,6 @@ describe('agentLoop', () => {
       expect(ctx.content).toBe('Hello!');
       expect(ctx.turn).toBe(1);
     });
-
-    it('should call onStopCheck hook and continue if shouldStop=false', async () => {
-      let stopCheckCount = 0;
-      const onStopCheck = vi.fn(async () => {
-        stopCheckCount++;
-        if (stopCheckCount === 1) {
-          return { shouldStop: false, continueReason: 'Keep going' };
-        }
-        return { shouldStop: true };
-      });
-
-      const modelService = createMockModelService([
-        { content: 'First response' },
-        { content: 'Second response' },
-      ]);
-
-      const config = baseConfig({ onStopCheck, turnState: { modelService } });
-      const { result } = await collectEvents(agentLoop(config));
-
-      expect(result.success).toBe(true);
-      expect(onStopCheck).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('incomplete intent detection', () => {
-    it('should retry when response ends with colon', async () => {
-      const modelService = createMockModelService([
-        { content: '让我来检查一下：' },
-        { content: 'Here is the result.' },
-      ]);
-
-      const config = baseConfig({ turnState: { modelService } });
-      const { result } = await collectEvents(agentLoop(config));
-
-      expect(result.success).toBe(true);
-      expect(result.metadata?.turnsCount).toBe(2);
-    });
-
-    it('should retry when response has incomplete intent pattern', async () => {
-      const modelService = createMockModelService([
-        { content: 'Let me first check the file...' },
-        { content: 'The file contains valid code.' },
-      ]);
-
-      const config = baseConfig({ turnState: { modelService } });
-      const { result } = await collectEvents(agentLoop(config));
-
-      expect(result.success).toBe(true);
-      expect(result.metadata?.turnsCount).toBe(2);
-    });
-
-    it('should not retry more than 2 times', async () => {
-      const modelService = createMockModelService([
-        { content: '让我先查看：' },
-        { content: '让我来检查：' },
-        { content: '让我开始修复：' },
-      ]);
-
-      const config = baseConfig({ turnState: { modelService } });
-      const { result } = await collectEvents(agentLoop(config));
-
-      // Should stop after 2 retries (3rd incomplete intent is accepted as final)
-      expect(result.success).toBe(true);
-    });
   });
 
   describe('thinking content', () => {
@@ -1630,7 +1431,7 @@ describe('agentLoop', () => {
         { content: 'First answer' },
         { content: 'Steered answer' },
       ]);
-      let stopChecks = 0;
+      let inputQueued = false;
       const inputApplicationOrder: string[] = [];
       const config = baseConfig({
         runControl,
@@ -1645,18 +1446,16 @@ describe('agentLoop', () => {
             content: input.content,
           };
         },
-        onStopCheck: async () => {
-          stopChecks += 1;
-          if (stopChecks === 1) {
-            inbox.enqueue({
-              inputId: InputId('steer-1'),
-              content: 'Change direction',
-              priority: 'next',
-              targetRequestId: requestId,
-              acceptedAt: 1,
-            });
-          }
-          return { shouldStop: true };
+        onAssistantMessage: async () => {
+          if (inputQueued) return;
+          inputQueued = true;
+          inbox.enqueue({
+            inputId: InputId('steer-1'),
+            content: 'Change direction',
+            priority: 'next',
+            targetRequestId: requestId,
+            acceptedAt: 1,
+          });
         },
       });
 

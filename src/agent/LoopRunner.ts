@@ -1,15 +1,3 @@
-/**
- * LoopRunner — 核心循环编排 + hooks 构建
- *
- * 从 Agent.ts 拆分，职责：
- * - 构建 AgentLoopConfig（工具、消息、hooks）
- * - 执行 agentLoop 并转发事件
- * - 普通模式的 systemPrompt 构建
- *
- * 运行时补丁管理委托给 RuntimePatchManager
- * Hooks 构建委托给 LoopHookBuilder（buildLoopConfig）
- */
-
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
@@ -80,16 +68,16 @@ export class LoopRunner {
     this.runtimePatchManager = new RuntimePatchManager(hookRuntime, this.logger);
   }
 
-  // ===== 普通模式入口 =====
-
   async runLoop(
     message: UserMessageContent,
     context: AgentExecutionContext,
     options?: LoopOptions,
   ): Promise<LoopResult> {
-    this.logger.debug('💬 Processing enhanced chat message...');
-    const systemPrompt = await this.buildNormalSystemPrompt(context);
-    return this.executeLoop(message, context, options, systemPrompt);
+    const stream = this.runLoopStream(message, context, options);
+    while (true) {
+      const next = await stream.next();
+      if (next.done) return next.value;
+    }
   }
 
   async *runLoopStream(
@@ -99,32 +87,6 @@ export class LoopRunner {
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const systemPrompt = await this.buildNormalSystemPrompt(context);
     return yield* this.executeWithAgentLoop(message, context, options, systemPrompt);
-  }
-
-  // ===== 通用循环入口（供 PlanExecutor 和普通模式共用） =====
-
-  async executeLoop(
-    message: UserMessageContent,
-    context: AgentExecutionContext,
-    options?: LoopOptions,
-    systemPrompt?: string,
-  ): Promise<LoopResult> {
-    const stream = this.executeWithAgentLoop(message, context, options, systemPrompt);
-    let result: LoopResult | undefined;
-
-    while (true) {
-      const { value, done } = await stream.next();
-      if (done) {
-        result = value;
-        break;
-      }
-    }
-
-    if (!result) {
-      throw new Error('LoopRunner.executeLoop ended without a result');
-    }
-
-    return result;
   }
 
   async *executeWithAgentLoop(
@@ -138,33 +100,7 @@ export class LoopRunner {
       throw requestSignal.reason;
     }
 
-    // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
-    const rootPromptMessage: ConversationMessage | null = systemPrompt
-      ? {
-          role: 'system',
-          content: [
-            {
-              type: 'text',
-              text: systemPrompt,
-              providerOptions: {
-                anthropic: { cacheControl: { type: 'ephemeral' } },
-              },
-            },
-          ],
-        }
-      : null;
-
-    // Drop non-root system messages without a controlled provenance source.
-    const contextMessages = context.messages.filter((m) => {
-      if (m.role !== 'system') return true;
-      const source = m.provenance?.source;
-      return isValidSystemSource(source);
-    });
-
-    const conversationState = new ConversationState(rootPromptMessage, contextMessages, {
-      role: 'user',
-      content: message,
-    });
+    const conversationState = this.createConversation(message, context, systemPrompt);
 
     const permissionMode = context.permissionMode;
     const loopState = this.createLoopState(
@@ -174,66 +110,8 @@ export class LoopRunner {
       options?.toolExecutionLifecycle,
     );
 
-    // 2. 保存用户消息到 JSONL
-    let lastMessageUuid: MessageId | null = null;
-    const contextMgr = this.modelManager.getContextManager();
-    if (!requestSignal?.aborted && contextMgr && context.sessionId && options?.inputApplication) {
-      const sessionId = context.sessionId;
-      const inputApplication = options.inputApplication;
-      try {
-        lastMessageUuid = await runWithExecutionLeaseBoundary(
-          {
-            signal: requestSignal,
-            assertExecutionLease: context.assertExecutionLease,
-            runWithExecutionLease: context.runWithExecutionLease,
-          },
-          () =>
-            contextMgr.saveAppliedInputMessage(
-              sessionId,
-              inputApplication.inputId,
-              inputApplication.requestId,
-              message,
-              null,
-              context.subagentInfo,
-            ),
-        );
-      } catch (error) {
-        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
-          throw error;
-        }
-        // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
-        this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
-      }
-    } else if (!requestSignal?.aborted) {
-      try {
-        if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
-          const sessionId = context.sessionId;
-          lastMessageUuid = await runWithExecutionLeaseBoundary(
-            {
-              signal: requestSignal,
-              assertExecutionLease: context.assertExecutionLease,
-              runWithExecutionLease: context.runWithExecutionLease,
-            },
-            () =>
-              contextMgr.saveMessage(
-                sessionId,
-                'user',
-                message,
-                null,
-                undefined,
-                context.subagentInfo,
-              ),
-          );
-        }
-      } catch (error) {
-        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
-          throw error;
-        }
-        this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
-      }
-    }
+    let lastMessageUuid = await this.persistInitialMessage(message, context, options);
 
-    // 3. 计算 maxTurns
     const isYoloMode = context.permissionMode === PermissionMode.YOLO;
     const configuredMaxTurns =
       options?.maxTurns ?? this.runtimeOptions.maxTurns ?? this.config.maxTurns ?? -1;
@@ -251,7 +129,6 @@ export class LoopRunner {
         ? AGENT_TURN_SAFETY_LIMIT
         : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
 
-    // 4. 构建 AgentLoop hooks + config
     const loopConfig = buildLoopConfig({
       context,
       options,
@@ -274,7 +151,6 @@ export class LoopRunner {
       runControl: options?.runControl,
     });
 
-    // 5. 运行 AgentLoop
     try {
       const result = yield* agentLoop(loopConfig);
 
@@ -312,7 +188,71 @@ export class LoopRunner {
     }
   }
 
-  // ===== SystemPrompt =====
+  private createConversation(
+    message: UserMessageContent,
+    context: AgentExecutionContext,
+    systemPrompt?: string,
+  ): ConversationState {
+    const root: ConversationMessage | null = systemPrompt
+      ? {
+          role: 'system',
+          content: [
+            {
+              type: 'text',
+              text: systemPrompt,
+              providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
+            },
+          ],
+        }
+      : null;
+    const messages = context.messages.filter(
+      (entry) => entry.role !== 'system' || isValidSystemSource(entry.provenance?.source),
+    );
+    return new ConversationState(root, messages, { role: 'user', content: message });
+  }
+
+  private async persistInitialMessage(
+    message: UserMessageContent,
+    context: AgentExecutionContext,
+    options?: LoopOptions,
+  ): Promise<MessageId | null> {
+    const signal = options?.signal ?? context.signal;
+    const manager = this.modelManager.getContextManager();
+    if (signal?.aborted || !manager || !context.sessionId) return null;
+    const application = options?.inputApplication;
+    if (!application && !hasPersistableUserContent(message)) return null;
+    try {
+      return await runWithExecutionLeaseBoundary(
+        {
+          signal,
+          assertExecutionLease: context.assertExecutionLease,
+          runWithExecutionLease: context.runWithExecutionLease,
+        },
+        () =>
+          application
+            ? manager.saveAppliedInputMessage(
+                context.sessionId,
+                application.inputId,
+                application.requestId,
+                message,
+                null,
+                context.subagentInfo,
+              )
+            : manager.saveMessage(
+                context.sessionId,
+                'user',
+                message,
+                null,
+                undefined,
+                context.subagentInfo,
+              ),
+      );
+    } catch (error) {
+      if (signal?.aborted || isExecutionLeaseFailure(error)) throw error;
+      this.logger.warn('[LoopRunner] Failed to persist the initial user message:', error);
+      return null;
+    }
+  }
 
   private async buildNormalSystemPrompt(context: AgentExecutionContext): Promise<string> {
     const basePrompt = context.systemPrompt
@@ -350,25 +290,19 @@ export class LoopRunner {
     return result.prompt;
   }
 
-  // ===== Skill 工具限制 (delegate to RuntimePatchManager) =====
-
   get skillContext(): LoopSkillState | undefined {
     return this.runtimePatchManager.skillContext;
   }
 
-  setSkillContext(ctx: LoopSkillState | undefined): void {
-    this.runtimePatchManager.setSkillContext(ctx);
+  setSkillContext(context: LoopSkillState | undefined): void {
+    this.runtimePatchManager.setSkillContext(context);
   }
 
   clearSkillContext(): void {
     this.runtimePatchManager.clearSkillContext();
   }
 
-  getRuntimePatchApplications() {
-    return this.runtimePatchManager.getRuntimePatchApplications();
-  }
-
-  // ===== LoopState 创建 =====
+  // ===== Skill 工具限制 (delegate to RuntimePatchManager) =====
 
   private createLoopState(
     context: AgentExecutionContext,

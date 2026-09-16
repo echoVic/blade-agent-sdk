@@ -248,7 +248,6 @@ async function handleAgentOutput(
     completed_at: session.completedAt ? new Date(session.completedAt).toISOString() : undefined,
     result: session.result,
     stats: session.stats,
-    output_file: session.outputFile,
     progress: session.progress,
   };
 

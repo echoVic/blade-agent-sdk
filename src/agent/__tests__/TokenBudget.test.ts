@@ -121,33 +121,6 @@ describe('TokenBudget', () => {
     });
   });
 
-  it('reset() clears all counters', () => {
-    const budget = new TokenBudget({ maxTotalTokens: 1000 });
-
-    budget.record(
-      createUsage({
-        promptTokens: 100,
-        completionTokens: 50,
-        cacheCreationInputTokens: 20,
-        cacheReadInputTokens: 10,
-      }),
-    );
-    budget.reset();
-
-    expect(budget.getSnapshot()).toEqual({
-      totalInputTokens: 0,
-      totalBillableInputTokens: 0,
-      totalOutputTokens: 0,
-      totalCacheWriteTokens: 0,
-      totalCacheReadTokens: 0,
-      totalCacheMissTokens: 0,
-      totalTokens: 0,
-      estimatedCost: 0,
-      budgetRemaining: 1000,
-      budgetPercent: 0,
-    });
-  });
-
   it('unlimited budget never exhausts', () => {
     const budget = new TokenBudget();
 

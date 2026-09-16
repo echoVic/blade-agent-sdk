@@ -2,19 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { ProviderRegistry } from '../../../services/ProviderRegistry.js';
 import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/identifiers.js';
+import type { AgentExecutionContext, LoopOptions, LoopResult } from '../../types.js';
 
-const runAgenticLoop = vi.fn(async () => ({
-  success: true,
-  finalMessage: 'done',
-  metadata: {
-    toolCallsCount: 0,
-    tokensUsed: 0,
-  },
-}));
+const streamChat = vi.fn<
+  (
+    message: string,
+    context: AgentExecutionContext,
+    options?: LoopOptions,
+  ) => AsyncGenerator<never, LoopResult>
+>(async function* () {
+  yield* [];
+  return {
+    success: true,
+    finalMessage: 'done',
+    metadata: {
+      turnsCount: 1,
+      toolCallsCount: 0,
+      tokensUsed: 0,
+      duration: 0,
+    },
+  };
+});
 const destroyAgent = vi.fn(async () => {});
 
 const createAgent = vi.fn(async (_config: unknown, _options: unknown, deps: unknown) => ({
-  runAgenticLoop,
+  streamChat,
   destroy: destroyAgent,
   deps,
 }));
@@ -30,7 +42,7 @@ const { SubagentExecutor } = await import('../SubagentExecutor.js');
 describe('SubagentExecutor', () => {
   beforeEach(() => {
     createAgent.mockClear();
-    runAgenticLoop.mockClear();
+    streamChat.mockClear();
     destroyAgent.mockClear();
   });
 
@@ -90,7 +102,7 @@ describe('SubagentExecutor', () => {
         defaultContext: snapshot.context,
       }),
     );
-    expect(runAgenticLoop).toHaveBeenCalledWith(
+    expect(streamChat).toHaveBeenCalledWith(
       'inspect',
       expect.objectContaining({
         snapshot,
@@ -135,11 +147,12 @@ describe('SubagentExecutor', () => {
       parentSessionId: 'parent-session',
     });
 
-    expect(runAgenticLoop).toHaveBeenCalledWith(
+    expect(streamChat).toHaveBeenCalledWith(
       'inspect',
       expect.objectContaining({
         omitEnvironment: true,
       }),
+      undefined,
     );
   });
 

@@ -1,9 +1,3 @@
-/**
- * 把 ToolExecutionUpdate（内部工具事件）映射为 AgentEvent（对外事件流）。
- *
- * 原本在 AgentLoop.ts 的 streaming 分支内联了一大段 if-else，这里集中。
- * 非所有 update 都映射——tool_started/tool_completed 是内部状态，对外只透出 tool_start/tool_result。
- */
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ToolExecutionUpdate } from './runToolCall.js';

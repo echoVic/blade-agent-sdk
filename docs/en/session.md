@@ -821,7 +821,8 @@ Internals are split across explicit ownership boundaries:
 | `SessionState` | Session-private mutable state, configuration snapshot, and narrow helpers |
 | `SessionLifecycle` | Initialization, close, handoff, and execution leases |
 | `SessionRequestCoordinator` | Input admission, steering, cancellation, queues, and history restore |
-| `SessionStreamRunner` | One request's Agent loop, terminal commit, and stream cleanup |
+| `SessionStreamRunner` | Claim, input preparation, Agent stream consumption, and public event publication |
+| `SessionRequestExecution` | Durable/trace settlement, failure classification, and cleanup for one claimed request |
 | `StreamBroadcaster` | The only `AgentEvent` to `SessionStreamEvent` projection |
 | `SessionDurability` | Durable journal, request recorder, and recovery prerequisites |
 | `SessionRuntime` | Tool, hook, MCP, subagent, and execution-pipeline assembly |
@@ -830,3 +831,17 @@ Internals are split across explicit ownership boundaries:
 from public entrypoints. Event renaming, thinking filtering, tool records, and
 usage aggregation belong in `StreamBroadcaster`, not in the Session facade or
 framework adapters.
+
+Agent internals also have one execution path. `Agent.streamChat()` enters
+`LoopRunner`; on each turn, `AgentLoop` calls `runTurn()` once for the model
+request and durable model settlement, then calls `streamToolCalls()` only after
+the model response has been persisted. Streaming and non-streaming providers,
+foreground work, and subagents all reuse this path. There is no second
+early-dispatch streaming tool executor.
+
+Only `SessionRequestExecution` performs request cleanup. It owns the claimed
+controller, recorder, trace collector, and stream completion; maps setup and
+execution failures to durable terminal states; and closes the underlying Agent
+stream after cancellation, handoff, or early consumer return.
+`SessionLifecycle` only initiates cancellation or handoff and waits for that
+same completion; it does not commit a second request terminal state.

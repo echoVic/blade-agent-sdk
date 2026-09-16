@@ -707,7 +707,7 @@ describe('LoopRunner', () => {
             context: AgentExecutionContext,
             conversationState: ConversationState,
             permissionMode: PermissionMode,
-          ) => { getTools(): Array<{ name: string }> };
+          ) => { buildTurnState(turn: number): { tools: Array<{ name: string }> } };
         }
       ).createLoopState(
         createContext(),
@@ -715,7 +715,7 @@ describe('LoopRunner', () => {
         PermissionMode.DEFAULT,
       );
 
-      expect(loopState.getTools().map((tool) => tool.name)).toEqual(['BuiltinRead']);
+      expect(loopState.buildTurnState(1).tools.map((tool) => tool.name)).toEqual(['BuiltinRead']);
     });
 
     it('caches skill activation analysis until the message list changes', async () => {
@@ -2201,15 +2201,7 @@ describe('LoopRunner', () => {
           SHARED_ENV: 'b',
         }),
       ]);
-      expect(
-        (
-          runner as unknown as {
-            getRuntimePatchApplications: () => Array<{
-              provenance: { toolName: string; toolCallId: string; toolMessageId: string | null };
-            }>;
-          }
-        ).getRuntimePatchApplications(),
-      ).toEqual([
+      expect(runner.runtimePatchManager.getRuntimePatchApplications()).toEqual([
         expect.objectContaining({
           provenance: expect.objectContaining({
             toolName: 'PatchEnvA',

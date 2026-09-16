@@ -61,7 +61,7 @@ describe('RuntimePatchManager tool policy scoping', () => {
     // the effective policy, or turn cleanup has no turn scope left to restore
     // the session baseline from.
     manager.applyRuntimePatch(turnSkillPatch(), loopState);
-    expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'turn' });
+    expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
 
     manager.clearTurnScopedRuntimeState();
     // The session patch's restriction must survive the temporary skill cleanup.

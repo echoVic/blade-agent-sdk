@@ -8,18 +8,15 @@ import {
   type PendingSessionInput,
 } from './types.js';
 
-const DEFAULT_MAX_INPUTS = 32;
-const DEFAULT_MAX_BYTES = 1024 * 1024;
-
 export class SessionInputInbox {
   private readonly entries: PendingSessionInput[] = [];
-  private readonly claimedInputIds = new Set<InputId>();
-  private readonly committedInputIds = new Set<InputId>();
+  private readonly claimed = new Set<InputId>();
+  private readonly committed = new Set<InputId>();
   private retainedBytes = 0;
 
   constructor(
-    private readonly maxInputs = DEFAULT_MAX_INPUTS,
-    private readonly maxBytes = DEFAULT_MAX_BYTES,
+    private readonly maxInputs = 32,
+    private readonly maxBytes = 1024 * 1024,
   ) {}
 
   enqueue(entry: PendingSessionInput): void {
@@ -28,53 +25,33 @@ export class SessionInputInbox {
   }
 
   reserve(entry: PendingSessionInput): void {
-    const retainedBytes = getRetainedBytes(entry.content);
-    if (
-      this.entries.length >= this.maxInputs ||
-      this.retainedBytes + retainedBytes > this.maxBytes
-    ) {
+    const bytes = retainedBytes(entry.content);
+    if (this.entries.length >= this.maxInputs || this.retainedBytes + bytes > this.maxBytes) {
       throw new SessionInputError(
         'SESSION_INPUT_QUEUE_FULL',
         `Session input queue capacity exceeded (${this.maxInputs} inputs, ${this.maxBytes} bytes)`,
       );
     }
-
     this.entries.push(cloneEntry(entry));
-    this.retainedBytes += retainedBytes;
+    this.retainedBytes += bytes;
   }
 
   markCommitted(inputId: InputId): void {
-    if (this.entries.some((entry) => entry.inputId === inputId)) {
-      this.committedInputIds.add(inputId);
-    }
+    if (this.find(inputId)) this.committed.add(inputId);
   }
 
-  /**
-   * 从持久化历史恢复待处理输入。
-   *
-   * 逐条尝试入队；一旦达到 count/byte 上限即停止恢复剩余条目，而不是抛错。
-   * 这样可避免容量超限时经由调用方的 try/catch 静默丢弃全部待处理输入。
-   *
-   * @returns 未能恢复（被丢弃）的条目数量，供调用方记录告警。
-   */
   restore(entries: readonly PendingSessionInput[]): number {
-    let dropped = 0;
     for (const [index, entry] of entries.entries()) {
       try {
-        this.enqueue({
-          ...entry,
-          priority: InputPriority.LATER,
-          targetRequestId: undefined,
-        });
+        this.enqueue({ ...entry, priority: InputPriority.LATER, targetRequestId: undefined });
       } catch (error) {
         if (error instanceof SessionInputError && error.code === 'SESSION_INPUT_QUEUE_FULL') {
-          dropped = entries.length - index;
-          break;
+          return entries.length - index;
         }
         throw error;
       }
     }
-    return dropped;
+    return 0;
   }
 
   claimNextLater(requestId: RequestId): PendingSessionInput | undefined {
@@ -82,14 +59,9 @@ export class SessionInputInbox {
       (candidate) =>
         candidate.priority === InputPriority.LATER &&
         candidate.targetRequestId === undefined &&
-        // 与 claimForRequest 保持一致：仅领取已持久化提交的输入，
-        // 避免领取 reserve() 之后尚未 markCommitted 的条目。
-        this.committedInputIds.has(candidate.inputId),
+        this.committed.has(candidate.inputId),
     );
-    if (!entry) {
-      return undefined;
-    }
-
+    if (!entry) return undefined;
     entry.targetRequestId = requestId;
     return cloneEntry(entry);
   }
@@ -99,85 +71,68 @@ export class SessionInputInbox {
     priorities: readonly InputPriorityType[],
     excludedInputId?: InputId,
   ): PendingSessionInput[] {
-    const priorityOrder = new Map(priorities.map((priority, index) => [priority, index]));
-    const matched = this.entries
+    const order = new Map(priorities.map((priority, index) => [priority, index]));
+    const matches = this.entries
       .filter(
         (entry) =>
           entry.targetRequestId === requestId &&
-          priorityOrder.has(entry.priority) &&
+          order.has(entry.priority) &&
           entry.inputId !== excludedInputId &&
-          this.committedInputIds.has(entry.inputId) &&
-          !this.claimedInputIds.has(entry.inputId),
+          this.committed.has(entry.inputId) &&
+          !this.claimed.has(entry.inputId),
       )
       .sort(
         (left, right) =>
-          (priorityOrder.get(left.priority) ?? Number.MAX_SAFE_INTEGER) -
-            (priorityOrder.get(right.priority) ?? Number.MAX_SAFE_INTEGER) ||
+          (order.get(left.priority) ?? Infinity) - (order.get(right.priority) ?? Infinity) ||
           left.acceptedAt - right.acceptedAt,
       );
-
-    for (const entry of matched) {
-      this.claimedInputIds.add(entry.inputId);
-    }
-    return matched.map(cloneEntry);
+    for (const entry of matches) this.claimed.add(entry.inputId);
+    return matches.map(cloneEntry);
   }
 
   acknowledge(inputId: InputId): PendingSessionInput | undefined {
-    this.claimedInputIds.delete(inputId);
+    this.claimed.delete(inputId);
     return this.remove(inputId);
   }
 
   releaseClaim(inputId: InputId): void {
-    this.claimedInputIds.delete(inputId);
+    this.claimed.delete(inputId);
   }
 
   claimForCancellation(inputId: InputId): PendingSessionInput | undefined {
-    if (this.claimedInputIds.has(inputId)) {
-      return undefined;
-    }
-    const entry = this.entries.find((candidate) => candidate.inputId === inputId);
-    if (!entry) {
-      return undefined;
-    }
-    this.claimedInputIds.add(inputId);
+    if (this.claimed.has(inputId)) return undefined;
+    const entry = this.find(inputId);
+    if (!entry) return undefined;
+    this.claimed.add(inputId);
     return cloneEntry(entry);
   }
 
   remove(inputId: InputId): PendingSessionInput | undefined {
     const index = this.entries.findIndex((entry) => entry.inputId === inputId);
-    if (index === -1) {
-      return undefined;
-    }
-
+    if (index < 0) return undefined;
     const [entry] = this.entries.splice(index, 1);
-    if (!entry) {
-      return undefined;
-    }
-    this.claimedInputIds.delete(inputId);
-    this.committedInputIds.delete(inputId);
-    this.retainedBytes -= getRetainedBytes(entry.content);
+    if (!entry) return undefined;
+    this.claimed.delete(inputId);
+    this.committed.delete(inputId);
+    this.retainedBytes -= retainedBytes(entry.content);
     return cloneEntry(entry);
   }
 
   releaseRequest(requestId: RequestId): void {
     for (const entry of this.entries) {
-      if (entry.targetRequestId !== requestId) {
-        continue;
-      }
+      if (entry.targetRequestId !== requestId) continue;
       entry.priority = InputPriority.LATER;
       entry.targetRequestId = undefined;
-      this.claimedInputIds.delete(entry.inputId);
+      this.claimed.delete(entry.inputId);
     }
   }
 
   retargetLater(inputId: InputId): PendingSessionInput | undefined {
-    const entry = this.entries.find((candidate) => candidate.inputId === inputId);
-    if (!entry) {
-      return undefined;
-    }
+    const entry = this.find(inputId);
+    if (!entry) return undefined;
     entry.priority = InputPriority.LATER;
     entry.targetRequestId = undefined;
-    this.claimedInputIds.delete(inputId);
+    this.claimed.delete(inputId);
     return cloneEntry(entry);
   }
 
@@ -187,6 +142,10 @@ export class SessionInputInbox {
 
   get size(): number {
     return this.entries.length;
+  }
+
+  private find(inputId: InputId): PendingSessionInput | undefined {
+    return this.entries.find((entry) => entry.inputId === inputId);
   }
 }
 
@@ -198,6 +157,6 @@ function cloneEntry(entry: PendingSessionInput): PendingSessionInput {
   };
 }
 
-function getRetainedBytes(content: UserMessageContent): number {
+function retainedBytes(content: UserMessageContent): number {
   return new TextEncoder().encode(JSON.stringify(content)).byteLength;
 }

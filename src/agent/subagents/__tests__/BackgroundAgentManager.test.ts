@@ -1,4 +1,3 @@
-import { access, readFile, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
@@ -8,33 +7,39 @@ import { AgentId, ExecutionLeaseId, FencingToken, SessionId } from '../../../typ
 import type { AgentExecutionContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
-const runAgenticLoop = vi.fn<
+const streamChat = vi.fn<
   (
     message: string,
     context: AgentExecutionContext,
     options?: LoopOptions,
-  ) => Promise<{
-    success: boolean;
-    finalMessage?: string;
-    error?: { message?: string };
-    metadata?: {
-      toolCallsCount?: number;
-      tokensUsed?: number;
-      duration?: number;
-    };
-  }>
->(async () => ({
-  success: true,
-  finalMessage: 'done',
-  metadata: {
-    toolCallsCount: 0,
-    tokensUsed: 0,
-  },
-}));
+  ) => AsyncGenerator<
+    never,
+    {
+      success: boolean;
+      finalMessage?: string;
+      error?: { message?: string };
+      metadata?: {
+        toolCallsCount?: number;
+        tokensUsed?: number;
+        duration?: number;
+      };
+    }
+  >
+>(async function* () {
+  yield* [];
+  return {
+    success: true,
+    finalMessage: 'done',
+    metadata: {
+      toolCallsCount: 0,
+      tokensUsed: 0,
+    },
+  };
+});
 const destroyAgent = vi.fn(async () => {});
 
 const createAgent = vi.fn(async (_config, _options, deps) => ({
-  runAgenticLoop,
+  streamChat,
   destroy: destroyAgent,
   deps,
 }));
@@ -71,14 +76,14 @@ let manager: InstanceType<typeof BackgroundAgentManager>;
 describe('BackgroundAgentManager', () => {
   beforeEach(() => {
     createAgent.mockClear();
-    runAgenticLoop.mockClear();
+    streamChat.mockClear();
     destroyAgent.mockClear();
     const store = AgentSessionStore.create();
     manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
   });
 
   afterEach(() => {
-    manager.killAll();
+    manager.sealAndCancelAll();
   });
 
   it('inherits the parent snapshot context when starting a background subagent', async () => {
@@ -176,7 +181,7 @@ describe('BackgroundAgentManager', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(markCompleted).not.toHaveBeenCalled();
-    managerA.killAll();
+    managerA.sealAndCancelAll();
   });
 
   it("still reclaims its own parent session's lost subagents", async () => {
@@ -203,7 +208,7 @@ describe('BackgroundAgentManager', () => {
       AgentId('agent_own'),
       expect.objectContaining({ success: false }),
     );
-    managerA.killAll();
+    managerA.sealAndCancelAll();
   });
 
   it('updates the session description when resuming with a new description', async () => {
@@ -236,21 +241,25 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('maintains separate lifecycle and work controllers for a running agent', async () => {
-    runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
-        await new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () =>
-              resolve({
-                success: false,
-                error: { message: 'aborted' },
-                metadata: { duration: 0 },
-              }),
-            { once: true },
-          );
-        }),
-    );
+    streamChat.mockImplementationOnce(async function* (
+      _message: string,
+      _context: AgentExecutionContext,
+      options?: LoopOptions,
+    ) {
+      yield* [];
+      return await new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              success: false,
+              error: { message: 'aborted' },
+              metadata: { duration: 0 },
+            }),
+          { once: true },
+        );
+      });
+    });
 
     const agentId = AgentId(
       await manager.startBackgroundAgent({
@@ -278,7 +287,7 @@ describe('BackgroundAgentManager', () => {
     expect(runtime?.workController).toBeInstanceOf(AbortController);
     expect(runtime?.lifecycleController).not.toBe(runtime?.workController);
 
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalled());
     await manager.killAgent(agentId);
 
     expect(runtime?.lifecycleController.signal.aborted).toBe(true);
@@ -287,21 +296,25 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('preserves cancelled status after killing a running agent', async () => {
-    runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
-        await new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () =>
-              resolve({
-                success: false,
-                error: { message: 'aborted' },
-                metadata: { duration: 0 },
-              }),
-            { once: true },
-          );
-        }),
-    );
+    streamChat.mockImplementationOnce(async function* (
+      _message: string,
+      _context: AgentExecutionContext,
+      options?: LoopOptions,
+    ) {
+      yield* [];
+      return await new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              success: false,
+              error: { message: 'aborted' },
+              metadata: { duration: 0 },
+            }),
+          { once: true },
+        );
+      });
+    });
 
     const agentId = AgentId(
       await manager.startBackgroundAgent({
@@ -312,7 +325,7 @@ describe('BackgroundAgentManager', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalled());
     await expect(manager.killAgent(agentId)).resolves.toBe(true);
 
     const session = await manager.waitForCompletion(agentId, 1000);
@@ -320,21 +333,25 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('seals new admissions only after all background agents settle', async () => {
-    runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
-        await new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () =>
-              resolve({
-                success: false,
-                error: { message: 'aborted' },
-                metadata: { duration: 0 },
-              }),
-            { once: true },
-          );
-        }),
-    );
+    streamChat.mockImplementationOnce(async function* (
+      _message: string,
+      _context: AgentExecutionContext,
+      options?: LoopOptions,
+    ) {
+      yield* [];
+      return await new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              success: false,
+              error: { message: 'aborted' },
+              metadata: { duration: 0 },
+            }),
+          { once: true },
+        );
+      });
+    });
 
     const agentId = AgentId(
       await manager.startBackgroundAgent({
@@ -346,7 +363,7 @@ describe('BackgroundAgentManager', () => {
     );
 
     expect(manager.getActiveAgentIds()).toEqual([agentId]);
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalled());
     await expect(manager.killAgent(agentId)).resolves.toBe(true);
     await manager.waitForCompletion(agentId, 1000);
 
@@ -363,21 +380,25 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('seals admission and cancels every running agent after ownership loss', async () => {
-    runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
-        await new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () =>
-              resolve({
-                success: false,
-                error: { message: 'ownership lost' },
-                metadata: { duration: 0 },
-              }),
-            { once: true },
-          );
-        }),
-    );
+    streamChat.mockImplementationOnce(async function* (
+      _message: string,
+      _context: AgentExecutionContext,
+      options?: LoopOptions,
+    ) {
+      yield* [];
+      return await new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              success: false,
+              error: { message: 'ownership lost' },
+              metadata: { duration: 0 },
+            }),
+          { once: true },
+        );
+      });
+    });
     const agentId = AgentId(
       await manager.startBackgroundAgent({
         config: subagentConfig,
@@ -386,7 +407,7 @@ describe('BackgroundAgentManager', () => {
         prompt: 'inspect',
       }),
     );
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalled());
 
     await expect(manager.sealCancelAndWait()).resolves.toEqual([agentId]);
     expect((await manager.getAgent(agentId))?.status).toBe('cancelled');
@@ -403,7 +424,8 @@ describe('BackgroundAgentManager', () => {
 
   it('fails cleanup closed when a background agent misses the shutdown deadline', async () => {
     let finishExecution: (() => void) | undefined;
-    runAgenticLoop.mockImplementationOnce(async () => {
+    streamChat.mockImplementationOnce(async function* () {
+      yield* [];
       await new Promise<void>((resolve) => {
         finishExecution = resolve;
       });
@@ -417,7 +439,7 @@ describe('BackgroundAgentManager', () => {
         prompt: 'inspect',
       }),
     );
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalled());
 
     await expect(manager.sealCancelAndWait(10)).rejects.toThrow(
       `Timed out waiting for background agents to stop: ${agentId}`,
@@ -459,14 +481,16 @@ describe('BackgroundAgentManager', () => {
       };
     let finishOld: (() => void) | undefined;
     let finishSuccessor: (() => void) | undefined;
-    runAgenticLoop
-      .mockImplementationOnce(async () => {
+    streamChat
+      .mockImplementationOnce(async function* () {
+        yield* [];
         await new Promise<void>((resolve) => {
           finishOld = resolve;
         });
         return { success: true, finalMessage: 'stale result' };
       })
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce(async function* () {
+        yield* [];
         await new Promise<void>((resolve) => {
           finishSuccessor = resolve;
         });
@@ -485,9 +509,7 @@ describe('BackgroundAgentManager', () => {
       },
       runWithExecutionLease: boundary(1),
     });
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(1));
-    const staleOutputFile = (await store.loadSession(agentId))?.outputFile;
-
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalledTimes(1));
     activeToken = 2;
     await successorManager.startBackgroundAgent({
       config: subagentConfig,
@@ -501,21 +523,14 @@ describe('BackgroundAgentManager', () => {
       },
       runWithExecutionLease: boundary(2),
     });
-    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(2));
-    const successorOutputFile = (await store.loadSession(agentId))?.outputFile;
-    expect(successorOutputFile).not.toBe(staleOutputFile);
-
+    await vi.waitFor(() => expect(streamChat).toHaveBeenCalledTimes(2));
     finishOld?.();
     await oldManager.waitForCompletion(agentId, 0);
     expect(await store.loadSession(agentId)).toMatchObject({
       description: 'Successor execution',
       status: 'running',
       executionFence: successorFence,
-      outputFile: successorOutputFile,
     });
-    if (staleOutputFile) {
-      await expect(access(staleOutputFile)).rejects.toThrow();
-    }
 
     finishSuccessor?.();
     await successorManager.waitForCompletion(agentId, 0);
@@ -526,11 +541,6 @@ describe('BackgroundAgentManager', () => {
         message: 'successor result',
       },
       executionFence: successorFence,
-      outputFile: successorOutputFile,
     });
-    if (successorOutputFile) {
-      await expect(readFile(successorOutputFile, 'utf8')).resolves.toContain('successor result');
-      await rm(successorOutputFile, { force: true });
-    }
   });
 });

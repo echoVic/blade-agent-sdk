@@ -334,42 +334,12 @@ export class SessionState {
 
 function resolveDefaultContext(options: SessionOptions): RuntimeContext {
   const sandboxPolicy = options.defaultContext?.capabilities?.sandbox ?? options.sandbox;
-  if (!sandboxPolicy) {
-    return options.defaultContext ?? {};
-  }
-
+  if (!sandboxPolicy) return options.defaultContext ?? {};
   return {
     ...(options.defaultContext ?? {}),
     capabilities: {
       ...(options.defaultContext?.capabilities ?? {}),
-      sandbox: {
-        ...sandboxPolicy,
-        ...(sandboxPolicy.excludedCommands
-          ? { excludedCommands: [...sandboxPolicy.excludedCommands] }
-          : {}),
-        ...(sandboxPolicy.ignoreViolations
-          ? {
-              ignoreViolations: {
-                ...(sandboxPolicy.ignoreViolations.file
-                  ? { file: [...sandboxPolicy.ignoreViolations.file] }
-                  : {}),
-                ...(sandboxPolicy.ignoreViolations.network
-                  ? { network: [...sandboxPolicy.ignoreViolations.network] }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(sandboxPolicy.network
-          ? {
-              network: {
-                ...sandboxPolicy.network,
-                ...(sandboxPolicy.network.allowUnixSockets
-                  ? { allowUnixSockets: [...sandboxPolicy.network.allowUnixSockets] }
-                  : {}),
-              },
-            }
-          : {}),
-      },
+      sandbox: structuredClone(sandboxPolicy),
     },
   };
 }

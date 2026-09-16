@@ -109,7 +109,7 @@ operations surface, bundled OpenTelemetry adapters, unsupported DeepSeek
 request helpers, and obsolete effect fault benchmarks were deleted rather than
 carried as compatibility APIs.
 
-### Task 5: Flatten agent and session orchestration
+### Task 5: Flatten agent and session orchestration [COMPLETED]
 
 Replace deeply nested routing in AgentLoop, StreamingToolExecutor,
 SessionLifecycle, SessionStreamRunner, and related coordinators with explicit
@@ -121,6 +121,18 @@ Acceptance:
 - Eliminate repeated cleanup, cancellation, terminalization, and retry routing.
 - Make the request/turn/tool ownership flow discoverable from module boundaries.
 - Production LOC reduction target: at least 4,000 additional lines.
+
+Result: production TypeScript is **60,113 LOC**, down **4,146 lines** in this
+task and **23,692 lines** from baseline. Agent execution now has one model
+lifecycle followed by one shared tool executor; the early streaming-tool
+dispatch, execution epoch, duplicate non-stream Agent path, and PlanExecutor
+were removed. `AgentLoop` is split into bounded phase methods, runtime patches
+use explicit session/turn layers, and subagents consume the same `streamChat`
+path as foreground execution. Session request claiming, failure
+classification, durable/trace terminalization, and cleanup are owned by
+`SessionRequestExecution`; `SessionStreamRunner` only claims, prepares,
+consumes, and publishes. Agent and Session streaming share one bounded
+`AsyncChannel`, and every orchestration function is below 150 LOC.
 
 ### Task 6: Consolidate built-in tools
 

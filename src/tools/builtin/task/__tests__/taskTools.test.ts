@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.js';
-import type { AgentExecutionContext, LoopOptions } from '../../../../agent/types.js';
+import type { AgentExecutionContext, LoopOptions, LoopResult } from '../../../../agent/types.js';
 import { NOOP_LOGGER } from '../../../../logging/Logger.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../../types/identifiers.js';
@@ -18,30 +18,21 @@ import { taskListTool } from '../taskList.js';
 import { taskStopTool } from '../taskStop.js';
 import { taskUpdateTool } from '../taskUpdate.js';
 
-const { runAgenticLoop, createAgent, destroyAgent } = vi.hoisted(() => ({
-  runAgenticLoop:
+const { streamChat, createAgent, destroyAgent } = vi.hoisted(() => ({
+  streamChat:
     vi.fn<
       (
         message: string,
         context: AgentExecutionContext,
         options?: LoopOptions,
-      ) => Promise<{
-        success: boolean;
-        finalMessage?: string;
-        error?: { message?: string };
-        metadata?: {
-          toolCallsCount?: number;
-          tokensUsed?: number;
-          duration?: number;
-        };
-      }>
+      ) => AsyncGenerator<never, LoopResult>
     >(),
   createAgent: vi.fn(),
   destroyAgent: vi.fn(async () => {}),
 }));
 
 createAgent.mockImplementation(async () => ({
-  runAgenticLoop,
+  streamChat,
   destroy: destroyAgent,
 }));
 
@@ -85,7 +76,7 @@ let manager: InstanceType<typeof BackgroundAgentManager>;
 describe('task tools', () => {
   beforeEach(() => {
     createAgent.mockClear();
-    runAgenticLoop.mockReset();
+    streamChat.mockReset();
     destroyAgent.mockClear();
     const store = AgentSessionStore.create();
     manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
@@ -93,7 +84,7 @@ describe('task tools', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    manager.killAll();
+    manager.sealAndCancelAll();
   });
 
   it('registers all task management tools in builtin tools', async () => {
@@ -212,21 +203,25 @@ describe('task tools', () => {
   });
 
   it('stops a running background agent via TaskStop and keeps it cancelled', async () => {
-    runAgenticLoop.mockImplementationOnce(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) =>
-        await new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () =>
-              resolve({
-                success: false,
-                error: { message: 'aborted' },
-                metadata: { duration: 0 },
-              }),
-            { once: true },
-          );
-        }),
-    );
+    streamChat.mockImplementationOnce(async function* (
+      _message: string,
+      _context: AgentExecutionContext,
+      options?: LoopOptions,
+    ) {
+      yield* [];
+      return await new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              success: false,
+              error: { type: 'aborted', message: 'aborted' },
+              metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
+            }),
+          { once: true },
+        );
+      });
+    });
 
     const agentId = AgentId(
       await manager.startBackgroundAgent({

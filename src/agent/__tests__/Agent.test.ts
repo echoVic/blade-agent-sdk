@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../errors/ConfigError.js';
-import type { InternalLogger } from '../../logging/Logger.js';
 import { McpRegistry } from '../../mcp/McpRegistry.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { SessionId, TurnId } from '../../types/identifiers.js';
@@ -16,23 +15,6 @@ function createExecutionPipeline() {
       getAll: () => [],
     }),
     getCatalog: () => undefined,
-  };
-}
-
-function createLogger(): InternalLogger & { messages: string[] } {
-  const messages: string[] = [];
-
-  return {
-    messages,
-    child() {
-      return this;
-    },
-    debug(...args: unknown[]) {
-      messages.push(args.map((arg) => String(arg)).join(' '));
-    },
-    info() {},
-    warn() {},
-    error() {},
   };
 }
 
@@ -62,22 +44,15 @@ describe('Agent lifecycle', () => {
       },
     );
     const message = 'Agent is not initialized. Call initialize() before using this method.';
-    const context: AgentExecutionContext = {
-      messages: [],
-      userId: 'test-user',
-      sessionId: SessionId('test-session'),
-    };
 
-    await expect(agent.chat('test', context)).rejects.toThrow(message);
-    expect(() => agent.streamChat('test', context)).toThrow(message);
-    await expect(agent.runAgenticLoop('test', context)).rejects.toThrow(message);
-    await expect(agent.chatWithSystem('system', 'test')).rejects.toThrow(message);
-    expect(() => agent.clearSkillContext()).toThrow(message);
-    expect(() => agent.getModelService()).toThrow(message);
-    expect(() => agent.getTokenBudgetSnapshot()).toThrow(message);
-    expect(() => agent.applyToolWhitelist([])).toThrow(message);
+    expect(() =>
+      agent.streamChat('test', {
+        messages: [],
+        userId: 'test-user',
+        sessionId: SessionId('test-session'),
+      }),
+    ).toThrow(message);
     await expect(agent.setModel('test')).rejects.toThrow(message);
-    await expect(agent.getSystemPrompt()).rejects.toThrow(message);
   });
 
   it('closes resources created by the Agent exactly once', async () => {
@@ -125,72 +100,6 @@ describe('Agent lifecycle', () => {
     expect(backgroundAgentManager.sealCancelAndWait).not.toHaveBeenCalled();
   });
 
-  it('aborts active runs so their file lock leases are released before destroy resolves', async () => {
-    FileLockManager.resetInstance();
-    const lockManager = FileLockManager.getInstance();
-    const filePath = '/tmp/agent-destroy-lock';
-    let notifyStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      notifyStarted = resolve;
-    });
-    const runLoop = vi.fn(
-      async (_message: string, _context: AgentExecutionContext, options?: LoopOptions) => {
-        const lease = await lockManager.acquire(filePath);
-        notifyStarted();
-        return new Promise<{
-          success: false;
-          error: { type: 'aborted'; message: string };
-        }>((resolve) => {
-          options?.signal?.addEventListener(
-            'abort',
-            () => {
-              lease.release();
-              resolve({
-                success: false,
-                error: { type: 'aborted', message: 'Agent was destroyed' },
-              });
-            },
-            { once: true },
-          );
-        });
-      },
-    );
-    const backgroundAgentManager = {} as BackgroundAgentManager;
-    const agent = new Agent(
-      { models: [], language: 'en-US' } as unknown as BladeConfig,
-      {},
-      {
-        executionPipeline: createExecutionPipeline() as never,
-        runtimeManaged: true,
-        backgroundAgentManager,
-      },
-    );
-    Object.assign(agent as unknown as Record<string, unknown>, {
-      isInitialized: true,
-      loopRunner: { runLoop },
-    });
-
-    try {
-      const run = agent.runAgenticLoop('test', {
-        messages: [],
-        userId: 'test-user',
-        sessionId: SessionId('test-session'),
-      });
-      await started;
-      expect(lockManager.isLocked(filePath)).toBe(true);
-
-      await agent.destroy();
-
-      expect(lockManager.isLocked(filePath)).toBe(false);
-      await expect(run).resolves.toMatchObject({
-        success: false,
-        error: { type: 'aborted' },
-      });
-    } finally {
-      FileLockManager.resetInstance();
-    }
-  });
-
   it('closes paused streams so their file lock leases are released before destroy resolves', async () => {
     FileLockManager.resetInstance();
     const lockManager = FileLockManager.getInstance();
@@ -236,42 +145,6 @@ describe('Agent lifecycle', () => {
     } finally {
       FileLockManager.resetInstance();
     }
-  });
-});
-
-describe('Agent.initializeSystemPrompt', () => {
-  it('logs prompt sources for runtime base prompt and append content', async () => {
-    const logger = createLogger();
-    const agent = new Agent(
-      { models: [], language: 'en-US' } as unknown as BladeConfig,
-      {
-        systemPrompt: 'BASE PROMPT',
-        appendSystemPrompt: 'APPEND PROMPT',
-      },
-      {
-        executionPipeline: createExecutionPipeline() as never,
-        runtimeManaged: true,
-        logger,
-        defaultContext: {
-          capabilities: {
-            filesystem: {
-              roots: ['/workspace'],
-              cwd: '/workspace',
-            },
-          },
-        },
-      },
-    );
-
-    await (
-      agent as unknown as { initializeSystemPrompt(): Promise<void> }
-    ).initializeSystemPrompt();
-
-    expect(
-      logger.messages.some((message) =>
-        message.includes('[SystemPrompt] 可用来源: base_prompt, append'),
-      ),
-    ).toBe(true);
   });
 });
 

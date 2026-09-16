@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SessionStreamChannel } from '../SessionStreamChannel.js';
+import { AsyncChannel } from '../../utils/AsyncChannel.js';
 
-describe('SessionStreamChannel', () => {
+describe('AsyncChannel', () => {
   it('preserves event order', async () => {
-    const channel = new SessionStreamChannel<number>(2);
+    const channel = new AsyncChannel<number>(2);
     const producer = (async () => {
       await channel.publish(1);
       await channel.publish(2);
@@ -20,7 +20,7 @@ describe('SessionStreamChannel', () => {
   });
 
   it('waits for the consumer to advance before acknowledging an event', async () => {
-    const channel = new SessionStreamChannel<number>(1);
+    const channel = new AsyncChannel<number>(1);
     let published = false;
     const publication = channel.publish(1).then(() => {
       published = true;
@@ -38,7 +38,7 @@ describe('SessionStreamChannel', () => {
   });
 
   it('releases blocked producers during cancellation', async () => {
-    const channel = new SessionStreamChannel<number>(1);
+    const channel = new AsyncChannel<number>(1);
     let published = false;
     const publication = channel.publish(1).then(() => {
       published = true;
@@ -56,7 +56,7 @@ describe('SessionStreamChannel', () => {
   });
 
   it('does not acknowledge an event when the consumer returns early', async () => {
-    const channel = new SessionStreamChannel<number>();
+    const channel = new AsyncChannel<number>();
     let published = false;
     const publication = channel.publish(1).then(() => {
       published = true;
@@ -74,7 +74,7 @@ describe('SessionStreamChannel', () => {
   });
 
   it('drains buffered events before propagating producer failure', async () => {
-    const channel = new SessionStreamChannel<number>();
+    const channel = new AsyncChannel<number>();
     const publication = channel.publish(1);
     channel.fail(new Error('producer failed'));
     await publication;
@@ -89,7 +89,7 @@ describe('SessionStreamChannel', () => {
   });
 
   it('rejects invalid capacities', () => {
-    expect(() => new SessionStreamChannel(0)).toThrow(RangeError);
-    expect(() => new SessionStreamChannel(1.5)).toThrow(RangeError);
+    expect(() => new AsyncChannel(0)).toThrow(RangeError);
+    expect(() => new AsyncChannel(1.5)).toThrow(RangeError);
   });
 });

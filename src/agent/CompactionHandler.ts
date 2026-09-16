@@ -110,92 +110,8 @@ export class CompactionHandler {
       return true;
     }
 
-    // Tier 2: LLM-based compaction (existing logic)
     if (effectivePromptTokens >= threshold) {
-      const compactLogPrefix =
-        currentTurn === 0
-          ? '[Agent] 触发自动压缩'
-          : `[Agent] [轮次 ${currentTurn}] 触发循环内自动压缩`;
-      this.logger.debug(compactLogPrefix);
-
-      yield { type: 'compacting', isCompacting: true };
-
-      await runtimeCtx.assertExecutionLease?.();
-      try {
-        const result = await CompactionService.compact(convState.getContextMessages(), {
-          trigger: 'auto',
-          provider: modelConfig.provider,
-          providerId: modelConfig.providerId,
-          providerRegistry: this.getProviderRegistry(),
-          modelName,
-          maxContextTokens,
-          apiKey: modelConfig.apiKey,
-          baseURL: modelConfig.baseUrl,
-          customHeaders: modelConfig.customHeaders,
-          actualPreTokens: actualPromptTokens,
-          projectDir: runtimeCtx.projectDir,
-          filesystemRoots: runtimeCtx.filesystemRoots,
-          signal: runtimeCtx.signal,
-          assertExecutionLease: runtimeCtx.assertExecutionLease,
-        });
-        runtimeCtx.signal?.throwIfAborted();
-        await runtimeCtx.assertExecutionLease?.();
-
-        if (result.success) {
-          convState.replaceContent(result.compactedMessages);
-
-          this.logger.debug(
-            `[Agent] [轮次 ${currentTurn}] 压缩完成: ${result.preTokens} → ${result.postTokens} tokens (-${((1 - result.postTokens / result.preTokens) * 100).toFixed(1)}%)`,
-          );
-        } else {
-          convState.replaceContent(result.compactedMessages);
-
-          this.logger.warn(
-            `[Agent] [轮次 ${currentTurn}] 压缩使用降级策略: ${result.preTokens} → ${result.postTokens} tokens`,
-          );
-        }
-
-        try {
-          const contextMgr = this.getContextManager();
-          if (contextMgr && runtimeCtx.sessionId) {
-            await runWithExecutionLeaseBoundary(runtimeCtx, () =>
-              contextMgr.saveCompaction(
-                runtimeCtx.sessionId,
-                result.summary,
-                {
-                  trigger: 'auto',
-                  preTokens: result.preTokens,
-                  postTokens: result.postTokens,
-                  filesIncluded: result.filesIncluded,
-                },
-                null,
-              ),
-            );
-            this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩数据已保存到 JSONL`);
-          }
-        } catch (saveError) {
-          if (runtimeCtx.signal?.aborted || isExecutionLeaseFailure(saveError)) {
-            throw saveError;
-          }
-          this.logger.warn(`[Agent] [轮次 ${currentTurn}] 保存压缩数据失败:`, saveError);
-        }
-
-        yield { type: 'compacting', isCompacting: false };
-
-        return true;
-      } catch (error) {
-        if (
-          runtimeCtx.signal?.aborted ||
-          isExecutionLeaseFailure(error) ||
-          error instanceof ProviderRegistryError
-        ) {
-          throw error;
-        }
-        yield { type: 'compacting', isCompacting: false };
-
-        this.logger.error(`[Agent] [轮次 ${currentTurn}] 压缩失败，继续执行`, error);
-        return false;
-      }
+      return yield* this.compactWithModel(convState, runtimeCtx, currentTurn, actualPromptTokens);
     }
 
     // Tier 1: Soft compaction — truncate large tool outputs, no LLM call
@@ -207,6 +123,60 @@ export class CompactionHandler {
       );
     }
     return false;
+  }
+
+  private async *compactWithModel(
+    convState: ConversationState,
+    runtimeCtx: CompactionRuntimeContext,
+    currentTurn: number,
+    actualPromptTokens: number,
+  ): AsyncGenerator<CompactingEvent, boolean> {
+    this.logger.debug(
+      currentTurn === 0
+        ? '[Agent] 触发自动压缩'
+        : `[Agent] [轮次 ${currentTurn}] 触发循环内自动压缩`,
+    );
+    yield { type: 'compacting', isCompacting: true };
+    await runtimeCtx.assertExecutionLease?.();
+    try {
+      const config = this.getModelService().getConfig();
+      const result = await CompactionService.compact(convState.getContextMessages(), {
+        trigger: 'auto',
+        provider: config.provider,
+        providerId: config.providerId,
+        providerRegistry: this.getProviderRegistry(),
+        modelName: config.model,
+        maxContextTokens: config.maxContextTokens ?? 128000,
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl,
+        customHeaders: config.customHeaders,
+        actualPreTokens: actualPromptTokens,
+        projectDir: runtimeCtx.projectDir,
+        filesystemRoots: runtimeCtx.filesystemRoots,
+        signal: runtimeCtx.signal,
+        assertExecutionLease: runtimeCtx.assertExecutionLease,
+      });
+      runtimeCtx.signal?.throwIfAborted();
+      await runtimeCtx.assertExecutionLease?.();
+      convState.replaceContent(result.compactedMessages);
+      const message = `${result.preTokens} → ${result.postTokens} tokens`;
+      if (result.success) this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩完成: ${message}`);
+      else this.logger.warn(`[Agent] [轮次 ${currentTurn}] 压缩使用降级策略: ${message}`);
+      await this.saveCompaction(runtimeCtx, result, currentTurn);
+      yield { type: 'compacting', isCompacting: false };
+      return true;
+    } catch (error) {
+      if (
+        runtimeCtx.signal?.aborted ||
+        isExecutionLeaseFailure(error) ||
+        error instanceof ProviderRegistryError
+      ) {
+        throw error;
+      }
+      yield { type: 'compacting', isCompacting: false };
+      this.logger.error(`[Agent] [轮次 ${currentTurn}] 压缩失败，继续执行`, error);
+      return false;
+    }
   }
 
   async *reactiveCompact(
@@ -283,30 +253,7 @@ export class CompactionHandler {
 
       convState.replaceContent(result.compactedMessages);
 
-      // Save to JSONL
-      try {
-        const contextMgr = this.getContextManager();
-        if (contextMgr && runtimeCtx.sessionId) {
-          await runWithExecutionLeaseBoundary(runtimeCtx, () =>
-            contextMgr.saveCompaction(
-              runtimeCtx.sessionId,
-              result.summary,
-              {
-                trigger: 'auto',
-                preTokens: result.preTokens,
-                postTokens: result.postTokens,
-                filesIncluded: result.filesIncluded,
-              },
-              null,
-            ),
-          );
-        }
-      } catch (saveError) {
-        if (runtimeCtx.signal?.aborted || isExecutionLeaseFailure(saveError)) {
-          throw saveError;
-        }
-        this.logger.warn('[Agent] 保存反应式压缩数据失败:', saveError);
-      }
+      await this.saveCompaction(runtimeCtx, result);
 
       yield { type: 'compacting', isCompacting: false };
       return true;
@@ -325,6 +272,41 @@ export class CompactionHandler {
 
       yield { type: 'compacting', isCompacting: false };
       return true;
+    }
+  }
+
+  private async saveCompaction(
+    runtimeCtx: CompactionRuntimeContext,
+    result: {
+      summary: string;
+      preTokens: number;
+      postTokens: number;
+      filesIncluded: string[];
+    },
+    currentTurn?: number,
+  ): Promise<void> {
+    try {
+      const manager = this.getContextManager();
+      if (!manager) return;
+      await runWithExecutionLeaseBoundary(runtimeCtx, () =>
+        manager.saveCompaction(
+          runtimeCtx.sessionId,
+          result.summary,
+          {
+            trigger: 'auto',
+            preTokens: result.preTokens,
+            postTokens: result.postTokens,
+            filesIncluded: result.filesIncluded,
+          },
+          null,
+        ),
+      );
+      if (currentTurn !== undefined) {
+        this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩数据已保存到 JSONL`);
+      }
+    } catch (error) {
+      if (runtimeCtx.signal?.aborted || isExecutionLeaseFailure(error)) throw error;
+      this.logger.warn('[Agent] 保存压缩数据失败:', error);
     }
   }
 }

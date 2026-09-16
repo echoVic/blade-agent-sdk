@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Unify foreground, streaming, and subagent execution behind one model-to-tool path; remove the duplicate streaming executor and legacy non-stream Agent APIs, and centralize Session request settlement and cleanup.",
+  "zh-CN": "将前台、流式与子 Agent 执行统一到单一 model-to-tool 路径；移除重复的流式执行器和旧非流式 Agent API，并集中管理 Session 请求终态与清理。"
+}

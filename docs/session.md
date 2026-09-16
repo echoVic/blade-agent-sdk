@@ -2054,7 +2054,8 @@ export {
 | `SessionState` | Session 私有可变状态、配置快照与窄辅助方法 |
 | `SessionLifecycle` | 初始化、关闭、handoff 与 execution lease |
 | `SessionRequestCoordinator` | 输入接收、steering、取消、队列和历史恢复 |
-| `SessionStreamRunner` | 单个请求的 Agent loop、终态提交与 stream cleanup |
+| `SessionStreamRunner` | claim、输入准备、Agent stream 消费与公开事件发布 |
+| `SessionRequestExecution` | 单个已 claim 请求的 durable/trace 终态、失败分类与 cleanup |
 | `StreamBroadcaster` | `AgentEvent` 到 `SessionStreamEvent` 的唯一投影 |
 | `SessionDurability` | durable journal、request recorder 与恢复前置条件 |
 | `SessionRuntime` | 工具、hooks、MCP、subagent 和执行 pipeline 组装 |
@@ -2062,3 +2063,15 @@ export {
 `SessionState` 仅在上述内部模块之间共享，不从公共入口导出。事件字段的重命名、
 thinking 过滤、tool 记录和 usage 聚合必须集中在 `StreamBroadcaster`，不能重新
 散落到 Session facade 或 framework adapter。
+
+Agent 内部同样只有一条执行路径：`Agent.streamChat()` 进入 `LoopRunner`，
+`AgentLoop` 每轮调用一次 `runTurn()` 完成模型请求和 durable model
+settlement，模型响应持久化后再由 `streamToolCalls()` 执行该轮工具。流式和非流式
+provider、前台和 subagent 都复用这条路径；不存在提前执行工具的第二套
+streaming executor。
+
+请求级清理只由 `SessionRequestExecution` 完成。它持有 claim 后的 controller、
+recorder、trace collector 和 stream completion，负责将 setup/execution
+失败映射为 durable 终态，并在取消、handoff 或 consumer 提前退出时关闭底层
+Agent stream。`SessionLifecycle` 只触发取消或 handoff 并等待同一个 completion，
+不重复提交请求终态。

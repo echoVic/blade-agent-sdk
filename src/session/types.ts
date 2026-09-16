@@ -114,6 +114,26 @@ export interface PromptResult {
   turnsCount: number;
 }
 
+type SessionToolEvent = {
+  id: ToolUseId;
+  name: string;
+  sessionId: SessionId;
+} & (
+  | { type: 'tool_use'; input: JsonValue }
+  | { type: 'tool_progress'; progress: ToolProgress }
+  | { type: 'tool_message'; content: ToolMessage['content'] }
+  | { type: 'tool_runtime_patch'; patch: RuntimePatch }
+  | { type: 'tool_context_patch'; patch: RuntimeContextPatch }
+  | { type: 'tool_new_messages'; messages: ConversationMessage[] }
+  | { type: 'tool_permission_updates'; updates: PermissionUpdate[] }
+  | {
+      type: 'tool_result';
+      output: ToolModelContent;
+      display?: ToolDisplayContent;
+      isError?: boolean;
+    }
+);
+
 export type SessionStreamEvent =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
@@ -134,58 +154,7 @@ export type SessionStreamEvent =
     }
   | { type: 'content'; delta: string; sessionId: SessionId }
   | { type: 'thinking'; delta: string; sessionId: SessionId }
-  | { type: 'tool_use'; id: ToolUseId; name: string; input: JsonValue; sessionId: SessionId }
-  | {
-      type: 'tool_progress';
-      id: ToolUseId;
-      name: string;
-      progress: ToolProgress;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_message';
-      id: ToolUseId;
-      name: string;
-      content: ToolMessage['content'];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_runtime_patch';
-      id: ToolUseId;
-      name: string;
-      patch: RuntimePatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_context_patch';
-      id: ToolUseId;
-      name: string;
-      patch: RuntimeContextPatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_new_messages';
-      id: ToolUseId;
-      name: string;
-      messages: ConversationMessage[];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_permission_updates';
-      id: ToolUseId;
-      name: string;
-      updates: PermissionUpdate[];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_result';
-      id: ToolUseId;
-      name: string;
-      output: ToolModelContent;
-      display?: ToolDisplayContent;
-      isError?: boolean;
-      sessionId: SessionId;
-    }
+  | SessionToolEvent
   | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
   | {
       type: 'result';
@@ -213,7 +182,6 @@ export interface HookInput {
 
 export interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  /** Input fields to merge into tool input or prompt payload. */
   modifiedInput?: JsonObject;
   modifiedOutput?: JsonValue;
   reason?: string;
@@ -239,7 +207,6 @@ export interface AgentDefinition {
 
 export interface SessionOptions {
   provider: ProviderConnectionConfig;
-  /** Instance-scoped custom provider adapters. */
   providerRegistry?: ProviderRegistry;
   model: string;
   temperature?: number;
@@ -254,33 +221,24 @@ export interface SessionOptions {
   disallowedTools?: string[];
   toolSourcePolicy?: ToolSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  /** Enables the built-in MemoryRead and MemoryWrite tools for this Session. */
   memoryManager?: MemoryManager;
-  /** Custom tool definitions returned by defineTool(). */
   tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
 
   permissionMode?: PermissionMode;
-  /** Full permission callback for low-level Session integrations. */
   permissionHandler?: PermissionHandler;
   confirmationHandler?: ConfirmationHandler;
-  /** Creates a Session-bound confirmation handler after the Session ID exists. */
   confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;
 
   systemPrompt?: string;
   maxTurns?: number;
-  /** Maximum wall-clock duration of one tool invocation. */
   toolTimeoutMs?: number;
-  /** Network-boundary policy for the built-in WebFetch tool. */
   webFetch?: WebFetchSecurityPolicy;
   agents?: Record<string, AgentDefinition>;
-  /** Session-scoped Skills supplied as data instead of discovered from disk. */
   skills?: readonly SkillDefinition[];
   subagent?: SubagentInfo;
 
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
-  /** Total deadline for one inline hook event. Defaults to 600000ms. */
   hookTimeoutMs?: number;
-  /** Deadline for inline SessionEnd hooks. Defaults to 3000ms. */
   sessionEndHookTimeoutMs?: number;
   middleware?: AgentMiddlewareConfig;
   plugins?: readonly AgentPlugin[];
@@ -289,27 +247,12 @@ export interface SessionOptions {
   logger?: AgentLogger;
   storagePath?: string;
   persistSession?: boolean;
-  /**
-   * Shared transcript repository. Required for resumable server Sessions.
-   * The /node entry creates a JSONL repository from storagePath when omitted.
-   */
   sessionRepository?: SessionRepository;
-  /** Write-side Session projection port paired with sessionRepository. */
   sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
-  /** Explicit Store for execution lease ownership and sticky fencing checks. */
   durableExecutionLeaseStore?: DurableExecutionLeaseStore;
-  /**
-   * Storage for subagent Sessions.
-   *
-   * Defaults to a store rooted in local storage, which cannot be reached from
-   * another host. Inject one backed by the same repository as the parent Session
-   * when subagents must survive a move between machines.
-   */
   agentSessionRepository?: AgentSessionRepository;
-  /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;
-  /** Requires durableExecutionLeaseStore. */
   executionLease?: DurableExecutionLeaseOptions;
 
   outputFormat?: OutputFormat;
@@ -381,11 +324,8 @@ export interface ISession extends AsyncDisposable {
 
   stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>;
 
-  /** Close after active cleanup and durable finalization when durableEventStore is configured. */
   close(): Promise<void>;
-  /** Abort after active cleanup and durable finalization when durableEventStore is configured. */
   abort(): Promise<void>;
-  /** Stop local execution without terminalizing the durable Session so another worker can recover it. */
   suspendForHandoff(): Promise<SessionHandoffResult>;
 
   getDefaultContext(): RuntimeContext;
@@ -410,7 +350,6 @@ export interface ISession extends AsyncDisposable {
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
   getExecutionLease(): DurableExecutionLeaseSnapshot | null;
-  /** Replays durable events from an optional cursor and then follows live commits. */
   subscribeDurableEvents(
     options?: DurableEventSubscriptionOptions,
   ): Promise<DurableEventSubscription>;
