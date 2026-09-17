@@ -206,7 +206,7 @@ Acceptance:
 
 Result: the final architecture audit is recorded in
 `docs/internal/massive-simplification-result.md`.
-Production TypeScript is **56,212 LOC**, a **32.9%** reduction from the 83,805
+Production TypeScript is **56,331 LOC**, a **32.8%** reduction from the 83,805
 line baseline. No production file exceeds 900 lines and no production function
 exceeds 150 lines. The full lint, type-check, test, documentation, changelog,
 package entrypoint, and minimal-install gates pass before publication.

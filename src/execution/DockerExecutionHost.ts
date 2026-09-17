@@ -200,10 +200,10 @@ export class DockerExecutionHost implements ExecutionHost {
       try {
         await mkdir(directory, { recursive: true, mode: 0o700 });
         const workspace = join(directory, 'workspace');
-        await runCheckedProcess(
-          this.runtime,
-          ['cp', `${record.container}:/workspace/.`, workspace],
-          CONTROL_OPTIONS,
+        await this.workspace.exportFromContainer(
+          record.container,
+          workspace,
+          record.handle.resources.diskBytes,
         );
         const sizeBytes = await this.workspace.directorySize(workspace);
         if (sizeBytes > record.handle.resources.diskBytes) {

@@ -3,10 +3,10 @@
 ## Outcome
 
 The simplification program reduced production TypeScript from the agreed
-baseline of **83,805 LOC** to **56,212 LOC**:
+baseline of **83,805 LOC** to **56,331 LOC**:
 
-- **27,593 lines removed**
-- **32.9% net reduction**
+- **27,474 lines removed**
+- **32.8% net reduction**
 - **895 lines** in the largest remaining production file
 - **0 functions** above 150 lines
 

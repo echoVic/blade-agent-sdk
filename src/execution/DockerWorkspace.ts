@@ -1,6 +1,6 @@
-import { lstat, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { runCheckedProcess } from './DockerProcessRunner.js';
+import { runCheckedProcess, runProcessToFile } from './DockerProcessRunner.js';
 import type { ExecutionProvisionRequest } from './ExecutionHost.js';
 import { ExecutionHostError } from './ExecutionHost.js';
 
@@ -39,6 +39,32 @@ export class DockerWorkspace {
     await this.withArchive('restore-archive-', async (archive) => {
       await runCheckedProcess('tar', ['-C', source, '-cf', archive, '.'], processOptions(signal));
       await this.loadArchive(container, archive, maxBytes, signal);
+    });
+  }
+
+  async exportFromContainer(
+    container: string,
+    destination: string,
+    maxBytes: number,
+  ): Promise<void> {
+    await mkdir(destination, { recursive: true, mode: 0o700 });
+    await this.withArchive('checkpoint-archive-', async (archive) => {
+      const exported = await runProcessToFile(
+        this.runtime,
+        ['exec', '--user', this.user, container, 'tar', '-cf', '-', '-C', '/workspace', '.'],
+        archive,
+        {
+          ...processOptions(),
+          maxBytes: Math.min(Number.MAX_SAFE_INTEGER, maxBytes + 16 * 1024 * 1024),
+        },
+      );
+      if (exported.exitCode !== 0) {
+        throw new ExecutionHostError(
+          'EXECUTION_RUNTIME_ERROR',
+          exported.stderr || 'Could not export the container workspace',
+        );
+      }
+      await runCheckedProcess('tar', ['-C', destination, '-xf', archive], processOptions());
     });
   }
 

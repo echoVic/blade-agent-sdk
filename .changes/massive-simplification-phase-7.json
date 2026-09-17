@@ -1,5 +1,5 @@
 {
   "type": "refactor",
-  "en": "Consolidate built-in model providers behind one routing table, extract shared model conversion and Docker execution primitives, and remove unused runtime dependencies.",
-  "zh-CN": "将内置模型 Provider 收敛到单一路由表，提取共享模型转换与 Docker 执行原语，并移除未使用的运行时依赖。"
+  "en": "Consolidate built-in model providers behind one routing table, extract shared model conversion and Docker execution primitives, preserve tmpfs checkpoints through bounded tar streams, and remove unused runtime dependencies.",
+  "zh-CN": "将内置模型 Provider 收敛到单一路由表，提取共享模型转换与 Docker 执行原语，通过有界 tar 流可靠保存 tmpfs checkpoint，并移除未使用的运行时依赖。"
 }

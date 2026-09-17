@@ -32,18 +32,27 @@ async function fixture(): Promise<{
   roots.push(root);
   const log = join(root, 'runtime.jsonl');
   const runtime = join(root, 'runtime.mjs');
+  const simulatedWorkspace = join(root, 'container-workspace');
+  await mkdir(simulatedWorkspace);
+  await writeFile(join(simulatedWorkspace, 'checkpoint.txt'), 'checkpoint');
   await writeFile(
     runtime,
     `#!/usr/bin/env node
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
 if (args[0] === 'exec' && args.includes('hang')) {
   setTimeout(() => undefined, 60_000);
-} else if (args[0] === 'cp' && args[1]?.includes(':/workspace/.')) {
-  mkdirSync(args[2], { recursive: true });
-  writeFileSync(join(args[2], 'checkpoint.txt'), 'checkpoint');
+} else if (args[0] === 'exec' && args.includes('tar') && args.includes('-xf')) {
+  const result = spawnSync('tar', ['-xf', '-', '-C', ${JSON.stringify(simulatedWorkspace)}], {
+    input: readFileSync(0),
+  });
+  process.exitCode = result.status ?? 1;
+} else if (args[0] === 'exec' && args.includes('tar') && args.includes('-cf')) {
+  const result = spawnSync('tar', ['-cf', '-', '-C', ${JSON.stringify(simulatedWorkspace)}, '.']);
+  if (result.stdout) process.stdout.write(result.stdout);
+  process.exitCode = result.status ?? 1;
 }
 `,
   );
@@ -74,6 +83,58 @@ async function provision(
 }
 
 describe('DockerExecutionHost', () => {
+  it.runIf(process.env.TEST_DOCKER_IMAGE)(
+    'round-trips files through a real tmpfs checkpoint',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'blade-docker-checkpoint-'));
+      roots.push(root);
+      const repository = join(root, 'repository');
+      await mkdir(repository);
+      await writeFile(join(repository, 'fixture.txt'), 'checkpoint-content\n');
+      await execFileAsync('git', ['init', '--quiet', repository]);
+      await execFileAsync('git', ['-C', repository, 'add', '.']);
+      await execFileAsync('git', [
+        '-C',
+        repository,
+        '-c',
+        'user.name=Blade Test',
+        '-c',
+        'user.email=test@example.com',
+        'commit',
+        '--quiet',
+        '-m',
+        'fixture',
+      ]);
+      const { stdout } = await execFileAsync('git', ['-C', repository, 'rev-parse', 'HEAD']);
+      const host = new DockerExecutionHost({
+        rootDirectory: join(root, 'executions'),
+        checkpointDirectory: join(root, 'checkpoints'),
+      });
+      const source = await host.provision({
+        executionId: ExecutionId('native-checkpoint-source'),
+        image: process.env.TEST_DOCKER_IMAGE as string,
+        workspace: { kind: 'git-worktree', repositoryPath: repository, revision: stdout.trim() },
+        resources,
+        network: { mode: 'none' },
+      });
+      const checkpoint = await host.checkpoint(source.executionId);
+      await host.terminate(source.executionId);
+      const restored = await host.restore({
+        checkpointId: checkpoint.checkpointId,
+        executionId: ExecutionId('native-checkpoint-restored'),
+      });
+      try {
+        const result = await host.exec(restored.executionId, {
+          command: 'cat',
+          args: ['fixture.txt'],
+        });
+        expect(result).toMatchObject({ exitCode: 0, stdout: 'checkpoint-content\n' });
+      } finally {
+        await host.terminate(restored.executionId);
+      }
+    },
+  );
+
   it('imports a Git revision into a bounded tmpfs workspace', async () => {
     const { host, root, log } = await fixture();
     const repository = join(root, 'repository');
