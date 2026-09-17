@@ -1,4 +1,3 @@
 onlyBuiltDependencies:
-  - '@vscode/ripgrep'
   - esbuild
   - node-pty
