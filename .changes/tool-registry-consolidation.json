@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Consolidate tool storage and source metadata in ToolRegistry, make exposure planning authoritative, add explicit built-in groups, and expose defineTool as the only root authoring function.",
-  "zh-CN": "将工具存储与来源元数据统一收敛到 ToolRegistry，以暴露规划器作为唯一决策入口，为内置工具增加显式分组，并将根入口收敛为仅公开 defineTool 作为工具声明函数。"
-}

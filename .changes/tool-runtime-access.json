@@ -1,5 +1,0 @@
-{
-  "type": "refactor",
-  "en": "Group execution lease and fencing capabilities under a typed tool runtime context.",
-  "zh-CN": "将执行租约与 fencing 能力收敛到类型化的工具 runtime 上下文。"
-}

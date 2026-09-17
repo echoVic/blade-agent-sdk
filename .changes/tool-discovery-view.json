@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Replace tool registry access in execution contexts with a narrow discoverable catalog view.",
-  "zh-CN": "以窄化的可发现工具目录视图替代执行上下文中的工具注册表访问。"
-}

@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Remove deprecated package subpaths, canUseTool, legacy persistence migrations, unreachable history repair, and the obsolete context cache/compression stack.",
-  "zh-CN": "删除已弃用的包子路径、canUseTool、旧持久化迁移、不可达的历史修复模块，以及过时的上下文缓存与压缩栈。"
-}

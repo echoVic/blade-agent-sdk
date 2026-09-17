@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Remove the unreachable shell-hook protocol and keep the eight supported in-process hook events behind one dispatcher.",
-  "zh-CN": "移除不可达的 shell-hook 协议，并将 8 个受支持的进程内 Hook 事件统一到单一 dispatcher。"
-}

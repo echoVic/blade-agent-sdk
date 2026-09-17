@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Unify tool behavior planning and invocation resolution behind one resolveBehavior callback.",
-  "zh-CN": "统一工具规划期与调用期行为解析，改用单一 resolveBehavior 回调。"
-}

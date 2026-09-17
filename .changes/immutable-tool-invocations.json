@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Replace the method-heavy runtime Tool API with precomputed declarations and immutable prepared invocations.",
-  "zh-CN": "以预计算声明和不可变调用快照替代方法过载的运行时 Tool API。"
-}

@@ -2,6 +2,30 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.13] - 2026-09-17
+
+### 破坏性变更
+
+- 以显式的持久化、执行租约、MCP 句柄、schema 与 defineTool 返回契约替代结构化能力探测。
+- 以预计算声明和不可变调用快照替代方法过载的运行时 Tool API。
+- 删除已弃用的包子路径、canUseTool、旧持久化迁移、不可达的历史修复模块，以及过时的上下文缓存与压缩栈。
+- 移除不可达的 shell-hook 协议，并将 8 个受支持的进程内 Hook 事件统一到单一 dispatcher。
+- 统一 durable Session 状态投影，并从生产包入口移除仅用于测试的 Runtime Store conformance API。
+- 围绕当前 Session 执行合并 PostgreSQL、Worker 与 Docker runtime；移除通用 outbox runtime、运维 facade、内置 OpenTelemetry adapter、无 owner 的凭据与网络出口抽象，以及不再支持的 DeepSeek 请求辅助 API。
+- 将前台、流式与子 Agent 执行统一到单一 model-to-tool 路径；移除重复的流式执行器和旧非流式 Agent API，并集中管理 Session 请求终态与清理。
+- 将内置文件、搜索、网络与任务工具收敛到共享操作核心；移除旧 Grep 降级链、Exa MCP 搜索、独立搜索缓存/provider 模块及重复的任务 CRUD 实现。
+- Session、Agent 与插件的工具输入仅接受 `defineTool()` 返回的声明，不再接受已编译的 runtime `Tool` 对象。
+- 以内置静态工具替代会话绑定工厂，并通过工具注册器注入显式声明的服务。
+- 统一工具规划期与调用期行为解析，改用单一 resolveBehavior 回调。
+- 以窄化的可发现工具目录视图替代执行上下文中的工具注册表访问。
+- 将工具存储与来源元数据统一收敛到 ToolRegistry，以暴露规划器作为唯一决策入口，为内置工具增加显式分组，并将根入口收敛为仅公开 defineTool 作为工具声明函数。
+- 为 defineTool 增加显式服务与 runtime 能力声明，并仅注入工具已声明的服务。
+
+### 重构
+
+- 将内置模型 Provider 收敛到单一路由表，提取共享模型转换与 Docker 执行原语，通过有界 tar 流可靠保存 tmpfs checkpoint，并移除未使用的运行时依赖。
+- 将执行租约与 fencing 能力收敛到类型化的工具 runtime 上下文。
+
 ## [7.4.12] - 2026-09-15
 
 ### 重构

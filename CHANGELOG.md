@@ -2,6 +2,30 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.13] - 2026-09-17
+
+### Breaking Changes
+
+- Replace structural capability detection with explicit persistence, execution-lease, MCP handle, schema, and defineTool result contracts.
+- Replace the method-heavy runtime Tool API with precomputed declarations and immutable prepared invocations.
+- Remove deprecated package subpaths, canUseTool, legacy persistence migrations, unreachable history repair, and the obsolete context cache/compression stack.
+- Remove the unreachable shell-hook protocol and keep the eight supported in-process hook events behind one dispatcher.
+- Unify durable Session state projection and remove the test-only Runtime Store conformance API from production package entrypoints.
+- Consolidate the PostgreSQL, Worker, and Docker runtimes around current Session execution; remove the generic outbox runtime, operations facade, bundled OpenTelemetry adapters, orphaned credential and egress abstractions, and unsupported DeepSeek request helpers.
+- Unify foreground, streaming, and subagent execution behind one model-to-tool path; remove the duplicate streaming executor and legacy non-stream Agent APIs, and centralize Session request settlement and cleanup.
+- Consolidate built-in filesystem, search, web, and task tools around shared operation cores; remove legacy Grep fallbacks, Exa MCP search, standalone search cache/provider modules, and duplicate task CRUD implementations.
+- Require Session, Agent, and plugin tool inputs to be definitions returned by `defineTool()`; compiled runtime `Tool` objects are no longer accepted.
+- Replace session-bound built-in tool factories with static tools and inject declared services through the tool registry.
+- Unify tool behavior planning and invocation resolution behind one resolveBehavior callback.
+- Replace tool registry access in execution contexts with a narrow discoverable catalog view.
+- Consolidate tool storage and source metadata in ToolRegistry, make exposure planning authoritative, add explicit built-in groups, and expose defineTool as the only root authoring function.
+- Add explicit service and runtime capability declarations to defineTool and inject only declared services.
+
+### Refactoring
+
+- Consolidate built-in model providers behind one routing table, extract shared model conversion and Docker execution primitives, preserve tmpfs checkpoints through bounded tar streams, and remove unused runtime dependencies.
+- Group execution lease and fencing capabilities under a typed tool runtime context.
+
 ## [7.4.12] - 2026-09-15
 
 ### Refactoring
