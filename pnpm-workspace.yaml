@@ -1,4 +1,4 @@
-allowBuilds:
-  '@vscode/ripgrep': true
-  esbuild: true
-  node-pty: true
+onlyBuiltDependencies:
+  - '@vscode/ripgrep'
+  - esbuild
+  - node-pty
