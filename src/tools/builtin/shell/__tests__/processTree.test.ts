@@ -20,15 +20,11 @@ describe('terminateProcessTree', () => {
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
 
     expect(signalProcessTree(42_424, 'SIGTERM')).toBe(true);
-    expect(spawnSync).toHaveBeenCalledWith(
-      'taskkill',
-      ['/pid', '42424', '/t', '/f'],
-      {
-        stdio: 'ignore',
-        windowsHide: true,
-        timeout: 5_000,
-      },
-    );
+    expect(spawnSync).toHaveBeenCalledWith('taskkill', ['/pid', '42424', '/t', '/f'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 5_000,
+    });
   });
 
   it('does not report root-only fallback as Windows tree cleanup', () => {
@@ -60,9 +56,7 @@ describe('terminateProcessTree', () => {
       kill: vi.fn(() => false),
     } as unknown as ChildProcess;
 
-    await expect(
-      terminateProcessTree(42_424, child, 1),
-    ).rejects.toThrow(
+    await expect(terminateProcessTree(42_424, child, 1)).rejects.toThrow(
       'Failed to terminate process tree 42424 after 3 force-kill attempts',
     );
     expect(child.kill).toHaveBeenCalledTimes(4);

@@ -1,4 +1,3 @@
-import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ModelToolCall } from '../../model/message.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
@@ -7,12 +6,11 @@ import {
   isExecutionLeaseFailure,
 } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { SkillRegistry } from '../../skills/SkillRegistry.js';
-import type { ToolCatalog } from '../../tools/catalog/index.js';
+import { resolveBehavior, ToolSideEffect } from '../../tools/behavior.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import type { DiscoverableCatalogView } from '../../tools/exposure/index.js';
 import type { ToolEffect } from '../../tools/types/effects.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/execution.js';
-import { resolveToolBehaviorSafely, ToolSideEffect } from '../../tools/types/kind.js';
 import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import { ToolErrorType } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
@@ -101,10 +99,8 @@ export interface ToolExecutionContext {
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
-  toolCatalog?: ToolCatalog;
-  toolRegistry?: ToolRegistry;
+  discoverableCatalog?: DiscoverableCatalogView;
   skillRegistry?: SkillRegistry;
-  discoveredTools?: string[];
   lifecycle?: ToolExecutionLifecycle;
 }
 
@@ -131,51 +127,20 @@ export interface RunToolCallInput {
   batchSignal?: AbortSignal;
 }
 
+interface PreparedToolCall {
+  params: JsonObject;
+  modelInput: JsonObject;
+  interruptBehavior: 'cancel' | 'block';
+  sideEffect: ToolSideEffect;
+}
+
 export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutionOutcome> {
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
-  let interruptBehavior: 'cancel' | 'block' = 'block';
-  let sideEffect: ToolSideEffect = ToolSideEffect.NON_IDEMPOTENT;
-  let modelInput: JsonObject;
-  let params: JsonObject;
-
+  let prepared: PreparedToolCall;
   try {
-    const parsed: unknown = JSON.parse(input.toolCall.function.arguments);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error('Tool arguments must be a JSON object');
-    }
-    params = parsed as JsonObject;
-    modelInput = structuredClone(params);
-    await repairToolCallParams(input.toolCall, params);
-    interruptBehavior = resolveToolInterruptBehavior(
-      input.executionPipeline.getRegistry(),
-      input.toolCall.function.name,
-      params,
-    );
-    sideEffect =
-      resolveToolBehaviorSafely(
-        input.executionPipeline.getRegistry().get(input.toolCall.function.name),
-        params,
-      )?.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT;
+    prepared = await prepareToolCall(input);
   } catch (error) {
-    const outcome = buildFailedOutcome(
-      input.toolCall,
-      error,
-      interruptBehavior,
-      input.steeringSignal,
-    );
-    await emitToolExecutionUpdate(input.hooks, {
-      type: 'tool_ready',
-      toolCall: input.toolCall,
-    });
-    await emitToolExecutionUpdate(input.hooks, {
-      type: 'tool_result',
-      outcome,
-    });
-    await emitToolExecutionUpdate(input.hooks, {
-      type: 'tool_completed',
-      outcome,
-    });
-    return outcome;
+    return publishPreparationFailure(input, error);
   }
 
   const invocationLifecycle = await input.executionContext.lifecycle?.onToolScheduled?.({
@@ -184,10 +149,10 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
     ...(input.executionContext.modelAttemptId
       ? { modelAttemptId: input.executionContext.modelAttemptId }
       : {}),
-    modelInput,
-    input: structuredClone(params),
-    sideEffect,
-    interruptBehavior,
+    modelInput: prepared.modelInput,
+    input: structuredClone(prepared.params),
+    sideEffect: prepared.sideEffect,
+    interruptBehavior: prepared.interruptBehavior,
   });
   await emitToolExecutionUpdate(input.hooks, {
     type: 'tool_ready',
@@ -196,117 +161,18 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
 
   let outcome: ToolExecutionOutcome;
   try {
-    const interruptSignal = createInterruptAwareAbortSignal({
-      requestSignal: input.signal,
-      steeringSignal: input.steeringSignal,
-      batchSignal: input.batchSignal,
-      interruptBehavior,
-    });
-
-    const toolMessageId =
-      (await input.hooks?.onBeforeToolExec?.({
-        toolCall: input.toolCall,
-        params,
-      })) ?? null;
-    await emitToolExecutionUpdate(input.hooks, {
-      type: 'tool_started',
-      toolCall: input.toolCall,
-      params,
-      toolMessageId,
-    });
-
-    let result: ToolResult | undefined;
-    const effects: ToolEffect[] = [];
-    let execution: ReturnType<ExecutionPipeline['execute']> | undefined;
-    let executionCompleted = false;
-    let executionFailed = false;
-    let executionFailure: unknown;
-    let closeFailure: unknown;
-    try {
-      execution = input.executionPipeline.execute(input.toolCall.function.name, params, {
-        sessionId: input.executionContext.sessionId,
-        userId: input.executionContext.userId,
-        contextSnapshot: input.executionContext.contextSnapshot,
-        skillActivationPaths: input.executionContext.skillActivationPaths,
-        signal: interruptSignal.signal,
-        confirmationHandler: input.executionContext.confirmationHandler,
-        bladeConfig: input.executionContext.bladeConfig,
-        backgroundAgentManager: input.executionContext.backgroundAgentManager,
-        executionFence: input.executionContext.executionFence,
-        assertExecutionLease: input.executionContext.assertExecutionLease,
-        runWithExecutionLease: input.executionContext.runWithExecutionLease,
-        toolCatalog: input.executionContext.toolCatalog,
-        toolRegistry: input.executionContext.toolRegistry,
-        skillRegistry: input.executionContext.skillRegistry,
-        discoveredTools: input.executionContext.discoveredTools,
-        permissionMode: input.permissionMode,
-        toolInvocationLifecycle: invocationLifecycle,
-      });
-      while (true) {
-        const step = await execution.next();
-        if (step.done) {
-          result = step.value;
-          executionCompleted = true;
-          break;
-        }
-        if (step.value.kind === 'effect') {
-          effects.push(step.value.effect);
-        }
-        await emitToolExecutionUpdate(
-          input.hooks,
-          mapToolYieldToExecutionUpdate(input.toolCall, step.value),
-        );
-      }
-    } catch (error) {
-      executionFailed = true;
-      executionFailure = error;
-    } finally {
-      if (execution && !executionCompleted) {
-        try {
-          await execution.return(undefined as never);
-        } catch (error) {
-          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
-            closeFailure = error;
-          }
-        }
-      }
-      interruptSignal.cleanup();
-    }
-
-    if (closeFailure !== undefined) {
-      throw executionFailed
-        ? new AggregateError(
-            [executionFailure, closeFailure],
-            'Tool execution and cleanup both failed',
-          )
-        : closeFailure;
-    }
-    if (executionFailed) {
-      throw executionFailure;
-    }
-    if (!result) {
-      throw new Error('Tool execution completed without a result');
-    }
-    if (
-      result.status === 'error' &&
-      interruptBehavior === 'cancel' &&
-      isSteeringInterruptSignal(input.steeringSignal)
-    ) {
-      result = {
-        ...result,
-        error: {
-          ...result.error,
-          type: ToolErrorType.INTERRUPTED,
-        },
-      };
-    }
-    outcome = { toolCall: input.toolCall, result, effects, toolMessageId };
+    outcome = await executePreparedTool(input, prepared, invocationLifecycle);
   } catch (error) {
-    if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
+    if (isExecutionLeaseFailure(error)) {
       throw error;
     }
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
-    outcome = buildFailedOutcome(input.toolCall, error, interruptBehavior, input.steeringSignal);
+    outcome = buildFailedOutcome(
+      input.toolCall,
+      error,
+      prepared.interruptBehavior,
+      input.steeringSignal,
+    );
   }
 
   await input.executionContext.lifecycle?.onToolSettled?.({
@@ -323,6 +189,130 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
     outcome,
   });
   return outcome;
+}
+
+async function prepareToolCall(input: RunToolCallInput): Promise<PreparedToolCall> {
+  const parsed: unknown = JSON.parse(input.toolCall.function.arguments);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Tool arguments must be a JSON object');
+  }
+  const params = parsed as JsonObject;
+  const modelInput = structuredClone(params);
+  await repairToolCallParams(input.toolCall, params);
+  const tool = input.executionPipeline.getRegistry().get(input.toolCall.function.name);
+  return {
+    params,
+    modelInput,
+    interruptBehavior: resolveToolInterruptBehavior(
+      input.executionPipeline.getRegistry(),
+      input.toolCall.function.name,
+      params,
+    ),
+    sideEffect: resolveBehavior(tool, params)?.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT,
+  };
+}
+
+async function publishPreparationFailure(
+  input: RunToolCallInput,
+  error: unknown,
+): Promise<ToolExecutionOutcome> {
+  const outcome = buildFailedOutcome(input.toolCall, error, 'block', input.steeringSignal);
+  await emitToolExecutionUpdate(input.hooks, {
+    type: 'tool_ready',
+    toolCall: input.toolCall,
+  });
+  await emitToolExecutionUpdate(input.hooks, { type: 'tool_result', outcome });
+  await emitToolExecutionUpdate(input.hooks, { type: 'tool_completed', outcome });
+  return outcome;
+}
+
+async function executePreparedTool(
+  input: RunToolCallInput,
+  prepared: PreparedToolCall,
+  lifecycle: Awaited<ReturnType<NonNullable<ToolExecutionLifecycle['onToolScheduled']>>>,
+): Promise<ToolExecutionOutcome> {
+  const interrupt = createInterruptAwareAbortSignal({
+    requestSignal: input.signal,
+    steeringSignal: input.steeringSignal,
+    batchSignal: input.batchSignal,
+    interruptBehavior: prepared.interruptBehavior,
+  });
+  const toolMessageId =
+    (await input.hooks?.onBeforeToolExec?.({
+      toolCall: input.toolCall,
+      params: prepared.params,
+    })) ?? null;
+  await emitToolExecutionUpdate(input.hooks, {
+    type: 'tool_started',
+    toolCall: input.toolCall,
+    params: prepared.params,
+    toolMessageId,
+  });
+
+  const effects: ToolEffect[] = [];
+  let execution: ReturnType<ExecutionPipeline['execute']> | undefined;
+  let result: ToolResult | undefined;
+  let failure: unknown;
+  let closeFailure: unknown;
+  try {
+    execution = input.executionPipeline.execute(input.toolCall.function.name, prepared.params, {
+      sessionId: input.executionContext.sessionId,
+      userId: input.executionContext.userId,
+      contextSnapshot: input.executionContext.contextSnapshot,
+      skillActivationPaths: input.executionContext.skillActivationPaths,
+      signal: interrupt.signal,
+      confirmationHandler: input.executionContext.confirmationHandler,
+      bladeConfig: input.executionContext.bladeConfig,
+      backgroundAgentManager: input.executionContext.backgroundAgentManager,
+      runtime: {
+        executionFence: input.executionContext.executionFence,
+        assertExecutionLease: input.executionContext.assertExecutionLease,
+        runWithExecutionLease: input.executionContext.runWithExecutionLease,
+      },
+      discoverableCatalog: input.executionContext.discoverableCatalog,
+      skillRegistry: input.executionContext.skillRegistry,
+      permissionMode: input.permissionMode,
+      toolInvocationLifecycle: lifecycle,
+    });
+    while (true) {
+      const step = await execution.next();
+      if (step.done) {
+        result = step.value;
+        break;
+      }
+      if (step.value.kind === 'effect') effects.push(step.value.effect);
+      await emitToolExecutionUpdate(
+        input.hooks,
+        mapToolYieldToExecutionUpdate(input.toolCall, step.value),
+      );
+    }
+  } catch (error) {
+    failure = error;
+  } finally {
+    if (execution && !result) {
+      try {
+        await execution.return(undefined as never);
+      } catch (error) {
+        if (isExecutionLeaseFailure(error)) closeFailure = error;
+      }
+    }
+    interrupt.cleanup();
+  }
+  if (closeFailure) {
+    throw failure
+      ? new AggregateError([failure, closeFailure], 'Tool execution and cleanup both failed')
+      : closeFailure;
+  }
+  if (failure) throw failure;
+  if (!result) throw new Error('Tool execution completed without a result');
+  if (
+    result.status === 'error' &&
+    prepared.interruptBehavior === 'cancel' &&
+    isSteeringInterruptSignal(input.steeringSignal)
+  ) {
+    result = { ...result, error: { ...result.error, type: ToolErrorType.INTERRUPTED } };
+  }
+  return { toolCall: input.toolCall, result, effects, toolMessageId };
 }
 
 function buildFailedOutcome(

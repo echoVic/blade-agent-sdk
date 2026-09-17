@@ -2,9 +2,7 @@ import type { InternalLogger } from '../../../../logging/Logger.js';
 import type { PermissionMode } from '../../../../types/constants.js';
 import type { PermissionRequestId } from '../../../../types/identifiers.js';
 import {
-  type CanUseTool,
   createModePermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
 } from '../../../../types/permissions.js';
 import { getErrorMessage } from '../../../../utils/errorUtils.js';
@@ -16,13 +14,12 @@ import type { InvocationBinder } from '../InvocationBinder.js';
 import type { PermissionDecisionApplier } from '../PermissionDecisionApplier.js';
 import type { PermissionRequestFactory } from '../PermissionRequestFactory.js';
 import { createAbortedResult } from '../results.js';
-import { getConfirmationReason, samePaths, type PipelineExecutionState } from '../state.js';
+import { getConfirmationReason, type PipelineExecutionState, samePaths } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
 
 export interface ConfirmationStageOptions {
   permissionMode: PermissionMode;
   permissionHandler?: PermissionHandler;
-  canUseTool?: CanUseTool;
 }
 
 /**
@@ -46,11 +43,7 @@ export class ConfirmationStage {
     options: ConfirmationStageOptions,
   ) {
     this.permissionHandlers = [
-      ...(options.permissionHandler
-        ? [options.permissionHandler]
-        : options.canUseTool
-          ? [createPermissionHandlerFromCanUseTool(options.canUseTool)]
-          : []),
+      ...(options.permissionHandler ? [options.permissionHandler] : []),
       createModePermissionHandler(options.permissionMode),
     ];
   }
@@ -65,8 +58,15 @@ export class ConfirmationStage {
 
     if (this.permissionHandlers.length > 0) {
       for (const permissionHandler of this.permissionHandlers) {
-        const previousAffectedPaths = [...state.affectedPaths];
-        const request = this.requests.build(state, state.affectedPaths);
+        const invocation = state.invocation;
+        if (!invocation) {
+          state.result = createAbortedResult(
+            'Pre-confirmation stage failed; cannot request user approval',
+          );
+          return;
+        }
+        const previousAffectedPaths = [...invocation.affectedPaths];
+        const request = this.requests.build(state);
         const result = await this.guard.awaitPermissionCallback(
           () => permissionHandler(request),
           state.context.signal,
@@ -76,13 +76,22 @@ export class ConfirmationStage {
           return;
         }
         try {
-          this.binder.rebuild(state);
-          const validationError = await this.binder.revalidate(state);
-          if (validationError) {
-            state.result = validationErrorToToolResult(validationError);
-            return;
+          if ((result.behavior === 'allow' || result.behavior === 'ask') && result.updatedInput) {
+            this.binder.rebuild(state, {
+              ...invocation.params,
+              ...result.updatedInput,
+            });
+            const validationError = await this.binder.revalidate(state);
+            if (validationError) {
+              state.result = validationErrorToToolResult(validationError);
+              return;
+            }
           }
-          if (!samePaths(previousAffectedPaths, state.affectedPaths)) {
+          const updatedInvocation = state.invocation;
+          if (
+            !updatedInvocation ||
+            !samePaths(previousAffectedPaths, updatedInvocation.affectedPaths)
+          ) {
             state.result = createAbortedResult(
               'Permission handlers cannot change filesystem paths after path authorization',
             );
@@ -103,13 +112,10 @@ export class ConfirmationStage {
       return;
     }
 
-    await this.requestUserConfirmation(state, state.affectedPaths);
+    await this.requestUserConfirmation(state);
   }
 
-  private async requestUserConfirmation(
-    state: PipelineExecutionState,
-    affectedPaths: string[],
-  ): Promise<void> {
+  private async requestUserConfirmation(state: PipelineExecutionState): Promise<void> {
     const invocation = state.invocation;
     if (!invocation) {
       state.result = createAbortedResult(
@@ -121,26 +127,26 @@ export class ConfirmationStage {
     let permissionRequestId: PermissionRequestId | undefined;
     let resolutionAttempted = false;
     try {
-      const description = invocation.getDescription();
+      const description = invocation.description;
       const confirmationTitle =
         description && description !== `执行工具: ${state.tool.name}`
           ? `权限确认: ${description}`
-          : `权限确认: ${state.permissionSignature ?? state.tool.name}`;
+          : `权限确认: ${invocation.permissionSignature}`;
 
       const confirmationDetails: ConfirmationDetails = {
         toolName: state.tool.name,
-        args: structuredClone(state.params),
+        args: structuredClone(invocation.params),
         title: confirmationTitle,
         message: getConfirmationReason(state) || '此操作需要用户确认',
         abortSignal: state.context.signal,
-        kind: state.resolvedBehavior?.kind ?? state.tool.kind,
-        details: generatePreviewForTool(state.tool.name, state.params),
+        kind: invocation.behavior.kind,
+        details: generatePreviewForTool(state.tool.name, invocation.params),
         risks: extractRisksFromPermissionCheck(
           state.tool,
-          state.params,
+          invocation.params,
           state.permissionCheckResult,
         ),
-        affectedFiles: affectedPaths,
+        affectedFiles: [...invocation.affectedPaths],
       };
 
       this.logger.warn(`工具 "${state.tool.name}" 需要用户确认: ${confirmationDetails.title}`);
@@ -149,7 +155,7 @@ export class ConfirmationStage {
       if (confirmationHandler) {
         permissionRequestId = await state.context.toolInvocationLifecycle?.onPermissionRequested?.(
           confirmationDetails,
-          structuredClone(state.params),
+          structuredClone(invocation.params),
         );
         this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
         const response = await this.guard.awaitPermissionCallback(
@@ -174,15 +180,15 @@ export class ConfirmationStage {
 
         if (!response.approved) {
           const reason = response.reason || 'User rejected';
-          this.ledger.recordDenial(state.permissionSignature, state.tool.name, reason);
+          this.ledger.recordDenial(invocation.permissionSignature, state.tool.name, reason);
           state.result = createAbortedResult(`User rejected execution: ${reason}`, {
             shouldExitLoop: true,
           });
           return;
         }
 
-        if ((response.scope || 'once') === 'session' && state.permissionSignature) {
-          this.ledger.approve(state.permissionSignature);
+        if ((response.scope || 'once') === 'session') {
+          this.ledger.approve(invocation.permissionSignature);
         }
         state.needsConfirmation = false;
       } else {
@@ -212,9 +218,7 @@ export class ConfirmationStage {
       if (state.context.signal?.aborted) {
         throw failure;
       }
-      state.result = createAbortedResult(
-        `User confirmation failed: ${getErrorMessage(failure)}`,
-      );
+      state.result = createAbortedResult(`User confirmation failed: ${getErrorMessage(failure)}`);
     }
   }
 }

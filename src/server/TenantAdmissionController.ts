@@ -51,13 +51,7 @@ export class TenantAdmissionController {
       return this.createRelease(tenantId, state);
     }
     if (state.queue.length >= this.limits.maxQueuedCommands) {
-      throw new AgentProtocolError(
-        'OVERLOADED',
-        'Tenant command queue is full',
-        503,
-        true,
-        1000,
-      );
+      throw new AgentProtocolError('OVERLOADED', 'Tenant command queue is full', 503, true, 1000);
     }
 
     return new Promise<() => void>((resolve, reject) => {

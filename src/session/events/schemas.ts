@@ -20,6 +20,8 @@ import {
   type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventSchemaVersion,
+  DurableEventScope,
+  type DurableEventScopeName,
   type DurableEventType,
   DurableEventType as DurableEventTypeValue,
 } from './types.js';
@@ -262,11 +264,7 @@ const DurableEventDraftBaseSchema = z
   .strict()
   .superRefine(validateEventScope);
 
-const DurableEventSchemaVersionSchema = z.union([
-  z.literal(2),
-  z.literal(3),
-  z.literal(DURABLE_EVENT_SCHEMA_VERSION),
-]);
+const DurableEventSchemaVersionSchema = z.literal(DURABLE_EVENT_SCHEMA_VERSION);
 
 const DurableEventEnvelopeSchema = z
   .object({
@@ -288,61 +286,22 @@ const DurableEventEnvelopeSchema = z
   .strict()
   .superRefine((value, context) => {
     validateEventScope(value, context);
-    if (
-      value.schemaVersion === 2 &&
-      (value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED ||
-        value.type === DurableEventTypeValue.MODEL_REQUEST_COMPLETED ||
-        value.type === DurableEventTypeValue.MODEL_REQUEST_FAILED ||
-        value.type === DurableEventTypeValue.MODEL_REQUEST_ABORTED)
-    ) {
+    if (value.type !== DurableEventTypeValue.TOOL_SCHEDULED) {
+      return;
+    }
+    if (value.modelAttemptId === undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['type'],
-        message: `${value.type} requires durable event schema v3`,
+        path: ['modelAttemptId'],
+        message: `${value.type} requires modelAttemptId`,
       });
     }
-    if (value.schemaVersion >= 3 && value.type === DurableEventTypeValue.TOOL_SCHEDULED) {
-      if (value.modelAttemptId === undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['modelAttemptId'],
-          message: `${value.type} requires modelAttemptId in durable event schema v3`,
-        });
-      }
-      if (value.data.modelInput === undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['data', 'modelInput'],
-          message: `${value.type} requires modelInput in durable event schema v3`,
-        });
-      }
-    }
-    if (
-      value.schemaVersion < DURABLE_EVENT_SCHEMA_VERSION &&
-      value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED &&
-      value.data.modelIdentity !== undefined
-    ) {
+    if (value.data.modelInput === undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['data'],
-        message: `${value.type} provider identity requires durable event schema v4`,
+        path: ['data', 'modelInput'],
+        message: `${value.type} requires modelInput`,
       });
-    }
-    if (value.schemaVersion === 2 && value.type === DurableEventTypeValue.TOOL_SCHEDULED) {
-      if (value.modelAttemptId !== undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['modelAttemptId'],
-          message: `${value.type} does not allow modelAttemptId in durable event schema v2`,
-        });
-      }
-      if (value.data.modelInput !== undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['data', 'modelInput'],
-          message: `${value.type} does not allow modelInput in durable event schema v2`,
-        });
-      }
     }
   });
 
@@ -391,89 +350,44 @@ export interface PersistedDurableEventBatch {
   readonly events: readonly DurableEventEnvelope[];
 }
 
+type ScopeField = 'requestId' | 'turnId' | 'modelAttemptId' | 'toolAttemptId';
+const SCOPE_FIELDS = {
+  session: [],
+  accepted_request: ['requestId'],
+  request: ['requestId'],
+  turn: ['requestId', 'turnId'],
+  model: ['requestId', 'turnId', 'modelAttemptId'],
+  scheduled_tool: ['requestId', 'turnId', 'modelAttemptId', 'toolAttemptId'],
+  tool: ['requestId', 'turnId', 'toolAttemptId'],
+  input: ['requestId'],
+} as const satisfies Record<DurableEventScopeName, readonly ScopeField[]>;
+
 function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): void {
-  const requireField = (field: keyof ParsedEventScope): void => {
-    if (!value[field]) {
+  const scope = DurableEventScope[value.type];
+  const required = SCOPE_FIELDS[scope] as readonly ScopeField[];
+  for (const field of ['requestId', 'turnId', 'modelAttemptId', 'toolAttemptId'] as const) {
+    const isRequired = required.includes(field);
+    const isAllowed = isRequired || (scope === 'input' && field === 'turnId');
+    if (isRequired && !value[field]) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: [field],
         message: `${value.type} requires ${field}`,
       });
-    }
-  };
-  const forbidField = (field: keyof ParsedEventScope): void => {
-    if (value[field] !== undefined) {
+    } else if (!isAllowed && value[field] !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: [field],
         message: `${value.type} does not allow ${field}`,
       });
     }
-  };
-
-  switch (value.type) {
-    case DurableEventTypeValue.SESSION_CREATED:
-    case DurableEventTypeValue.SESSION_CLOSED:
-      forbidField('requestId');
-      forbidField('turnId');
-      forbidField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.REQUEST_ACCEPTED:
-      requireField('commandId');
-      requireField('requestId');
-      forbidField('turnId');
-      forbidField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.REQUEST_STARTED:
-    case DurableEventTypeValue.REQUEST_COMPLETED:
-    case DurableEventTypeValue.REQUEST_FAILED:
-    case DurableEventTypeValue.REQUEST_INTERRUPTED:
-      requireField('requestId');
-      forbidField('turnId');
-      forbidField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.TURN_STARTED:
-    case DurableEventTypeValue.TURN_COMPLETED:
-    case DurableEventTypeValue.TURN_ABORTED:
-      requireField('requestId');
-      requireField('turnId');
-      forbidField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.MODEL_REQUEST_STARTED:
-    case DurableEventTypeValue.MODEL_REQUEST_COMPLETED:
-    case DurableEventTypeValue.MODEL_REQUEST_FAILED:
-    case DurableEventTypeValue.MODEL_REQUEST_ABORTED:
-      requireField('requestId');
-      requireField('turnId');
-      requireField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.TOOL_SCHEDULED:
-      requireField('requestId');
-      requireField('turnId');
-      requireField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.TOOL_STARTED:
-    case DurableEventTypeValue.TOOL_COMPLETED:
-    case DurableEventTypeValue.TOOL_FAILED:
-    case DurableEventTypeValue.TOOL_CANCELLED:
-    case DurableEventTypeValue.TOOL_OUTCOME_UNKNOWN:
-    case DurableEventTypeValue.PERMISSION_REQUESTED:
-    case DurableEventTypeValue.PERMISSION_RESOLVED:
-      requireField('requestId');
-      requireField('turnId');
-      forbidField('modelAttemptId');
-      requireField('toolAttemptId');
-      return;
-    case DurableEventTypeValue.INPUT_APPLIED:
-      requireField('requestId');
-      forbidField('modelAttemptId');
-      forbidField('toolAttemptId');
-      return;
+  }
+  if (scope === 'accepted_request' && !value.commandId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['commandId'],
+      message: `${value.type} requires commandId`,
+    });
   }
 }
 

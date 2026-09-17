@@ -1,19 +1,18 @@
 import { nanoid } from 'nanoid';
 import { RECONCILED_INITIAL_INPUT } from '../agent/InitialInputPreparation.js';
-import type { AgentExecutionContext, LoopResult } from '../agent/types.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
+import type { AgentExecutionContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { createContextSnapshot } from '../runtime/index.js';
+import { AsyncChannel } from '../utils/AsyncChannel.js';
 import {
-  type DurableRequestFinish,
   durableRequestFinishFromLoopResult,
   SessionDurableRecorder,
-  SessionDurableRecorderError,
 } from './events/SessionDurableRecorder.js';
 import type { SessionDurability } from './SessionDurability.js';
 import { SERVER_SESSION_HOST } from './SessionHostProfile.js';
 import type { SessionRequestCoordinator } from './SessionRequestCoordinator.js';
+import { type ClaimedSessionRequest, SessionRequestExecution } from './SessionRequestExecution.js';
+import type { SessionRuntime } from './SessionRuntime.js';
 import type { SessionState, SessionStreamExecution } from './SessionState.js';
-import { SessionStreamChannel } from './SessionStreamChannel.js';
 import { StreamBroadcaster } from './StreamBroadcaster.js';
 import { InputPriority, type SessionStreamEvent, type StreamOptions } from './types.js';
 
@@ -27,537 +26,305 @@ export class SessionStreamRunner {
   ) {}
 
   stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent> {
-    return this.consumeRequestStream(options);
+    return this.consume(options);
   }
 
-  private async *consumeRequestStream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent> {
-    const channel = new SessionStreamChannel<SessionStreamEvent>(1);
+  private async *consume(options?: StreamOptions): AsyncGenerator<SessionStreamEvent> {
+    const channel = new AsyncChannel<SessionStreamEvent>(1);
     let settled = false;
-    let resolveCompletion!: () => void;
-    let rejectCompletion!: (error: unknown) => void;
-    const completion = new Promise<void>((resolve, reject) => {
-      resolveCompletion = resolve;
-      rejectCompletion = reject;
-    });
-    void completion.catch(() => undefined);
+    const completion = Promise.withResolvers<void>();
+    void completion.promise.catch(() => undefined);
     const execution: SessionStreamExecution = {
-      completion,
+      completion: completion.promise,
       startedBeforeHandoff: !this.state.handoffRequested,
       releaseBackpressure: () => channel.releaseBackpressure(),
       isSettled: () => settled,
     };
     this.state.streamExecutions.add(execution);
-    void completion.then(
+    void completion.promise.then(
       () => this.state.streamExecutions.delete(execution),
       () => this.state.streamExecutions.delete(execution),
     );
-    const source = this.executeStream(options, execution);
 
     void (async () => {
       try {
-        for await (const event of source) {
+        for await (const event of this.execute(options, execution)) {
           await channel.publish(event);
         }
         settled = true;
-        resolveCompletion();
+        completion.resolve();
         channel.close();
       } catch (error) {
         settled = true;
-        rejectCompletion(error);
+        completion.reject(error);
         channel.fail(error);
       }
     })();
 
-    let consumedToEnd = false;
+    let consumed = false;
     try {
-      for await (const event of channel) {
-        yield event;
-      }
-      consumedToEnd = true;
+      for await (const event of channel) yield event;
+      consumed = true;
     } finally {
-      if (!consumedToEnd && !execution.isSettled()) {
+      if (!consumed && !execution.isSettled()) {
         execution.releaseBackpressure();
         await this.abort();
       }
     }
   }
 
-  private async *executeStream(
+  private async *execute(
     options: StreamOptions | undefined,
     execution: SessionStreamExecution,
   ): AsyncGenerator<SessionStreamEvent> {
     try {
       await this.ensureInitialized();
     } catch (error) {
-      if (execution.startedBeforeHandoff && this.state.handoffRequested) {
-        return;
-      }
+      if (execution.startedBeforeHandoff && this.state.handoffRequested) return;
       throw error;
     }
     const runtime = this.state.getRuntime();
+    const claimed = await this.claim(execution);
+    if (!claimed) {
+      if (execution.startedBeforeHandoff && this.state.handoffRequested) return;
+      throw new Error('No pending message. Call send() before stream().');
+    }
 
-    const claimed = await this.state.inputMutex.runExclusive(async () => {
-      if (this.state.executionLeaseFailure) {
-        throw this.state.executionLeaseFailure;
+    const request = new SessionRequestExecution(
+      this.state,
+      this.durability,
+      this.requests,
+      claimed,
+      execution,
+      runtime.getHookRuntime(),
+    );
+    request.installAbortListener();
+    let stream: AsyncGenerator<unknown, LoopResult> | undefined;
+    let streamCompleted = false;
+    try {
+      let message: UserMessageContent;
+      try {
+        message = await this.prepareMessage(runtime, claimed, request.signal);
+      } catch (error) {
+        const failure = await request.handleFailure(error, 'setup');
+        if (failure.action === 'throw') throw failure.error;
+        if (failure.action === 'emit') yield this.errorEvent(failure.message);
+        return;
       }
-      if (this.state.executionState.phase !== 'pending') {
-        return null;
-      }
-      const pendingState = this.state.executionState;
-      const {
-        requestId,
-        input,
-        message: initialMessage,
-        options: sendOptions,
-        snapshot: pendingSnapshot,
-        durableRecorder: pendingDurableRecorder,
-        initialInputPreparation,
-      } = pendingState;
-      const requestController = pendingState.controller;
-      const durableRecorder =
-        pendingDurableRecorder ??
+
+      const context = this.executionContext(runtime, claimed, request.signal);
+      stream = this.state.getAgent().streamChat(message, context, {
+        maxTurns: claimed.options?.maxTurns ?? this.state.maxTurns,
+        signal: request.signal,
+        inputApplication: { inputId: claimed.input.inputId, requestId: claimed.requestId },
+        runControl: claimed.controller,
+        inputApplicationLifecycle: request.recorder ?? undefined,
+        modelExecutionLifecycle: request.recorder ?? undefined,
+        toolExecutionLifecycle: request.recorder ?? undefined,
+        initialInputPreparation:
+          claimed.initialInputPreparation === RECONCILED_INITIAL_INPUT
+            ? RECONCILED_INITIAL_INPUT
+            : undefined,
+      });
+      const broadcaster = new StreamBroadcaster({
+        sessionId: this.state.sessionId,
+        includeThinking: options?.includeThinking,
+        traceRecorder: request.trace,
+      });
+      const result = yield* this.consumeAgent(stream, request, broadcaster);
+      if (!result) return;
+      streamCompleted = true;
+      yield* this.finishResult(runtime, result, message, context, request, broadcaster);
+    } catch (error) {
+      const failure = await request.handleFailure(error, 'execution');
+      if (failure.action === 'throw') throw failure.error;
+      if (failure.action === 'emit') yield this.errorEvent(failure.message);
+    } finally {
+      await request.cleanup(stream, streamCompleted);
+    }
+  }
+
+  private async claim(execution: SessionStreamExecution): Promise<ClaimedSessionRequest | null> {
+    return this.state.inputMutex.runExclusive(async () => {
+      if (this.state.executionLeaseFailure) throw this.state.executionLeaseFailure;
+      if (this.state.executionState.phase !== 'pending') return null;
+      const pending = this.state.executionState;
+      const recorder =
+        pending.durableRecorder ??
         (this.state.durableJournal
           ? new SessionDurableRecorder(
               this.state.durableJournal,
-              requestId,
+              pending.requestId,
               this.state.options.model,
             )
           : null);
       try {
-        if (durableRecorder && !pendingDurableRecorder) {
-          await durableRecorder.recordAccepted(
-            input.inputId,
-            input.content,
-            input.priority === InputPriority.LATER ? 'later' : 'next',
-            this.durability.executionSnapshot(pendingState),
+        if (recorder && !pending.durableRecorder) {
+          await recorder.recordAccepted(
+            pending.input.inputId,
+            pending.input.content,
+            pending.input.priority === InputPriority.LATER ? 'later' : 'next',
+            this.durability.executionSnapshot(pending),
           );
         }
-        await durableRecorder?.recordStarted(
-          input.inputId,
-          input.priority === InputPriority.LATER ? 'later' : 'next',
+        await recorder?.recordStarted(
+          pending.input.inputId,
+          pending.input.priority === InputPriority.LATER ? 'later' : 'next',
         );
       } catch (error) {
-        requestController.dispose();
-        this.state.inputInbox.remove(input.inputId);
+        pending.controller.dispose();
+        this.state.inputInbox.remove(pending.input.inputId);
         this.state.executionState = { phase: 'idle' };
         throw error;
       }
       this.state.executionState = {
         phase: 'running',
-        requestId,
-        controller: requestController,
-        durableRecorder,
+        requestId: pending.requestId,
+        controller: pending.controller,
+        durableRecorder: recorder,
         execution,
       };
-      this.state.inputInbox.remove(input.inputId);
+      this.state.inputInbox.remove(pending.input.inputId);
       return {
-        requestId,
-        input,
-        initialMessage,
-        sendOptions,
-        pendingSnapshot,
-        requestController,
-        durableRecorder,
-        initialInputPreparation,
+        requestId: pending.requestId,
+        input: pending.input,
+        message: pending.message,
+        options: pending.options,
+        snapshot: pending.snapshot,
+        controller: pending.controller,
+        durableRecorder: recorder,
+        initialInputPreparation: pending.initialInputPreparation,
       };
     });
+  }
 
-    if (!claimed) {
-      if (execution.startedBeforeHandoff && this.state.handoffRequested) {
-        return;
-      }
-      throw new Error('No pending message. Call send() before stream().');
-    }
+  private async prepareMessage(
+    runtime: SessionRuntime,
+    claimed: ClaimedSessionRequest,
+    signal: AbortSignal,
+  ): Promise<UserMessageContent> {
+    if (claimed.initialInputPreparation === RECONCILED_INITIAL_INPUT) return claimed.message;
+    return runtime.getHookRuntime().applyUserPromptSubmit(claimed.message, { abortSignal: signal });
+  }
 
-    const {
-      requestId,
-      input,
-      initialMessage,
-      sendOptions,
-      pendingSnapshot,
-      requestController,
-      durableRecorder,
-      initialInputPreparation,
-    } = claimed;
-
-    let durableFinishAttempted = false;
-    let durableFinishCommitted = !durableRecorder;
-    const finishDurableRequest = async (finish: DurableRequestFinish): Promise<void> => {
-      if (!durableRecorder || durableFinishAttempted) {
-        return;
-      }
-      durableFinishAttempted = true;
-      if (!(await durableRecorder.finish(finish))) {
-        throw new SessionDurableRecorderError(
-          `Request ${requestId} has a tool outcome that requires reconciliation`,
-        );
-      }
-      durableFinishCommitted = true;
-    };
-    let message = initialMessage;
-    const traceRecorder = this.state.createTraceRecorder(message);
-    let traceFinished = false;
-    const finishTrace = async (
-      status: 'success' | 'error' | 'aborted',
-      data?: Record<string, unknown>,
-    ) => {
-      if (!traceRecorder || traceFinished) return;
-      traceFinished = true;
-      const trace = traceRecorder.finish(status, data);
-      this.state.rememberTrace(trace);
-      await this.state.notifyTraceSink(trace);
-    };
-    const signal = requestController.requestSignal;
-    const isHandoffRequested = () => durableRecorder?.isHandoffRequested() === true;
-    const releaseBackpressureOnAbort = () => execution.releaseBackpressure();
-    if (signal.aborted) {
-      releaseBackpressureOnAbort();
-    } else {
-      signal.addEventListener('abort', releaseBackpressureOnAbort, { once: true });
-    }
-
-    runtime.getHookRuntime().setTraceCollector(traceRecorder);
-    try {
-      if (initialInputPreparation !== RECONCILED_INITIAL_INPUT) {
-        message = await runtime.getHookRuntime().applyUserPromptSubmit(message, {
-          abortSignal: signal,
-        });
-      }
-    } catch (error) {
-      const handingOff = isHandoffRequested();
-      const leaseFailure = this.state.executionLeaseFailure;
-      const requestAborted = signal.aborted;
-      const containmentFailure = isHookProcessContainmentError(error);
-      let terminalError = error;
-      if (!handingOff && !leaseFailure) {
-        try {
-          await finishDurableRequest(
-            requestAborted && !containmentFailure
-              ? {
-                  status: 'interrupted',
-                  reason: this.durability.interruptReason(requestController),
-                }
-              : { status: 'failed', error },
-          );
-        } catch (durableError) {
-          terminalError = new AggregateError(
-            [error, durableError],
-            'Request setup and durable finalization both failed',
-          );
-        }
-      }
-      let errorMessage =
-        terminalError instanceof Error ? terminalError.message : String(terminalError);
-      let terminalContainmentFailure = isHookProcessContainmentError(terminalError);
-      try {
-        await finishTrace(
-          !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
-            ? 'aborted'
-            : 'error',
-          {
-            ...(terminalContainmentFailure
-              ? { error: errorMessage }
-              : handingOff
-                ? { reason: 'session_handoff' }
-                : leaseFailure
-                  ? { reason: 'process_restart' }
-                  : requestAborted
-                    ? { reason: this.durability.interruptReason(requestController) }
-                    : { error: errorMessage }),
-          },
-        );
-      } catch (traceError) {
-        const combinedError = new AggregateError(
-          [terminalError, traceError],
-          'Request setup and trace finalization both failed',
-        );
-        terminalError = combinedError;
-        errorMessage = combinedError.message;
-        terminalContainmentFailure = isHookProcessContainmentError(terminalError);
-      }
-      try {
-        if (terminalContainmentFailure) {
-          throw terminalError;
-        }
-        if (handingOff) {
-          return;
-        }
-        if (leaseFailure) {
-          throw leaseFailure;
-        }
-        if (durableRecorder && !durableFinishCommitted) {
-          throw terminalError;
-        }
-        if (requestAborted) {
-          return;
-        }
-        yield { type: 'error', message: errorMessage, sessionId: this.state.sessionId };
-      } finally {
-        runtime.getHookRuntime().setTraceCollector(undefined);
-        signal.removeEventListener('abort', releaseBackpressureOnAbort);
-        requestController.dispose();
-        await this.requests.finishRequest(requestId);
-      }
-      return;
-    }
-
-    const snapshot =
-      pendingSnapshot ??
-      createContextSnapshot(
-        this.state.sessionId,
-        nanoid(),
-        this.state.defaultContext,
-        sendOptions?.context,
-      );
-    runtime.prepareTurn(snapshot);
-    const executionLease = this.state.executionLease;
-
-    const context: AgentExecutionContext = {
+  private executionContext(
+    runtime: SessionRuntime,
+    claimed: ClaimedSessionRequest,
+    signal: AbortSignal,
+  ): AgentExecutionContext {
+    const lease = this.state.executionLease;
+    return {
       messages: this.state.messages,
       userId: 'sdk-user',
       sessionId: this.state.sessionId,
-      snapshot,
+      snapshot:
+        claimed.snapshot ??
+        createContextSnapshot(
+          this.state.sessionId,
+          nanoid(),
+          this.state.defaultContext,
+          claimed.options?.context,
+        ),
       signal,
       permissionMode: this.state.permissionMode,
-      executionFence: executionLease?.fence,
-      assertExecutionLease: executionLease ? () => executionLease.assertActive() : undefined,
-      runWithExecutionLease: executionLease
-        ? (operation) => executionLease.runFenced(operation)
-        : undefined,
+      executionFence: lease?.fence,
+      assertExecutionLease: lease ? () => lease.assertActive() : undefined,
+      runWithExecutionLease: lease ? (operation) => lease.runFenced(operation) : undefined,
       backgroundAgentManager: runtime.getBackgroundAgentManager(),
       confirmationHandler: this.state.confirmationHandler,
       omitEnvironment: this.state.hostProfile === SERVER_SESSION_HOST,
     };
+  }
 
-    const stream = this.state.getAgent().streamChat(message, context, {
-      maxTurns: sendOptions?.maxTurns ?? this.state.maxTurns,
-      signal,
-      inputApplication: {
-        inputId: input.inputId,
-        requestId,
-      },
-      runControl: requestController,
-      inputApplicationLifecycle: durableRecorder ?? undefined,
-      modelExecutionLifecycle: durableRecorder ?? undefined,
-      toolExecutionLifecycle: durableRecorder ?? undefined,
-      initialInputPreparation:
-        initialInputPreparation === RECONCILED_INITIAL_INPUT ? RECONCILED_INITIAL_INPUT : undefined,
-    });
-    let agentStreamCompleted = false;
-    const broadcaster = new StreamBroadcaster({
-      sessionId: this.state.sessionId,
-      includeThinking: options?.includeThinking,
-      traceRecorder,
-    });
-
-    try {
-      let loopResult: LoopResult | undefined;
-
-      while (true) {
-        const next = await stream.next();
-        if (this.state.executionLeaseFailure) {
-          throw this.state.executionLeaseFailure;
-        }
-        if (signal.aborted) {
-          const canObserveHandoffCompletion =
-            isHandoffRequested() && (next.done || next.value.type === 'agent_end');
-          if (
-            !canObserveHandoffCompletion &&
-            (!next.done || next.value.error?.type !== 'aborted')
-          ) {
-            return;
-          }
-        }
-        const { value, done } = next;
-        if (done) {
-          loopResult = value;
-          agentStreamCompleted = true;
-          break;
-        }
-        await durableRecorder?.recordAgentEvent(value);
-        const publicEvent = broadcaster.project(value);
-        if (publicEvent) {
-          yield publicEvent;
+  private async *consumeAgent(
+    stream: AsyncGenerator<unknown, LoopResult>,
+    request: SessionRequestExecution,
+    broadcaster: StreamBroadcaster,
+  ): AsyncGenerator<SessionStreamEvent, LoopResult | undefined> {
+    while (true) {
+      const next = await stream.next();
+      if (this.state.executionLeaseFailure) throw this.state.executionLeaseFailure;
+      if (request.signal.aborted) {
+        const observesHandoff =
+          request.handingOff &&
+          (next.done ||
+            (typeof next.value === 'object' &&
+              next.value !== null &&
+              'type' in next.value &&
+              next.value.type === 'agent_end'));
+        const observesAbort = next.done && next.value.error?.type === 'aborted';
+        if (!observesHandoff && !observesAbort) {
+          return undefined;
         }
       }
-
-      if (!loopResult) {
-        throw new Error('Stream ended without result');
-      }
-      const { usage: totalUsage } = broadcaster.summary();
-      const isAborted = loopResult.error?.type === 'aborted';
-      const shouldExit = loopResult.metadata?.shouldExitLoop;
-
-      if (isHandoffRequested() && !loopResult.success && !shouldExit) {
-        await finishTrace('aborted', { reason: 'session_handoff' });
-        return;
-      }
-
-      if (!loopResult.success && !isAborted && !shouldExit) {
-        const messageText = loopResult.error?.message || 'Unknown error';
-        await finishDurableRequest({
-          status: 'failed',
-          error: messageText,
-        });
-        await finishTrace('error', { error: messageText });
-        yield { type: 'error', message: messageText, sessionId: this.state.sessionId };
-        return;
-      }
-
-      this.state.messages = context.messages;
-      const imageCount = this.state.getImageCount(message);
-      if (!signal.aborted) {
-        await runtime.getHookRuntime().runTaskCompleted({
-          taskId: this.state.sessionId,
-          taskDescription: this.state.getTextContent(message),
-          hasImages: imageCount > 0,
-          imageCount,
-          resultSummary: loopResult.finalMessage || '',
-          success: loopResult.success,
-          abortSignal: signal,
-        });
-      }
-      await finishTrace(isAborted ? 'aborted' : 'success', {
-        content: loopResult.finalMessage || '',
-        usage: totalUsage,
-        turnsCount: loopResult.metadata?.turnsCount,
-        toolCallsCount: loopResult.metadata?.toolCallsCount,
-        duration: loopResult.metadata?.duration,
-      });
-      await finishDurableRequest(
-        durableRequestFinishFromLoopResult(
-          loopResult,
-          totalUsage,
-          this.durability.interruptReason(requestController),
-        ),
-      );
-      yield { type: 'usage', usage: totalUsage, sessionId: this.state.sessionId };
-      yield {
-        type: 'result',
-        subtype: 'success',
-        content: loopResult.finalMessage || '',
-        sessionId: this.state.sessionId,
-      };
-    } catch (error) {
-      const handingOff = isHandoffRequested();
-      const leaseFailure = this.state.executionLeaseFailure;
-      const requestAborted = signal.aborted;
-      const containmentFailure = isHookProcessContainmentError(error);
-      let terminalError = error;
-      if (!handingOff && !leaseFailure && !durableFinishAttempted) {
-        try {
-          await finishDurableRequest(
-            requestAborted && !containmentFailure
-              ? {
-                  status: 'interrupted',
-                  reason: this.durability.interruptReason(requestController),
-                }
-              : { status: 'failed', error },
-          );
-        } catch (durableError) {
-          terminalError = new AggregateError(
-            [error, durableError],
-            'Request execution and durable finalization both failed',
-          );
-        }
-      }
-      let errorMessage =
-        terminalError instanceof Error ? terminalError.message : String(terminalError);
-      let terminalContainmentFailure = isHookProcessContainmentError(terminalError);
-      try {
-        await finishTrace(
-          !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
-            ? 'aborted'
-            : 'error',
-          {
-            ...(terminalContainmentFailure
-              ? { error: errorMessage }
-              : handingOff
-                ? { reason: 'session_handoff' }
-                : leaseFailure
-                  ? { reason: 'process_restart' }
-                  : requestAborted
-                    ? { reason: this.durability.interruptReason(requestController) }
-                    : { error: errorMessage }),
-          },
-        );
-      } catch (traceError) {
-        const combinedError = new AggregateError(
-          [terminalError, traceError],
-          'Request execution and trace finalization both failed',
-        );
-        terminalError = combinedError;
-        errorMessage = combinedError.message;
-        terminalContainmentFailure = isHookProcessContainmentError(terminalError);
-      }
-      if (terminalContainmentFailure) {
-        throw terminalError;
-      }
-      if (handingOff) {
-        return;
-      }
-      if (leaseFailure) {
-        throw leaseFailure;
-      }
-      if (durableRecorder && !durableFinishCommitted) {
-        throw terminalError;
-      }
-      if (requestAborted) {
-        return;
-      }
-      yield { type: 'error', message: errorMessage, sessionId: this.state.sessionId };
-    } finally {
-      let cleanupError: unknown;
-      if (!agentStreamCompleted) {
-        requestController.abortRequest({ kind: 'user_abort' });
-        try {
-          await stream.return(undefined as never);
-        } catch (error) {
-          cleanupError = error;
-        }
-        try {
-          await finishTrace('aborted', {
-            reason: this.durability.interruptReason(requestController),
-          });
-        } catch (error) {
-          cleanupError = cleanupError
-            ? new AggregateError(
-                [cleanupError, error],
-                'Agent stream cleanup and trace finalization both failed',
-              )
-            : error;
-        }
-        if (!isHandoffRequested() && !this.state.executionLeaseFailure) {
-          try {
-            if (!durableFinishAttempted) {
-              await finishDurableRequest({
-                status: 'interrupted',
-                reason: this.durability.interruptReason(requestController),
-              });
-            }
-          } catch (error) {
-            cleanupError = cleanupError
-              ? new AggregateError(
-                  [cleanupError, error],
-                  'Agent stream cleanup and durable finalization both failed',
-                )
-              : error;
-          }
-        }
-      }
-      runtime.getHookRuntime().setTraceCollector(undefined);
-      signal.removeEventListener('abort', releaseBackpressureOnAbort);
-      requestController.dispose();
-      await this.requests.finishRequest(requestId);
-      if (
-        this.state.executionState.phase === 'closed' &&
-        this.state.executionState.disposition === 'terminal'
-      ) {
-        await this.durability.closeSession();
-      }
-      if (cleanupError) {
-        await Promise.reject(cleanupError);
-      }
+      if (next.done) return next.value;
+      const event = next.value as Parameters<StreamBroadcaster['project']>[0];
+      await request.recorder?.recordAgentEvent(event);
+      const publicEvent = broadcaster.project(event);
+      if (publicEvent) yield publicEvent;
     }
+  }
+
+  private async *finishResult(
+    runtime: SessionRuntime,
+    result: LoopResult,
+    message: UserMessageContent,
+    context: AgentExecutionContext,
+    request: SessionRequestExecution,
+    broadcaster: StreamBroadcaster,
+  ): AsyncGenerator<SessionStreamEvent> {
+    const { usage } = broadcaster.summary();
+    const aborted = result.error?.type === 'aborted';
+    const exits = result.metadata?.shouldExitLoop;
+    if (request.handingOff && !result.success && !exits) {
+      await request.finishTrace('aborted', { reason: 'session_handoff' });
+      return;
+    }
+    if (!result.success && !aborted && !exits) {
+      const error = result.error?.message || 'Unknown error';
+      await request.finishDurable({ status: 'failed', error });
+      await request.finishTrace('error', { error });
+      yield this.errorEvent(error);
+      return;
+    }
+
+    this.state.messages = context.messages;
+    if (!request.signal.aborted) {
+      const images = this.state.getImageCount(message);
+      await runtime.getHookRuntime().runTaskCompleted({
+        taskId: this.state.sessionId,
+        taskDescription: this.state.getTextContent(message),
+        hasImages: images > 0,
+        imageCount: images,
+        resultSummary: result.finalMessage || '',
+        success: result.success,
+        abortSignal: request.signal,
+      });
+    }
+    await request.finishTrace(aborted ? 'aborted' : 'success', {
+      content: result.finalMessage || '',
+      usage,
+      turnsCount: result.metadata?.turnsCount,
+      toolCallsCount: result.metadata?.toolCallsCount,
+      duration: result.metadata?.duration,
+    });
+    await request.finishDurable(
+      durableRequestFinishFromLoopResult(
+        result,
+        usage,
+        this.durability.interruptReason(request.claimed.controller),
+      ),
+    );
+    yield { type: 'usage', usage, sessionId: this.state.sessionId };
+    yield {
+      type: 'result',
+      subtype: 'success',
+      content: result.finalMessage || '',
+      sessionId: this.state.sessionId,
+    };
+  }
+
+  private errorEvent(message: string): SessionStreamEvent {
+    return { type: 'error', message, sessionId: this.state.sessionId };
   }
 }

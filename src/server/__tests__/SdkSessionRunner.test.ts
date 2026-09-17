@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionRunnerContext } from '../../advanced/SessionRunner.js';
 import { resumeSession } from '../../session/Session.js';
 import type { ISession, SessionStreamEvent } from '../../session/types.js';
 import { RequestId, SessionId } from '../../types/identifiers.js';
-import type { SessionRunnerContext } from '../SessionRunner.js';
 import { SdkSessionRunner } from '../SdkSessionRunner.js';
 
 vi.mock('../../session/Session.js', () => ({ resumeSession: vi.fn() }));
@@ -35,8 +35,13 @@ function setup(events: () => AsyncGenerator<SessionStreamEvent>, signal: AbortSi
     transition: vi.fn(async () => undefined),
   } as unknown as SessionRunnerContext;
   const publish = vi.fn(
-    async (_tenantId: string, _sessionId: unknown, _type: string,
-      _data: unknown, _requestId?: unknown) => undefined,
+    async (
+      _tenantId: string,
+      _sessionId: unknown,
+      _type: string,
+      _data: unknown,
+      _requestId?: unknown,
+    ) => undefined,
   );
   const runner = new SdkSessionRunner({
     resolveSessionOptions: () => ({
@@ -69,9 +74,7 @@ describe('SdkSessionRunner', () => {
     expect(publish.mock.calls).toHaveLength(2);
     expect(publish.mock.calls[1]?.[3]).toMatchObject({ type: 'result', subtype: 'success' });
     for (const call of publish.mock.calls) {
-      expect(call).toEqual([
-        'tenant', sessionId, 'session.stream', expect.any(Object), requestId,
-      ]);
+      expect(call).toEqual(['tenant', sessionId, 'session.stream', expect.any(Object), requestId]);
     }
   });
 

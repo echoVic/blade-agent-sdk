@@ -154,16 +154,21 @@ const session = await createSession({
 });
 ```
 
-The root package also exports DeepSeek-specific helpers for:
+The root package exports focused helpers for model aliases, base URL selection,
+stable cache-prefix ordering, and strict JSON Schema normalization. Direct HTTP,
+FIM, batch, long-context planning, and pricing helpers are intentionally left
+to applications or the provider SDK.
 
-- chat and FIM completions;
-- cache-prefix optimization;
-- token estimation and cost tracking;
-- long-context chunk planning;
-- batch completion summaries;
-- strict JSON Schema normalization.
+```ts
+import {
+  normalizeDeepSeekModel,
+  optimizeDeepSeekCachePrefix,
+  sanitizeDeepSeekStrictSchema,
+} from '@blade-ai/agent-sdk';
+```
 
-These helpers are lower-level APIs and do not replace the Session interface.
+These helpers support provider integration and do not replace the Session
+interface.
 
 ## OpenAI-compatible endpoints
 
@@ -226,6 +231,11 @@ provider, adapter, and model. When any identity component changes, or when
 legacy history has no identity, reasoning is converted to ordinary assistant
 text while tool-call relationships are preserved. This prevents
 provider-specific reasoning payloads from being sent to an incompatible API.
+
+Built-in provider selection is owned by the single typed factory table in
+`services/modelProvider.ts`. Message, tool-schema, tool-call, usage, and
+provider-option conversion live in `services/modelAdapter.ts`;
+`VercelAIModelService` only coordinates requests, retries, and streams.
 
 ## Custom provider adapters
 

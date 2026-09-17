@@ -53,7 +53,7 @@ const agent = createAgent({ profile: 'local', model: 'gpt-4o' });
 `yield`（progress）和 `return`（result）语义差异没有提示，大量用户只需要简单 async function。
 
 ```ts
-// 现状——仅支持 AsyncGenerator
+// 旧设计
 async *execute({ city }) {
   yield { kind: 'progress', message: '...' };
   return { status: 'success', model: city };
@@ -163,29 +163,19 @@ const agent = createAgent({
 
 `/node` 和 `/server` 降级为框架集成者使用的低层 API，不再是用户的入口选择点。
 
-### 4.2 Tool 定义支持简单路径
+### 4.2 Tool 定义使用单一 async 数据返回路径
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
 import Type from 'typebox';
 
-// 简单路径（新增）：async function，返回结果
+// 唯一路径：async function，返回 JSON 数据
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get weather for a city',
   parameters: Type.Object({ city: Type.String() }),
   async execute({ city }) {
     return { weather: `${city}: clear, 25°C` };
-  },
-});
-
-// 进阶路径（保留）：AsyncGenerator，支持进度
-const heavyTool = defineTool({
-  name: 'HeavyTask',
-  parameters: Type.Object({ input: Type.String() }),
-  async *execute({ input }, { progress }) {
-    await progress('Step 1/3...');
-    return { result: input };
   },
 });
 ```

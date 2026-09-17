@@ -24,9 +24,7 @@ export interface McpServerCapability {
   tools: McpToolCapability[];
 }
 
-function mapConnectionStatus(
-  status: McpConnectionStatus,
-): McpServerCapability['status'] {
+function mapConnectionStatus(status: McpConnectionStatus): McpServerCapability['status'] {
   const statusMap: Record<McpConnectionStatus, McpServerCapability['status']> = {
     [McpConnectionStatus.CONNECTED]: 'connected',
     [McpConnectionStatus.DISCONNECTED]: 'disconnected',

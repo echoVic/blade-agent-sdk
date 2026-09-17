@@ -8,7 +8,7 @@ vi.mock('fs-native-extensions', () => {
   throw new Error('native lock addon unavailable');
 });
 
-import { JSONLStore } from '../../../context/storage/JSONLStore.js';
+import { PersistentStore } from '../../../context/storage/PersistentStore.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 
 describe('native file lock availability', () => {
@@ -29,9 +29,9 @@ describe('native file lock availability', () => {
   it('fails closed when Session transcript persistence first uses the unavailable addon', async () => {
     const storageRoot = await mkdtemp(join(tmpdir(), 'session-jsonl-lock-unavailable-'));
     try {
-      const store = new JSONLStore(join(storageRoot, 'sessions', 'session.jsonl'));
+      const store = new PersistentStore(storageRoot);
 
-      await expect(store.readAll()).rejects.toMatchObject({
+      await expect(store.loadState(SessionId('session'))).rejects.toMatchObject({
         code: 'SESSION_JSONL_LOCK_FAILED',
         message: expect.stringContaining('Failed to initialize'),
       });

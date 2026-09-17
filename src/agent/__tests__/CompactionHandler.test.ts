@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompactionOptions, CompactionResult } from '../../context/CompactionService.js';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
@@ -279,75 +278,6 @@ describe('CompactionHandler', () => {
     });
     await reactiveStream.next();
     await expect(reactiveStream.next()).rejects.toBe(registryError);
-  });
-
-  it('propagates process-containment failures from automatic compaction hooks', async () => {
-    const containmentError = new HookProcessContainmentError(
-      'Windows Job Object support is unavailable',
-    );
-    mockCompact.mockRejectedValueOnce(containmentError);
-    const handler = new CompactionHandler(
-      () =>
-        ({
-          getConfig: () => ({
-            model: 'gpt-4o-mini',
-            provider: 'openai-compatible' as const,
-            maxContextTokens: 1000,
-            maxOutputTokens: 200,
-          }),
-        }) as never,
-      () => undefined,
-    );
-    const convState = new ConversationState(
-      null,
-      [{ role: 'user', content: 'context that requires compaction' }],
-      { role: 'assistant', content: 'continue' },
-    );
-    const stream = handler.checkAndCompactInLoop(
-      convState,
-      { sessionId: SessionId('containment-compaction-session') },
-      2,
-      700,
-    );
-
-    await expect(stream.next()).resolves.toMatchObject({
-      value: { type: 'compacting', isCompacting: true },
-      done: false,
-    });
-    await expect(stream.next()).rejects.toBe(containmentError);
-  });
-
-  it('propagates process-containment failures from reactive compaction hooks', async () => {
-    const containmentError = new HookProcessContainmentError(
-      'Windows Job Object support is unavailable',
-    );
-    mockCompact.mockRejectedValueOnce(containmentError);
-    const handler = new CompactionHandler(
-      () =>
-        ({
-          getConfig: () => ({
-            model: 'gpt-4o-mini',
-            provider: 'openai-compatible' as const,
-            maxContextTokens: 1000,
-            maxOutputTokens: 200,
-          }),
-        }) as never,
-      () => undefined,
-    );
-    const convState = new ConversationState(
-      null,
-      [{ role: 'user', content: 'context that requires compaction' }],
-      { role: 'assistant', content: 'continue' },
-    );
-    const stream = handler.reactiveCompact(convState, {
-      sessionId: SessionId('containment-reactive-compaction-session'),
-    });
-
-    await expect(stream.next()).resolves.toMatchObject({
-      value: { type: 'compacting', isCompacting: true },
-      done: false,
-    });
-    await expect(stream.next()).rejects.toBe(containmentError);
   });
 
   it('falls back from the original messages when reactive compaction fails after microcompact', async () => {

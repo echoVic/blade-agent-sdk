@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { createSession } from '../Session.js';
 
 describe('Session OpenAI config', () => {

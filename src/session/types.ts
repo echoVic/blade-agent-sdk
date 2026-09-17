@@ -1,8 +1,10 @@
+import type Type from 'typebox';
 import type { AgentSessionRepository } from '../agent/subagents/AgentSessionRepository.js';
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import type { MemoryManager } from '../memory/MemoryManager.js';
 import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
 import type {
   ModelProviderOptions,
@@ -22,7 +24,8 @@ import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import type { SkillDefinition } from '../skills/types.js';
 import type { WebFetchSecurityPolicy } from '../tools/builtin/web/index.js';
-import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { ToolSourcePolicy } from '../tools/registry/ToolRegistry.js';
+import type { ToolServiceName } from '../tools/services.js';
 import type { ConfirmationHandler } from '../tools/types/execution.js';
 import type {
   ToolDisplayContent,
@@ -30,7 +33,7 @@ import type {
   ToolModelContent,
   ToolProgress,
 } from '../tools/types/result.js';
-import type { ErasedToolDefinition, Tool } from '../tools/types/tool.js';
+import type { ToolDefinition } from '../tools/types/tool.js';
 import type { HookEvent, PermissionMode, SessionStreamEventType } from '../types/constants.js';
 import type {
   EventSequence,
@@ -42,7 +45,7 @@ import type {
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentLogger } from '../types/logging.js';
-import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type { PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type {
@@ -50,7 +53,10 @@ import type {
   DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
 import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
-import type { DurableExecutionLease as DurableExecutionLeaseSnapshot } from './events/DurableExecutionLeaseStore.js';
+import type {
+  DurableExecutionLease as DurableExecutionLeaseSnapshot,
+  DurableExecutionLeaseStore,
+} from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
@@ -108,6 +114,26 @@ export interface PromptResult {
   turnsCount: number;
 }
 
+type SessionToolEvent = {
+  id: ToolUseId;
+  name: string;
+  sessionId: SessionId;
+} & (
+  | { type: 'tool_use'; input: JsonValue }
+  | { type: 'tool_progress'; progress: ToolProgress }
+  | { type: 'tool_message'; content: ToolMessage['content'] }
+  | { type: 'tool_runtime_patch'; patch: RuntimePatch }
+  | { type: 'tool_context_patch'; patch: RuntimeContextPatch }
+  | { type: 'tool_new_messages'; messages: ConversationMessage[] }
+  | { type: 'tool_permission_updates'; updates: PermissionUpdate[] }
+  | {
+      type: 'tool_result';
+      output: ToolModelContent;
+      display?: ToolDisplayContent;
+      isError?: boolean;
+    }
+);
+
 export type SessionStreamEvent =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
@@ -128,58 +154,7 @@ export type SessionStreamEvent =
     }
   | { type: 'content'; delta: string; sessionId: SessionId }
   | { type: 'thinking'; delta: string; sessionId: SessionId }
-  | { type: 'tool_use'; id: ToolUseId; name: string; input: JsonValue; sessionId: SessionId }
-  | {
-      type: 'tool_progress';
-      id: ToolUseId;
-      name: string;
-      progress: ToolProgress;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_message';
-      id: ToolUseId;
-      name: string;
-      content: ToolMessage['content'];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_runtime_patch';
-      id: ToolUseId;
-      name: string;
-      patch: RuntimePatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_context_patch';
-      id: ToolUseId;
-      name: string;
-      patch: RuntimeContextPatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_new_messages';
-      id: ToolUseId;
-      name: string;
-      messages: ConversationMessage[];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_permission_updates';
-      id: ToolUseId;
-      name: string;
-      updates: PermissionUpdate[];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_result';
-      id: ToolUseId;
-      name: string;
-      output: ToolModelContent;
-      display?: ToolDisplayContent;
-      isError?: boolean;
-      sessionId: SessionId;
-    }
+  | SessionToolEvent
   | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
   | {
       type: 'result';
@@ -207,27 +182,14 @@ export interface HookInput {
 
 export interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  /**
-   * For PreToolUse hooks: a JsonObject to merge into tool input params.
-   * For UserPromptSubmit hooks: either a JsonObject with a `userPrompt`
-   * key, or a bare string (legacy form) that replaces the prompt text.
-   */
-  modifiedInput?: JsonObject | string;
+  modifiedInput?: JsonObject;
   modifiedOutput?: JsonValue;
   reason?: string;
 }
 
 export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
-export type SessionHookEvent =
-  | typeof HookEvent.PreToolUse
-  | typeof HookEvent.PostToolUse
-  | typeof HookEvent.PostToolUseFailure
-  | typeof HookEvent.PermissionRequest
-  | typeof HookEvent.UserPromptSubmit
-  | typeof HookEvent.SessionStart
-  | typeof HookEvent.SessionEnd
-  | typeof HookEvent.TaskCompleted;
+export type SessionHookEvent = HookEvent;
 
 export interface SubagentInfo {
   parentSessionId: SessionId;
@@ -243,11 +205,8 @@ export interface AgentDefinition {
   model?: string;
 }
 
-export type SessionTool = ErasedToolDefinition | Tool;
-
 export interface SessionOptions {
   provider: ProviderConnectionConfig;
-  /** Instance-scoped custom provider adapters. */
   providerRegistry?: ProviderRegistry;
   model: string;
   temperature?: number;
@@ -260,38 +219,26 @@ export interface SessionOptions {
 
   allowedTools?: string[];
   disallowedTools?: string[];
-  toolSourcePolicy?: ToolCatalogSourcePolicy;
+  toolSourcePolicy?: ToolSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  // never 用于擦除异构工具的参数类型，不会泄漏到各工具自己的 execute 实现。
-  tools?: SessionTool[];
+  memoryManager?: MemoryManager;
+  tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
 
   permissionMode?: PermissionMode;
-  /** Full permission callback. Takes precedence when canUseTool is also provided. */
   permissionHandler?: PermissionHandler;
-  /**
-   * @deprecated Use `permissionHandler` for low-level Sessions or
-   * `AgentOptions.advanced.permission` with `createAgent()`.
-   */
-  canUseTool?: CanUseTool;
   confirmationHandler?: ConfirmationHandler;
-  /** Creates a Session-bound confirmation handler after the Session ID exists. */
   confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;
 
   systemPrompt?: string;
   maxTurns?: number;
-  /** Maximum wall-clock duration of one tool invocation. */
   toolTimeoutMs?: number;
-  /** Network-boundary policy for the built-in WebFetch tool. */
   webFetch?: WebFetchSecurityPolicy;
   agents?: Record<string, AgentDefinition>;
-  /** Session-scoped Skills supplied as data instead of discovered from disk. */
   skills?: readonly SkillDefinition[];
   subagent?: SubagentInfo;
 
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
-  /** Total deadline for one inline hook event. Defaults to 600000ms. */
   hookTimeoutMs?: number;
-  /** Deadline for inline SessionEnd hooks. Defaults to 3000ms. */
   sessionEndHookTimeoutMs?: number;
   middleware?: AgentMiddlewareConfig;
   plugins?: readonly AgentPlugin[];
@@ -300,23 +247,11 @@ export interface SessionOptions {
   logger?: AgentLogger;
   storagePath?: string;
   persistSession?: boolean;
-  /**
-   * Shared transcript repository. Required for resumable server Sessions.
-   * The /node entry creates a JSONL repository from storagePath when omitted.
-   */
   sessionRepository?: SessionRepository;
-  /** Append-only transcript event port paired with sessionRepository. */
   sessionEventStore?: SessionEventStore;
   durableEventStore?: DurableEventStore;
-  /**
-   * Storage for subagent Sessions.
-   *
-   * Defaults to a store rooted in local storage, which cannot be reached from
-   * another host. Inject one backed by the same repository as the parent Session
-   * when subagents must survive a move between machines.
-   */
+  durableExecutionLeaseStore?: DurableExecutionLeaseStore;
   agentSessionRepository?: AgentSessionRepository;
-  /** Maximum wall-clock duration of one durable Store call. Defaults to 15000ms. */
   durableStoreTimeoutMs?: number;
   executionLease?: DurableExecutionLeaseOptions;
 
@@ -389,11 +324,8 @@ export interface ISession extends AsyncDisposable {
 
   stream(options?: StreamOptions): AsyncGenerator<SessionStreamEvent>;
 
-  /** Close after active cleanup and durable finalization when durableEventStore is configured. */
   close(): Promise<void>;
-  /** Abort after active cleanup and durable finalization when durableEventStore is configured. */
   abort(): Promise<void>;
-  /** Stop local execution without terminalizing the durable Session so another worker can recover it. */
   suspendForHandoff(): Promise<SessionHandoffResult>;
 
   getDefaultContext(): RuntimeContext;
@@ -418,7 +350,6 @@ export interface ISession extends AsyncDisposable {
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
   getExecutionLease(): DurableExecutionLeaseSnapshot | null;
-  /** Replays durable events from an optional cursor and then follows live commits. */
   subscribeDurableEvents(
     options?: DurableEventSubscriptionOptions,
   ): Promise<DurableEventSubscription>;

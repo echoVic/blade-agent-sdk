@@ -1,18 +1,13 @@
 # 工具系统
 
-SDK 提供三种方式创建自定义工具，从简单到完整：
-
-| 方式 | 函数 | Schema | 适用场景 |
-|------|------|--------|----------|
-| 简单模式 | `defineTool()` | TypeBox | 快速定义，可直接传给 Session |
-| 工厂模式 | `createTool()` | TypeBox | 完整类型推断、运行时验证和中断策略 |
-| 转换模式 | `toolFromDefinition()` | TypeBox | 将 ToolDefinition 转为内部 Tool 对象 |
+SDK 使用 `defineTool()` 作为唯一的自定义工具声明入口。参数 schema 使用
+TypeBox，返回的 `ToolDefinition` 可以直接传给 Agent 或 Session。
 
 ## defineTool
 
-最简单的工具定义方式。普通 async function 的返回值会自动包装为内部
-generator；默认值（例如省略的 `sideEffect`）在 `toolFromDefinition()` 转成
-内部 `Tool` 时补齐。适合直接传给 `AgentOptions.tools` 或 `SessionOptions.tools`。
+`execute` 必须返回业务 JSON 数据的 Promise，该值会自动包装为内部 generator；
+默认值（例如省略的
+`sideEffect`）由 Session Registry 编译工具时补齐。
 
 ```ts
 import { defineTool } from '@blade-ai/agent-sdk';
@@ -32,8 +27,8 @@ const searchTool = defineTool({
 });
 ```
 
-直接返回的 JSON 值会成为成功结果的 `model` 和 `data`。需要发送进度、消息或
-effect 时，使用 `async *execute` 并返回完整 `ToolResult`。
+返回的 JSON 值会成为成功结果的 `model` 和 `data`。自定义工具通过抛出异常报告
+失败，不接受 `ToolResult` 或 async generator，避免根据返回对象形状猜测语义。
 
 TypeBox schema 是参数类型、运行时校验与模型侧 JSON Schema 的单一事实源。
 `execute` 参数由 `Type.Static<TSchema>` 自动推导；异构工具集合的类型擦除只发生在
@@ -64,60 +59,33 @@ const lookup = defineTool({
 ```
 
 ::: tip
-`kind` 和 `sideEffect` 都可以省略，但如果要写 `kind`，请使用 `ToolKind` 枚举
+`kind` 和 `sideEffect` 都可以省略，但如果要写 `kind`，请使用 `ToolKind` 常量
 （`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk`
 导入：TypeScript 下不接受裸字符串字面量。
 :::
 
-## createTool
+### 按需能力
 
-使用 TypeBox schema 的工厂函数，提供完整的类型推断、运行时验证和工具行为配置。
-返回的 `Tool` 可以直接放入 `SessionOptions.tools`，Session 会保留原实例，
-不会再次适配或丢失行为。
+`services` 声明工具需要的 Session 服务，`execute` 只能访问已声明的服务。
+`requiresRuntime: true` 显式开放执行租约与 fence 能力：
 
 ```ts
-import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import Type from 'typebox';
-
-const deployTool = createTool({
-  name: 'Deploy',
-  displayName: 'Deploy',
-  kind: ToolKind.Execute,
-  sideEffect: ToolSideEffect.NON_IDEMPOTENT,
-  description: {
-    short: '部署应用到指定环境',
-    long: '支持 staging 和 production 环境的自动部署',
-    usageNotes: ['需要先通过 CI 测试'],
-    important: ['production 部署需要人工确认'],
-  },
-  schema: Type.Object({
-    environment: Type.Enum(['staging', 'production'], { description: '目标环境' }),
-    version: Type.String({ description: '部署版本号' }),
-  }),
-  async *execute(params, context) {
-    yield {
-      kind: 'progress',
-      message: '正在部署',
-      data: { environment: params.environment, version: params.version },
-    };
-    return {
-      status: 'success',
-      model: `已部署 v${params.version} 到 ${params.environment}`,
-      display: { summary: `部署完成: ${params.environment}` },
-    };
+const delegated = defineTool({
+  name: 'Delegate',
+  description: '委派任务',
+  parameters: Type.Object({ prompt: Type.String() }),
+  services: ['subagentRegistry'],
+  requiresRuntime: true,
+  async execute({ prompt }, context) {
+    await context.runtime.assertExecutionLease();
+    return { prompt, agents: context.subagentRegistry.getAllNames() };
   },
 });
 ```
 
-## toolFromDefinition
-
-将 `ToolDefinition` 转换为内部 `Tool` 对象。一般在需要直接操作 Tool 接口时使用。
-
-```ts
-function toolFromDefinition<TSchema extends Type.TSchema>(
-  definition: ToolDefinition<TSchema>,
-): Tool<Type.Static<TSchema>>
-```
+合法服务名由 `ToolServiceName` 限定。Session 缺少任一声明服务时不会注册该工具，
+也不会向工具暴露未声明的服务。普通工具的 `execute` 类型和实际运行上下文都没有
+`runtime`。
 
 ## getBuiltinTools
 
@@ -125,34 +93,23 @@ function toolFromDefinition<TSchema extends Type.TSchema>(
 
 ```ts
 function getBuiltinTools(opts?: {
-  sessionId?: string;
-  configDir?: string;
   mcpRegistry?: McpRegistry;
   includeMcpProtocolTools?: boolean;
-  memoryManager?: MemoryManager;
-  subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]>
 ```
 
 `getBuiltinTools()` 从 `/advanced` 导出；其 local Session 会自动注册 Coding
-Agent 工具集合。`MemoryRead` 和 `MemoryWrite` 默认不会注册，只有在显式传入
-`memoryManager` 时才会加入集合。
+Agent 工具集合。返回值包含所有静态内置工具候选；Session Registry 会跳过缺少
+声明 service 的工具。`MemoryRead` 和 `MemoryWrite` 只有在
+`SessionOptions.memoryManager` 存在时才会注册。
 直接调用返回工具的 `execute()` 会绕过 `ExecutionPipeline`。已有文件的
 `Write`/`Edit` 仍要求 `ExecutionContext.sessionId`，否则无法验证
 read-before-write，并会 fail closed。
 
 ```ts
-import {
-  FileSystemMemoryStore,
-  MemoryManager,
-  SubagentRegistry,
-  getBuiltinTools,
-} from '@blade-ai/agent-sdk/advanced';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/advanced';
 
-const tools = await getBuiltinTools({
-  memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),
-  subagentRegistry: new SubagentRegistry(),
-});
+const tools = await getBuiltinTools();
 ```
 
 ## 社区工具包约定
@@ -165,7 +122,7 @@ const tools = await getBuiltinTools({
 
 包的根入口应导出一个命名工厂（例如 `createGithubTool`）或一个稳定的 `tools`
 数组。不要导入 SDK 的 `src/`、`dist/` chunk 或其他私有路径；工具作者只能依赖
-根入口公开的 `defineTool`、`createTool`、类型和常量。
+根入口公开的 `defineTool`、类型和常量。
 
 ```json
 {
@@ -188,7 +145,7 @@ const tools = await getBuiltinTools({
 
 ## 内置工具列表
 
-SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
+SDK 提供一个静态内置工具数组；连接 MCP 后还会追加远端动态工具：
 
 | 分类 | 工具名 | Kind | Side effect | 说明 |
 |------|--------|------|-------------|------|
@@ -215,12 +172,20 @@ SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | **计划** | EnterPlanMode | readonly | non_idempotent | 进入计划模式 |
 | | ExitPlanMode | readonly | non_idempotent | 退出计划模式 |
 | **待办** | TodoWrite | readonly | idempotent | 管理待办事项 |
+| **Memory** | MemoryRead | readonly | pure | 读取配置的 Memory Store |
+| | MemoryWrite | write | idempotent | 写入配置的 Memory Store |
 | **MCP** | ListMcpResources | readonly | pure | 列出 MCP 资源（需连接 MCP） |
 | | ReadMcpResource | readonly | pure | 读取 MCP 资源（需连接 MCP） |
 
 ::: tip
-`Task` 使用当前 session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
+`Task` 使用当前 Session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，仅在配置 `SessionOptions.memoryManager` 后注册。
 :::
+
+内置工具的实现按能力边界共享四个窄核心：文件读写由
+`file/operationCore.ts` 统一授权路径、写前校验与错误结果；`Glob`/`Grep`
+由 `search/searchRunner.ts` 统一搜索路径和执行；`WebFetch`/`WebSearch` 由
+`web/webRequest.ts` 统一超时、中止、代理与请求策略；结构化任务 CRUD
+集中声明在 `task/taskCrud.ts`，并共同使用 `TaskStore`。
 
 ::: info 工具排序
 SDK 发送给 LLM 的工具列表按以下规则排序：**内置工具在前，MCP 工具在后**，每组内按名称字母序排列。这意味着内置工具在 LLM 的上下文中优先级更高。
@@ -263,9 +228,10 @@ interface ToolDefinition<
   parameters: TSchema;
   sideEffect?: ToolSideEffect;
   kind?: ToolKind;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   exposure?: ToolExposureConfig;
+  services?: readonly ToolServiceName[];
+  requiresRuntime?: boolean;
   execute: (
     params: Type.Static<TSchema>,
     context: ExecutionContext,
@@ -332,10 +298,9 @@ type ToolYield =
 type ToolExecution = AsyncGenerator<ToolYield, ToolResult, void>;
 ```
 
-`createTool()` 和直接构造的 `ToolDefinition` 仍必须返回 `ToolExecution`；不产生
-中间事件时可使用 `completeToolExecution(result)`。`defineTool()` 的普通 async
-function 会自动完成这层包装。需要只消费最终结果时使用
-`collectToolExecution(execution)`。
+`ToolExecution` 是 SDK 内部运行时协议。公开的 `defineTool()` 只接受返回
+`Promise<JsonValue>` 的 async function，并由 Registry 编译为该协议；它不根据
+返回值字段或迭代器方法猜测结果类型。
 
 ::: warning data 必须是 JSON 值
 `data` 是供调用方消费的结构化结果，类型约束为 `JsonValue`。大型结果的
@@ -363,15 +328,10 @@ const tool = defineTool<typeof parameters, { count: number }>({
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
   parameters,
-  async *execute(params) {
+  async execute(params) {
     // params.query: string, params.limit?: number —— 无需 cast
     const results = await searchDocuments(params.query, params.limit ?? 10);
-    return {
-      status: 'success',
-      model: JSON.stringify(results),
-      display: { summary: `找到 ${results.length} 条结果` },
-      data: { count: results.length },
-    };
+    return { count: results.length };
   },
 });
 ```
@@ -382,22 +342,19 @@ const tool = defineTool<typeof parameters, { count: number }>({
 
 ```ts
 interface ExecutionContext {
-  userId?: string;
   sessionId?: SessionId;
   messageId?: MessageId;
   contextSnapshot?: ContextSnapshot;
-  skillActivationPaths?: string[];
   signal?: AbortSignal;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: IBackgroundAgentManager;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
-  discoveredTools?: string[];
-  toolInvocationLifecycle?: ToolInvocationLifecycle; // runtime 内部注入
 }
 ```
+
+通过 `services` 声明的 Session 服务会按需加入 authoring context。
+`requiresRuntime: true` 时额外提供只读的 `context.runtime`；Registry、暴露规划器
+和 durable lifecycle 不会直接暴露给工具。
 
 ```ts
 interface ConfirmationDetails {
@@ -467,8 +424,8 @@ lifecycle，因为它们尚未形成可执行调用。未配置 lifecycle observ
 
 ### 副作用契约
 
-每个 `ToolDefinition`、`ToolConfig` 和完整 `Tool` 都必须显式声明
-`sideEffect`：
+每个工具都应声明准确的 `sideEffect`；`ToolDefinition` 省略该字段时按最保守的
+`non_idempotent` 处理：
 
 - `pure`：不改变外部状态，可以在恢复时重放。
 - `idempotent`：相同参数重复执行会达到相同目标状态，可以在恢复时重放。
@@ -481,19 +438,8 @@ MCP 工具始终按 `non_idempotent` 处理；远端 annotations 只是 hint，�
 
 ### 工具中断策略
 
-`interruptBehavior` 控制工具收到 `priority: 'now'` 的 steering 时是否取消：
-
-```ts
-const tool = createTool({
-  // ...
-  sideEffect: ToolSideEffect.IDEMPOTENT,
-  interruptBehavior: 'cancel',
-  async *execute(params, context) {
-    context.signal?.throwIfAborted();
-    // ...
-  },
-});
-```
+`interruptBehavior` 控制工具收到 `priority: 'now'` 的 steering 时是否取消。
+公开的 `defineTool()` 使用保守的 `block` 默认值：
 
 - `block` 是默认值。工具继续完成，结果落盘后再应用 steering，适合写文件、状态变更和不可撤销的外部调用。
 - `cancel` 仅用于真正监听 `context.signal`、能安全停止并在 `finally` 中释放资源的工具。
@@ -522,9 +468,8 @@ generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义�
 若资源授予与取消发生在同一轮事件循环，pipeline 会再次检查信号，并在返回取消
 结果前释放已取得的所有 lease。
 
-`interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
-`defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义
-工具响应 `now` 转向时，应使用 `createTool()` 并声明 `cancel`。
+`defineTool()` / `ToolDefinition` 不暴露 `interruptBehavior`；自定义工具在显式
+`session.abort()` 或 `session.close()` 时仍应监听 `context.signal` 并及时清理资源。
 
 内置的 `Read`、`Glob`、`Grep`、`WebFetch`、`WebSearch` 和前台 `Bash` 明确声明为 `cancel`；后台 `Bash` 及其他内置工具为 `block`。动态 MCP 工具默认 `block`。
 

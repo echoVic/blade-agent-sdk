@@ -53,6 +53,17 @@ describe('golden paths', () => {
     }
   });
 
+  it('wires the explicit lease store into every production Session', () => {
+    for (const file of [
+      'examples/production-stack/QueuedSessionExecutor.mjs',
+      'examples/production-stack/RepositorySessionRunner.mjs',
+    ]) {
+      expect(readFileSync(resolve(file), 'utf8'), file).toContain(
+        'durableExecutionLeaseStore:',
+      );
+    }
+  });
+
   it('exercises the intended runtime boundaries', () => {
     expect(
       readFileSync(resolve('examples/local-cli-agent/index.mjs'), 'utf8'),

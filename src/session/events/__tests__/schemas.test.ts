@@ -450,7 +450,7 @@ describe('durable event schemas', () => {
     ).toThrow();
   });
 
-  it('reads schema-v2 logs but forbids model-attempt events in v2', () => {
+  it('rejects superseded durable event schema versions', () => {
     const legacyEvent = {
       ...validDrafts[0],
       schemaVersion: 2,
@@ -460,8 +460,8 @@ describe('durable event schemas', () => {
       recordedAt: '2026-08-22T12:00:00.000Z',
       occurredAt: '2026-08-22T12:00:00.000Z',
     };
-    expect(parseDurableEventEnvelope(legacyEvent).schemaVersion).toBe(2);
-    expect(
+    expect(() => parseDurableEventEnvelope(legacyEvent)).toThrow();
+    expect(() =>
       parsePersistedDurableEventBatch({
         format: DURABLE_EVENT_LOG_FORMAT,
         schemaVersion: 2,
@@ -469,48 +469,15 @@ describe('durable event schemas', () => {
         firstSequence: 1,
         lastSequence: 1,
         events: [legacyEvent],
-      }).schemaVersion,
-    ).toBe(2);
+      }),
+    ).toThrow();
 
     expect(() =>
       parseDurableEventEnvelope({
-        ...validDrafts.find((draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED),
-        schemaVersion: 2,
-        eventId: EventId('invalid-v2-model-event'),
-        sequence: 1,
-        sessionId: 'legacy-session',
-        recordedAt: '2026-08-22T12:00:00.000Z',
-        occurredAt: '2026-08-22T12:00:00.000Z',
+        ...legacyEvent,
+        schemaVersion: 3,
       }),
-    ).toThrow(/requires durable event schema v3/);
-  });
-
-  it('reads schema-v3 model attempts but reserves provider identity for schema v4', () => {
-    const modelStarted = validDrafts.find(
-      (draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED,
-    );
-    if (!modelStarted || modelStarted.type !== DurableEventType.MODEL_REQUEST_STARTED) {
-      throw new Error('Expected model_request_started fixture');
-    }
-    const { modelIdentity: _modelIdentity, ...legacyData } = modelStarted.data;
-    const envelope = {
-      ...modelStarted,
-      data: legacyData,
-      schemaVersion: 3,
-      eventId: EventId('schema-v3-model-event'),
-      sequence: 1,
-      sessionId: 'schema-v3-session',
-      recordedAt: '2026-08-22T12:00:00.000Z',
-      occurredAt: '2026-08-22T12:00:00.000Z',
-    } as const;
-
-    expect(parseDurableEventEnvelope(envelope).schemaVersion).toBe(3);
-    expect(() =>
-      parseDurableEventEnvelope({
-        ...envelope,
-        data: modelStarted.data,
-      }),
-    ).toThrow(/provider identity requires durable event schema v4/);
+    ).toThrow();
   });
 
   it('requires model-attempt identity and original input for schema-v3 and later tools', () => {
@@ -546,26 +513,6 @@ describe('durable event schemas', () => {
         schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
       }),
     ).toThrow(/requires modelAttemptId/);
-    expect(
-      parseDurableEventEnvelope({
-        ...envelope,
-        schemaVersion: 2,
-      }).schemaVersion,
-    ).toBe(2);
-    expect(() =>
-      parseDurableEventEnvelope({
-        ...envelope,
-        modelAttemptId,
-        schemaVersion: 2,
-      }),
-    ).toThrow(/does not allow modelAttemptId/);
-    expect(() =>
-      parseDurableEventEnvelope({
-        ...envelope,
-        data: toolScheduled.data,
-        schemaVersion: 2,
-      }),
-    ).toThrow(/does not allow modelInput/);
   });
 
   it('rejects a persisted batch whose event version does not match', () => {

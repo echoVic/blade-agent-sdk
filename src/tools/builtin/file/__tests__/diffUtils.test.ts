@@ -137,7 +137,7 @@ describe('generateDiffSnippet', () => {
 describe('generateDiffSnippetWithMatch', () => {
   it('should return null when oldString not found in oldContent', () => {
     expect(
-      generateDiffSnippetWithMatch('hello world', 'hello universe', 'missing', 'x')
+      generateDiffSnippetWithMatch('hello world', 'hello universe', 'missing', 'x'),
     ).toBeNull();
   });
 
@@ -163,9 +163,7 @@ describe('generateDiffSnippetWithMatch', () => {
   it('should calculate correct matchLine from oldString position', () => {
     const old = 'line1\nline2\nline3\nTARGET\nline5';
     const nw = 'line1\nline2\nline3\nREPLACED\nline5';
-    const parsed = parseDiffResult(
-      generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED')
-    );
+    const parsed = parseDiffResult(generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED'));
     // TARGET starts at index after "line1\nline2\nline3\n"
     // beforeLines splits to ['line1','line2','line3',''], length=4, matchLine=4-1+1=4
     expect(parsed.matchLine).toBe(4);
@@ -174,9 +172,7 @@ describe('generateDiffSnippetWithMatch', () => {
   it('should handle replacement at beginning of file', () => {
     const old = 'TARGET\nline2\nline3';
     const nw = 'REPLACED\nline2\nline3';
-    const parsed = parseDiffResult(
-      generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED')
-    );
+    const parsed = parseDiffResult(generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED'));
     expect(parsed.startLine).toBeGreaterThanOrEqual(1);
     // beforeLines = [''], length=1, matchLine=1-1+1=1 => but code does length-1 => 0+1=1?
     // Actually: matchLine = beforeLines.length - 1 = 0, then startLine = max(0, 0-4)+1=1
@@ -201,9 +197,7 @@ describe('generateDiffSnippetWithMatch', () => {
   it('should use first occurrence when oldString appears multiple times', () => {
     const old = 'dup\nother\ndup\nmore';
     const nw = 'REPLACED\nother\ndup\nmore';
-    const parsed = parseDiffResult(
-      generateDiffSnippetWithMatch(old, nw, 'dup', 'REPLACED')
-    );
+    const parsed = parseDiffResult(generateDiffSnippetWithMatch(old, nw, 'dup', 'REPLACED'));
     expect(parsed.matchLine).toBe(1);
   });
 
@@ -229,10 +223,10 @@ describe('generateDiffSnippetWithMatch', () => {
     const newContent = newLines.join('\n');
 
     const r2 = parseDiffResult(
-      generateDiffSnippetWithMatch(oldContent, newContent, 'line16', 'modified', 2)
+      generateDiffSnippetWithMatch(oldContent, newContent, 'line16', 'modified', 2),
     );
     const r8 = parseDiffResult(
-      generateDiffSnippetWithMatch(oldContent, newContent, 'line16', 'modified', 8)
+      generateDiffSnippetWithMatch(oldContent, newContent, 'line16', 'modified', 8),
     );
     expect(r8.patch.length).toBeGreaterThan(r2.patch.length);
   });
@@ -240,9 +234,7 @@ describe('generateDiffSnippetWithMatch', () => {
   it('should clamp startLine to at least 1', () => {
     const old = 'TARGET\nline2';
     const nw = 'REPLACED\nline2';
-    const parsed = parseDiffResult(
-      generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED', 0)
-    );
+    const parsed = parseDiffResult(generateDiffSnippetWithMatch(old, nw, 'TARGET', 'REPLACED', 0));
     expect(parsed.startLine).toBeGreaterThanOrEqual(1);
   });
 });

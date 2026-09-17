@@ -53,9 +53,12 @@ describe('BackgroundShellManager handoff admission', () => {
       },
     });
 
-    await vi.waitFor(() => {
-      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
-    });
+    await vi.waitFor(
+      () => {
+        expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+      },
+      { timeout: 5_000 },
+    );
 
     expect(manager.consumeOutput(processInfo.id)?.stdout).toBe('|runtime|command');
   });
@@ -67,9 +70,12 @@ describe('BackgroundShellManager handoff admission', () => {
       cwd: tmpdir(),
     });
 
-    await vi.waitFor(() => {
-      expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
-    });
+    await vi.waitFor(
+      () => {
+        expect(manager.getProcess(processInfo.id)?.status).not.toBe('running');
+      },
+      { timeout: 5_000 },
+    );
     const output = manager.consumeOutput(processInfo.id);
 
     expect(Buffer.byteLength(output?.stdout ?? '')).toBeLessThanOrEqual(1024 * 1024);
@@ -127,28 +133,30 @@ describe('BackgroundShellManager handoff admission', () => {
       fencingToken: FencingToken(3),
     };
     manager.openSession(rootSessionId);
-    const invocation = bashTool.build({
-      command: 'sleep 30',
-      timeout: 30_000,
-      run_in_background: true,
-    });
 
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        sessionId: childSessionId,
-        backgroundAgentManager: {
-          getOwnerSessionId: () => rootSessionId,
-        } as never,
-        executionFence,
-        contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
-          capabilities: {
-            filesystem: {
-              roots: [tmpdir()],
-              cwd: tmpdir(),
+      bashTool.execute(
+        {
+          command: 'sleep 30',
+          timeout: 30_000,
+          run_in_background: true,
+        },
+        {
+          sessionId: childSessionId,
+          backgroundAgentManager: {
+            getOwnerSessionId: () => rootSessionId,
+          } as never,
+          runtime: { executionFence },
+          contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
+            capabilities: {
+              filesystem: {
+                roots: [tmpdir()],
+                cwd: tmpdir(),
+              },
             },
-          },
-        }),
-      }),
+          }),
+        },
+      ),
     );
 
     expect(result.status).toBe('success');

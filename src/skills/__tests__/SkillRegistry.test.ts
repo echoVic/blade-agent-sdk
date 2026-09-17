@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SkillRegistry } from '../SkillRegistry.js';
 
 const BASE_SKILL = (name: string, description: string) => `---
@@ -12,7 +12,11 @@ description: ${description}
 Instructions for ${name}.
 `;
 
-async function createSkill(rootDir: string, skillDirName: string, content: string): Promise<string> {
+async function createSkill(
+  rootDir: string,
+  skillDirName: string,
+  content: string,
+): Promise<string> {
   const skillDir = path.join(rootDir, skillDirName);
   await fs.mkdir(skillDir, { recursive: true });
   const skillFile = path.join(skillDir, 'SKILL.md');
@@ -26,7 +30,11 @@ describe('SkillRegistry project isolation', () => {
   async function projectWith(skillName: string): Promise<string> {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `skills-project-${skillName}-`));
     roots.push(root);
-    await createSkill(path.join(root, 'skills'), skillName, BASE_SKILL(skillName, `${skillName} skill`));
+    await createSkill(
+      path.join(root, 'skills'),
+      skillName,
+      BASE_SKILL(skillName, `${skillName} skill`),
+    );
     return root;
   }
 
@@ -66,10 +74,12 @@ describe('SkillRegistry project isolation', () => {
     // previous project's Skills.
     const registry = SkillRegistry.getInstance({ cwd: projectA });
     expect((await registry.initialize()).skills.map((skill) => skill.name)).toEqual(['alpha']);
-    expect((await registry.initialize({ cwd: projectB })).skills.map((skill) => skill.name))
-      .toEqual(['beta']);
-    expect((await registry.initialize({ cwd: projectA })).skills.map((skill) => skill.name))
-      .toEqual(['alpha']);
+    expect(
+      (await registry.initialize({ cwd: projectB })).skills.map((skill) => skill.name),
+    ).toEqual(['beta']);
+    expect(
+      (await registry.initialize({ cwd: projectA })).skills.map((skill) => skill.name),
+    ).toEqual(['alpha']);
   });
 });
 
@@ -110,8 +120,16 @@ describe('SkillRegistry', () => {
     const bundledDir = path.join(tmpDir, 'bundled');
     const projectRoot = path.join(tmpDir, 'workspace');
     const projectSkillsDir = path.join(projectRoot, 'skills');
-    await createSkill(bundledDir, 'bundled-review', BASE_SKILL('bundled-review', 'bundled review helper'));
-    await createSkill(projectSkillsDir, 'project-review', BASE_SKILL('project-review', 'project review helper'));
+    await createSkill(
+      bundledDir,
+      'bundled-review',
+      BASE_SKILL('bundled-review', 'bundled review helper'),
+    );
+    await createSkill(
+      projectSkillsDir,
+      'project-review',
+      BASE_SKILL('project-review', 'project review helper'),
+    );
 
     const registry = new SkillRegistry({
       cwd: projectRoot,
@@ -137,22 +155,26 @@ describe('SkillRegistry', () => {
     await createSkill(sourceDir, 'policy-skill', BASE_SKILL('policy-skill', 'policy bound skill'));
 
     const allow = SkillRegistry.getInstance({
-      additionalSources: [{
-        kind: 'bundled',
-        directory: sourceDir,
-        trustLevel: 'trusted',
-        shellPolicy: 'allow',
-        hookPolicy: 'allow',
-      }],
+      additionalSources: [
+        {
+          kind: 'bundled',
+          directory: sourceDir,
+          trustLevel: 'trusted',
+          shellPolicy: 'allow',
+          hookPolicy: 'allow',
+        },
+      ],
     });
     const deny = SkillRegistry.getInstance({
-      additionalSources: [{
-        kind: 'bundled',
-        directory: sourceDir,
-        trustLevel: 'workspace',
-        shellPolicy: 'deny',
-        hookPolicy: 'deny',
-      }],
+      additionalSources: [
+        {
+          kind: 'bundled',
+          directory: sourceDir,
+          trustLevel: 'workspace',
+          shellPolicy: 'deny',
+          hookPolicy: 'deny',
+        },
+      ],
     });
 
     // Two different execution policies are two configurations: the second caller
@@ -161,25 +183,39 @@ describe('SkillRegistry', () => {
 
     const allowed = await allow.initialize();
     const denied = await deny.initialize();
-    expect(allowed.skills[0]?.source).toMatchObject({ trustLevel: 'trusted', shellPolicy: 'allow' });
-    expect(denied.skills[0]?.source).toMatchObject({ trustLevel: 'workspace', shellPolicy: 'deny' });
+    expect(allowed.skills[0]?.source).toMatchObject({
+      trustLevel: 'trusted',
+      shellPolicy: 'allow',
+    });
+    expect(denied.skills[0]?.source).toMatchObject({
+      trustLevel: 'workspace',
+      shellPolicy: 'deny',
+    });
 
     // The same policy is still the same configuration and stays shared.
-    expect(SkillRegistry.getInstance({
-      additionalSources: [{
-        kind: 'bundled',
-        directory: sourceDir,
-        trustLevel: 'trusted',
-        shellPolicy: 'allow',
-        hookPolicy: 'allow',
-      }],
-    })).toBe(allow);
+    expect(
+      SkillRegistry.getInstance({
+        additionalSources: [
+          {
+            kind: 'bundled',
+            directory: sourceDir,
+            trustLevel: 'trusted',
+            shellPolicy: 'allow',
+            hookPolicy: 'allow',
+          },
+        ],
+      }),
+    ).toBe(allow);
   });
 
   it('prefers the higher-precedence source when two sources resolve to the same canonical skill path', async () => {
     const canonicalRoot = path.join(tmpDir, 'canonical-skills');
     const shadowRoot = path.join(tmpDir, 'shadow-skills');
-    await createSkill(canonicalRoot, 'shared-skill', BASE_SKILL('shared-skill', 'canonical version'));
+    await createSkill(
+      canonicalRoot,
+      'shared-skill',
+      BASE_SKILL('shared-skill', 'canonical version'),
+    );
     await fs.symlink(canonicalRoot, shadowRoot);
 
     const registry = new SkillRegistry({
@@ -211,7 +247,10 @@ describe('SkillRegistry', () => {
   it('filters skills with path conditions from model-visible listings when the activation context does not match', async () => {
     const projectRoot = path.join(tmpDir, 'workspace');
     const projectSkillsDir = path.join(projectRoot, 'skills');
-    await createSkill(projectSkillsDir, 'src-only', `---
+    await createSkill(
+      projectSkillsDir,
+      'src-only',
+      `---
 name: src-only
 description: Only visible for src files
 paths:
@@ -219,7 +258,8 @@ paths:
 ---
 
 Source focused instructions.
-`);
+`,
+    );
     await createSkill(projectSkillsDir, 'always-on', BASE_SKILL('always-on', 'Always visible'));
 
     const registry = new SkillRegistry({

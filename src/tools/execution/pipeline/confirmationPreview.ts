@@ -6,10 +6,7 @@ function getString(params: JsonObject, key: string, defaultValue = ''): string {
 }
 
 /** Human-readable preview of the change a mutating tool is about to make. */
-export function generatePreviewForTool(
-  toolName: string,
-  params: JsonObject,
-): string | undefined {
+export function generatePreviewForTool(toolName: string, params: JsonObject): string | undefined {
   switch (toolName) {
     case 'Edit': {
       const oldString = getString(params, 'old_string');

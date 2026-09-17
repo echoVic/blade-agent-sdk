@@ -6,8 +6,8 @@
 服务端部署组件统一从 `/server/infra` 导入。
 
 `/server/infra` 当前面向 Node.js 服务进程，不是 Edge Runtime 入口。PostgreSQL、
-OpenTelemetry、非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；
-部分依赖仍可能由基础依赖间接安装。
+非内置 Provider adapter 与原生 Node 增强使用可选 peer dependency；部分依赖仍
+可能由基础依赖间接安装。
 
 包还提供 `create-blade-agent` 可执行文件。它通过
 `--preset <local|web|production>` 选择生成项目的拓扑，`--verify` 负责安装后
@@ -20,13 +20,14 @@ package export；通过 npm bin 调用。
 |------|---------|------|
 | `@blade-ai/agent-sdk` | Node.js | 默认 `createAgent`、工具定义和公共类型入口 |
 | `@blade-ai/agent-sdk/browser` | Browser-safe / Node | `AgentClient`、协议 schema、解析器、事件和常量 |
-| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker、Runtime Store 契约与 conformance suite |
+| `@blade-ai/agent-sdk/protocol` | Browser-safe / Node | wire protocol schema 与解析器 |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`、Worker 与 Runtime Store 契约 |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | `PostgresRuntimeStore` adapter |
 | `@blade-ai/agent-sdk/advanced` | Node.js | local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter |
 
 旧 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
-`/tools`、`/protocol` 和 `/server/testing` 属于 deprecated compatibility
-alias。可选 PostgreSQL 与 OTel adapter 保留 `/server/postgres` 和
-`/server/otel`，避免 canonical 入口强制加载 peer dependency。
+`/tools` compatibility alias 已删除。可选 PostgreSQL adapter 位于
+`/server/postgres`，避免 canonical 入口强制加载 `pg`。
 
 ## 函数
 
@@ -40,12 +41,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `resumeSession` | session | 恢复会话 |
 | `forkSession` | session | 分叉会话 |
 | `prompt` | session | 一次性调用 |
-| `defineTool` | tools | 定义工具（简单模式） |
-| `createTool` | tools | 创建 TypeBox 工具 |
-| `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
+| `defineTool` | tools | 使用 TypeBox 定义工具 |
 | `getBuiltinTools` | advanced | 获取内置 Node 本地工具 |
-| `createMemoryReadTool` | advanced | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | advanced | 创建 opt-in MemoryWrite 工具 |
+| `memoryReadTool` | advanced | 静态 opt-in MemoryRead 工具 |
+| `memoryWriteTool` | advanced | 静态 opt-in MemoryWrite 工具 |
 | `tool` | advanced | 定义 MCP 工具 |
 | `createSdkMcpServer` | advanced | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
@@ -54,14 +53,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `createCompositePermissionHandler` | permissions | 组合多个权限处理器 |
 | `createModePermissionHandler` | permissions | 基于权限模式创建处理器 |
 | `createPathSafetyPermissionHandler` | permissions | 基于路径安全策略创建处理器 |
-| `createPermissionHandlerFromCanUseTool` | permissions | 适配已弃用 canUseTool 回调的兼容处理器 |
 | `createRuleBasedPermissionHandler` | permissions | 基于规则创建处理器 |
-| `collectToolExecution` | root / core / tools | 消费工具执行并返回最终结果 |
-| `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
-| `composeMiddleware` | root / core / middleware | 组合通用洋葱 middleware |
-| `definePlugin` | root / core / middleware | 定义声明式 Agent 插件 |
-| `wrapModelService` | root / core / middleware | 使用模型 middleware 包装 `ModelService` |
-| `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
+| `collectToolExecution` | root | 消费工具执行并返回最终结果 |
+| `completeToolExecution` | root | 将单个结果包装成工具执行 |
+| `composeMiddleware` | root | 组合通用洋葱 middleware |
+| `definePlugin` | root | 定义声明式 Agent 插件 |
+| `wrapModelService` | root | 使用模型 middleware 包装 `ModelService` |
+| `normalizeDeepSeekModel` 等 | root | DeepSeek 模型、base URL、缓存前缀和 strict schema 辅助函数 |
 | `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
 | `getErrorMessage` 等 | root | 安全提取未知错误信息 |
 
@@ -69,7 +67,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 名称 | 来源 | 说明 |
 |------|------|------|
-| `ToolCatalog` | tools/catalog | 工具目录，管理来源追踪、信任分级和策略过滤 |
 | `FileSystemMemoryStore` | advanced | 文件系统 memory 适配器 |
 | `MemoryManager` | advanced | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
@@ -77,7 +74,6 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
 | `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
-| `isDurableExecutionLeaseStore` | durable events | 检查 Store 是否实现完整 execution lease 协议 |
 | `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
 | `JsonlDurableEventStore` | advanced | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
@@ -86,15 +82,11 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SdkSessionRunner` | advanced | 在 worker fencing 下恢复并执行 durable SDK Session |
 | `ExecutionHostSessionRunner` | advanced | 在隔离 ExecutionHost 中 provision、执行、checkpoint 和恢复 workload |
 | `AgentWorker` | server/infra | worker 注册、heartbeat、Session claim、lease 续期、恢复与 drain supervisor |
-| `AgentRuntimeOperations` | server/infra | 受鉴权的 runtime health、queue metrics 与 uncertain effect reconciliation |
-| `EffectDispatcher` | advanced | 消费持久化 outbox，并执行显式重试或 uncertain 收敛 |
 | `AgentClient` / `RemoteAgentSession` | browser | 带 command 重试和 SSE cursor 重连的远程客户端 |
 | `InMemoryAgentServerStore` | server/infra | 单进程控制面参考 Store；不用于多实例生产部署 |
-| `PostgresRuntimeStore` | server/postgres | 共享 command、event、outbox、projection 和 Session persistence |
-| `RuntimeStoreError` | server/infra | Runtime transaction 的稳定错误类型 |
+| `PostgresRuntimeStore` | server/postgres | 共享 command、event、Session 状态、路由和 lease persistence |
+| `RuntimeStoreError` | server/infra | Runtime Store 的稳定错误类型 |
 | `TenantAdmissionController` | server/infra | 每 tenant 并发、队列和固定窗口限流 |
-| `OpenTelemetryAgentServerTelemetry` | server/otel | 默认不采集 payload 的 metric、trace 与 audit adapter |
-| `OpenTelemetryAgentWorkerTelemetry` | server/otel | 默认不采集 payload 的 Worker readiness、吞吐、恢复和 effect metric adapter |
 | `JsonlSessionRepository` | advanced | Node.js transcript repository |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
@@ -105,7 +97,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 名称 | 值 |
 |------|------|
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
-| `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
+| `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` |
 | `ToolKind` | `ReadOnly` / `Write` / `Execute` |
 | `InputPriority` | `NOW` / `NEXT` / `LATER` |
 | `SessionStreamEventType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
@@ -140,12 +132,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
 | `SessionRepository` | transcript 的只读 projection 端口 |
-| `SessionEventStore` | transcript domain event append 端口 |
-| `SessionPersistence` | 组合 read projection 与 event append 的兼容端口 |
+| `SessionEventStore` | transcript projection 原子写入端口 |
 | `SessionRepositoryMessageMetadata` / `SessionRepositoryCompactionMetadata` | repository 消息与 compaction append 元数据 |
 | `SessionRepositorySubagentInfo` / `SessionRepositorySubagentRef` | 子 Agent transcript 归属与结果引用 |
 | `SessionRepositoryHealth` / `SessionRepositoryStorageStats` | repository 健康与容量统计 |
-| `SessionTool` | Session 接受的 `ToolDefinition` 或完整 `Tool` 联合类型 |
 | `SendOptions` | send() 选项 |
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |
@@ -187,22 +177,15 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `parseAgentEventCursor` / `parseAgentServerEvent` | strict event/cursor parser |
 | `agentInitializationDataSchema` | strict initialize response schema |
 | `RuntimeStore` / `RuntimeTenantStore` | 共享 authority 与 tenant-scoped Session/durable adapter |
-| `RUNTIME_STORE_SCHEMA_VERSION` / `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION` | 数据库 schema 与 domain event schema 版本 |
-| `RuntimeCommandCommit` / `RuntimeCommitResult` | 原子 command、event、effect、projection transaction |
-| `RuntimeDomainEvent` / `RuntimeDomainEventDraft` / `RuntimeDomainEventPage` | Runtime domain event stream |
-| `RuntimeEffectIntent` / `RuntimeEffectRecord` / `RuntimeEffectStatus` | Transactional outbox 类型 |
-| `RuntimeProjectionCheckpoint` / `RuntimeProjectionRecord` | Projection CAS 与 checkpoint |
+| `RUNTIME_STORE_SCHEMA_VERSION` | PostgreSQL schema 版本 |
 | `RuntimeWorkerRecord` / `RuntimeWorkerRegistration` | worker heartbeat、容量与 drain 状态 |
-| `RuntimeQueueMetrics` / `AgentWorkerHealth` | tenant backlog、Worker capacity 与本地 readiness 快照 |
-| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionState` | Session 路由、含可重入 `idle` 的八态状态机与 execution lease |
-| `RuntimeEffectClaim` / `RuntimeEffectLease` / `RuntimeEffectExecutionMode` / `RuntimeEffectReconciliation` | effect 领取、fencing、at-most-once 与人工对账语义 |
-| `RuntimeEffectHandler` / `RuntimeEffectHandlerContext` | 类型化 outbox effect handler |
-| `RetryableRuntimeEffectError` / `UncertainRuntimeEffectError` | 显式声明 effect 可重试或结果未知 |
+| `RuntimeSessionRoute` / `RuntimeSessionClaim` / `RuntimeSessionClaimOptions` | Session 路由、领取与 execution lease |
+| `RuntimeSessionState` / `RuntimeSessionTransition` / `RuntimeSessionSettlement` | 含可重入 `idle` 的八态状态机与 fenced 更新 |
+| `RuntimeRecoveryResult` | 过期 worker、Session 与 sealed command 恢复结果 |
+| `AgentWorkerHealth` / `AgentWorkerMetrics` / `AgentWorkerSnapshot` | Worker readiness、吞吐和运行快照 |
+| `AgentWorkerTelemetry` / `AgentWorkerErrorMetric` | 可注入的 Worker 遥测端口 |
 | `SessionRunner` / `SessionRunnerContext` / `SessionRunResult` | 单个 fenced Session 的执行边界 |
-| `AgentRuntimeOperationsOptions` / `RuntimeOperationsPrincipal` | 运维 HTTP 面、鉴权与 tenant scope 配置 |
 | `WorkerRuntimeStore` / `WorkerRuntimeError` | worker 调度与恢复端口及稳定错误 |
-| `assertRuntimeStoreConformance` | 不依赖测试框架的公开 Store conformance suite |
-
 完整部署约束见 [Server Runtime](./server-runtime) 和
 [Runtime Store](./runtime-store)，worker 调度见
 [Worker Runtime](./worker-runtime)，隔离执行见
@@ -217,12 +200,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ExecutionExecRequest` / `ExecutionExecResult` | 单次 command 输入与有界输出 |
 | `ExecutionCheckpoint` / `ExecutionRestoreRequest` | workspace checkpoint 与恢复输入 |
 | `ExecutionResourceLimits` / `ExecutionNetworkPolicy` / `ExecutionWorkspaceSource` | CPU、内存、磁盘、PID、运行时、输出、网络及 workspace 约束 |
-| `ExecutionEgressController` / `ExecutionEgressLease` | proxy allowlist 的外部 enforcement 端口 |
-| `CredentialBroker` / `CredentialIssuer` / `CredentialRequest` / `CredentialLease` | 单次 command 的短期凭据签发与撤销 |
-| `CredentialIssueContext` / `IssuedCredential` | issuer 输入和有明确过期时间的签发结果 |
-| `EphemeralCredentialBroker` | TTL 校验、失败回滚和自动撤销的参考 broker |
 | `ExecutionHostError` / `ExecutionHostErrorCode` | 稳定的执行边界错误 |
-| `ExecutionId` / `ExecutionCheckpointId` / `CredentialLeaseId` | 执行、checkpoint 和凭据 lease 的 branded ID |
+| `ExecutionId` / `ExecutionCheckpointId` | 执行与 checkpoint 的 branded ID |
 | `DockerExecutionHost` / `DockerExecutionHostOptions` | `/advanced` 导出的 Docker 参考实现 |
 
 ### Durable Events
@@ -230,7 +209,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
-| `DurableExecutionLeaseStore` | 粘性 `requiresExecutionLease`、原子 acquire/renew/release/assert、`withExecutionLease` 与 fenced append 接口 |
+| `DurableExecutionLeaseStore` | 显式配置的粘性 fencing Store，提供 acquire/renew/release/assert 与 `withExecutionLease` |
 | `DurableExecutionLeaseOptions` | Session lease 的 owner、TTL、heartbeat 和可选 lease ID |
 | `DurableExecutionLeaseSnapshot` / `DurableExecutionFence` | 当前租约快照及传递给 Store/工具的 fence |
 | `DurableExecutionLeaseErrorCode` | lease 配置、冲突、缺少 fence、失租、损坏与写入错误码 |
@@ -295,16 +274,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 
 | 类型 | 说明 |
 |------|------|
-| `Tool` | 内部工具接口 |
-| `ToolConfig` | 工具配置 |
-| `ToolSchema` | 工具 Schema |
+| `BuiltinToolGroup` | 内置工具分组 |
 | `ToolBehavior` | 工具行为配置 |
 | `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
-| `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema + async function 或 generator 定义 |
+| `ToolDefinitionInput` | `defineTool()` 接受的 TypeBox schema 与返回 JSON 数据的 async function |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
-| `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |
 | `ToolExecutionLifecycle` | Request 级工具 scheduled / settled 持久化边界 |
 | `ToolExecutionStartedLifecycle` | 最终执行输入与解析后副作用等级 |
@@ -322,23 +298,24 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolModelContent` | 回写模型上下文的工具内容 |
 | `ToolDisplayContent` | 展示给用户的工具内容 |
 | `ExecutionContext` | 工具执行上下文 |
+| `RuntimeAccess` | 工具执行期的租约校验与 fencing 能力 |
+| `ToolServiceMap` | `defineTool` 可按需声明的会话级服务映射 |
+| `ToolServiceName` | `ToolServiceMap` 的合法服务名联合 |
 | `ToolExecutionRecord` | 工具调用记录 |
 | `ToolExposureConfig` | 工具暴露配置 |
 | `ToolExposureMode` | 工具暴露模式 |
 | `ToolExecutionUpdate` | 工具执行过程更新事件 |
-| `FunctionDeclaration` | 函数声明（JSON Schema 格式） |
 
 `ToolBehavior.sideEffect` 必须显式声明并决定 started tool 是否可在恢复时重放。
 `ToolBehavior.interruptBehavior` 默认为 `block`。只有能够观察 `AbortSignal` 并可靠清理资源的工具才应声明为 `cancel`。
+`ToolInvocation` 是 Pipeline 内部类型，不从包入口导出；Hook 或权限处理器改写参数后
+会重新执行 `prepare()`。
 
-### 工具目录
+### 工具来源策略
 
 | 类型 | 说明 |
 |------|------|
-| `ToolCatalogEntry` | 工具目录条目 |
-| `ToolCatalogReadView` | 工具目录只读视图接口 |
-| `ToolCatalogSourcePolicy` | 工具来源策略（按来源类型和信任级别过滤） |
-| `ToolSourceInfo` | 工具来源信息 |
+| `ToolSourcePolicy` | 工具来源策略（按来源类型和信任级别过滤） |
 | `ToolSourceKind` | 工具来源类型（`builtin` / `custom` / `mcp` / `session`） |
 | `ToolTrustLevel` | 工具信任级别（`trusted` / `workspace` / `remote`） |
 | `WebFetchSecurityPolicy` | WebFetch 主机白名单、黑名单与私网访问策略 |
@@ -352,8 +329,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryStore` | Memory 后端抽象接口 |
 | `MemoryType` | Memory 类型（`user` / `feedback` / `project` / `reference`） |
 
-`createMemoryReadTool()` 和 `createMemoryWriteTool()` 返回完整 `Tool`，可直接
-传给 `SessionOptions.tools`。
+`memoryReadTool` 和 `memoryWriteTool` 是静态 `Tool`。通过
+`SessionOptions.memoryManager` 启用后，Session Registry 会注册这两个工具，并仅
+向它们注入指定的 Memory Manager。
 
 ### Provider
 
@@ -401,14 +379,12 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `McpToolDefinition` | MCP 工具定义 |
 | `McpToolResponse` | MCP 工具响应（ToolResponse 别名） |
 | `SdkTool` | SDK MCP 工具 |
-| `SdkMcpServerHandle` | MCP Server 句柄 |
+| `SdkMcpServerHandle` | 通过 `type: 'in-process'` 判别的进程内 MCP Server 句柄 |
 
 ### 权限
 
 | 类型 | 说明 |
 |------|------|
-| `CanUseTool` | 权限回调类型 |
-| `CanUseToolOptions` | 权限回调选项 |
 | `PermissionResult` | 权限判定结果 |
 | `PermissionHandler` | 底层权限处理器接口 |
 | `PermissionHandlerRequest` | 权限处理请求 |
@@ -424,8 +400,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `HookInput` | Hook 输入 |
 | `HookOutput` | Hook 输出 |
 
-`HookEvent` 包含 22 个 shell hook 协议事件；`AgentOptions.advanced.hooks`
-与 `SessionOptions.hooks` 只接受
+`HookEvent`、`AgentOptions.advanced.hooks` 与 `SessionOptions.hooks` 接受
 `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PermissionRequest`、
 `PreToolUse`、`PostToolUse`、`PostToolUseFailure` 和 `TaskCompleted` 这 8 个
 内联事件。
@@ -509,58 +484,21 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `JsonObject` / `JsonValue` | 严格 JSON 类型 |
 | `lazySingleton` | 惰性单例辅助函数 |
 
-### Hook 协议
-
-除 Session 内联 Hook 类型外，根入口还导出：
-
-- `getHookSchemas`
-- `DecisionBehavior`
-- `HookExitCode`
-- `HookType`
-
 ### DeepSeek 辅助 API
 
 函数与运行时值：
 
-- `calculateDeepSeekCost`
-- `createDeepSeekBatchChatCompletions`
-- `createDeepSeekChatCompletion`
-- `createDeepSeekFimCompletion`
-- `createDeepSeekLongContextChunks`
-- `createDeepSeekLongContextMessages`
-- `createDeepSeekLongContextPlan`
-- `createDeepSeekTokenBudgetCostConfig`
-- `estimateDeepSeekTokens`
-- `getDeepSeekPricing`
 - `normalizeDeepSeekModel`
 - `optimizeDeepSeekCachePrefix`
 - `resolveDeepSeekBaseUrl`
 - `sanitizeDeepSeekStrictSchema`
-- `summarizeDeepSeekBatchChatCompletions`
 - `DEEPSEEK_BETA_BASE_URL`
 - `DEEPSEEK_DEFAULT_BASE_URL`
 - `DEEPSEEK_DEFAULT_MODEL`
-- `DEEPSEEK_DEFAULT_PRICING`
-- `DeepSeekCostTracker`
 
 类型：
 
-- `DeepSeekBatchChatCompletionItem`
-- `DeepSeekBatchChatCompletionOptions`
-- `DeepSeekBatchChatCompletionResult`
-- `DeepSeekBatchChatCompletionSummary`
 - `DeepSeekCacheOptimizationOptions`
-- `DeepSeekChatCompletionOptions`
-- `DeepSeekChatCompletionResponse`
-- `DeepSeekChatMessage`
-- `DeepSeekCostBreakdown`
-- `DeepSeekCostSnapshot`
-- `DeepSeekFimCompletionOptions`
-- `DeepSeekFimCompletionResponse`
-- `DeepSeekLongContextChunk`
-- `DeepSeekLongContextOptions`
-- `DeepSeekLongContextPlan`
-- `DeepSeekPricing`
 - `DeepSeekProviderOptions`
 
 ### 工具错误

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SessionRunner } from '../../advanced/SessionRunner.js';
 import { ExecutionLeaseId, FencingToken, SessionId, WorkerId } from '../../types/identifiers.js';
 import { AgentWorker } from '../AgentWorker.js';
 import type { AgentWorkerTelemetry } from '../AgentWorkerTelemetry.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
-import type { SessionRunner } from '../SessionRunner.js';
 import type {
   RuntimeSessionClaim,
   RuntimeSessionRoute,
@@ -75,11 +75,8 @@ function createStore(sessionClaim: RuntimeSessionClaim) {
     recoverExpiredWork: vi.fn(async () => ({
       offlineWorkers: 0,
       suspendedSessions: 0,
-      requeuedEffects: 0,
-      uncertainEffects: 0,
       abandonedCommands: 0,
     })),
-    claimEffects: vi.fn(async () => []),
     claimSession: vi.fn(async () => {
       const result = nextClaim;
       nextClaim = null;
@@ -235,14 +232,10 @@ describe('AgentWorker', () => {
     const sessionClaim = claim();
     const store = createStore(sessionClaim);
     const finalize = vi.fn(async () => {
-      expect(store.settleSession).toHaveBeenLastCalledWith(
-        'tenant-1',
-        sessionClaim.lease,
-        {
-          state: 'idle',
-          metadata: { phase: 'finished' },
-        },
-      );
+      expect(store.settleSession).toHaveBeenLastCalledWith('tenant-1', sessionClaim.lease, {
+        state: 'idle',
+        metadata: { phase: 'finished' },
+      });
     });
     const runner: SessionRunner = {
       async run(context) {
@@ -320,7 +313,9 @@ describe('AgentWorker', () => {
       await worker.start();
       await vi.waitFor(() => {
         expect(store.handoffSession).toHaveBeenCalledWith(
-          'tenant-1', sessionClaim.lease, undefined,
+          'tenant-1',
+          sessionClaim.lease,
+          undefined,
         );
       });
       expect(finalize).not.toHaveBeenCalled();
@@ -336,56 +331,56 @@ describe('AgentWorker', () => {
     }
   });
 
-  it.each(['idle', 'suspended'] as const)(
-    'does not finalize a %s outcome when its fenced transition is rejected',
-    async (status) => {
-      const store = createStore(claim());
-      const rejection = new WorkerRuntimeError(
-        'SESSION_STATE_CONFLICT',
-        'The Session lease was replaced',
-      );
-      const finish = status === 'suspended' ? store.handoffSession : store.settleSession;
-      vi.mocked(finish).mockRejectedValue(rejection);
-      const finalize = vi.fn(async () => undefined);
-      const onError = vi.fn();
-      const worker = new AgentWorker({
-        store,
-        workerId,
-        capacity: 1,
-        sessionRunner: {
-          async run(context) {
-            await context.transition('running');
-            // A stale Worker also cannot publish a failure over its successor.
-            vi.mocked(store.transitionSession).mockRejectedValue(rejection);
-            return { status, finalize };
-          },
+  it.each([
+    'idle',
+    'suspended',
+  ] as const)('does not finalize a %s outcome when its fenced transition is rejected', async (status) => {
+    const store = createStore(claim());
+    const rejection = new WorkerRuntimeError(
+      'SESSION_STATE_CONFLICT',
+      'The Session lease was replaced',
+    );
+    const finish = status === 'suspended' ? store.handoffSession : store.settleSession;
+    vi.mocked(finish).mockRejectedValue(rejection);
+    const finalize = vi.fn(async () => undefined);
+    const onError = vi.fn();
+    const worker = new AgentWorker({
+      store,
+      workerId,
+      capacity: 1,
+      sessionRunner: {
+        async run(context) {
+          await context.transition('running');
+          // A stale Worker also cannot publish a failure over its successor.
+          vi.mocked(store.transitionSession).mockRejectedValue(rejection);
+          return { status, finalize };
         },
-        onError,
-        heartbeatIntervalMs: 50,
-        workerTtlMs: 500,
-        sessionLeaseTtlMs: 500,
-        pollIntervalMs: 10,
-        recoveryIntervalMs: 100,
-      });
+      },
+      onError,
+      heartbeatIntervalMs: 50,
+      workerTtlMs: 500,
+      sessionLeaseTtlMs: 500,
+      pollIntervalMs: 10,
+      recoveryIntervalMs: 100,
+    });
 
-      try {
-        await worker.start();
-        await vi.waitFor(() => {
-          expect(onError).toHaveBeenCalled();
-          expect(worker.getSnapshot().metrics.activeSessions).toBe(0);
-        });
-        expect(finish).toHaveBeenCalledOnce();
-        expect(finalize).not.toHaveBeenCalled();
-        expect(worker.getSnapshot().metrics).toMatchObject({
-          sessionsIdle: 0,
-          sessionsSuspended: 0,
-          sessionsFailed: 0,
-        });
-      } finally {
-        await worker.shutdown();
-      }
-    },
-  );
+    try {
+      await worker.start();
+      await vi.waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+        expect(worker.getSnapshot().metrics.activeSessions).toBe(0);
+      });
+      expect(finish).toHaveBeenCalledOnce();
+      expect(finalize).not.toHaveBeenCalled();
+      expect(worker.getSnapshot().metrics).toMatchObject({
+        sessionsIdle: 0,
+        sessionsSuspended: 0,
+        sessionsFailed: 0,
+      });
+    } finally {
+      await worker.shutdown();
+    }
+  });
 
   it('serializes lease renewal with route transitions', async () => {
     const sessionClaim = claim();
@@ -395,23 +390,21 @@ describe('AgentWorker', () => {
     let persistedRoute = sessionClaim.route;
     let renewalCalls = 0;
 
-    vi.mocked(store.transitionSession).mockImplementation(
-      async (_tenantId, _lease, transition) => {
-        if (transition.expectedState !== persistedRoute.state) {
-          throw new WorkerRuntimeError(
-            'SESSION_STATE_CONFLICT',
-            `Expected ${transition.expectedState}, found ${persistedRoute.state}`,
-          );
-        }
-        persistedRoute = {
-          ...persistedRoute,
-          state: transition.state,
-          metadata: transition.metadata ?? persistedRoute.metadata,
-          failure: transition.failure,
-        };
-        return persistedRoute;
-      },
-    );
+    vi.mocked(store.transitionSession).mockImplementation(async (_tenantId, _lease, transition) => {
+      if (transition.expectedState !== persistedRoute.state) {
+        throw new WorkerRuntimeError(
+          'SESSION_STATE_CONFLICT',
+          `Expected ${transition.expectedState}, found ${persistedRoute.state}`,
+        );
+      }
+      persistedRoute = {
+        ...persistedRoute,
+        state: transition.state,
+        metadata: transition.metadata ?? persistedRoute.metadata,
+        failure: transition.failure,
+      };
+      return persistedRoute;
+    });
     vi.mocked(store.renewSessionLease).mockImplementation(async () => {
       renewalCalls += 1;
       const routeSnapshot = persistedRoute;
@@ -535,22 +528,14 @@ describe('AgentWorker', () => {
     const store = createStore(sessionClaim);
     const heartbeatError = new Error('heartbeat unavailable');
     const recoveryError = new Error('recovery unavailable');
-    const effectError = new Error('effect claim unavailable');
     vi.mocked(store.heartbeatWorker)
       .mockRejectedValueOnce(heartbeatError)
       .mockResolvedValue(workerRecord('active'));
-    vi.mocked(store.recoverExpiredWork)
-      .mockRejectedValueOnce(recoveryError)
-      .mockResolvedValue({
-        offlineWorkers: 0,
-        suspendedSessions: 0,
-        requeuedEffects: 0,
-        uncertainEffects: 0,
-        abandonedCommands: 0,
-      });
-    vi.mocked(store.claimEffects)
-      .mockRejectedValueOnce(effectError)
-      .mockResolvedValue([]);
+    vi.mocked(store.recoverExpiredWork).mockRejectedValueOnce(recoveryError).mockResolvedValue({
+      offlineWorkers: 0,
+      suspendedSessions: 0,
+      abandonedCommands: 0,
+    });
     const onError = vi.fn();
     const worker = new AgentWorker({
       store,
@@ -562,7 +547,6 @@ describe('AgentWorker', () => {
           return { status: 'completed' };
         },
       },
-      effectHandlers: [],
       heartbeatIntervalMs: 10,
       workerTtlMs: 500,
       sessionLeaseTtlMs: 500,
@@ -573,21 +557,13 @@ describe('AgentWorker', () => {
 
     await worker.start();
     await vi.waitFor(() => {
-      expect(
-        vi.mocked(store.heartbeatWorker).mock.calls.length,
-      ).toBeGreaterThanOrEqual(2);
-      expect(
-        vi.mocked(store.recoverExpiredWork).mock.calls.length,
-      ).toBeGreaterThanOrEqual(2);
-      expect(
-        vi.mocked(store.claimEffects).mock.calls.length,
-      ).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(store.heartbeatWorker).mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(store.recoverExpiredWork).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
 
     expect(worker.getSnapshot().status).toBe('running');
     expect(onError).toHaveBeenCalledWith(heartbeatError);
     expect(onError).toHaveBeenCalledWith(recoveryError);
-    expect(onError).toHaveBeenCalledWith(effectError);
     await worker.shutdown();
   });
 

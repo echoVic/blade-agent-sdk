@@ -37,8 +37,7 @@ async function executeWithContext(
   context: Partial<ExecutionContext>,
   plan = '# Plan\n\n1. Add tests',
 ) {
-  const invocation = exitPlanModeTool.build({ plan });
-  return collectToolExecution(invocation.execute(new AbortController().signal, context));
+  return collectToolExecution(exitPlanModeTool.execute({ plan }, context));
 }
 
 describe('ExitPlanMode Tool', () => {

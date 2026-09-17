@@ -8,15 +8,20 @@ or remote workers.
 ```ts
 import {
   DockerExecutionHost,
-  EphemeralCredentialBroker,
   type ExecutionHost,
   ExecutionId,
 } from '@blade-ai/agent-sdk/advanced';
 ```
 
-`DockerExecutionHost` is the Node.js reference implementation. Every
-provision creates a private temporary directory, an optional Git worktree
-staging area, and a dedicated OCI container.
+`DockerExecutionHost` is the Node.js reference implementation. Every provision
+creates a private, bounded tmpfs workspace and a dedicated OCI container. The
+workspace may start empty or import one local Git revision.
+
+The reference implementation has explicit internal owners:
+`DockerExecutionPolicy` validates requests and builds container configuration,
+`DockerProcessRunner` enforces process timeouts, cancellation, and output
+limits, and `DockerWorkspace` transfers Git archives and checkpoint workspaces.
+`DockerExecutionHost` retains only execution lifecycle and ownership state.
 
 ## Lifecycle
 
@@ -71,100 +76,40 @@ Every `ExecutionResourceLimits` field is mandatory:
 |----------|-------------|
 | CPU | Docker `NanoCpus` |
 | Memory | `Memory` and an equal `MemorySwap` value |
-| Disk | `/workspace`, `/tmp`, and `/dev/shm` split from one bounded tmpfs budget |
+| Disk | A `/workspace` tmpfs bounded by `diskBytes` |
 | PIDs | `PidsLimit` |
-| Runtime | host deadline, in-container self-termination, and `--rm` |
+| Runtime | Host deadline, in-container `sleep` deadline, and `--rm` |
 | Output | combined stdout/stderr byte limit |
-| Network | `network` is required; with `mode: 'none'` the container joins no network, and proxy mode accepts only an isolated network from `ExecutionEgressController` |
+| Network | The Docker reference host accepts only `mode: 'none'` |
 
 The container also uses a read-only root filesystem,
 `no-new-privileges`, a numeric non-root user, and `cap-drop=ALL`. The
-host does not add any capability back. Before provision succeeds, it reads
-Docker `inspect` and fails closed unless every requested control is active.
+host does not add any capability back.
 
 Images must use immutable `sha256` digests by default. The reference host
-requires `/bin/sh`, `sleep`, `cat`, `rm`, and `tar` in the image. Provision
-rejects image environment variables that appear to contain long-lived
-credentials.
+requires `/bin/sh`, `sleep`, and `tar` in the image.
 
-The Git worktree is temporary host-side staging. After copying files into the
-bounded tmpfs, the host removes the worktree `.git` control file from the
-container to avoid exposing host repository paths. It removes the host
-worktree before provision returns. The container workspace is therefore an
-isolated revision snapshot, not a writable host repository mount.
+Git workspaces use `git archive` to read the requested revision and unpack it
+as the container's non-root user. The host creates no worktree, copies no
+`.git` data, and never bind-mounts the host repository.
 
 ## Network egress
 
-`none` provides complete network isolation. `proxy` mode requires an injected
-controller:
-
-```ts
-const egressController: ExecutionEgressController = {
-  async provision(executionId, policy) {
-    const networkName = await createIsolatedProxyNetwork(
-      executionId,
-      policy.allowedHosts,
-    );
-    return {
-      networkName,
-      environment: {
-        HTTPS_PROXY: 'http://proxy.internal:8080',
-      },
-    };
-  },
-  async release(executionId) {
-    await removeIsolatedProxyNetwork(executionId);
-  },
-};
-```
-
-`DockerExecutionHost` validates and attaches the dedicated network returned by
-the controller. The controller owns DNS, IP, TLS, and CONNECT enforcement for
-the hostname allowlist. Reserved networks such as `none`, `host`, and
-`bridge` cannot satisfy a proxy lease. Proxy URLs cannot embed a username or
-password.
-
-## Ephemeral credentials
-
-Do not pass long-lived secrets through provision or regular exec
-environments. Use `CredentialBroker` to issue a credential for one command:
-
-```ts
-const credentialBroker = new EphemeralCredentialBroker({
-  github: {
-    environmentVariable: 'GITHUB_EPHEMERAL_TOKEN',
-    async issue({ audience, scopes, expiresBy }) {
-      return issueGitHubToken({ audience, scopes, expiresBy });
-    },
-  },
-});
-
-const host = new DockerExecutionHost({ credentialBroker });
-await host.exec(executionId, {
-  command: 'git',
-  args: ['fetch', 'origin'],
-  credentials: [{
-    name: 'github',
-    audience: 'github.com',
-    scopes: ['contents:read'],
-  }],
-});
-```
-
-The issuer fixes the environment variable name; the caller cannot select it.
-The value enters only the child environment for one `docker exec`. It is
-absent from CLI arguments, container configuration, checkpoints, and the
-long-lived Agent environment. Captured stdout and stderr redact the raw value.
-The broker revokes credentials after the command or lease expiry and rejects
-credentials that outlive the requested TTL.
+`DockerExecutionHost` supports only fully isolated `mode: 'none'`. Implement a
+separate application execution boundary when proxy or hostname allowlisting is
+required; the SDK `ExecutionHost` contract does not declare that capability,
+and the reference host never silently falls back to an ordinary Docker
+network. Ordinary environment variable names may not appear to contain a token,
+secret, password, API key, or credential.
 
 ## Checkpoint boundary
 
-The Docker host pauses the primary container, copies the workspace volume
-through the Docker daemon, and writes a versioned manifest. Restore runs the
-complete provision validation again before loading the workspace through a
-bounded tar stream into a new container. A checkpoint contains no process,
-memory, network connection, or credential state.
+The Docker host uses the execution mutex to prevent checkpoint and exec from
+overlapping, copies the workspace through the Docker daemon, and writes a
+schema-validated versioned manifest. Restore runs complete provision validation
+before loading the workspace through a bounded tar stream into a new container.
+A checkpoint contains no process, memory, network connection, or credential
+state.
 
 Checkpoints live in the local `checkpointDirectory` by default and support
 single-host recovery and handoff. Cross-worker scheduling needs a shared

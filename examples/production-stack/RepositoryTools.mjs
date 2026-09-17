@@ -56,11 +56,7 @@ test "$(cat test/greeting.test.sh)" = "$1" || exit 65
 sh test/greeting.test.sh`;
 
 function failure(tool, message) {
-  return {
-    status: 'error',
-    model: { tool, error: message },
-    error: { type: 'validation_error', message },
-  };
+  throw new Error(`${tool}: ${message}`);
 }
 
 function isObject(value) {
@@ -100,7 +96,7 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
       }, {
         additionalProperties: false,
       }),
-      async *execute(params, context) {
+      async execute(params, context) {
         if (!hasOnlyKeys(params, ['file_path']) || ![GREETING_PATH, TEST_PATH].includes(params.file_path)) {
           return failure('RepoRead', 'Only the fixture source and test files may be read');
         }
@@ -109,9 +105,9 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
           return failure('RepoRead', 'The file is missing, oversized, or a symbolic link');
         }
         return {
-          status: 'success',
-          model: { tool: 'RepoRead', file_path: params.file_path, content: result.stdout },
-          display: { summary: `Read ${params.file_path}\n${result.stdout}` },
+          tool: 'RepoRead',
+          file_path: params.file_path,
+          content: result.stdout,
         };
       },
     }),
@@ -128,7 +124,7 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
         },
         { additionalProperties: false },
       ),
-      async *execute(params, context) {
+      async execute(params, context) {
         if (!hasOnlyKeys(params, ['file_path', 'expected_content', 'content'])
           || params.file_path !== GREETING_PATH
           || typeof params.content !== 'string' || params.content.includes('\0')
@@ -154,15 +150,11 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
           signal: context.signal,
         });
         return {
-          status: 'success',
-          display: { summary: `${result.stdout === 'written' ? 'Updated' : 'Verified'} ${params.file_path}; workspace saved.` },
-          model: {
-            tool: 'RepoWrite',
-            file_path: params.file_path,
-            changed: result.stdout === 'written',
-            before: params.expected_content,
-            after: params.content,
-          },
+          tool: 'RepoWrite',
+          file_path: params.file_path,
+          changed: result.stdout === 'written',
+          before: params.expected_content,
+          after: params.content,
         };
       },
     }),
@@ -172,7 +164,7 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       parameters: Type.Object({}, { additionalProperties: false }),
-      async *execute(params, context) {
+      async execute(params, context) {
         if (!hasOnlyKeys(params, [])) {
           return failure('RepoRunTests', 'The test command is fixed and accepts no arguments');
         }
@@ -181,15 +173,11 @@ export function createRepositoryTools({ host, getHandle, checkpoint }) {
           return failure('RepoRunTests', 'Refusing to execute modified tests or symbolic links');
         }
         return {
-          status: 'success',
-          display: { summary: `Tests ${result.exitCode === 0 ? 'passed' : 'failed'} (exit ${result.exitCode}).\n${result.stdout}${result.stderr}` },
-          model: {
-            tool: 'RepoRunTests',
-            passed: result.exitCode === 0,
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          },
+          tool: 'RepoRunTests',
+          passed: result.exitCode === 0,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
         };
       },
     }),

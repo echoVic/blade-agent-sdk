@@ -38,7 +38,10 @@ const DEFAULT_LOCK_WAIT_TIMEOUT_MS = 30_000;
 export class FileLockTimeoutError extends Error {
   readonly code = 'FILE_LOCK_TIMEOUT';
 
-  constructor(readonly filePath: string, readonly timeoutMs: number) {
+  constructor(
+    readonly filePath: string,
+    readonly timeoutMs: number,
+  ) {
     super(`Timed out waiting ${timeoutMs}ms for file lock: ${filePath}`);
     this.name = 'FileLockTimeoutError';
   }
@@ -85,11 +88,7 @@ export class FileLockManager {
    * @param signal 可选的排队取消信号
    * @returns 操作结果
    */
-  acquireLock<T>(
-    filePath: string,
-    operation: () => Promise<T>,
-    signal?: AbortSignal,
-  ): Promise<T>;
+  acquireLock<T>(filePath: string, operation: () => Promise<T>, signal?: AbortSignal): Promise<T>;
   acquireLock<T>(
     filePath: string,
     mode: FileLockMode,
@@ -103,12 +102,11 @@ export class FileLockManager {
     signal?: AbortSignal,
   ): Promise<T> {
     const mode = typeof modeOrOperation === 'function' ? 'write' : modeOrOperation;
-    const operation = typeof modeOrOperation === 'function'
-      ? modeOrOperation
-      : operationOrSignal;
-    const resolvedSignal = typeof modeOrOperation === 'function'
-      ? operationOrSignal as AbortSignal | undefined
-      : signal;
+    const operation = typeof modeOrOperation === 'function' ? modeOrOperation : operationOrSignal;
+    const resolvedSignal =
+      typeof modeOrOperation === 'function'
+        ? (operationOrSignal as AbortSignal | undefined)
+        : signal;
 
     if (typeof operation !== 'function') {
       throw new TypeError('FileLockManager.acquireLock requires an operation');
@@ -252,11 +250,7 @@ export class FileLockManager {
     return state.activeWriter || state.activeReaders > 0 || state.queuedCount > 0;
   }
 
-  private grant(
-    filePath: string,
-    state: FileLockState,
-    request: QueuedLockRequest,
-  ): boolean {
+  private grant(filePath: string, state: FileLockState, request: QueuedLockRequest): boolean {
     this.clearRequestWaiters(request);
     if (request.signal?.aborted) {
       request.reject(getAbortSignalReason(request.signal));
@@ -368,11 +362,7 @@ export class FileLockManager {
     }
   }
 
-  private releaseRequest(
-    filePath: string,
-    state: FileLockState,
-    mode: FileLockMode,
-  ): void {
+  private releaseRequest(filePath: string, state: FileLockState, mode: FileLockMode): void {
     if (mode === 'read') {
       state.activeReaders = Math.max(0, state.activeReaders - 1);
       this.logger.debug(`释放文件读锁: ${filePath} (activeReaders=${state.activeReaders})`);

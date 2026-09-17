@@ -1,35 +1,29 @@
-/**
- * LoopHookBuilder — AgentLoopConfig 的构建
- *
- * 从 LoopRunner 提取，职责：
- * - 构建 AgentLoopConfig 对象（含分组 hooks）
- * - 统一 JSONL 持久化模式
- */
-
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
-import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelMessage } from '../model/message.js';
+import type { ModelIdentity } from '../model/identity.js';
+import type { ModelMessage, ModelToolCall } from '../model/message.js';
 import {
   isExecutionLeaseFailure,
   runWithExecutionLeaseBoundary,
 } from '../session/events/DurableExecutionLeaseStore.js';
+import type { SessionRepositorySubagentRef } from '../session/SessionRepository.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect } from '../tools/types/effects.js';
+import type { ToolResult } from '../tools/types/result.js';
 import {
   type MessageId,
-  type RequestId,
   SessionId,
   type SessionId as SessionIdType,
   ToolUseId,
 } from '../types/identifiers.js';
+import type { AgentEvent } from './AgentEvent.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
-import type { AgentRunControl } from './AgentRunControl.js';
+import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
@@ -57,499 +51,394 @@ export interface LoopHookBuilderDeps {
   runControl?: AgentRunControl;
 }
 
-// ===== JSONL 持久化辅助 =====
-async function persistToJsonl<T>(
-  modelManager: ModelManager,
-  sessionId: SessionIdType | undefined,
-  logger: InternalLogger,
-  callback: (contextManager: ContextManager, sessionId: SessionIdType) => Promise<T>,
-  assertExecutionLease?: () => Promise<void>,
-  signal?: AbortSignal,
-  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
-  historyScope?: { readonly requestId?: RequestId },
+async function persistTranscript<T>(
+  deps: LoopHookBuilderDeps,
+  callback: (manager: ContextManager, sessionId: SessionIdType) => Promise<T>,
 ): Promise<T | undefined> {
+  const signal = deps.options?.signal ?? deps.context.signal;
   try {
     signal?.throwIfAborted();
-    const contextMgr = modelManager.getContextManager();
-    if (contextMgr && sessionId) {
-      // `await` is load-bearing: without it the rejection of the returned promise
-      // escapes this `try`, so the gap below would never be recorded and the
-      // request would keep running with a transcript it believes is complete.
-      return await runWithExecutionLeaseBoundary(
-        {
-          signal,
-          assertExecutionLease,
-          runWithExecutionLease,
-        },
-        () => callback(contextMgr, sessionId),
-      );
-    }
+    const manager = deps.modelManager.getContextManager();
+    if (!manager || !deps.context.sessionId) return undefined;
+    return await runWithExecutionLeaseBoundary(
+      {
+        signal,
+        assertExecutionLease: deps.context.assertExecutionLease,
+        runWithExecutionLease: deps.context.runWithExecutionLease,
+      },
+      () => callback(manager, deps.context.sessionId),
+    );
   } catch (error) {
-    if (signal?.aborted || isExecutionLeaseFailure(error)) {
-      throw error;
-    }
-    logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
-    // Execution may continue, but the history is no longer complete: record the
-    // gap so recovery never claims the transcript is whole. The request that
-    // produced it is recorded too, so repair can rebuild the right history
-    // instead of whatever happens to be active when it runs.
-    const contextMgr = modelManager.getContextManager();
-    if (contextMgr && sessionId) {
-      await contextMgr
+    if (signal?.aborted || isExecutionLeaseFailure(error)) throw error;
+    deps.logger.warn('[AgentLoop] Transcript persistence failed:', error);
+    const manager = deps.modelManager.getContextManager();
+    if (manager && deps.context.sessionId) {
+      await manager
         .recordHistoryWriteFailure(
-          sessionId,
+          deps.context.sessionId,
           error instanceof Error ? error.message : String(error),
-          historyScope,
+          deps.runControl?.requestId ? { requestId: deps.runControl.requestId } : undefined,
         )
         .catch(() => undefined);
     }
+    return undefined;
   }
-  return undefined;
 }
 
-// ===== Main builder =====
+function subagentReference(
+  toolCall: ModelToolCall,
+  result: ToolResult,
+): SessionRepositorySubagentRef | undefined {
+  const metadata = result.metadata;
+  if (!metadata || typeof metadata.subagentSessionId !== 'string') return undefined;
+  const status = metadata.subagentStatus;
+  return {
+    subagentSessionId: SessionId(metadata.subagentSessionId),
+    subagentType:
+      typeof metadata.subagentType === 'string' ? metadata.subagentType : toolCall.function.name,
+    subagentStatus:
+      status === 'running' ||
+      status === 'completed' ||
+      status === 'failed' ||
+      status === 'cancelled'
+        ? status
+        : ('completed' as const),
+    subagentSummary:
+      typeof metadata.subagentSummary === 'string' ? metadata.subagentSummary : undefined,
+  };
+}
+
+class LoopConfigBuilder {
+  private progressTools = 0;
+  private pendingToolResults = 0;
+  private pendingMessages: ConversationMessage[] = [];
+  private assistantMessageId: MessageId | null = null;
+
+  constructor(private readonly deps: LoopHookBuilderDeps) {}
+
+  build(): AgentLoopConfig {
+    const { deps } = this;
+    const inputLifecycle = deps.options?.inputApplicationLifecycle;
+    const hooks: AgentLoopHooks = {
+      input: {
+        beforeApply: inputLifecycle
+          ? ({ input }) => inputLifecycle.onInputApplying(input)
+          : undefined,
+        apply: ({ input }) => this.applyInput(input),
+      },
+      turn: {
+        beforeTurn: deps.compactionHandler ? (context) => this.beforeTurn(context) : undefined,
+        onTurnLimitReached: deps.options?.onTurnLimitReached,
+        onTurnLimitCompact: () => this.compactAtTurnLimit(),
+      },
+      tool: {
+        afterExec: (context) => this.afterTool(context),
+      },
+      message: {
+        onAssistant: (context) => this.saveAssistant(context),
+      },
+      recovery: {
+        reactiveCompact: deps.compactionHandler ? () => this.reactiveCompact() : undefined,
+      },
+    };
+    const signal = deps.options?.signal ?? deps.context.signal;
+    return {
+      streaming: deps.streaming,
+      executionPipeline: deps.executionPipeline,
+      runControl: deps.runControl,
+      logger: deps.logger,
+      conversationState: deps.loopState.conversationState,
+      maxTurns: deps.maxTurns,
+      isYoloMode: deps.isYoloMode,
+      signal,
+      tokenBudget: deps.tokenBudget,
+      modelExecutionLifecycle: deps.options?.modelExecutionLifecycle,
+      initialInputPreparation: deps.options?.initialInputPreparation,
+      prepareTurnState: (turn) => deps.loopState.buildTurnState(turn),
+      hooks,
+    };
+  }
+
+  private async applyInput(input: AgentSteeringInput): Promise<ConversationMessage> {
+    const { deps } = this;
+    const runControl = deps.runControl;
+    if (!runControl) {
+      throw new SdkError(
+        'AGENT_RUN_CONTROL_MISSING',
+        'Cannot apply steering input without an active run controller',
+      );
+    }
+    const signal = deps.options?.signal ?? deps.context.signal;
+    const submitted = deps.hookRuntime
+      ? await deps.hookRuntime.applyUserPromptSubmit(input.content, { abortSignal: signal })
+      : input.content;
+    const content = deps.options?.prepareInput
+      ? await deps.options.prepareInput(submitted)
+      : submitted;
+    signal?.throwIfAborted();
+    await deps.context.assertExecutionLease?.();
+    const id = await persistTranscript(deps, (manager, sessionId) =>
+      manager.saveAppliedInputMessage(
+        sessionId,
+        input.inputId,
+        runControl.requestId,
+        content,
+        deps.getLastUuid(),
+        deps.context.subagentInfo,
+      ),
+    );
+    if (id) deps.setLastUuid(id);
+    return {
+      id,
+      role: 'user',
+      content,
+      correlation: { inputId: input.inputId, requestId: runControl.requestId },
+      extensions: { inputPriority: input.priority },
+    };
+  }
+
+  private beforeTurn(context: {
+    turn: number;
+    lastPromptTokens?: number;
+  }): AsyncGenerator<AgentEvent, boolean> {
+    const handler = this.deps.compactionHandler;
+    if (!handler) throw new Error('Compaction handler is not configured');
+    return handler.checkAndCompactInLoop(
+      this.deps.loopState.conversationState,
+      this.compactionContext(),
+      context.turn,
+      context.lastPromptTokens,
+    );
+  }
+
+  private async compactAtTurnLimit() {
+    const { deps } = this;
+    await deps.context.assertExecutionLease?.();
+    try {
+      const config = deps.loopState.getModelService().getConfig();
+      const result = await CompactionService.compact(
+        deps.loopState.conversationState.getContextMessages(),
+        {
+          trigger: 'auto',
+          provider: config.provider,
+          providerId: config.providerId,
+          providerRegistry: deps.modelManager.getProviderRegistry(),
+          modelName: config.model,
+          maxContextTokens: config.maxContextTokens ?? 128000,
+          apiKey: config.apiKey,
+          baseURL: config.baseUrl,
+          customHeaders: config.customHeaders,
+          projectDir: deps.context.snapshot?.cwd ?? deps.defaultProjectPath,
+          filesystemRoots: deps.context.snapshot?.filesystemRoots,
+          signal: deps.options?.signal ?? deps.context.signal,
+          assertExecutionLease: deps.context.assertExecutionLease,
+        },
+      );
+      await this.saveCompaction(result);
+      const continueMessage: ModelMessage = {
+        role: 'user',
+        content:
+          'This session is being continued from a previous conversation. ' +
+          'The conversation is summarized above.\n\n' +
+          'Please continue the last requested task without asking another question.',
+      };
+      return {
+        success: true,
+        compactedMessages: result.compactedMessages,
+        continueMessage,
+      };
+    } catch (error) {
+      const signal = deps.options?.signal ?? deps.context.signal;
+      if (
+        signal?.aborted ||
+        isExecutionLeaseFailure(error) ||
+        error instanceof ProviderRegistryError
+      ) {
+        throw error;
+      }
+      deps.logger.error('[AgentLoop] Turn-limit compaction failed; keeping recent history:', error);
+      return {
+        success: true,
+        compactedMessages: deps.loopState.conversationState.getContextMessages().slice(-80),
+      };
+    }
+  }
+
+  private async saveCompaction(result: {
+    summary: string;
+    preTokens: number;
+    postTokens: number;
+    filesIncluded: string[];
+  }): Promise<void> {
+    await persistTranscript(this.deps, (manager, sessionId) =>
+      manager.saveCompaction(
+        sessionId,
+        result.summary,
+        {
+          trigger: 'auto',
+          preTokens: result.preTokens,
+          postTokens: result.postTokens,
+          filesIncluded: result.filesIncluded,
+        },
+        null,
+      ),
+    );
+  }
+
+  private async afterTool(context: {
+    toolCall: ModelToolCall;
+    result: ToolResult;
+    effects: ToolEffect[];
+    toolMessageId: MessageId | null;
+  }): Promise<void> {
+    const { toolCall, result, effects, toolMessageId } = context;
+    this.pendingMessages.push(
+      ...effects.flatMap((effect) => (effect.type === 'newMessages' ? effect.messages : [])),
+    );
+    await this.saveToolResult(toolCall, result);
+    this.pendingToolResults = Math.max(0, this.pendingToolResults - 1);
+    if (this.pendingToolResults === 0) await this.saveInjectedMessages();
+    await this.applyToolEffects(toolCall, result, effects, toolMessageId);
+    await this.reportProgress(toolCall.function.name);
+  }
+
+  private async saveToolResult(toolCall: ModelToolCall, result: ToolResult): Promise<void> {
+    await persistTranscript(this.deps, async (manager, sessionId) => {
+      const id = await manager.saveToolResult(
+        sessionId,
+        ToolUseId(toolCall.id),
+        toolCall.function.name,
+        result.status === 'success' ? result.model : null,
+        this.deps.getLastUuid(),
+        result.status === 'success' ? undefined : result.error.message,
+        this.deps.context.subagentInfo,
+        subagentReference(toolCall, result),
+      );
+      this.deps.setLastUuid(id);
+    });
+  }
+
+  private async saveInjectedMessages(): Promise<void> {
+    if (this.pendingMessages.length === 0) return;
+    const messages = this.pendingMessages;
+    this.pendingMessages = [];
+    await persistTranscript(this.deps, async (manager, sessionId) => {
+      for (const message of messages) {
+        const provenance =
+          message.role === 'system' ? { source: 'tool_injection' as const } : message.provenance;
+        const metadata =
+          message.providerOptions || provenance || message.correlation || message.extensions
+            ? {
+                providerOptions: message.providerOptions,
+                provenance,
+                correlation: message.correlation,
+                extensions: message.extensions,
+              }
+            : undefined;
+        const id = await manager.saveMessage(
+          sessionId,
+          message.role,
+          message.content,
+          this.deps.getLastUuid(),
+          metadata,
+          this.deps.context.subagentInfo,
+        );
+        this.deps.setLastUuid(id);
+      }
+    });
+  }
+
+  private async applyToolEffects(
+    toolCall: ModelToolCall,
+    result: ToolResult,
+    effects: ToolEffect[],
+    toolMessageId: MessageId | null,
+  ): Promise<void> {
+    for (const effect of effects) {
+      if (effect.type === 'contextPatch') {
+        this.deps.runtimePatchManager.applyRuntimeContextPatch(effect.patch);
+      }
+    }
+    this.deps.runtimePatchManager.refreshRuntimeContextSnapshot(this.deps.loopState);
+    const patch = this.deps.runtimePatchManager.deriveRuntimePatch({
+      status: result.status,
+      effects,
+    });
+    if (!patch) return;
+    this.deps.runtimePatchManager.applyRuntimePatch(patch, this.deps.loopState, {
+      toolName: toolCall.function.name,
+      toolCallId: ToolUseId(toolCall.id),
+      toolMessageId: this.assistantMessageId ?? toolMessageId,
+    });
+    const modelId = patch.modelOverride?.modelId?.trim();
+    if (modelId) await this.deps.modelManager.switchModelIfNeeded(modelId);
+  }
+
+  private async reportProgress(toolName: string): Promise<void> {
+    const callback = this.deps.options?.onProgress;
+    if (!callback) return;
+    this.progressTools += 1;
+    try {
+      await callback({
+        toolUseCount: this.progressTools,
+        tokenCount: 0,
+        lastActivity: toolName,
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      if (isExecutionLeaseFailure(error)) throw error;
+    }
+  }
+
+  private async saveAssistant(context: {
+    content: string;
+    reasoningContent?: string;
+    toolCalls?: ModelToolCall[];
+    modelIdentity: ModelIdentity;
+  }): Promise<void> {
+    this.pendingToolResults = context.toolCalls?.length ?? 0;
+    this.pendingMessages = [];
+    this.assistantMessageId = null;
+    if (!context.content.trim() && !context.reasoningContent && !context.toolCalls?.length) return;
+    const id = await persistTranscript(this.deps, (manager, sessionId) =>
+      manager.saveMessage(
+        sessionId,
+        'assistant',
+        context.content,
+        this.deps.getLastUuid(),
+        {
+          modelIdentity: context.modelIdentity,
+          reasoningContent: context.reasoningContent,
+          toolCalls: context.toolCalls,
+        },
+        this.deps.context.subagentInfo,
+      ),
+    );
+    if (id) {
+      this.deps.setLastUuid(id);
+      this.assistantMessageId = id;
+    }
+  }
+
+  private reactiveCompact() {
+    const handler = this.deps.compactionHandler;
+    if (!handler) throw new Error('Compaction handler is not configured');
+    return handler.reactiveCompact(this.deps.loopState.conversationState, this.compactionContext());
+  }
+
+  private compactionContext(): CompactionRuntimeContext {
+    const { context, options, defaultProjectPath } = this.deps;
+    return {
+      sessionId: context.sessionId,
+      projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+      filesystemRoots: context.snapshot?.filesystemRoots,
+      signal: options?.signal ?? context.signal,
+      assertExecutionLease: context.assertExecutionLease,
+      runWithExecutionLease: context.runWithExecutionLease,
+    };
+  }
+}
 
 export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
-  const {
-    context,
-    options,
-    loopState,
-    maxTurns,
-    isYoloMode,
-    getLastUuid,
-    setLastUuid,
-    streaming,
-    executionPipeline,
-    logger,
-    tokenBudget,
-    compactionHandler,
-    hookRuntime,
-    modelManager,
-    runtimePatchManager,
-    defaultProjectPath,
-    runControl,
-  } = deps;
-
-  let progressToolUseCount = 0;
-  let pendingToolResultCount = 0;
-  let pendingInjectedMessages: ConversationMessage[] = [];
-  let currentAssistantMessageId: MessageId | null = null;
-  const inputApplicationLifecycle = options?.inputApplicationLifecycle;
-  const requestSignal = options?.signal ?? context.signal;
-  // The Request a history gap belongs to. Repair needs it to rebuild the right
-  // history instead of whatever request happens to be active when it runs.
-  const historyScope = (): { requestId?: RequestId } => ({
-    ...(runControl?.requestId ? { requestId: runControl.requestId } : {}),
-  });
-
-  const hooks: AgentLoopHooks = {
-    input: {
-      beforeApply: inputApplicationLifecycle
-        ? ({ input }) => inputApplicationLifecycle.onInputApplying(input)
-        : undefined,
-      async apply({ input }) {
-        if (!runControl) {
-          throw new SdkError(
-            'AGENT_RUN_CONTROL_MISSING',
-            'Cannot apply steering input without an active run controller',
-          );
-        }
-        const hookContent = hookRuntime
-          ? await hookRuntime.applyUserPromptSubmit(input.content, {
-              abortSignal: requestSignal,
-            })
-          : input.content;
-        const content = options?.prepareInput
-          ? await options.prepareInput(hookContent)
-          : hookContent;
-        requestSignal?.throwIfAborted();
-        await context.assertExecutionLease?.();
-        const messageId = await persistToJsonl(
-          modelManager,
-          context.sessionId,
-          logger,
-          (contextMgr, sessionId) =>
-            contextMgr.saveAppliedInputMessage(
-              sessionId,
-              input.inputId,
-              runControl.requestId,
-              content,
-              getLastUuid(),
-              context.subagentInfo,
-            ),
-          context.assertExecutionLease,
-          requestSignal,
-          context.runWithExecutionLease,
-          { requestId: runControl.requestId },
-        );
-        if (messageId) {
-          setLastUuid(messageId);
-        }
-        return {
-          id: messageId,
-          role: 'user',
-          content,
-          correlation: {
-            inputId: input.inputId,
-            requestId: runControl.requestId,
-          },
-          extensions: {
-            inputPriority: input.priority,
-          },
-        };
-      },
-    },
-
-    turn: {
-      async *beforeTurn(ctx) {
-        if (!compactionHandler) return false;
-        const runtimeCtx: CompactionRuntimeContext = {
-          sessionId: context.sessionId,
-          projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-          filesystemRoots: context.snapshot?.filesystemRoots,
-          signal: requestSignal,
-          assertExecutionLease: context.assertExecutionLease,
-          runWithExecutionLease: context.runWithExecutionLease,
-          hookRuntime,
-        };
-        const compactionStream = compactionHandler.checkAndCompactInLoop(
-          loopState.conversationState,
-          runtimeCtx,
-          ctx.turn,
-          ctx.lastPromptTokens,
-        );
-        return yield* compactionStream;
-      },
-
-      onTurnLimitReached: options?.onTurnLimitReached,
-
-      async onTurnLimitCompact(_ctx) {
-        await context.assertExecutionLease?.();
-        try {
-          const cs = loopState.getModelService().getConfig();
-          const compactResult = await CompactionService.compact(
-            loopState.conversationState.getContextMessages(),
-            {
-              trigger: 'auto',
-              provider: cs.provider,
-              providerId: cs.providerId,
-              providerRegistry: modelManager.getProviderRegistry(),
-              modelName: cs.model,
-              maxContextTokens: cs.maxContextTokens ?? 128000,
-              apiKey: cs.apiKey,
-              baseURL: cs.baseUrl,
-              customHeaders: cs.customHeaders,
-              projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              filesystemRoots: context.snapshot?.filesystemRoots,
-              signal: requestSignal,
-              assertExecutionLease: context.assertExecutionLease,
-              hookRuntime,
-            },
-          );
-          requestSignal?.throwIfAborted();
-          await context.assertExecutionLease?.();
-          const continueMessage: ModelMessage = {
-            role: 'user',
-            content:
-              'This session is being continued from a previous conversation. ' +
-              'The conversation is summarized above.\n\n' +
-              'Please continue the conversation from where we left it off without asking the user any further questions. ' +
-              'Continue with the last task that you were asked to work on.',
-          };
-
-          await persistToJsonl(
-            modelManager,
-            context.sessionId,
-            logger,
-            async (contextMgr, sessionId) => {
-              await contextMgr.saveCompaction(
-                sessionId,
-                compactResult.summary,
-                {
-                  trigger: 'auto',
-                  preTokens: compactResult.preTokens,
-                  postTokens: compactResult.postTokens,
-                  filesIncluded: compactResult.filesIncluded,
-                },
-                null,
-              );
-            },
-            context.assertExecutionLease,
-            requestSignal,
-            context.runWithExecutionLease,
-            historyScope(),
-          );
-
-          return {
-            success: true,
-            compactedMessages: compactResult.compactedMessages,
-            continueMessage,
-          };
-        } catch (compactError) {
-          if (
-            requestSignal?.aborted ||
-            isExecutionLeaseFailure(compactError) ||
-            isHookProcessContainmentError(compactError) ||
-            compactError instanceof ProviderRegistryError
-          ) {
-            throw compactError;
-          }
-          logger.error('[LoopHookBuilder] 压缩失败，使用降级策略:', compactError);
-          const recentMessages = loopState.conversationState.getContextMessages().slice(-80);
-          return { success: true, compactedMessages: recentMessages };
-        }
-      },
-    },
-
-    tool: {
-      async beforeExec(_ctx) {
-        return null;
-      },
-
-      async afterExec(ctx) {
-        const { toolCall, result, effects, toolMessageId } = ctx;
-        const injectedMessages = effects
-          .filter(
-            (effect): effect is Extract<ToolEffect, { type: 'newMessages' }> =>
-              effect.type === 'newMessages',
-          )
-          .flatMap((effect) => effect.messages);
-        pendingInjectedMessages.push(...injectedMessages);
-
-        await persistToJsonl(
-          modelManager,
-          context.sessionId,
-          logger,
-          async (contextMgr, sessionId) => {
-            const metadata = result.metadata;
-            const isSubagentStatus = (
-              v: unknown,
-            ): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
-              v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
-            const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
-              ? metadata.subagentStatus
-              : 'completed';
-            const subagentRef =
-              metadata && typeof metadata.subagentSessionId === 'string'
-                ? {
-                    subagentSessionId: SessionId(metadata.subagentSessionId),
-                    subagentType:
-                      typeof metadata.subagentType === 'string'
-                        ? metadata.subagentType
-                        : toolCall.function.name,
-                    subagentStatus,
-                    subagentSummary:
-                      typeof metadata.subagentSummary === 'string'
-                        ? metadata.subagentSummary
-                        : undefined,
-                  }
-                : undefined;
-            const uuid = await contextMgr.saveToolResult(
-              sessionId,
-              ToolUseId(toolCall.id),
-              toolCall.function.name,
-              result.status === 'success' ? result.model : null,
-              getLastUuid(),
-              result.status === 'success' ? undefined : result.error.message,
-              context.subagentInfo,
-              subagentRef,
-            );
-            setLastUuid(uuid);
-          },
-          context.assertExecutionLease,
-          requestSignal,
-          context.runWithExecutionLease,
-          historyScope(),
-        );
-
-        pendingToolResultCount = Math.max(0, pendingToolResultCount - 1);
-        if (pendingToolResultCount === 0 && pendingInjectedMessages.length > 0) {
-          const messagesToPersist = pendingInjectedMessages;
-          pendingInjectedMessages = [];
-          await persistToJsonl(
-            modelManager,
-            context.sessionId,
-            logger,
-            async (contextMgr, sessionId) => {
-              for (const injectedMessage of messagesToPersist) {
-                const provenance =
-                  injectedMessage.role === 'system'
-                    ? { source: 'tool_injection' as const }
-                    : injectedMessage.provenance;
-                const messageMetadata =
-                  injectedMessage.providerOptions ||
-                  provenance ||
-                  injectedMessage.correlation ||
-                  injectedMessage.extensions
-                    ? {
-                        providerOptions: injectedMessage.providerOptions,
-                        provenance,
-                        correlation: injectedMessage.correlation,
-                        extensions: injectedMessage.extensions,
-                      }
-                    : undefined;
-
-                const injectedUuid = await contextMgr.saveMessage(
-                  sessionId,
-                  injectedMessage.role,
-                  injectedMessage.content,
-                  getLastUuid(),
-                  messageMetadata,
-                  context.subagentInfo,
-                );
-                setLastUuid(injectedUuid);
-              }
-            },
-            context.assertExecutionLease,
-            requestSignal,
-            context.runWithExecutionLease,
-            historyScope(),
-          );
-        }
-
-        for (const effect of effects) {
-          if (effect.type === 'contextPatch') {
-            runtimePatchManager.applyRuntimeContextPatch(effect.patch);
-            runtimePatchManager.refreshRuntimeContextSnapshot(loopState);
-          }
-        }
-
-        const runtimePatch = runtimePatchManager.deriveRuntimePatch({
-          status: result.status,
-          effects,
-        });
-        if (runtimePatch) {
-          runtimePatchManager.applyRuntimePatch(runtimePatch, loopState, {
-            toolName: toolCall.function.name,
-            toolCallId: ToolUseId(toolCall.id),
-            toolMessageId: currentAssistantMessageId ?? toolMessageId,
-          });
-        }
-
-        const modelId = runtimePatch?.modelOverride?.modelId?.trim() || undefined;
-        if (modelId) {
-          await modelManager.switchModelIfNeeded(modelId);
-        }
-
-        if (options?.onProgress) {
-          progressToolUseCount++;
-          try {
-            await options.onProgress({
-              toolUseCount: progressToolUseCount,
-              tokenCount: 0,
-              lastActivity: toolCall.function.name,
-              updatedAt: Date.now(),
-            });
-          } catch (error) {
-            if (isExecutionLeaseFailure(error)) {
-              throw error;
-            }
-            // 忽略回调异常
-          }
-        }
-      },
-    },
-
-    message: {
-      async onAssistant(ctx) {
-        pendingToolResultCount = ctx.toolCalls?.length ?? 0;
-        pendingInjectedMessages = [];
-        currentAssistantMessageId = null;
-        await persistToJsonl(
-          modelManager,
-          context.sessionId,
-          logger,
-          async (contextMgr, sessionId) => {
-            if (
-              ctx.content.trim() !== '' ||
-              ctx.reasoningContent ||
-              (ctx.toolCalls?.length ?? 0) > 0
-            ) {
-              const uuid = await contextMgr.saveMessage(
-                sessionId,
-                'assistant',
-                ctx.content,
-                getLastUuid(),
-                {
-                  modelIdentity: ctx.modelIdentity,
-                  reasoningContent: ctx.reasoningContent,
-                  toolCalls: ctx.toolCalls,
-                },
-                context.subagentInfo,
-              );
-              setLastUuid(uuid);
-              currentAssistantMessageId = uuid;
-            }
-          },
-          context.assertExecutionLease,
-          requestSignal,
-          context.runWithExecutionLease,
-          historyScope(),
-        );
-      },
-    },
-
-    recovery: {
-      reactiveCompact: compactionHandler
-        ? async function* () {
-            const runtimeCtx: CompactionRuntimeContext = {
-              sessionId: context.sessionId,
-              projectDir: context.snapshot?.cwd ?? defaultProjectPath,
-              filesystemRoots: context.snapshot?.filesystemRoots,
-              signal: requestSignal,
-              assertExecutionLease: context.assertExecutionLease,
-              runWithExecutionLease: context.runWithExecutionLease,
-              hookRuntime,
-            };
-            const compactStream = compactionHandler?.reactiveCompact(
-              loopState.conversationState,
-              runtimeCtx,
-            );
-            if (!compactStream) return false;
-            return yield* compactStream;
-          }
-        : undefined,
-    },
-
-    stop: {
-      async check(ctx) {
-        try {
-          if (!hookRuntime) {
-            return { shouldStop: true };
-          }
-          const stopResult = await hookRuntime.executeStopCheck({
-            reason: ctx.content,
-            abortSignal: requestSignal,
-          });
-          return {
-            shouldStop: stopResult.shouldStop,
-            continueReason: stopResult.continueReason,
-            warning: stopResult.warning,
-          };
-        } catch (error) {
-          if (isExecutionLeaseFailure(error) || isHookProcessContainmentError(error)) {
-            throw error;
-          }
-          requestSignal?.throwIfAborted();
-          return { shouldStop: true };
-        }
-      },
-    },
-  };
-
-  return {
-    streaming,
-    executionPipeline,
-    runControl,
-    logger,
-    conversationState: loopState.conversationState,
-    maxTurns,
-    isYoloMode,
-    signal: requestSignal,
-    tokenBudget,
-    modelExecutionLifecycle: options?.modelExecutionLifecycle,
-    initialInputPreparation: options?.initialInputPreparation,
-    prepareTurnState: (turn) => loopState.buildTurnState(turn),
-    hooks,
-  };
+  return new LoopConfigBuilder(deps).build();
 }

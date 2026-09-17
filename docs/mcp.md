@@ -213,6 +213,7 @@ const session = await createSession({
 
 ::: tip
 进程内 MCP Server 不会启动子进程，直接在当前进程中执行，性能更高、调试更方便。
+其 handle 通过 `type: 'in-process'` 与外部 MCP 配置形成可判别联合。
 :::
 
 ### tool() 函数签名

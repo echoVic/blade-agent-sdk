@@ -2,10 +2,10 @@ import Type from 'typebox';
 import { describe, expect, it, vi } from 'vitest';
 import { runToolCall } from '../../agent/loop/runToolCall.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { createTool } from '../../tools/core/createTool.js';
 import { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import { ToolKind } from '../../tools/types/kind.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ToolResult, ToolYield } from '../../tools/types/result.js';
 import {
   collectToolExecution,
@@ -32,6 +32,7 @@ function createRegistry(execute: (value: string) => ToolResult): ToolRegistry {
         return execute(value);
       },
     }) as unknown as Tool,
+    BUILTIN_TOOL_SOURCE,
   );
   return registry;
 }
@@ -259,8 +260,8 @@ describe('ToolMiddleware', () => {
         sideEffect: 'non_idempotent',
         description: { short: 'Dynamic interrupt behavior' },
         schema: Type.Object({ mode: Type.Enum(['block', 'cancel']) }),
-        resolveBehavior: ({ mode }) => ({
-          interruptBehavior: mode,
+        resolveBehavior: (params) => ({
+          interruptBehavior: params?.mode ?? 'block',
         }),
         execute() {
           execute();
@@ -270,6 +271,7 @@ describe('ToolMiddleware', () => {
           });
         },
       }) as unknown as Tool,
+      BUILTIN_TOOL_SOURCE,
     );
     const pipeline = new ExecutionPipeline(registry, {
       permissionMode: PermissionMode.YOLO,
@@ -391,8 +393,10 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              throw leaseError;
+            runtime: {
+              assertExecutionLease: async () => {
+                throw leaseError;
+              },
             },
           },
         ),
@@ -432,10 +436,12 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              if (middlewareUnwound) {
-                throw leaseError;
-              }
+            runtime: {
+              assertExecutionLease: async () => {
+                if (middlewareUnwound) {
+                  throw leaseError;
+                }
+              },
             },
           },
         ),
@@ -502,11 +508,13 @@ describe('ToolMiddleware', () => {
           'Echo',
           { value: 'original' },
           {
-            assertExecutionLease: async () => {
-              checks += 1;
-              if (checks === 3) {
-                throw boundaryError;
-              }
+            runtime: {
+              assertExecutionLease: async () => {
+                checks += 1;
+                if (checks === 3) {
+                  throw boundaryError;
+                }
+              },
             },
           },
         ),
@@ -570,6 +578,7 @@ describe('ToolMiddleware', () => {
             };
           },
         }) as unknown as Tool,
+        BUILTIN_TOOL_SOURCE,
       );
       const pipeline = new ExecutionPipeline(registry, {
         permissionMode: PermissionMode.YOLO,

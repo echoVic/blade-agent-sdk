@@ -12,10 +12,10 @@ owner directly, while package entry points only assemble public contracts.
 | Agent | `src/agent/` | Public `AgentOptions` / `AgentResponse` / `UserMessageContent`; internal `AgentRuntimeOptions` / `AgentExecutionContext` |
 | Tool | `src/tools/types/` | `Tool`, `ToolDefinition`, authoring inputs, `ToolResult`, `ToolBehavior` |
 | Session API | `src/session/types.ts` | `SessionOptions`, `SessionStreamEvent`, `PromptResult` |
-| Transcript | `src/session/transcript.ts` | `TranscriptEvent`, `TranscriptMessage`, `TranscriptPart` |
+| Session projection | `src/session/SessionStore.ts` | `SessionState`, `SessionSnapshot`, `SessionSummary` |
 | Durable journal | `src/session/events/` | `DurableEventEnvelope`, `DurableSessionProjection` |
 | Remote protocol | `src/protocol/` | `AgentCommand`, `AgentCommandResult`, `AgentServerEvent` |
-| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeCommandCommit`, `RuntimeDomainEvent`, `RuntimeEffectIntent` |
+| Runtime Store | `src/server/RuntimeStore.ts` | `RuntimeStore`, `RuntimeTenantStore`, `RuntimeStoreError` |
 | Cross-domain primitives | `src/types/` | branded identifiers, JSON, permissions, logging |
 
 `src/types/` contains only genuinely cross-domain primitives. Business
@@ -82,9 +82,8 @@ Event types remain separate because their lifecycles differ:
 |------|----------|-----------|-------------|
 | `AgentEvent` | One internal Agent loop | No | No |
 | `SessionStreamEvent` | Stream consumed by a Session caller | No | No |
-| `TranscriptEvent` | Conversation and input projection | Yes | No |
+| `SessionState` | Conversation and input projection | Yes | No |
 | `DurableEventEnvelope` | Deterministic recovery journal | Yes | No |
-| `RuntimeDomainEvent` | Atomic runtime transaction | Yes | No |
 | `AgentServerEvent` | AgentClient/AgentServer protocol | Replayable | Yes |
 
 Conversion belongs at boundary implementations. An internal event must not be
@@ -102,27 +101,24 @@ interface SessionRepository extends SessionStore {
 }
 
 interface SessionEventStore {
-  // append transcript events
+  // update the Session projection
 }
-
-interface SessionPersistence
-  extends SessionRepository, SessionEventStore {}
 ```
 
 - `SessionRepository` owns read projections and storage management.
-- `SessionEventStore` owns transcript appends.
-- `SessionPersistence` is only for adapters that implement both against one
-  backend.
+- `SessionEventStore` owns Session projection updates.
+- One adapter may explicitly implement both ports, but the SDK no longer
+  provides a combined alias or detects capabilities at runtime.
 - A Session requires compatible read and write ports. It must never write to
   one backend and resume from another.
-- Local JSONL and PostgreSQL adapters convert persistence DTOs back into domain
-  types.
+- Local files and PostgreSQL atomically update the same `SessionState`
+  projection.
 
 ## Branded identifiers
 
 `SessionId`, `MessageId`, `ToolUseId`, `CommandId`, `EventId`,
 `EventSequence`, `ExecutionLeaseId`, `ExecutionId`, `ExecutionCheckpointId`,
-and `CredentialLeaseId` are branded types. Structurally similar identifiers
+and related identifiers are branded types. Structurally similar identifiers
 therefore cannot be passed to the wrong API.
 
 ```ts
@@ -150,7 +146,7 @@ External input follows validate-then-model semantics:
 4. Domain code receives only parsed values.
 
 Recursive JSON schemas come from `src/types/jsonSchema.ts`.
-`SessionStreamEvent`, protocol events, transcript events, and durable events
+`SessionStreamEvent`, protocol events, and durable events
 retain separate schemas because their compatibility and evolution policies
 differ.
 
@@ -164,16 +160,22 @@ advisory-only path.
 
 Heterogeneous collections use the Tool-owned `ErasedToolDefinition` boundary;
 Session does not spell `ToolDefinition<never>` directly. Compiled runtime
-Tools accept `unknown` and validate while building an invocation:
+Tools precompute model declarations and static behavior as readonly data.
+`prepare()` validates input and returns an internal immutable call snapshot:
 
 ```ts
-interface Tool<TParams = unknown> {
-  describe(params?: unknown): ToolDescription;
-  build(params: unknown): ToolInvocation<TParams>;
-  execute(params: unknown, context?: ExecutionContext): ToolExecution;
+interface Tool {
+  readonly declaration: FunctionDeclaration;
+  readonly staticBehavior: ToolBehavior;
+  prepare(raw: unknown): ToolInvocation; // internal immutable snapshot
+  execute(params: JsonObject, context?: ExecutionContext): ToolExecution;
 }
 ```
 
+`ToolInvocation` is not exported from public entry points. When hooks or
+permission handlers rewrite input, the Pipeline must call `prepare()` again
+instead of mutating an existing invocation's parameters, behavior, paths, or
+permission signature.
 Catalogs and registries do not erase parameter types through
 `as unknown as Tool`. Tool execution always terminates with `ToolResult`, while
 model-facing function declarations use `ModelToolDefinition`.
@@ -181,15 +183,16 @@ model-facing function declarations use `ModelToolDefinition`.
 ## Export rules
 
 - Source modules import owner files directly to avoid root-barrel cycles.
-- Barrels use explicit exports to describe public contracts instead of broad
-  `export *` aggregation of domain types.
+- Barrels re-export owner modules directly instead of routing through
+  domain-level compatibility barrels.
 - The root entry assembles application APIs and public types; `/browser`
   remains browser-safe.
 - Filesystem, shell, process, low-level Session, and integration APIs are
   exported by `/advanced`.
 - `AgentServer`, Workers, Runtime Stores, and telemetry adapters are exported
   by `/server/infra`.
-- Legacy subpaths are deprecated compatibility aliases and receive no new API.
+- The legacy `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
+  and `/tools` subpaths have been removed.
 - Compile-time assertion helpers are internal and are not part of the npm API.
 
 ## Change checklist

@@ -91,9 +91,7 @@ type PermissionResult =
 ## Low-level Session API
 
 `createSession()` retains `permissionMode` and `permissionHandler` for
-framework and runtime integrations. `canUseTool` is deprecated and remains
-only for existing Session integrations; new code should not maintain three
-parallel permission entry points.
+framework and runtime integrations.
 
 The callback signal belongs to the active Request. The SDK races permission
 callbacks, tool validation, tool-level permission checks, and interactive
@@ -106,7 +104,6 @@ The root package exports composable permission helpers:
 
 - `createModePermissionHandler()`
 - `createPathSafetyPermissionHandler()`
-- `createPermissionHandlerFromCanUseTool()`
 - `createRuleBasedPermissionHandler()`
 - `createCompositePermissionHandler()`
 

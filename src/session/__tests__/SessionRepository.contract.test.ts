@@ -1,17 +1,19 @@
 import { mkdtempSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
 import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
-import type { SessionPersistence } from '../SessionRepository.js';
+import type { SessionEventStore, SessionRepository } from '../SessionRepository.js';
 
 interface RepositoryFixture {
-  readonly repository: SessionPersistence;
+  readonly repository: SessionRepository & SessionEventStore;
 }
 
 function sessionPersistenceContract(name: string, createFixture: () => RepositoryFixture): void {
-  describe(`${name} SessionPersistence conformance`, () => {
+  describe(`${name} Session repository and event-store conformance`, () => {
     it('uses one backend for append operations and read projections', async () => {
       const { repository } = createFixture();
       const sessionId = SessionId('contract-session');
@@ -88,3 +90,21 @@ function sessionPersistenceContract(name: string, createFixture: () => Repositor
 sessionPersistenceContract('JSONL', () => ({
   repository: new PersistentStore(mkdtempSync(join(tmpdir(), 'session-repository-contract-'))),
 }));
+
+describe('JSONL projection persistence', () => {
+  it('stores one canonical Session projection instead of a second event log', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'session-projection-contract-'));
+    const repository = new PersistentStore(root);
+    const sessionId = SessionId('projection-session');
+    await repository.saveMessage(sessionId, 'user', 'first');
+    await repository.saveMessage(sessionId, 'assistant', 'second');
+
+    const persisted = JSON.parse(
+      await readFile(getSessionFilePathFromStorageRoot(root, sessionId), 'utf8'),
+    );
+    expect(persisted).toMatchObject({
+      sessionId,
+      messages: [{ content: 'first' }, { content: 'second' }],
+    });
+  });
+});

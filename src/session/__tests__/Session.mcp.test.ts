@@ -7,9 +7,7 @@ const mockOn = vi.fn(() => {});
 
 vi.mock('../../mcp/McpClient.js', () => ({
   McpClient: class MockMcpClient {
-    availableTools = [
-      { name: 'test_tool', description: 'A test tool' },
-    ];
+    availableTools = [{ name: 'test_tool', description: 'A test tool' }];
     connect = mockConnect;
     disconnect = mockDisconnect;
     on = mockOn;

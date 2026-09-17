@@ -14,18 +14,23 @@ describe('command abandonment', () => {
       throw new Error('expected a claim');
     }
     await store.sealCommand(tenantId, commandId, claim.leaseId);
-    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000))
-      .toMatchObject({ status: 'in_progress' });
+    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000)).toMatchObject({
+      status: 'in_progress',
+    });
 
     const abandoned = await store.abandonCommand(tenantId, commandId, 'sealed window elapsed');
     expect(abandoned).toBe(true);
 
-    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000))
-      .toEqual({ status: 'abandoned', reason: 'sealed window elapsed' });
+    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000)).toEqual({
+      status: 'abandoned',
+      reason: 'sealed window elapsed',
+    });
     // Idempotent: a second abandonment changes nothing.
     expect(await store.abandonCommand(tenantId, commandId, 'another reason')).toBe(false);
-    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000))
-      .toEqual({ status: 'abandoned', reason: 'sealed window elapsed' });
+    expect(await store.claimCommand(tenantId, commandId, 'fingerprint', 30_000)).toEqual({
+      status: 'abandoned',
+      reason: 'sealed window elapsed',
+    });
   });
 
   it('never abandons a command that can still be released or already has a result', async () => {
@@ -51,8 +56,9 @@ describe('command abandonment', () => {
       data: {},
     } as never);
     expect(await store.abandonCommand(tenantId, completedId, 'late')).toBe(false);
-    expect(await store.claimCommand(tenantId, completedId, 'fingerprint', 30_000))
-      .toMatchObject({ status: 'completed' });
+    expect(await store.claimCommand(tenantId, completedId, 'fingerprint', 30_000)).toMatchObject({
+      status: 'completed',
+    });
   });
 
   it('requires a reason so an abandonment is auditable', async () => {

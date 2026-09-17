@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_PROTOCOL_VERSION } from '../../protocol/index.js';
 import { CommandId, SessionId } from '../../types/identifiers.js';
 import { InMemoryAgentServerStore } from '../AgentServerStore.js';
-import { assertAgentServerStoreConformance } from '../testing/index.js';
 
 describe('InMemoryAgentServerStore', () => {
   it('claims, fences, and replays idempotent command results', async () => {
@@ -195,8 +194,9 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
     expect(repeat.eventId).toBe(first.eventId);
     expect(repeat.sequence).toBe(first.sequence);
     expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(0);
-    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-2'))
-      .toMatchObject({ eventId: first.eventId });
+    expect(await store.getEventByIdempotencyKey(tenantId, sessionId, 'terminal-2')).toMatchObject({
+      eventId: first.eventId,
+    });
   });
 
   it('isolates the idempotency record from the caller object', async () => {
@@ -222,39 +222,10 @@ describe('InMemoryAgentServerStore idempotent appends', () => {
     expect(recorded?.eventId).toBe(first.eventId);
   });
 
-  it('recognises a key written by the pre-7.4.5 event-id shape', async () => {
-    const store = new InMemoryAgentServerStore();
-    // 7.4.4 and earlier used the key as the event's own id and had no key record.
-    const legacy = await store.appendEvent(tenantId, sessionId, event);
-
-    const repeat = await store.appendEvent(tenantId, sessionId, event, {
-      idempotencyKey: String(legacy.eventId),
-    });
-
-    expect(repeat.eventId).toBe(legacy.eventId);
-    expect(repeat.sequence).toBe(legacy.sequence);
-    expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(1);
-  });
-
   it('keeps appending without a key', async () => {
     const store = new InMemoryAgentServerStore();
     await store.appendEvent(tenantId, sessionId, event);
     await store.appendEvent(tenantId, sessionId, event);
     expect((await store.readEvents(tenantId, sessionId)).events).toHaveLength(2);
-  });
-});
-
-describe('InMemoryAgentServerStore shared contract', () => {
-  it('passes the AgentServerStore conformance suite', async () => {
-    const result = await assertAgentServerStoreConformance(new InMemoryAgentServerStore(), {
-      idPrefix: `memory-${process.pid}-${Date.now()}`,
-    });
-
-    expect(result.checks).toEqual([
-      'session-records',
-      'command-receipts',
-      'agent-events',
-      'idempotent-appends',
-    ]);
   });
 });

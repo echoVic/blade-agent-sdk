@@ -136,7 +136,7 @@ server profile。
 - 底层 Session 生命周期：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 可转向请求：持久化的 `now`、`next`、`later` 输入，支持取消和待处理输入查询
 - Durable 恢复：带 fencing 的执行租约、受控 worker handoff、Request/Turn rollover、显式模型/工具对账与 cursor 断线续读
-- 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner`、`ExecutionHostSessionRunner` 与持久化 `EffectDispatcher`
+- 执行平面：`AgentWorker`、可注入的 `SessionRunner` 契约、`SdkSessionRunner` 与 `ExecutionHostSessionRunner`
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
 - 工具：支持 async function 与 AsyncGenerator、TypeBox schema、按能力分组的内置工具、MCP 工具、类型化进度/副作用与 `blade-tool-*` 包约定
@@ -186,8 +186,8 @@ const weather = defineTool({
 });
 ```
 
-需要产生类型化进度、消息或 effect 时，继续使用 `async *execute`。generator
-工具保留现有的 `ToolResult` 终态契约。
+`defineTool.execute` 始终返回 JSON 数据；失败时抛出异常。SDK 不会根据返回对象
+中的字段猜测结果语义。
 
 ## 权限与 Hooks
 
@@ -213,9 +213,8 @@ const agent = await createAgent({
 ```
 
 `advanced.hooks` 只包含进程内 TypeScript callback，对应 8 种 Session hook
-事件。Shell hooks 使用 CLI/宿主配置中的 `HookConfig`，不能传给
-`createAgent()`。底层集成仍可使用 `SessionOptions.permissionMode` 和
-`permissionHandler`；`canUseTool` 已弃用。
+事件。底层集成仍可使用 `SessionOptions.permissionMode` 和
+`permissionHandler`。
 
 ## 包入口
 
@@ -233,19 +232,18 @@ import {
   AgentWorker,
 } from '@blade-ai/agent-sdk/server/infra';
 import { PostgresRuntimeStore } from '@blade-ai/agent-sdk/server/postgres';
-import { OpenTelemetryAgentServerTelemetry } from '@blade-ai/agent-sdk/server/otel';
 ```
 
 - 根入口：`createAgent`、`defineTool`、middleware、模型契约、常量和公共类型
 - `/browser`：browser-safe `AgentClient`、协议契约和事件解析器
-- `/server/infra`：`AgentServer`、`AgentWorker`、Runtime Store 契约和 conformance suite
+- `/protocol`：wire protocol schema 与解析器
+- `/server/infra`：`AgentServer`、`AgentWorker` 和 Runtime Store 契约
 - `/advanced`：底层 local/server Session、`SessionRunner`、ExecutionHost 和 Node adapter
 
 原 `/node`、`/server`、`/core`、`/model`、`/session`、`/middleware`、
-`/tools`、`/protocol` 和 `/server/testing` 路径作为 deprecated compatibility
-alias 保留到 Phase 3。PostgreSQL 与 OpenTelemetry 可选 adapter 继续使用
-`/server/postgres` 和 `/server/otel`，避免导入 `/server/infra` 时强制安装其
-peer dependency。
+`/tools` compatibility alias 已删除。可选 PostgreSQL adapter 位于
+`/server/postgres`，导入 `/server/infra` 不会强制安装 `pg`。Server 与 Worker
+telemetry 是显式接口，应用可以接入任意可观测性后端。
 
 浏览器误导入仅服务端入口时，会解析到带清晰错误信息的 stub。
 
@@ -258,11 +256,10 @@ pnpm example:production
 该命令会启动 PostgreSQL、`AgentServer`、运行真实 SDK Session 的 `AgentWorker`，
 以及带浏览器审批步骤的隔离 Docker 仓库环境。详见[可运行 Golden Paths](./examples/README.md)。
 
-PostgreSQL、OpenTelemetry、非内置 Provider adapter 和本机原生增强是按需 peer：
+PostgreSQL、非内置 Provider adapter 和本机原生增强是按需 peer：
 
 ```bash
 pnpm add pg                         # /server/postgres 的 PostgresRuntimeStore
-pnpm add @opentelemetry/api         # /server/otel 的 telemetry adapter
 pnpm add @ai-sdk/anthropic          # provider: anthropic
 pnpm add fs-native-extensions        # Node JSONL 跨进程锁
 ```
@@ -271,7 +268,7 @@ pnpm add fs-native-extensions        # Node JSONL 跨进程锁
 
 未同时配置只读 `SessionRepository` 与只写 `SessionEventStore` 时，Session
 只保存在内存中。local Agent 会把 `advanced.storagePath` 转换为同时实现两者的
-本地 JSONL `SessionPersistence`：
+本地 JSONL 存储适配器：
 
 ```ts
 import { createAgent } from '@blade-ai/agent-sdk';

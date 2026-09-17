@@ -309,9 +309,9 @@ for await (const event of output) {
 }
 ```
 
-已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 通过
-JSONL 记录 `input_enqueued`、`input_applied` 或 `input_cancelled`；
-进程重启后，尚未应用的输入会恢复为 `later`，避免绑定到已经失效的请求。
+已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 将输入状态写入
+统一的 `SessionState` 投影；进程重启后，尚未应用的输入会恢复为 `later`，
+避免绑定到已经失效的请求。
 内存模式不会跨进程恢复。配置 `durableEventStore` 时，初始请求内容还会写入
 `request_accepted`；它不会替代 `storagePath` 对后续 steering 队列的恢复。
 
@@ -622,7 +622,7 @@ const session = await createSession({
 
 默认行为：
 
-- 会话历史自动写入本地存储（JSONL 格式）
+- 会话历史自动写入本地原子 `SessionState` 快照
 - 存储路径：`{storagePath}/sessions/{sessionId}.jsonl`
 - 未指定 `storagePath` 时使用内存存储，不创建 Session 文件
 - 可通过 `resumeSession()` 恢复已有会话
@@ -653,13 +653,12 @@ const session = await createSession({
 调用方提供的 Session ID 必须是非空的单一路径段；SDK 会在解析 transcript
 路径前拒绝 `/`、`\` 和 NUL。
 
-每次本地 transcript 追加都会通过操作系统 advisory lock 在多个 Node.js
-进程间串行化，并在写入返回前完成同步。末尾没有换行符的记录视为未提交的崩溃
-尾部：读取时忽略，下一次追加前截断。任何已经完整写入但格式损坏的记录都会使
-Session 加载失败，不会静默丢弃历史。
+每次本地投影更新都会通过操作系统 advisory lock 在多个 Node.js 进程间串行化，
+再以原子替换写入并同步。格式损坏或 Session ID 不匹配的投影会使 Session 加载
+失败，不会静默丢弃历史。
 
 持久的 `{sessionId}.jsonl.lock` sidecar 属于存储协议的一部分。当 Session
-可能仍在运行时，不要删除、替换或移动 transcript 及其 sidecar。该协调只适用于
+可能仍在运行时，不要删除、替换或移动投影文件及其 sidecar。该协调只适用于
 同机本地文件系统，不支持 NFS 或分布式存储，并依赖
 `fs-native-extensions` 支持的原生目标（macOS、glibc Linux 及 Windows 的
 x64/arm64）。原生 addon 不可用时，内存 Session 仍可使用，但
@@ -703,7 +702,7 @@ Permission 和输入应用事件，并保证：
   `model_request_completed`、`model_request_failed` 或
   `model_request_aborted`。
 - `tool_scheduled` 通过 `modelAttemptId` 绑定产生它的模型调用，并同时保存
-  provider 原始 `modelInput` 与参数修复后的执行 `input`；schema v3 projector
+  provider 原始 `modelInput` 与参数修复后的执行 `input`；schema v4 projector
   会校验工具 ID、名称和原始参数。流式工具提前调度时，完整模型响应一旦收敛就会
   在等待工具终态前持久化并反向校验。
 - 工具副作用开始前已提交 `tool_started`。
@@ -1034,7 +1033,7 @@ const currentContext = session.getDefaultContext();
 
 ```ts
 interface SessionOptions {
-  tools?: SessionTool[];         // ToolDefinition 或完整 Tool
+  tools?: readonly ToolDefinition[]; // defineTool() 返回的工具声明
   allowedTools?: string[];       // 工具白名单（仅允许列出的工具）
   disallowedTools?: string[];    // 工具黑名单（排除列出的工具）
 }
@@ -1042,15 +1041,18 @@ interface SessionOptions {
 
 `allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
 
-### ToolDefinition
+### ToolDefinitionInput
 
 ```ts
-interface ToolDefinition<TSchema extends Type.TSchema = Type.TSchema> {
+interface ToolDefinitionInput<
+  TSchema extends Type.TSchema = Type.TSchema,
+  TData extends JsonValue = JsonValue,
+> {
   name: string;
   description: string | ToolDescription;
   parameters: TSchema;              // TypeBox schema
   sideEffect?: ToolSideEffect;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution;
+  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => Promise<TData>;
   kind?: ToolKind;
 }
 ```
@@ -1072,20 +1074,10 @@ const weatherTool = defineTool({
   }),
   kind: ToolKind.ReadOnly,
   sideEffect: ToolSideEffect.PURE,
-  async *execute(params, context) {
+  async execute(params) {
     const { city, unit = 'celsius' } = params;
-    yield {
-      kind: 'progress',
-      message: `正在查询 ${city}`,
-    };
     const weather = await fetchWeatherAPI(city, unit);
-    return {
-      status: 'success',
-      model: JSON.stringify(weather),
-      display: {
-        summary: `${city}: ${weather.temperature}°${unit === 'celsius' ? 'C' : 'F'}`,
-      },
-    };
+    return { city, unit, temperature: weather.temperature };
   },
 });
 
@@ -1096,45 +1088,8 @@ const session = await createSession({
 });
 ```
 
-### 使用 createTool + TypeBox
-
-```ts
-import { createSession, createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import Type from 'typebox';
-
-const dbQueryTool = createTool({
-  name: 'DatabaseQuery',
-  displayName: 'Database Query',
-  kind: ToolKind.ReadOnly,
-  sideEffect: ToolSideEffect.PURE,
-  schema: Type.Object({
-    query: Type.String({ description: 'SQL 查询语句' }),
-    database: Type.Optional(Type.String({ description: '数据库名称' })),
-  }),
-  description: {
-    short: '执行只读数据库查询',
-    long: '在指定数据库上执行只读 SQL 查询并返回结果',
-  },
-  async *execute(params, context) {
-    const results = await runQuery(params.query, params.database);
-    return {
-      status: 'success',
-      model: JSON.stringify(results),
-      display: { summary: `查询返回 ${results.length} 行` },
-    };
-  },
-});
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
-  model: 'gpt-4o',
-  tools: [dbQueryTool],
-});
-```
-
-`SessionOptions.tools` 接受 `ToolDefinition` 和完整 `Tool`。传入
-`createTool()` 的结果时，Session 会保留其 TypeBox 校验、权限检查和
-`interruptBehavior`。
+`SessionOptions.tools` 接受 `defineTool()` 返回的 `ToolDefinition`。Session
+负责统一编译 TypeBox schema、注入声明的服务并注册运行时工具。
 
 ### 工具过滤
 
@@ -1246,8 +1201,7 @@ type PermissionResult =
 
 ::: tip
 `permissionHandler` 的优先级低于 Hook 系统中的 `PermissionRequest` 事件。如果
-Hook 已做出决策（`abort` 或 `skip`），handler 不会被调用。`canUseTool` 只为旧
-Session 集成保留，已弃用。
+Hook 已做出决策（`abort` 或 `skip`），handler 不会被调用。
 :::
 
 权限和确认回调不受 `toolTimeoutMs` 限制，因为交互式人工审批可以合理地无限期
@@ -1469,9 +1423,6 @@ fencing 阻止新 Request 启动。
 JavaScript 边界上的取消是协作式的：自定义 provider 与工具必须监听
 `AbortSignal`，并在 `finally` 中释放资源；否则 Promise 会保持 pending，
 直到该操作自行结束。
-内置文件/命令 Hook 由 SDK 管理其 POSIX 进程组或 Windows Job：取消后不会再
-启动 Hook，并会等待对应清理完成后再结束 Request。晚到的 containment failure
-会隔离执行管道，使后续工具调用以及 Session close/handoff 保持 fail-closed。
 
 ### suspendForHandoff()
 
@@ -1505,9 +1456,10 @@ Request 前失败；应先等待或终止这些后台工作后重试。如果取
 `activeShellIds` 字段供调度层处理。
 
 未配置 `executionLease` 时，该 API 仍只是协作式 shutdown barrier；调用前必须
-停止向旧 worker 路由新工作。配置支持租约的 `DurableEventStore` 后，handoff
-会在执行、transcript 写入及 journal 收敛期间继续持有当前租约，并在返回前释放；
-继任 worker 调用 `resumeSession()` 时会取得更高的 fencing token。
+停止向旧 worker 路由新工作。显式配置 `durableExecutionLeaseStore` 与
+`executionLease` 后，handoff 会在执行、transcript 写入及 journal 收敛期间继续
+持有当前租约，并在返回前释放；继任 worker 调用 `resumeSession()` 时会取得更高
+的 fencing token。
 
 ## 跨 worker 执行 fencing
 
@@ -1526,6 +1478,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableExecutionLeaseStore: eventStore,
   durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
@@ -1551,8 +1504,9 @@ operation timeout 会中止 execution lease。即使 heartbeat 调度停滞，�
 时钟的本地 expiry watchdog 也会关闭 lease；更严格的
 `executionLease.storeTimeoutMs` 不会被 Session 上限覆盖。
 
-Session 一旦启用过 execution lease，fencing 要求会永久保留。旧租约过期或释放
-后，未配置 `executionLease` 的 `resumeSession()` 仍会收到
+Session 一旦启用过 execution lease，fencing 要求会永久保留。恢复方通过
+`durableExecutionLeaseStore` 显式启用该检查；旧租约过期或释放后，未配置
+`executionLease` 的 `resumeSession()` 仍会收到
 `DURABLE_EXECUTION_LEASE_REQUIRED`；继任 worker 必须先获取更高 token 的 lease。
 正常 `close()` 会先取消并等待后台 Agent、终止 Session shell，再提交 durable
 关闭并释放 lease；如果 Runtime 清理失败，则保留 lease，并允许调用方重试
@@ -1589,7 +1543,7 @@ try {
   const coordinator = await DurableSessionRecoveryCoordinator.open(
     eventStore,
     sessionId,
-    { executionLease: lease },
+    { executionLease: lease, executionLeaseStore: eventStore },
   );
   // 在 fence 有效期间执行对账或准备恢复。
 } finally {
@@ -1791,14 +1745,13 @@ async function analyzeCodeManual() {
 | `maxTurns`        | `number`                                                | —  | `200`       | Agent 最大轮次限制                                      |
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
-| `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
-| `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
+| `toolSourcePolicy` | `ToolSourcePolicy`                                     | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
+| `tools`           | `readonly ToolDefinition[]`                              | —  | —           | `defineTool()` 返回的工具声明                                 |
 | `toolTimeoutMs`   | `number`                                                 | —  | `600000`    | 单次工具调用的总时限（毫秒）                                   |
 | `webFetch`        | `WebFetchSecurityPolicy`                                 | —  | 安全默认值      | WebFetch 主机白名单、黑名单与私网访问策略                        |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
 | `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器                                           |
-| `canUseTool`      | `CanUseTool`                                            | —  | —           | 已弃用的兼容权限回调                                        |
 | `agents`          | `Record<string, AgentDefinition>`                       | —  | —           | 命名子代理定义                                           |
 | `subagent`        | `SubagentInfo`                                          | —  | —           | 子代理上下文信息（内部使用）                                    |
 | `hooks`           | `Partial<Record<SessionHookEvent, HookCallback[]>>`     | —  | —           | 生命周期 Hook 回调                                      |
@@ -1811,6 +1764,7 @@ async function analyzeCodeManual() {
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
 | `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用消息历史持久化                         |
 | `durableEventStore` | `DurableEventStore`                                  | —  | —           | opt-in durable 执行事件 Store                                 |
+| `durableExecutionLeaseStore` | `DurableExecutionLeaseStore`              | —  | —           | 显式 lease 与 sticky fencing 状态端口                          |
 | `durableStoreTimeoutMs` | `number`                                         | —  | `15000`     | 单次 durable Store 调用 deadline（毫秒）                         |
 | `executionLease` | `DurableExecutionLeaseOptions`                         | —  | —           | opt-in worker 所有权、heartbeat 与 fencing                     |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
@@ -1855,7 +1809,7 @@ interface HookInput {
 
 interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  modifiedInput?: JsonObject | string;
+  modifiedInput?: JsonObject;
   modifiedOutput?: JsonValue;
   reason?: string;
 }
@@ -2069,8 +2023,6 @@ export type {
   OutputFormat,
   McpServerConfig,
   SandboxSettings,
-  CanUseTool,
-  CanUseToolOptions,
   PermissionResult,
   PermissionHandler,
   PermissionUpdate,
@@ -2102,7 +2054,8 @@ export {
 | `SessionState` | Session 私有可变状态、配置快照与窄辅助方法 |
 | `SessionLifecycle` | 初始化、关闭、handoff 与 execution lease |
 | `SessionRequestCoordinator` | 输入接收、steering、取消、队列和历史恢复 |
-| `SessionStreamRunner` | 单个请求的 Agent loop、终态提交与 stream cleanup |
+| `SessionStreamRunner` | claim、输入准备、Agent stream 消费与公开事件发布 |
+| `SessionRequestExecution` | 单个已 claim 请求的 durable/trace 终态、失败分类与 cleanup |
 | `StreamBroadcaster` | `AgentEvent` 到 `SessionStreamEvent` 的唯一投影 |
 | `SessionDurability` | durable journal、request recorder 与恢复前置条件 |
 | `SessionRuntime` | 工具、hooks、MCP、subagent 和执行 pipeline 组装 |
@@ -2110,3 +2063,15 @@ export {
 `SessionState` 仅在上述内部模块之间共享，不从公共入口导出。事件字段的重命名、
 thinking 过滤、tool 记录和 usage 聚合必须集中在 `StreamBroadcaster`，不能重新
 散落到 Session facade 或 framework adapter。
+
+Agent 内部同样只有一条执行路径：`Agent.streamChat()` 进入 `LoopRunner`，
+`AgentLoop` 每轮调用一次 `runTurn()` 完成模型请求和 durable model
+settlement，模型响应持久化后再由 `streamToolCalls()` 执行该轮工具。流式和非流式
+provider、前台和 subagent 都复用这条路径；不存在提前执行工具的第二套
+streaming executor。
+
+请求级清理只由 `SessionRequestExecution` 完成。它持有 claim 后的 controller、
+recorder、trace collector 和 stream completion，负责将 setup/execution
+失败映射为 durable 终态，并在取消、handoff 或 consumer 提前退出时关闭底层
+Agent stream。`SessionLifecycle` 只触发取消或 handoff 并等待同一个 completion，
+不重复提交请求终态。

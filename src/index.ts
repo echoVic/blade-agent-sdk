@@ -1,7 +1,13 @@
 // Server-first facade. Import /node when the runtime may access local host
 // capabilities such as builtin tools, sandboxing, and JSONL stores.
 
-// --- Agent ---
+export type {
+  AgentResponseEvent,
+  AgentResponseEventType,
+  AgentResponseListener,
+  AgentResponseSubmission,
+} from './agent/AgentResponse.js';
+export { AgentResponse } from './agent/AgentResponse.js';
 export type {
   Agent,
   AgentAdvancedOptions,
@@ -14,15 +20,8 @@ export type {
   AgentProfile,
   InlineHooks,
 } from './agent/createAgent.js';
+// --- Agent ---
 export { createAgent } from './agent/createAgent.js';
-export type {
-  AgentResponseEvent,
-  AgentResponseEventType,
-  AgentResponseListener,
-  AgentResponseSubmission,
-} from './agent/AgentResponse.js';
-export { AgentResponse } from './agent/AgentResponse.js';
-export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export type { AgentSessionRepository } from './agent/subagents/AgentSessionRepository.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -35,6 +34,7 @@ export type {
   SubagentSource,
 } from './agent/subagents/types.js';
 export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
+export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type {
   HookTimeoutErrorCode,
   ModelTimeoutErrorCode,
@@ -56,14 +56,6 @@ export {
   SessionInputError,
   ToolExecutionError,
 } from './errors/index.js';
-// --- Hook schema accessors ---
-export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
-// --- Hook system ---
-export {
-  DecisionBehavior,
-  HookExitCode,
-  HookType,
-} from './hooks/types.js';
 export type {
   CleanupFn,
   CleanupHandle,
@@ -86,46 +78,18 @@ export type {
 } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Middleware and plugins ---
-export * from './middleware/index.js';
-export type {
-  BuiltinProviderType,
-  ConversationMessage,
-  ConversationMessageSource,
-  ModelConfig,
-  ModelContent,
-  ModelIdentity,
-  ModelImageContent,
-  ModelMessage,
-  ModelMessageProviderOptions,
-  ModelProviderOptions,
-  ModelResponse,
-  ModelRetryConfig,
-  ModelRetryEvent,
-  ModelService,
-  ModelServiceConfig,
-  ModelSideQueryOptions,
-  ModelStreamChunk,
-  ModelStreamToolCall,
-  ModelTextContent,
-  ModelToolCall,
-  ModelToolCallDelta,
-  ModelToolDefinition,
-  ModelUsage,
-  OutputFormat,
-  ProviderConnectionConfig,
-  ProviderType,
-  QuerySource,
-  TokenUsage,
-} from './model/index.js';
+export * from './middleware/AgentPlugin.js';
+export * from './middleware/composeMiddleware.js';
+export * from './middleware/ModelMiddleware.js';
+export * from './middleware/ToolMiddleware.js';
 // --- Model contracts ---
-export {
-  CONVERSATION_MESSAGE_SOURCES,
-  isBuiltinProviderType,
-  isConversationMessageSource,
-  normalizeModelUsage,
-  PROVIDER_TYPES,
-  resolveModelIdentity,
-} from './model/index.js';
+export * from './model/config.js';
+export * from './model/conversation.js';
+export * from './model/identity.js';
+export type * from './model/message.js';
+export type * from './model/retry.js';
+export type * from './model/service.js';
+export * from './model/usage.js';
 // --- Observability ---
 export type {
   AgentTrace,
@@ -160,58 +124,36 @@ export {
 } from './runtime/index.js';
 export type { SandboxSettings } from './sandbox/config.js';
 export type {
-  DeepSeekBatchChatCompletionItem,
-  DeepSeekBatchChatCompletionOptions,
-  DeepSeekBatchChatCompletionResult,
-  DeepSeekBatchChatCompletionSummary,
   DeepSeekCacheOptimizationOptions,
-  DeepSeekChatCompletionOptions,
-  DeepSeekChatCompletionResponse,
-  DeepSeekChatMessage,
-  DeepSeekCostBreakdown,
-  DeepSeekCostSnapshot,
-  DeepSeekFimCompletionOptions,
-  DeepSeekFimCompletionResponse,
-  DeepSeekLongContextChunk,
-  DeepSeekLongContextOptions,
-  DeepSeekLongContextPlan,
-  DeepSeekPricing,
   DeepSeekProviderOptions,
 } from './services/deepseek.js';
 export {
-  calculateDeepSeekCost,
-  createDeepSeekBatchChatCompletions,
-  createDeepSeekChatCompletion,
-  createDeepSeekFimCompletion,
-  createDeepSeekLongContextChunks,
-  createDeepSeekLongContextMessages,
-  createDeepSeekLongContextPlan,
-  createDeepSeekTokenBudgetCostConfig,
   DEEPSEEK_BETA_BASE_URL,
   DEEPSEEK_DEFAULT_BASE_URL,
   DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_DEFAULT_PRICING,
-  DeepSeekCostTracker,
-  estimateDeepSeekTokens,
-  getDeepSeekPricing,
   normalizeDeepSeekModel,
   optimizeDeepSeekCachePrefix,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
-  summarizeDeepSeekBatchChatCompletions,
 } from './services/deepseek.js';
 export type { ProviderAdapter } from './services/ProviderRegistry.js';
 export { ProviderRegistry } from './services/ProviderRegistry.js';
-export type {
-  SkillActivationContext,
-  SkillDefinition,
-  SkillMetadata,
-  SkillRegistryConfig,
-} from './skills/index.js';
 export * from './session/events/core.js';
+export type { ForkOptions, ResumeOptions } from './session/Session.js';
+// --- Session ---
+export { createSession, forkSession, prompt, resumeSession } from './session/Session.js';
+export type {
+  SessionEventStore,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from './session/SessionRepository.js';
 export type {
   AgentDefinition,
-  ForkOptions,
   ForkSessionOptions,
   ForkSessionResult,
   HookCallback,
@@ -224,59 +166,43 @@ export type {
   ModelInfo,
   PendingSessionInput,
   PromptResult,
-  ResumeOptions,
   SendOptions,
-  SessionEventStore,
   SessionHandoffResult,
-  SessionOptions,
-  SessionPersistence,
-  SessionRepository,
-  SessionRepositoryCompactionMetadata,
-  SessionRepositoryHealth,
-  SessionRepositoryMessageMetadata,
-  SessionRepositoryStorageStats,
-  SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef,
   SessionHookEvent,
+  SessionOptions,
   SessionStreamEvent,
-  SessionTool,
   StreamOptions,
   SubagentInfo,
   ToolExecutionRecord,
-} from './session/index.js';
-// --- Session ---
-export {
-  createSession,
-  forkSession,
-  InputPriority,
-  prompt,
-  resumeSession,
-} from './session/index.js';
+} from './session/types.js';
+export { InputPriority } from './session/types.js';
+export type {
+  SkillActivationContext,
+  SkillDefinition,
+  SkillMetadata,
+  SkillRegistryConfig,
+} from './skills/index.js';
+export { ToolKind, ToolSideEffect } from './tools/behavior.js';
 export type { WebFetchSecurityPolicy } from './tools/builtin/web/webFetch.js';
+export { defineTool } from './tools/core/createTool.js';
 // --- Tool authoring primitives ---
 export type {
-  ToolCatalogEntry,
-  ToolCatalogReadView,
-  ToolCatalogSourcePolicy,
-  ToolSourceInfo,
   ToolSourceKind,
+  ToolSourcePolicy,
   ToolTrustLevel,
-} from './tools/catalog/index.js';
-export { ToolCatalog } from './tools/catalog/index.js';
-export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+} from './tools/registry/ToolRegistry.js';
+export type { ToolServiceMap, ToolServiceName } from './tools/services.js';
 export type {
+  BuiltinToolGroup,
   ConfirmationDetails,
   ConfirmationHandler,
   ConfirmationResponse,
   ExecutionContext,
-  FunctionDeclaration,
-  Tool,
+  RuntimeAccess,
   ToolBehavior,
-  ToolConfig,
   ToolDefinition,
   ToolDefinitionInput,
   ToolDescription,
-  ToolDescriptionResolver,
   ToolDisplayContent,
   ToolEffect,
   ToolEffectYield,
@@ -293,16 +219,10 @@ export type {
   ToolProgress,
   ToolResult,
   ToolScheduledLifecycle,
-  ToolSchema,
   ToolSettledLifecycle,
   ToolYield,
 } from './tools/types/index.js';
-export {
-  collectToolExecution,
-  completeToolExecution,
-  ToolErrorType,
-} from './tools/types/index.js';
-export { ToolKind, ToolSideEffect } from './tools/types/kind.js';
+export { collectToolExecution, completeToolExecution, ToolErrorType } from './tools/types/index.js';
 export {
   HookEvent,
   MessageRole,
@@ -313,7 +233,6 @@ export {
 export {
   AgentId,
   CommandId,
-  CredentialLeaseId,
   EventId,
   EventSequence,
   ExecutionCheckpointId,
@@ -338,8 +257,6 @@ export {
 export type { JsonObject, JsonValue } from './types/json.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
-  CanUseTool,
-  CanUseToolOptions,
   PermissionHandler,
   PermissionHandlerRequest,
   PermissionResult,
@@ -352,7 +269,6 @@ export {
   createCompositePermissionHandler,
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
 } from './types/permissions.js';
 // --- Error utilities ---

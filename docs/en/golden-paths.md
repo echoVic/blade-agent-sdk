@@ -63,10 +63,8 @@ test command with an unknown outcome stops for reconciliation. The example uses
 one API process and does not guarantee API failover or exactly-once arbitrary
 tool execution.
 
-The same smoke verifies unauthenticated `/v1/runtime/readyz` and
-tenant-scoped `/v1/runtime/metrics` using the local operator token. Acceptance
-passes only when the Worker is ready and queue metrics reflect the completed
-Session.
+The same smoke verifies the successor Worker's local readiness snapshot.
+Acceptance passes only when the recovered Worker is ready.
 
 ## Generate a standalone project
 

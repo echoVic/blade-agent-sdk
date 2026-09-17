@@ -26,7 +26,7 @@ const agent = await createAgent({
 
 显式传入的 Skill 优先级高于 user/project/bundled/plugin/MCP 来源，但低于
 managed 来源。数据 Skill 不含文件资产，且默认禁止执行内联 shell 命令和
-注册 shell hooks。
+注册运行时 hooks。
 
 ## 目录结构
 

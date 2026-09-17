@@ -36,14 +36,6 @@ API process and temporary infrastructure; it does not implement API failover or
 exactly-once arbitrary tools. `Ctrl+C` removes the PostgreSQL
 container, execution containers, volumes, and temporary files.
 
-The same process exposes runtime readiness and tenant-scoped queue metrics:
-
-```bash
-curl http://127.0.0.1:8787/v1/runtime/readyz
-curl -H 'Authorization: Bearer local-demo' \
-  http://127.0.0.1:8787/v1/runtime/metrics
-```
-
 For a non-interactive end-to-end check:
 
 ```bash
@@ -55,7 +47,8 @@ The smoke command prints `firstResultMs` and fails unless the browser protocol
 receives passing test results within five minutes. It exercises approval, a
 real Worker SIGKILL after a saved edit, cursor-based SSE reconnection, a second
 turn using the saved workspace, denial, and cancellation followed by another
-task. Exiting the launcher removes the temporary database and checkpoints.
+task. It also verifies the replacement Worker's local readiness snapshot.
+Exiting the launcher removes the temporary database and checkpoints.
 
 Generate any Golden Path as an independent project from the published package:
 

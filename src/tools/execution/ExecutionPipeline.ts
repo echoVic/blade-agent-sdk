@@ -7,12 +7,15 @@ import { isSteeringInterruptSignal } from '../../types/abort.js';
 import { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { JsonObject } from '../../types/json.js';
-import type { CanUseTool, PermissionHandler, PermissionsConfig } from '../../types/permissions.js';
+import type { PermissionHandler, PermissionsConfig } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
-import type { ToolCatalog } from '../catalog/ToolCatalog.js';
+import { resolveBehavior, ToolKind } from '../behavior.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ExecutionContext, ExecutionHistoryEntry } from '../types/execution.js';
-import { resolveToolBehaviorSafely, ToolKind } from '../types/kind.js';
+import {
+  type ExecutionContext,
+  type ExecutionHistoryEntry,
+  getRuntimeAccess,
+} from '../types/execution.js';
 import { ToolErrorType, type ToolExecution, type ToolResult } from '../types/result.js';
 import {
   type ConcurrencyLease,
@@ -28,12 +31,12 @@ import { PermissionRequestFactory } from './pipeline/PermissionRequestFactory.js
 import { ResultNormalizer } from './pipeline/ResultNormalizer.js';
 import { createExecutionFailureResult, preserveTimeoutFailure } from './pipeline/results.js';
 import { createSignalAbortResult } from './pipeline/signalAbort.js';
-import type { PipelineExecutionState } from './pipeline/state.js';
 import { AuthorizationStage } from './pipeline/stages/AuthorizationStage.js';
 import { ConfirmationStage } from './pipeline/stages/ConfirmationStage.js';
 import { FileLockStage } from './pipeline/stages/FileLockStage.js';
 import { HookStage } from './pipeline/stages/HookStage.js';
 import { InvocationStage } from './pipeline/stages/InvocationStage.js';
+import type { PipelineExecutionState } from './pipeline/state.js';
 import { isTerminalCleanupFailure, TerminalCleanupGuard } from './pipeline/TerminalCleanupGuard.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 600_000;
@@ -80,7 +83,6 @@ export class ExecutionPipeline {
   private readonly maxHistorySize: number;
   private readonly toolTimeoutMs: number;
   private readonly logger: InternalLogger;
-  private readonly toolCatalog?: ToolCatalog;
   private readonly guard = new TerminalCleanupGuard();
   private readonly approvalLedger: ApprovalLedger;
   private readonly scheduler: ConcurrencyScheduler;
@@ -98,7 +100,6 @@ export class ExecutionPipeline {
   ) {
     this.maxHistorySize = config.maxHistorySize || 1000;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
-    this.toolCatalog = config.toolCatalog;
     this.scheduler =
       config.scheduler ??
       (config.concurrencyLimits
@@ -125,10 +126,17 @@ export class ExecutionPipeline {
       this.logger,
     );
     this.hookStage = new HookStage(config.hookRuntime);
-    this.authorizationStage = new AuthorizationStage(this.guard, binder, requests, decisions, ledger, {
-      permissionConfig,
-      defaultPermissionMode,
-    });
+    this.authorizationStage = new AuthorizationStage(
+      this.guard,
+      binder,
+      requests,
+      decisions,
+      ledger,
+      {
+        permissionConfig,
+        defaultPermissionMode,
+      },
+    );
     this.confirmationStage = new ConfirmationStage(
       this.guard,
       binder,
@@ -139,15 +147,10 @@ export class ExecutionPipeline {
       {
         permissionMode: defaultPermissionMode,
         permissionHandler: config.permissionHandler,
-        canUseTool: config.canUseTool,
       },
     );
     this.fileLockStage = new FileLockStage(this.logger, this.guard);
     this.invocationStage = new InvocationStage(this.toolTimeoutMs, this.guard);
-  }
-
-  getCatalog(): ToolCatalog | undefined {
-    return this.toolCatalog;
   }
 
   hasPendingExecutionCleanup(): boolean {
@@ -175,13 +178,14 @@ export class ExecutionPipeline {
     const protectedContext = Object.freeze({
       ...context,
       sessionId: context.sessionId || SessionId(executionId),
+      runtime: Object.freeze(getRuntimeAccess(context)),
     });
 
     let result: ToolResult | undefined;
     let effectiveRequest: ToolMiddlewareRequest | undefined;
     let completed = false;
 
-    await protectedContext.assertExecutionLease?.();
+    await protectedContext.runtime.assertExecutionLease();
 
     try {
       const outcome = yield* this.middlewareBoundary.run({
@@ -193,7 +197,7 @@ export class ExecutionPipeline {
       result = outcome.result;
       effectiveRequest = outcome.effectiveRequest;
       this.guard.throwIfFailed();
-      await protectedContext.assertExecutionLease?.();
+      await protectedContext.runtime.assertExecutionLease();
       completed = true;
       return result;
     } catch (error) {
@@ -214,10 +218,7 @@ export class ExecutionPipeline {
     }
   }
 
-  private async *executeCore(
-    request: ToolMiddlewareRequest,
-    executionId: string,
-  ): ToolExecution {
+  private async *executeCore(request: ToolMiddlewareRequest, executionId: string): ToolExecution {
     const tool = this.registry.get(request.toolName);
     if (!tool) {
       return await this.hookStage.postExecutionFor(
@@ -234,16 +235,16 @@ export class ExecutionPipeline {
       tool,
       params: request.input,
       context: request.context,
-      affectedPaths: [],
+      services: this.registry.getServices(tool.name),
       needsConfirmation: false,
       confirmationReasons: [],
       interrupted: false,
     };
 
-    await state.context.assertExecutionLease?.();
+    await getRuntimeAccess(state.context).assertExecutionLease();
 
-    const resolvedBehavior = resolveToolBehaviorSafely(tool, request.input);
-    const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
+    const resolvedBehavior = resolveBehavior(tool, request.input);
+    const toolKind = resolvedBehavior?.kind ?? tool.staticBehavior.kind ?? ToolKind.Execute;
     let concurrencyLease: ConcurrencyLease | undefined;
 
     try {
@@ -253,7 +254,7 @@ export class ExecutionPipeline {
       if (this.guard.hasPendingCleanup()) {
         return this.guard.createPendingResult();
       }
-      await state.context.assertExecutionLease?.();
+      await getRuntimeAccess(state.context).assertExecutionLease();
       this.guard.throwIfFailed();
       state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
@@ -308,7 +309,7 @@ export class ExecutionPipeline {
         yield* this.invocationStage.run(state);
       }
 
-      await state.context.assertExecutionLease?.();
+      await getRuntimeAccess(state.context).assertExecutionLease();
 
       const normalizedResult = await this.normalizer.normalize(state);
       const isTimeout =
@@ -316,10 +317,7 @@ export class ExecutionPipeline {
         normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
       let result: ToolResult;
       try {
-        result = await this.hookStage.postExecution(state, executionId, normalizedResult, {
-          isTimeout,
-          isInterrupt: state.interrupted,
-        });
+        result = await this.hookStage.postExecution(state, executionId, normalizedResult);
       } catch (error) {
         if (isTerminalCleanupFailure(error)) {
           throw error;
@@ -358,12 +356,7 @@ export class ExecutionPipeline {
       let errorResult: ToolResult = originalErrorResult;
 
       try {
-        const hookResult = await this.hookStage.postExecution(
-          state,
-          executionId,
-          errorResult,
-          { isTimeout, isInterrupt },
-        );
+        const hookResult = await this.hookStage.postExecution(state, executionId, errorResult);
         errorResult = preserveTimeoutFailure(
           this.logger,
           originalErrorResult,
@@ -474,13 +467,7 @@ export interface ExecutionPipelineConfig {
   enableMetrics?: boolean;
   permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
-  /**
-   * Full permission callback. When provided, it takes precedence over the
-   * legacy canUseTool callback.
-   */
   permissionHandler?: PermissionHandler;
-  /** Legacy permission callback, used only when permissionHandler is absent. */
-  canUseTool?: CanUseTool;
   hookRuntime?: HookRuntime;
   logger?: InternalLogger;
   /**
@@ -491,7 +478,6 @@ export interface ExecutionPipelineConfig {
   toolTimeoutMs?: number;
   scheduler?: ConcurrencyScheduler;
   concurrencyLimits?: ConcurrencyLimits;
-  toolCatalog?: ToolCatalog;
   middleware?: readonly ToolMiddleware[];
 }
 

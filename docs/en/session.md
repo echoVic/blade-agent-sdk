@@ -208,10 +208,6 @@ differs from `priority: 'now'`, which steers the same request at a safe point.
 Cancellation is cooperative at the JavaScript boundary: custom providers and
 tools must honor their `AbortSignal` and release resources in `finally`;
 otherwise the Promise remains pending until that operation settles.
-Built-in file/command hooks are managed through a POSIX process group or Windows
-Job Object: they do not spawn after cancellation and wait for the corresponding
-cleanup before the Request finishes. A late containment failure quarantines the
-execution pipeline, so later tool calls and Session close or handoff fail closed.
 
 An external `AbortSignal` can also cancel a request:
 
@@ -267,10 +263,11 @@ local Session closed and must be recovered from the durable journal.
 `activeShellIds` fields for orchestration.
 
 Without `executionLease`, this API remains a cooperative shutdown barrier:
-stop routing new work to the old worker before calling it. With a lease-capable
-`DurableEventStore`, handoff keeps the current lease until execution, transcript
-writes, and journal finalization settle, then releases it before returning.
-The successor acquires a higher fencing token when it calls `resumeSession()`.
+stop routing new work to the old worker before calling it. With an explicit
+`durableExecutionLeaseStore` and `executionLease`, handoff keeps the current
+lease until execution, transcript writes, and journal finalization settle, then
+releases it before returning. The successor acquires a higher fencing token
+when it calls `resumeSession()`.
 
 ## Fence execution across workers
 
@@ -290,6 +287,7 @@ const session = await createSession({
   model,
   storagePath: '/var/lib/my-agent',
   durableEventStore: eventStore,
+  durableExecutionLeaseStore: eventStore,
   durableStoreTimeoutMs: 15_000,
   executionLease: {
     ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
@@ -318,9 +316,11 @@ local expiry watchdog also closes the lease if heartbeat scheduling stalls; a
 stricter `executionLease.storeTimeoutMs` is preserved under the Session limit.
 
 Once a Session enables an execution lease, its fencing requirement is
-permanent. After the old lease expires or is released, `resumeSession()` without
-`executionLease` still fails with `DURABLE_EXECUTION_LEASE_REQUIRED`; the
-successor must first acquire a lease with a higher token. Normal `close()` waits
+permanent. A caller opts into that check explicitly through
+`durableExecutionLeaseStore`. After the old lease expires or is released,
+`resumeSession()` without `executionLease` still fails with
+`DURABLE_EXECUTION_LEASE_REQUIRED`; the successor must first acquire a lease
+with a higher token. Normal `close()` waits
 for background agents and Session-owned shells to stop before it commits the
 durable close and releases the lease. If runtime cleanup fails, it retains the
 lease and allows the caller to retry `close()`.
@@ -358,7 +358,7 @@ try {
   const coordinator = await DurableSessionRecoveryCoordinator.open(
     eventStore,
     sessionId,
-    { executionLease: lease },
+    { executionLease: lease, executionLeaseStore: eventStore },
   );
   // Reconcile or prepare recovery while the fence remains active.
 } finally {
@@ -401,14 +401,13 @@ Session files are written under `{storagePath}/sessions/`. `persistSession: fals
 Caller-supplied Session IDs must be non-empty single path segments; `/`, `\`,
 and NUL are rejected before resolving a transcript path.
 
-Each local transcript append is serialized across Node.js processes with an OS
-advisory lock and synced before the write resolves. A final record without a
-newline is treated as an uncommitted crash tail: reads ignore it and the next
-append truncates it before writing. A malformed complete record fails Session
-loading instead of silently dropping history.
+Each local projection update is serialized across Node.js processes with an OS
+advisory lock, atomically replaced, and synced before the write resolves. A
+malformed projection or mismatched Session ID fails Session loading instead of
+silently dropping history.
 
 The persistent `{sessionId}.jsonl.lock` sidecar is part of the storage protocol.
-Do not delete, replace, or move a transcript or its sidecar while a Session may
+Do not delete, replace, or move a projection or its sidecar while a Session may
 be active. This coordination is for same-host local filesystems, not NFS or
 distributed storage, and requires the native lock targets supported by
 `fs-native-extensions` (macOS, glibc Linux, and Windows on x64/arm64). In-memory
@@ -734,15 +733,14 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `providerOptions` | `JsonObject` | Provider-specific options |
 | `thinkingEnabled` / `thinkingBudget` | `boolean` / `number` | Reasoning controls |
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
-| `tools` | `SessionTool[]` | Custom `ToolDefinition` or complete `Tool` instances |
+| `tools` | `readonly ToolDefinition[]` | Custom definitions returned by `defineTool()` |
 | `toolTimeoutMs` | `number` | Per-invocation wall-clock timeout; defaults to `600000` |
 | `webFetch` | `WebFetchSecurityPolicy` | WebFetch host allowlist, blocklist, and private-network policy |
 | `allowedTools` / `disallowedTools` | `string[]` | Tool filters |
-| `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
+| `toolSourcePolicy` | `ToolSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |
 | `permissionMode` | `PermissionMode` | Built-in approval mode |
 | `permissionHandler` | callback | Low-level custom permission policy |
-| `canUseTool` | callback | Deprecated compatibility callback |
 | `systemPrompt` | `string` | Session system prompt |
 | `maxTurns` | `number` | Agent turn limit |
 | `agents` | `Record<string, AgentDefinition>` | Session-local subagents |
@@ -757,6 +755,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `storagePath` | `string` | Enables JSONL persistence |
 | `persistSession` | `boolean` | Disable persistence explicitly |
 | `durableEventStore` | `DurableEventStore` | Opt-in durable execution journal |
+| `durableExecutionLeaseStore` | `DurableExecutionLeaseStore` | Explicit lease and sticky-fencing state port |
 | `durableStoreTimeoutMs` | `number` | Per-call durable Store deadline; defaults to `15000` |
 | `executionLease` | `DurableExecutionLeaseOptions` | Opt-in worker ownership, heartbeat, and fencing |
 | `outputFormat` | `OutputFormat` | Structured output schema |
@@ -822,7 +821,8 @@ Internals are split across explicit ownership boundaries:
 | `SessionState` | Session-private mutable state, configuration snapshot, and narrow helpers |
 | `SessionLifecycle` | Initialization, close, handoff, and execution leases |
 | `SessionRequestCoordinator` | Input admission, steering, cancellation, queues, and history restore |
-| `SessionStreamRunner` | One request's Agent loop, terminal commit, and stream cleanup |
+| `SessionStreamRunner` | Claim, input preparation, Agent stream consumption, and public event publication |
+| `SessionRequestExecution` | Durable/trace settlement, failure classification, and cleanup for one claimed request |
 | `StreamBroadcaster` | The only `AgentEvent` to `SessionStreamEvent` projection |
 | `SessionDurability` | Durable journal, request recorder, and recovery prerequisites |
 | `SessionRuntime` | Tool, hook, MCP, subagent, and execution-pipeline assembly |
@@ -831,3 +831,17 @@ Internals are split across explicit ownership boundaries:
 from public entrypoints. Event renaming, thinking filtering, tool records, and
 usage aggregation belong in `StreamBroadcaster`, not in the Session facade or
 framework adapters.
+
+Agent internals also have one execution path. `Agent.streamChat()` enters
+`LoopRunner`; on each turn, `AgentLoop` calls `runTurn()` once for the model
+request and durable model settlement, then calls `streamToolCalls()` only after
+the model response has been persisted. Streaming and non-streaming providers,
+foreground work, and subagents all reuse this path. There is no second
+early-dispatch streaming tool executor.
+
+Only `SessionRequestExecution` performs request cleanup. It owns the claimed
+controller, recorder, trace collector, and stream completion; maps setup and
+execution failures to durable terminal states; and closes the underlying Agent
+stream after cancellation, handoff, or early consumer return.
+`SessionLifecycle` only initiates cancellation or handoff and waits for that
+same completion; it does not commit a second request terminal state.

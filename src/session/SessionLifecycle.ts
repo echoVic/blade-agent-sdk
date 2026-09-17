@@ -3,13 +3,23 @@ import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import type { RequestAbortReason } from './ActiveRequestController.js';
 import { DurableExecutionLease } from './events/DurableExecutionLease.js';
-import { DurableExecutionLeaseError } from './events/DurableExecutionLeaseStore.js';
+import {
+  DurableExecutionLeaseError,
+  isExecutionLeaseFailure,
+} from './events/DurableExecutionLeaseStore.js';
+import type { DurableSessionJournal } from './events/DurableSessionJournal.js';
+import type { SessionDurableRecorder } from './events/SessionDurableRecorder.js';
 import type { SessionDurability } from './SessionDurability.js';
 import { NODE_SESSION_HOST } from './SessionHostProfile.js';
 import type { SessionRequestCoordinator } from './SessionRequestCoordinator.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import type { SessionState, SessionStreamExecution } from './SessionState.js';
 import type { SessionHandoffResult } from './types.js';
+
+interface HandoffState {
+  durableRecorder: SessionDurableRecorder | null;
+  executions: SessionStreamExecution[];
+}
 
 export class SessionLifecycle {
   constructor(
@@ -62,7 +72,6 @@ export class SessionLifecycle {
           systemPrompt: this.state.options.systemPrompt,
           maxTurns: this.state.maxTurns,
           permissionHandler: this.state.options.permissionHandler,
-          canUseTool: this.state.options.canUseTool,
           toolSourcePolicy: this.state.options.toolSourcePolicy,
           outputFormat: this.state.options.outputFormat,
           sandbox: this.state.options.sandbox,
@@ -336,11 +345,14 @@ export class SessionLifecycle {
     if (!closeState.alreadyClosed) {
       this.state.logger.debug(`[Session] Closed session ${this.state.sessionId}`);
     }
-    if (closeErrors.length === 1) {
-      throw closeErrors[0];
+    const reportableErrors = this.state.executionLeaseFailure
+      ? closeErrors.filter((error) => !isExecutionLeaseFailure(error))
+      : closeErrors;
+    if (reportableErrors.length === 1) {
+      throw reportableErrors[0];
     }
-    if (closeErrors.length > 1) {
-      throw new AggregateError(closeErrors, 'Session close failed in multiple phases');
+    if (reportableErrors.length > 1) {
+      throw new AggregateError(reportableErrors, 'Session close failed in multiple phases');
     }
   }
 
@@ -358,95 +370,69 @@ export class SessionLifecycle {
       );
     }
 
-    const handoffState = await this.state.inputMutex.runExclusive(() => {
-      if (this.state.executionState.phase === 'closed') {
-        throw new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session is already closed');
-      }
-      if (this.state.executionState.phase === 'stopping') {
-        throw new SessionHandoffError(
-          'SESSION_HANDOFF_UNAVAILABLE',
-          'Session request cancellation has already started',
-        );
-      }
+    const handoffState = await this.state.inputMutex.runExclusive(() =>
+      this.prepareHandoff(runtime),
+    );
+    return this.completeHandoff(runtime, journal, handoffState);
+  }
 
-      const durableRecorder =
-        this.state.executionState.phase === 'pending' ||
-        this.state.executionState.phase === 'running' ||
-        this.state.executionState.phase === 'suspending'
-          ? this.state.executionState.durableRecorder
-          : null;
-      if (
-        (this.state.executionState.phase === 'pending' ||
-          this.state.executionState.phase === 'running' ||
-          this.state.executionState.phase === 'suspending') &&
-        !durableRecorder
-      ) {
-        throw new SessionHandoffError(
-          'SESSION_HANDOFF_NOT_CONFIGURED',
-          'Active Session handoff requires a durable Request recorder',
-        );
+  private prepareHandoff(runtime: SessionRuntime): HandoffState {
+    const state = this.state.executionState;
+    if (state.phase === 'closed') {
+      throw new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session is already closed');
+    }
+    if (state.phase === 'stopping') {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_UNAVAILABLE',
+        'Session request cancellation has already started',
+      );
+    }
+    const recorder =
+      state.phase === 'pending' || state.phase === 'running' || state.phase === 'suspending'
+        ? state.durableRecorder
+        : null;
+    if (
+      (state.phase === 'pending' || state.phase === 'running' || state.phase === 'suspending') &&
+      !recorder
+    ) {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_NOT_CONFIGURED',
+        'Active Session handoff requires a durable Request recorder',
+      );
+    }
+    recorder?.assertHandoffReady();
+    const blockers = runtime.sealBackgroundWorkForHandoff(this.state.executionLease?.fence);
+    if (blockers.activeSubagentIds.length > 0 || blockers.activeShellIds.length > 0) {
+      throw new SessionHandoffError(
+        'SESSION_HANDOFF_ACTIVE_WORK',
+        'Session handoff requires all background work to settle first',
+        blockers,
+      );
+    }
+    const executions = [...this.state.streamExecutions];
+    if (state.phase === 'suspending') return { durableRecorder: recorder, executions };
+    if (state.phase === 'running' && recorder) {
+      recorder.beginHandoff();
+      state.controller.abortRequest({ kind: 'session_handoff' });
+      state.execution.releaseBackpressure();
+      this.state.executionState = { ...state, phase: 'suspending', durableRecorder: recorder };
+    } else {
+      if (state.phase === 'pending') {
+        recorder?.beginHandoff();
+        state.controller.abortRequest({ kind: 'session_handoff' });
+        state.controller.dispose();
       }
-      durableRecorder?.assertHandoffReady();
+      this.state.executionState = { phase: 'closed', disposition: 'detached' };
+    }
+    for (const execution of executions) execution.releaseBackpressure();
+    return { durableRecorder: recorder, executions };
+  }
 
-      const blockers = runtime.sealBackgroundWorkForHandoff(this.state.executionLease?.fence);
-      if (blockers.activeSubagentIds.length > 0 || blockers.activeShellIds.length > 0) {
-        throw new SessionHandoffError(
-          'SESSION_HANDOFF_ACTIVE_WORK',
-          'Session handoff requires all background work to settle first',
-          blockers,
-        );
-      }
-
-      if (this.state.executionState.phase === 'suspending') {
-        return {
-          durableRecorder,
-          executions: [...this.state.streamExecutions],
-        };
-      }
-      if (this.state.executionState.phase === 'running') {
-        const { requestId, controller, execution } = this.state.executionState;
-        if (!durableRecorder) {
-          throw new SessionHandoffError(
-            'SESSION_HANDOFF_NOT_CONFIGURED',
-            'Running Session handoff requires a durable Request recorder',
-          );
-        }
-        durableRecorder.beginHandoff();
-        controller.abortRequest({ kind: 'session_handoff' });
-        execution.releaseBackpressure();
-        this.state.executionState = {
-          phase: 'suspending',
-          requestId,
-          controller,
-          durableRecorder,
-          execution,
-        };
-        const executions = [...this.state.streamExecutions];
-        for (const activeExecution of executions) {
-          activeExecution.releaseBackpressure();
-        }
-        return { durableRecorder, executions };
-      }
-
-      if (this.state.executionState.phase === 'pending') {
-        durableRecorder?.beginHandoff();
-        this.state.executionState.controller.abortRequest({ kind: 'session_handoff' });
-        this.state.executionState.controller.dispose();
-      }
-      this.state.executionState = {
-        phase: 'closed',
-        disposition: 'detached',
-      };
-      const executions = [...this.state.streamExecutions];
-      for (const activeExecution of executions) {
-        activeExecution.releaseBackpressure();
-      }
-      return {
-        durableRecorder,
-        executions,
-      };
-    });
-
+  private async completeHandoff(
+    runtime: SessionRuntime,
+    journal: DurableSessionJournal,
+    handoffState: HandoffState,
+  ): Promise<SessionHandoffResult> {
     const handoffErrors: unknown[] = [];
     const executionResults = await Promise.allSettled(
       handoffState.executions.map((execution) => execution.completion),
@@ -562,11 +548,11 @@ export class SessionLifecycle {
         { sessionId: this.state.sessionId },
       );
     }
-    const store = this.state.options.durableEventStore;
+    const store = this.state.options.durableExecutionLeaseStore;
     if (!store) {
       throw new DurableExecutionLeaseError(
         'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
-        'Session execution leases require durableEventStore',
+        'Session execution leases require durableExecutionLeaseStore',
         { sessionId: this.state.sessionId },
       );
     }

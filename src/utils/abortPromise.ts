@@ -7,6 +7,13 @@ export function getAbortSignalReason(signal: AbortSignal): unknown {
   return error;
 }
 
+export interface AbortDeadlineOptions {
+  readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
+  readonly controller?: AbortController;
+  readonly createTimeoutError: () => Error;
+}
+
 export function awaitWithAbortSignal<T>(
   operation: () => PromiseLike<T>,
   signal: AbortSignal,
@@ -16,27 +23,32 @@ export function awaitWithAbortSignal<T>(
   }
 
   return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => {
+    const settle = <TValue>(callback: (value: TValue) => void, value: TValue): void => {
       signal.removeEventListener('abort', onAbort);
-    };
-    const resolveOnce = (value: T): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const rejectOnce = (error: unknown): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
+      callback(value);
     };
     const onAbort = (): void => {
-      rejectOnce(getAbortSignalReason(signal));
+      settle(reject, getAbortSignalReason(signal));
     };
 
     signal.addEventListener('abort', onAbort, { once: true });
-    Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
+    Promise.resolve()
+      .then(operation)
+      .then(
+        (value) => settle(resolve, value),
+        (error) => settle(reject, error),
+      );
   });
+}
+
+export function awaitWithDeadline<T>(
+  options: AbortDeadlineOptions,
+  operation: (signal: AbortSignal) => PromiseLike<T>,
+): Promise<T> {
+  const controller = options.controller ?? new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, controller.signal])
+    : controller.signal;
+  const timer = setTimeout(() => controller.abort(options.createTimeoutError()), options.timeoutMs);
+  return awaitWithAbortSignal(() => operation(signal), signal).finally(() => clearTimeout(timer));
 }

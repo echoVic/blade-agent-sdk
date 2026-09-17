@@ -73,7 +73,7 @@ class LocalFileSystemService implements FileSystemService {
   async mkdir(dirPath: string, options?: { recursive?: boolean; mode?: number }): Promise<void> {
     await fs.mkdir(dirPath, {
       recursive: options?.recursive ?? false,
-      mode: options?.mode ?? 0o755
+      mode: options?.mode ?? 0o755,
     });
   }
 }

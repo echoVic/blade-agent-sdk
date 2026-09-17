@@ -1,16 +1,3 @@
-/**
- * Agent核心类 - Facade 设计
- *
- * 设计原则：
- * 1. Agent 本身不保存任何会话状态（sessionId, messages 等）
- * 2. 所有状态通过 context 参数传入
- * 3. Agent 实例可以每次命令创建，用完即弃
- * 4. 历史连续性由外部 SessionContext 保证
- *
- * 职责：组装子模块 + 暴露公共 API
- * 实际逻辑委托给：ModelManager, PlanExecutor, LoopRunner
- */
-
 import type { ContextManager } from '../context/ContextManager.js';
 import { AbortError } from '../errors/AbortError.js';
 import { ConfigError } from '../errors/ConfigError.js';
@@ -18,26 +5,20 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
-import { resolveMcpServerName } from '../mcp/toolSource.js';
 import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import type { ToolMiddleware } from '../middleware/ToolMiddleware.js';
-import type { ModelMessage } from '../model/message.js';
-import type { ModelService } from '../model/service.js';
-import { buildSystemPrompt } from '../prompts/index.js';
+import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
 import { getContextCwd, type RuntimeContext } from '../runtime/index.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import { getSkillRegistry } from '../skills/index.js';
 import type { SkillRegistry } from '../skills/SkillRegistry.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
-import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
-import type { Tool } from '../tools/types/tool.js';
+import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import type { ToolServices } from '../tools/services.js';
 import { PermissionMode } from '../types/constants.js';
-import { SessionId } from '../types/identifiers.js';
-import type { JsonObject } from '../types/json.js';
 import type { PermissionsConfig } from '../types/permissions.js';
-import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { AttachmentHandler } from './AttachmentHandler.js';
 import { CompactionHandler } from './CompactionHandler.js';
@@ -45,17 +26,16 @@ import type { BladeConfig } from './config.js';
 import { RECONCILED_INITIAL_INPUT } from './InitialInputPreparation.js';
 import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
-import { PlanExecutor } from './PlanExecutor.js';
 import { AgentSessionStore } from './subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
-import { TokenBudget, type TokenBudgetConfig, type TokenBudgetSnapshot } from './TokenBudget.js';
+import { TokenBudget, type TokenBudgetConfig } from './TokenBudget.js';
 import type {
   AgentExecutionContext,
   AgentRuntimeOptions,
+  IBackgroundAgentManager,
   LoopOptions,
   LoopResult,
-  PlanApprovalResult,
   UserMessageContent,
 } from './types.js';
 import { isPlanApprovalResult } from './types.js';
@@ -66,7 +46,7 @@ export interface AgentRuntimeDeps {
   defaultContext?: RuntimeContext;
   mcpRegistry?: McpRegistry;
   subagentRegistry?: SubagentRegistry;
-  backgroundAgentManager?: BackgroundAgentManager;
+  backgroundAgentManager?: IBackgroundAgentManager;
   hookRuntime?: HookRuntime;
   providerRegistry?: ProviderRegistry;
   modelMiddleware?: readonly ModelMiddleware[];
@@ -76,16 +56,9 @@ export interface AgentRuntimeDeps {
   logger?: InternalLogger;
 }
 
-/**
- * 预处理结果，由 prepareContext() 统一产出。
- * chat / streamChat 共享同一预处理管线。
- */
 interface PreparedContext {
-  /** 经过附件 / @mention 处理后的消息 */
   enhancedMessage: UserMessageContent;
-  /** 已注入 backgroundAgentManager 的上下文 */
   context: AgentExecutionContext;
-  /** 合并 signal 后的循环选项 */
   loopOptions: LoopOptions;
 }
 
@@ -94,14 +67,13 @@ export class Agent {
   private runtimeOptions: AgentRuntimeOptions;
   private isInitialized = false;
   private executionPipeline: ExecutionPipeline;
-  private readonly toolCatalog: ToolCatalog;
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
   private readonly ownsRuntimeMcpRegistry: boolean;
   private readonly subagentRegistry: SubagentRegistry;
-  private readonly backgroundAgentManager: BackgroundAgentManager;
-  private readonly ownsBackgroundAgentManager: boolean;
+  private readonly backgroundAgentManager: IBackgroundAgentManager;
+  private readonly ownedBackgroundAgentManager?: BackgroundAgentManager;
   private readonly hookRuntime?: HookRuntime;
   private readonly localDiscovery: boolean;
   private readonly skillsEnabled: boolean;
@@ -109,16 +81,13 @@ export class Agent {
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private readonly lifecycleController = new AbortController();
-  private readonly activeRuns = new Set<Promise<void>>();
   private readonly activeStreams = new Set<AsyncGenerator<AgentEvent, LoopResult>>();
   private lastPreparedSkillCwd?: string | null;
   private tokenBudget?: TokenBudget;
   private isDestroyed = false;
   private destroyPromise?: Promise<void>;
 
-  // 子模块
   private modelManager: ModelManager;
-  private planExecutor: PlanExecutor;
   private loopRunner?: LoopRunner;
 
   constructor(
@@ -130,10 +99,6 @@ export class Agent {
     this.runtimeOptions = runtimeOptions;
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
-    this.executionPipeline =
-      deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
-    this.toolCatalog =
-      this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.localDiscovery = runtimeOptions.localDiscovery ?? true;
@@ -148,10 +113,10 @@ export class Agent {
     this.subagentRegistry =
       deps.subagentRegistry ??
       new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
-    this.ownsBackgroundAgentManager = deps.backgroundAgentManager === undefined;
-    this.backgroundAgentManager =
-      deps.backgroundAgentManager ??
-      BackgroundAgentManager.create(
+    if (deps.backgroundAgentManager) {
+      this.backgroundAgentManager = deps.backgroundAgentManager;
+    } else {
+      this.ownedBackgroundAgentManager = BackgroundAgentManager.create(
         this.rootLogger,
         AgentSessionStore.create(),
         undefined,
@@ -161,7 +126,11 @@ export class Agent {
         },
         deps.providerRegistry,
       );
+      this.backgroundAgentManager = this.ownedBackgroundAgentManager;
+    }
     this.hookRuntime = deps.hookRuntime;
+    this.executionPipeline =
+      deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -171,16 +140,8 @@ export class Agent {
       deps.modelMiddleware,
       deps.providerRegistry,
     );
-    this.planExecutor = new PlanExecutor(
-      config.language,
-      this.rootLogger,
-      this.skillsEnabled,
-      this.skillRegistry,
-    );
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
-
-  // ===== 静态工厂 =====
 
   static async create(
     config: BladeConfig,
@@ -216,8 +177,6 @@ export class Agent {
     }
   }
 
-  // ===== 初始化 =====
-
   public async initialize(): Promise<void> {
     if (this.isDestroyed) {
       throw new Error('Agent has been destroyed and cannot be initialized again.');
@@ -225,10 +184,6 @@ export class Agent {
     if (this.isInitialized) return;
 
     try {
-      this.log('初始化Agent...');
-
-      await this.initializeSystemPrompt();
-
       if (!this.runtimeManaged) {
         await this.registerBuiltinTools();
       }
@@ -264,43 +219,10 @@ export class Agent {
       );
 
       this.isInitialized = true;
-      this.log(
-        `Agent初始化完成，已加载 ${this.executionPipeline.getRegistry().getAll().length} 个工具`,
-      );
     } catch (error) {
-      this.error('Agent初始化失败', error);
+      this.logger.error('Agent初始化失败', error);
       throw error;
     }
-  }
-
-  // ===== 公共聊天接口 =====
-
-  public async chat(
-    message: UserMessageContent,
-    context: AgentExecutionContext,
-    options?: LoopOptions,
-  ): Promise<string> {
-    this.assertInitialized();
-    return this.trackActiveRun(async () => {
-      const prepared = await this.prepareContext(message, context, options);
-      const result = await this.executeWithPlanSupport(prepared);
-
-      if (!result.success) {
-        if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
-        throw new Error(result.error?.message || '执行失败');
-      }
-
-      if (isPlanApprovalResult(result) && context.permissionMode === 'plan') {
-        return this.executePlanApproval(
-          prepared.enhancedMessage,
-          prepared.context,
-          prepared.loopOptions,
-          result,
-        );
-      }
-
-      return result.finalMessage || '';
-    });
   }
 
   public streamChat(
@@ -328,121 +250,17 @@ export class Agent {
     return createdStream;
   }
 
-  public async runAgenticLoop(
-    message: string,
-    context: AgentExecutionContext,
-    options?: LoopOptions,
-  ): Promise<LoopResult> {
-    this.assertInitialized();
-    return this.trackActiveRun(async () => {
-      const loopRunner = this.getLoopRunner();
-      const executionContext: AgentExecutionContext = this.withBackgroundAgentManager({
-        messages: context.messages,
-        userId: context.userId || 'subagent',
-        sessionId: context.sessionId || SessionId(`subagent_${Date.now()}`),
-        snapshot: context.snapshot,
-        signal: context.signal,
-        confirmationHandler: context.confirmationHandler,
-        permissionMode: context.permissionMode,
-        systemPrompt: context.systemPrompt,
-        subagentInfo: context.subagentInfo,
-        backgroundAgentManager: context.backgroundAgentManager,
-        executionFence: context.executionFence,
-        assertExecutionLease: context.assertExecutionLease,
-        runWithExecutionLease: context.runWithExecutionLease,
-      });
-      const loopOptions: LoopOptions = {
-        ...options,
-        signal: this.withLifecycleSignal(options?.signal ?? context.signal),
-      };
-
-      return loopRunner.runLoop(message, executionContext, loopOptions);
-    });
-  }
-
-  public async chatWithSystem(systemPrompt: string, message: string): Promise<string> {
-    this.assertInitialized();
-    return this.trackActiveRun(async () => {
-      const messages: ModelMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message },
-      ];
-      const response = await this.modelManager
-        .getModelService()
-        .chat(messages, undefined, this.lifecycleController.signal);
-      return response.content;
-    });
-  }
-
-  // ===== Getters =====
-
-  public getModelService(): ModelService {
-    this.assertInitialized();
-    return this.modelManager.getModelService();
-  }
-  public getContextManager(): ContextManager | undefined {
-    return this.modelManager.getContextManager();
-  }
-  public getAvailableTools(): Tool[] {
-    return this.executionPipeline ? this.executionPipeline.getRegistry().getAll() : [];
-  }
-  public getToolRegistry(): ToolRegistry {
-    return this.executionPipeline.getRegistry();
-  }
-
-  public getTokenBudgetSnapshot(): TokenBudgetSnapshot | undefined {
-    this.assertInitialized();
-    return this.tokenBudget?.getSnapshot();
-  }
-
-  public getStats(): JsonObject {
-    return {
-      initialized: this.isInitialized,
-      components: {
-        modelService: this.isInitialized ? 'ready' : 'not_loaded',
-        contextManager: this.modelManager.getContextManager() ? 'ready' : 'not_loaded',
-      },
-    };
-  }
-
-  public getToolStats() {
-    const tools = this.getAvailableTools();
-    const toolsByKind = new Map<string, number>();
-    tools.forEach((tool) => {
-      const count = toolsByKind.get(tool.kind) || 0;
-      toolsByKind.set(tool.kind, count + 1);
-    });
-    return {
-      totalTools: tools.length,
-      toolsByKind: Object.fromEntries(toolsByKind),
-      toolNames: tools.map((t) => t.name),
-    };
-  }
-
-  public applyToolWhitelist(whitelist: string[]): void {
+  private applyToolWhitelist(whitelist: string[]): void {
     this.assertInitialized();
     const registry = this.executionPipeline.getRegistry();
     const allTools = registry.getAll();
     const toolsToRemove = allTools.filter((tool) => !whitelist.includes(tool.name));
     for (const tool of toolsToRemove) registry.unregister(tool.name);
-    this.logger.debug(
-      `🔒 Applied tool whitelist: ${whitelist.join(', ')} (removed ${toolsToRemove.length} tools)`,
-    );
-  }
-
-  public clearSkillContext(): void {
-    this.getLoopRunner().clearSkillContext();
   }
 
   public async setModel(model: string): Promise<void> {
     this.assertInitialized();
-    await this.trackActiveRun(() => this.modelManager.setModel(model));
-  }
-
-  /** @deprecated 建议通过 context.systemPrompt 传入 */
-  public async getSystemPrompt(): Promise<string | undefined> {
-    const loopRunner = this.getLoopRunner();
-    return this.trackActiveRun(() => loopRunner.buildSystemPromptOnDemand());
+    await this.modelManager.setModel(model);
   }
 
   public destroy(): Promise<void> {
@@ -459,8 +277,6 @@ export class Agent {
     });
     return destroyPromise;
   }
-
-  // ===== Private Helpers =====
 
   private assertInitialized(): void {
     if (this.isDestroyed) {
@@ -486,21 +302,7 @@ export class Agent {
       : this.lifecycleController.signal;
   }
 
-  private trackActiveRun<T>(operation: () => Promise<T>): Promise<T> {
-    const result = Promise.resolve().then(operation);
-    const completion = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.activeRuns.add(completion);
-    void completion.then(() => {
-      this.activeRuns.delete(completion);
-    });
-    return result;
-  }
-
   private async destroyInternal(): Promise<void> {
-    this.log('销毁Agent...');
     this.isDestroyed = true;
     this.isInitialized = false;
     this.lifecycleController.abort(new AbortError('Agent was destroyed'));
@@ -514,11 +316,10 @@ export class Agent {
           this.activeStreams.delete(stream);
         }
       }),
-      ...this.activeRuns,
     ]);
     const cleanupOperations: Promise<unknown>[] = [];
-    if (this.ownsBackgroundAgentManager) {
-      cleanupOperations.push(this.backgroundAgentManager.sealCancelAndWait());
+    if (this.ownedBackgroundAgentManager) {
+      cleanupOperations.push(this.ownedBackgroundAgentManager.sealCancelAndWait());
     }
     if (this.ownsRuntimeMcpRegistry && this.runtimeMcpRegistry) {
       cleanupOperations.push(this.runtimeMcpRegistry.disconnectAll());
@@ -527,7 +328,6 @@ export class Agent {
 
     this.loopRunner = undefined;
     this.lastPreparedSkillCwd = undefined;
-    this.log('Agent已销毁');
 
     const errors = [...foregroundResults, ...cleanupResults].flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
@@ -541,25 +341,26 @@ export class Agent {
   }
 
   private createDefaultPipeline(middleware: readonly ToolMiddleware[] = []): ExecutionPipeline {
-    const registry = new ToolRegistry();
+    const services: ToolServices = {
+      subagentRegistry: this.subagentRegistry,
+      skillRegistry: this.skillRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      ...(this.runtimeMcpRegistry ? { mcpRegistry: this.runtimeMcpRegistry } : {}),
+    };
+    const registry = new ToolRegistry(services);
+    services.discoverableCatalog = new ToolExposurePlanner(registry);
     const permissions: PermissionsConfig = {
       ...this.config.permissions,
       ...this.runtimeOptions.permissions,
     };
     const permissionMode = this.runtimeOptions.permissionMode ?? PermissionMode.DEFAULT;
-    const permissionHandler =
-      this.runtimeOptions.permissionHandler ??
-      (this.runtimeOptions.canUseTool
-        ? createPermissionHandlerFromCanUseTool(this.runtimeOptions.canUseTool)
-        : undefined);
     return new ExecutionPipeline(registry, {
       permissionConfig: permissions,
       permissionMode,
       maxHistorySize: 1000,
-      permissionHandler,
+      permissionHandler: this.runtimeOptions.permissionHandler,
       toolTimeoutMs: this.config.toolTimeoutMs,
       middleware,
-      toolCatalog: new ToolCatalog(registry),
     });
   }
 
@@ -582,12 +383,6 @@ export class Agent {
     return new TokenBudget(config);
   }
 
-  // ===== 统一预处理 & Plan 路由 =====
-
-  /**
-   * 统一预处理管线：init 检查 → backgroundAgentManager 注入 → 附件 / @mention 处理 → loopOptions 合并。
-   * chat() 和 streamChat() 共用此方法；runAgenticLoop() 因面向子代理，无需此管线。
-   */
   private async prepareContext(
     message: UserMessageContent,
     context: AgentExecutionContext,
@@ -617,28 +412,6 @@ export class Agent {
     return { enhancedMessage, context: ctx, loopOptions };
   }
 
-  /**
-   * 非流式 Plan 路由：plan 模式 → PlanExecutor 委托，否则 → LoopRunner 直行。
-   */
-  private async executeWithPlanSupport(prepared: PreparedContext): Promise<LoopResult> {
-    const { enhancedMessage, context, loopOptions } = prepared;
-    const loopRunner = this.getLoopRunner();
-
-    if (context.permissionMode === 'plan') {
-      return this.planExecutor.runPlanLoop(
-        enhancedMessage,
-        context,
-        loopOptions,
-        (msg, ctx, opts, sp) => loopRunner.executeLoop(msg, ctx, opts, sp),
-      );
-    }
-
-    return loopRunner.runLoop(enhancedMessage, context, loopOptions);
-  }
-
-  /**
-   * 流式 Plan 路由：plan 模式 → PlanExecutor 流 → 可能续接执行流，否则 → LoopRunner 流。
-   */
   private async *streamWithPlanSupport(
     prepared: PreparedContext,
   ): AsyncGenerator<AgentEvent, LoopResult> {
@@ -646,11 +419,12 @@ export class Agent {
     const loopRunner = this.getLoopRunner();
 
     if (context.permissionMode === 'plan') {
-      const planResult = yield* this.planExecutor.runPlanLoopStream(
-        enhancedMessage,
+      const plan = await this.preparePlan(enhancedMessage, context);
+      const planResult = yield* loopRunner.executeWithAgentLoop(
+        plan.message,
         context,
         loopOptions,
-        (msg, ctx, opts, sp) => loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
+        plan.systemPrompt,
       );
 
       if (isPlanApprovalResult(planResult)) {
@@ -667,22 +441,32 @@ export class Agent {
     return yield* loopRunner.runLoopStream(enhancedMessage, context, loopOptions);
   }
 
-  private async executePlanApproval(
-    enhancedMessage: UserMessageContent,
+  private async preparePlan(
+    message: UserMessageContent,
     context: AgentExecutionContext,
-    loopOptions: LoopOptions,
-    result: PlanApprovalResult,
-  ): Promise<string> {
-    const targetMode = result.metadata.targetMode;
-    const planContent = result.metadata.planContent;
-    this.logger.debug(`🔄 Plan 模式已批准，切换到 ${targetMode} 模式并重新执行`);
-
-    const newContext: AgentExecutionContext = { ...context, permissionMode: targetMode };
-    const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
-
-    const newResult = await this.getLoopRunner().runLoop(messageWithPlan, newContext, loopOptions);
-    if (!newResult.success) throw new Error(newResult.error?.message || '执行失败');
-    return newResult.finalMessage || '';
+  ): Promise<{ message: UserMessageContent; systemPrompt: string }> {
+    const { prompt } = await buildSystemPrompt({
+      projectPath: context.snapshot?.cwd,
+      mode: PermissionMode.PLAN,
+      includeEnvironment: context.omitEnvironment !== true,
+      includeSkills: this.skillsEnabled,
+      skillRegistry: this.skillRegistry,
+      language: this.config.language,
+    });
+    if (typeof message === 'string') {
+      return { message: createPlanModeReminder(message), systemPrompt: prompt };
+    }
+    const index = message.findIndex((part) => part.type === 'text');
+    const reminder = createPlanModeReminder(
+      index >= 0 && message[index]?.type === 'text' ? message[index].text : '',
+    );
+    const prepared =
+      index >= 0
+        ? message.map((part, partIndex) =>
+            partIndex === index ? { type: 'text' as const, text: reminder } : part,
+          )
+        : [{ type: 'text' as const, text: reminder }, ...message];
+    return { message: prepared, systemPrompt: prompt };
   }
 
   private injectPlanContent(message: UserMessageContent, planContent?: string): UserMessageContent {
@@ -692,50 +476,13 @@ export class Agent {
     return [...message, { type: 'text', text: planSuffix }];
   }
 
-  private async initializeSystemPrompt(): Promise<void> {
-    try {
-      const projectPath = getContextCwd(this.defaultContext);
-      // Validate prompt sources early without caching; each run rebuilds against current context.
-      const result = await buildSystemPrompt({
-        projectPath,
-        basePrompt: this.runtimeOptions.systemPrompt,
-        append: this.runtimeOptions.appendSystemPrompt,
-        includeEnvironment: false,
-        includeSkills: this.skillsEnabled,
-        skillRegistry: this.skillRegistry,
-        language: this.config.language,
-      });
-      if (result.prompt) {
-        this.log('系统提示配置验证成功');
-        this.logger.debug(
-          `[SystemPrompt] 可用来源: ${result.sources
-            .filter((s) => s.loaded)
-            .map((s) => s.name)
-            .join(', ')}`,
-        );
-      }
-    } catch (error) {
-      this.error('系统提示配置验证失败', error);
-    }
-  }
-
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
-      sessionId: SessionId('default'),
-      configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,
-      subagentRegistry: this.subagentRegistry,
     });
-    if (builtinTools.length === 0) {
-      this.logger.debug('📦 No builtin tools available');
-      return;
-    }
-    this.toolCatalog.registerAll(builtinTools, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    if (builtinTools.length === 0) return;
+    this.executionPipeline.getRegistry().registerAll(builtinTools, BUILTIN_TOOL_SOURCE);
 
     if (this.runtimeManaged || !this.runtimeMcpRegistry) {
       return;
@@ -761,14 +508,15 @@ export class Agent {
       }
     }
 
-    const mcpTools = await this.runtimeMcpRegistry.getAvailableToolsByServerNames(
+    const mcpTools = await this.runtimeMcpRegistry.getAvailableToolEntriesByServerNames(
       Array.from(targetServerNames),
     );
-    for (const tool of mcpTools) {
-      this.toolCatalog.registerMcpTool(tool, {
+    for (const { tool, serverName } of mcpTools) {
+      this.executionPipeline.getRegistry().registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveMcpServerName(tool),
+        sourceId: serverName,
+        serverName,
       });
     }
   }
@@ -776,24 +524,12 @@ export class Agent {
   private async loadSubagents(): Promise<void> {
     this.subagentRegistry.setLogger(this.rootLogger);
     this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
-    if (this.subagentRegistry.getAllNames().length > 0) {
-      this.logger.debug(
-        `📦 Subagents already loaded: ${this.subagentRegistry.getAllNames().join(', ')}`,
-      );
-      return;
-    }
+    if (this.subagentRegistry.getAllNames().length > 0) return;
     try {
-      const loadedCount = this.subagentRegistry.loadFromStandardLocations(
+      this.subagentRegistry.loadFromStandardLocations(
         getContextCwd(this.defaultContext),
         this.config.storageRoot,
       );
-      if (loadedCount > 0) {
-        this.logger.debug(
-          `✅ Loaded ${loadedCount} subagents: ${this.subagentRegistry.getAllNames().join(', ')}`,
-        );
-      } else {
-        this.logger.debug('📦 No subagents configured');
-      }
     } catch (error) {
       this.logger.warn('Failed to load subagents:', error);
     }
@@ -811,13 +547,6 @@ export class Agent {
     try {
       const result = await this.skillRegistry.initialize(cwd ? { cwd } : undefined);
       this.lastPreparedSkillCwd = registryCwd;
-      if (result.skills.length > 0) {
-        this.logger.debug(
-          `✅ Discovered ${result.skills.length} skills: ${result.skills.map((s) => s.name).join(', ')}`,
-        );
-      } else {
-        this.logger.debug('📦 No skills configured');
-      }
       for (const error of result.errors) {
         this.logger.warn(`⚠️  Skill loading error at ${error.path}: ${error.error}`);
       }
@@ -848,13 +577,5 @@ export class Agent {
     }
     const attachmentHandler = this.createAttachmentHandler(context);
     return attachmentHandler ? attachmentHandler.processAtMentionsForContent(message) : message;
-  }
-
-  private log(message: string, data?: unknown): void {
-    this.logger.debug(`[MainAgent] ${message}`, data || '');
-  }
-
-  private error(message: string, error?: unknown): void {
-    this.logger.error(`[MainAgent] ${message}`, error || '');
   }
 }

@@ -1,12 +1,10 @@
 import Type from 'typebox';
-import type { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
+import { requireSessionId } from '../sessionContext.js';
 import { TodoManager } from './TodoManager.js';
 import type { TodoItem, TodoStats } from './types.js';
 import { TodoItemSchema } from './types.js';
@@ -14,29 +12,25 @@ import { TodoItemSchema } from './types.js';
 /**
  * Create TodoWrite tool
  */
-export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: string }) {
-  const { sessionId, configDir } = opts;
+export const todoWriteTool = createTool({
+  name: 'TodoWrite',
+  group: 'task',
+  displayName: 'Todo Write',
+  kind: ToolKind.ReadOnly,
+  sideEffect: 'idempotent',
+  isConcurrencySafe: false,
 
-  return createTool({
-    name: 'TodoWrite',
-    displayName: 'Todo Write',
-    kind: ToolKind.ReadOnly,
-    sideEffect: 'idempotent',
-    isConcurrencySafe: false,
+  schema: Type.Object({
+    todos: Type.Array(TodoItemSchema, {
+      minItems: 1,
+    }),
+  }),
 
-    schema: lazySchema(() =>
-      Type.Object({
-        todos: Type.Array(TodoItemSchema, {
-          minItems: 1,
-        }),
-      }),
-    ),
-
-    // 工具描述（对齐 Claude Code 官方）
-    description: {
-      short:
-        'Use this tool to create and manage a structured task list for your current coding session',
-      long: `Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+  // 工具描述（对齐 Claude Code 官方）
+  description: {
+    short:
+      'Use this tool to create and manage a structured task list for your current coding session',
+    long: `Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
 
 ## When to Use This Tool
@@ -98,69 +92,66 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
 When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
 `,
-    },
+  },
 
-    async *execute(params, context: ExecutionContext) {
-      const { todos } = params;
-      try {
-        const targetSessionId = context.sessionId || sessionId;
-        const manager = TodoManager.getInstance(targetSessionId, configDir);
+  async *execute(params, context) {
+    const { todos } = params;
+    try {
+      const manager = TodoManager.getInstance(
+        requireSessionId(context),
+        context.bladeConfig?.storageRoot,
+      );
 
-        yield {
-          kind: 'progress',
-          message: 'Updating TODO list...',
-          data: { total: todos.length },
-        };
+      yield {
+        kind: 'progress',
+        message: 'Updating TODO list...',
+        data: { total: todos.length },
+      };
 
-        await manager.updateTodos(todos);
+      await manager.updateTodos(todos);
 
-        const sortedTodos = manager.getTodos();
-        const stats = calculateStats(sortedTodos);
+      const sortedTodos = manager.getTodos();
+      const stats = calculateStats(sortedTodos);
 
-        yield {
-          kind: 'progress',
-          message: `TODO list updated (${stats.completed}/${stats.total} completed)`,
-          completed: stats.completed,
-          total: stats.total,
-        };
+      yield {
+        kind: 'progress',
+        message: `TODO list updated (${stats.completed}/${stats.total} completed)`,
+        completed: stats.completed,
+        total: stats.total,
+      };
 
-        return {
-          status: 'success',
-          model: toJsonValue({
-            todos: sortedTodos,
-            stats,
-          }),
-          metadata: {
-            summary: `更新 ${todos.length} 个待办项`,
-            stats,
-          },
-        };
-      } catch (error) {
-        return {
-          status: 'error',
-          model: `Update failed: ${getErrorMessage(error)}`,
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: getErrorMessage(error),
-            details: error,
-          },
-          metadata: {
-            summary: `更新 ${todos.length} 个待办项`,
-          },
-        };
-      }
-    },
+      return {
+        status: 'success',
+        model: toJsonValue({
+          todos: sortedTodos,
+          stats,
+        }),
+        metadata: {
+          summary: `更新 ${todos.length} 个待办项`,
+          stats,
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        model: `Update failed: ${getErrorMessage(error)}`,
+        error: {
+          type: ToolErrorType.EXECUTION_ERROR,
+          message: getErrorMessage(error),
+          details: error,
+        },
+        metadata: {
+          summary: `更新 ${todos.length} 个待办项`,
+        },
+      };
+    }
+  },
 
-    version: '1.0.0',
-    category: 'TODO tools',
-    tags: ['todo', 'task', 'management', 'planning'],
-
-    preparePermissionMatcher: (params) => ({
-      signatureContent: `${params.todos.length} todos`,
-      abstractRule: '*',
-    }),
-  });
-}
+  preparePermissionMatcher: (params) => ({
+    signatureContent: `${params.todos.length} todos`,
+    abstractRule: '*',
+  }),
+});
 
 /**
  * 计算统计信息

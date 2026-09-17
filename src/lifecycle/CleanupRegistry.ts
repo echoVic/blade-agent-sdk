@@ -31,9 +31,7 @@ export function registerCleanup(fn: CleanupFn): CleanupHandle {
   };
 }
 
-export async function gracefulShutdown(
-  options?: GracefulShutdownOptions,
-): Promise<void> {
+export async function gracefulShutdown(options?: GracefulShutdownOptions): Promise<void> {
   if (isShuttingDown) {
     return;
   }

@@ -229,13 +229,11 @@ describe('createAgent', () => {
 
     expectTypeOf<AdvancedOptions>().not.toHaveProperty('permissionMode');
     expectTypeOf<AdvancedOptions>().not.toHaveProperty('permissionHandler');
-    expectTypeOf<AdvancedOptions>().not.toHaveProperty('canUseTool');
     expectTypeOf<Agent>().not.toHaveProperty('stream');
   });
 
   it('does not forward legacy permission fields from untyped callers', async () => {
     const legacyPermissionHandler = vi.fn();
-    const legacyCanUseTool = vi.fn();
     const agent = await sdk.createAgent({
       model: 'gpt-4o-mini',
       apiKey: 'test-key',
@@ -243,14 +241,12 @@ describe('createAgent', () => {
         permission: 'plan',
         permissionMode: sdk.PermissionMode.YOLO,
         permissionHandler: legacyPermissionHandler,
-        canUseTool: legacyCanUseTool,
       } as never,
     });
 
     expect(createRuntimeAgent.mock.calls.at(-1)?.[1]).toMatchObject({
       permissionMode: sdk.PermissionMode.PLAN,
       permissionHandler: undefined,
-      canUseTool: undefined,
     });
 
     await agent.close();

@@ -60,13 +60,23 @@ export function getBuiltinTools(..._args: unknown[]): never {
   return serverOnly('getBuiltinTools');
 }
 
-export function createMemoryReadTool(..._args: unknown[]): never {
-  return serverOnly('createMemoryReadTool');
-}
+export const memoryReadTool = new Proxy(
+  {},
+  {
+    get() {
+      return serverOnly('memoryReadTool');
+    },
+  },
+);
 
-export function createMemoryWriteTool(..._args: unknown[]): never {
-  return serverOnly('createMemoryWriteTool');
-}
+export const memoryWriteTool = new Proxy(
+  {},
+  {
+    get() {
+      return serverOnly('memoryWriteTool');
+    },
+  },
+);
 
 export function createSdkMcpServer(..._args: unknown[]): never {
   return serverOnly('createSdkMcpServer');
@@ -124,30 +134,6 @@ export class AgentWorker {
   }
 }
 
-export class AgentRuntimeOperations {
-  constructor(..._args: unknown[]) {
-    serverOnly('AgentRuntimeOperations');
-  }
-}
-
-export class EffectDispatcher {
-  constructor(..._args: unknown[]) {
-    serverOnly('EffectDispatcher');
-  }
-}
-
-export class RetryableRuntimeEffectError {
-  constructor(..._args: unknown[]) {
-    serverOnly('RetryableRuntimeEffectError');
-  }
-}
-
-export class UncertainRuntimeEffectError {
-  constructor(..._args: unknown[]) {
-    serverOnly('UncertainRuntimeEffectError');
-  }
-}
-
 export class ExecutionHostSessionRunner {
   constructor(..._args: unknown[]) {
     serverOnly('ExecutionHostSessionRunner');
@@ -172,12 +158,6 @@ export class DockerExecutionHost {
   }
 }
 
-export class EphemeralCredentialBroker {
-  constructor(..._args: unknown[]) {
-    serverOnly('EphemeralCredentialBroker');
-  }
-}
-
 export class ExecutionHostError {
   constructor(..._args: unknown[]) {
     serverOnly('ExecutionHostError');
@@ -190,8 +170,7 @@ export class WorkerRuntimeError {
   }
 }
 
-export const RUNTIME_STORE_SCHEMA_VERSION = 3;
-export const RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION = 1;
+export const RUNTIME_STORE_SCHEMA_VERSION = 5;
 export const RUNTIME_SESSION_STATES = [
   'queued',
   'provisioning',
@@ -211,40 +190,8 @@ export function canTransitionRuntimeSession(..._args: unknown[]): never {
   return serverOnly('canTransitionRuntimeSession');
 }
 
-export function effectLease(..._args: unknown[]): never {
-  return serverOnly('effectLease');
-}
-
-export function isTerminalRuntimeEffectStatus(..._args: unknown[]): never {
-  return serverOnly('isTerminalRuntimeEffectStatus');
-}
-
 export class TenantAdmissionController {
   constructor(..._args: unknown[]) {
     serverOnly('TenantAdmissionController');
   }
-}
-
-export class OpenTelemetryAgentServerTelemetry {
-  constructor(..._args: unknown[]) {
-    serverOnly('OpenTelemetryAgentServerTelemetry');
-  }
-}
-
-export class OpenTelemetryAgentWorkerTelemetry {
-  constructor(..._args: unknown[]) {
-    serverOnly('OpenTelemetryAgentWorkerTelemetry');
-  }
-}
-
-export function assertRuntimeStoreConformance(..._args: unknown[]): never {
-  return serverOnly('assertRuntimeStoreConformance');
-}
-
-export function assertAgentServerStoreConformance(..._args: unknown[]): never {
-  return serverOnly('assertAgentServerStoreConformance');
-}
-
-export function assertSessionExecutorReadResult(..._args: unknown[]): never {
-  return serverOnly('assertSessionExecutorReadResult');
 }

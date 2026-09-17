@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Add explicit service and runtime capability declarations to defineTool and inject only declared services.",
+  "zh-CN": "为 defineTool 增加显式服务与 runtime 能力声明，并仅注入工具已声明的服务。"
+}

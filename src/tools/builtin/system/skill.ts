@@ -1,13 +1,12 @@
 import Type from 'typebox';
 import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
-import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/index.js';
+import { isSkillAvailableInContext } from '../../../skills/index.js';
 import type { SkillContent } from '../../../skills/types.js';
 import { HookEvent } from '../../../types/constants.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * Skill tool
@@ -20,18 +19,18 @@ import { lazySchema } from '../../validation/lazySchema.js';
  */
 export const skillTool = createTool({
   name: 'Skill',
+  group: 'system',
   displayName: 'Skill',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
+  services: ['skillRegistry'],
 
-  schema: lazySchema(() =>
-    Type.Object({
-      skill: Type.String({
-        description: 'The skill name. E.g., "commit-message" or "code-review"',
-      }),
-      args: Type.Optional(Type.String({ description: 'Optional arguments for the skill' })),
+  schema: Type.Object({
+    skill: Type.String({
+      description: 'The skill name. E.g., "commit-message" or "code-review"',
     }),
-  ),
+    args: Type.Optional(Type.String({ description: 'Optional arguments for the skill' })),
+  }),
 
   description: {
     short: 'Execute a skill within the main conversation',
@@ -61,9 +60,7 @@ Important:
     const { skill, args } = params;
 
     // The Skill list belongs to the project this execution runs in.
-    const projectDir = getEffectiveProjectDir(context);
-    const registry =
-      context.skillRegistry ?? getSkillRegistry(projectDir ? { cwd: projectDir } : undefined);
+    const registry = context.skillRegistry;
     const skillMetadata = registry.get(skill);
 
     // 检查 skill 是否存在
@@ -213,16 +210,7 @@ function compileRuntimeHooks(content: SkillContent): RuntimeHookRegistration[] |
 }
 
 function isRuntimeHookEvent(event: HookEvent): event is RuntimeHookEvent {
-  return (
-    event === HookEvent.PreToolUse ||
-    event === HookEvent.PostToolUse ||
-    event === HookEvent.PostToolUseFailure ||
-    event === HookEvent.PermissionRequest ||
-    event === HookEvent.UserPromptSubmit ||
-    event === HookEvent.SessionStart ||
-    event === HookEvent.SessionEnd ||
-    event === HookEvent.TaskCompleted
-  );
+  return event === HookEvent.UserPromptSubmit;
 }
 
 /**

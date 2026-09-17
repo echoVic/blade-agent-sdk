@@ -5,17 +5,23 @@ import Type from 'typebox';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../../errors/ConfigError.js';
 import type { HookRuntime } from '../../../hooks/HookRuntime.js';
-import { HookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { PermissionMode } from '../../../types/constants.js';
-import { InputId, PermissionRequestId, SessionId, TurnId } from '../../../types/identifiers.js';
+import {
+  ExecutionLeaseId,
+  FencingToken,
+  InputId,
+  PermissionRequestId,
+  SessionId,
+  TurnId,
+} from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
 import type { PermissionHandler } from '../../../types/permissions.js';
+import { ToolKind } from '../../behavior.js';
 import { readTool } from '../../builtin/file/read.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolRegistry } from '../../registry/ToolRegistry.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
 import type { ToolResult, ToolYield } from '../../types/result.js';
 import { collectToolExecution, completeToolExecution, ToolErrorType } from '../../types/result.js';
 import type { Tool } from '../../types/tool.js';
@@ -24,8 +30,8 @@ import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 import { ExecutionPipeline } from '../ExecutionPipeline.js';
 import { FileLockManager } from '../FileLockManager.js';
 
-function registerTool<TParams>(registry: ToolRegistry, tool: Tool<TParams>): void {
-  registry.register(tool as unknown as Tool);
+function registerTool(registry: ToolRegistry, tool: Tool): void {
+  registry.register(tool, BUILTIN_TOOL_SOURCE);
 }
 
 function deferred<T = void>() {
@@ -61,6 +67,153 @@ describe('ExecutionPipeline', () => {
     expect('getStages' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('addStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('removeStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it('groups execution ownership capabilities under runtime for tool execution', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown;
+    registerTool(
+      registry,
+      createTool({
+        name: 'RuntimeContextTool',
+        displayName: 'Runtime Context Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        requiresRuntime: true,
+        description: { short: 'Observes runtime access' },
+        schema: Type.Object({}),
+        execute: (_params, context) => {
+          observedRuntime = Reflect.get(context, 'runtime');
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      }),
+    );
+
+    const executionFence = {
+      leaseId: ExecutionLeaseId('lease-1'),
+      fencingToken: FencingToken(1),
+    };
+    const assertExecutionLease = vi.fn(async () => {});
+    const runWithExecutionLease = async <T>(operation: () => Promise<T>): Promise<T> => operation();
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+
+    await executePipeline(
+      pipeline,
+      'RuntimeContextTool',
+      {},
+      {
+        runtime: {
+          executionFence,
+          assertExecutionLease,
+          runWithExecutionLease,
+        },
+      },
+    );
+
+    expect(observedRuntime).toEqual({
+      executionFence,
+      assertExecutionLease,
+      runWithExecutionLease,
+    });
+    expect(Object.isFrozen(observedRuntime)).toBe(true);
+  });
+
+  it('provides callable runtime boundaries without a durable execution lease', async () => {
+    const registry = new ToolRegistry();
+    let observedValue: string | undefined;
+    registerTool(
+      registry,
+      createTool({
+        name: 'InMemoryRuntimeTool',
+        displayName: 'In-memory Runtime Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        requiresRuntime: true,
+        description: { short: 'Uses runtime access without a durable lease' },
+        schema: Type.Object({}),
+        execute: async function* (_params, context) {
+          const runtime = Reflect.get(context, 'runtime') as
+            | {
+                assertExecutionLease?: () => Promise<void>;
+                runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+              }
+            | undefined;
+          await runtime?.assertExecutionLease?.();
+          observedValue = await runtime?.runWithExecutionLease?.(async () => 'available');
+          return { status: 'success', model: 'ok' };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'InMemoryRuntimeTool', {}, {});
+
+    expect(observedValue).toBe('available');
+  });
+
+  it('does not expose runtime access to tools that do not request it', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown = 'not-called';
+    registerTool(
+      registry,
+      createTool({
+        name: 'OrdinaryTool',
+        displayName: 'Ordinary Tool',
+        kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
+        description: { short: 'Does not require runtime access' },
+        schema: Type.Object({}),
+        execute: (_params, context) => {
+          observedRuntime = Reflect.get(context, 'runtime');
+          return completeToolExecution({ status: 'success', model: 'ok' });
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'OrdinaryTool', {}, {});
+
+    expect(observedRuntime).toBeUndefined();
+  });
+
+  it('enforces runtime isolation for custom Tool callbacks', async () => {
+    const registry = new ToolRegistry();
+    let observedRuntime: unknown = 'not-called';
+    let observedValidationRuntime: unknown = 'not-called';
+    const baseTool = createTool({
+      name: 'CustomRuntimeTool',
+      displayName: 'Custom Runtime Tool',
+      kind: ToolKind.ReadOnly,
+      sideEffect: 'pure',
+      description: { short: 'Uses a custom invocation implementation' },
+      schema: Type.Object({}),
+      execute: () => completeToolExecution({ status: 'success', model: 'unused' }),
+    });
+    registerTool(registry, {
+      ...baseTool,
+      async validate(params: JsonObject, context: ExecutionContext) {
+        observedValidationRuntime = Reflect.get(context, 'runtime');
+        return { params };
+      },
+      execute(_params: JsonObject, context: ExecutionContext = {}) {
+        observedRuntime = Reflect.get(context, 'runtime');
+        return completeToolExecution({ status: 'success', model: 'ok' });
+      },
+    });
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    await executePipeline(pipeline, 'CustomRuntimeTool', {}, {});
+
+    expect(observedRuntime).toBeUndefined();
+    expect(observedValidationRuntime).toBeUndefined();
   });
 
   it('enforces configured concurrency limits at the execution boundary', async () => {
@@ -408,12 +561,14 @@ describe('ExecutionPipeline', () => {
       {
         permissionMode: PermissionMode.YOLO,
         signal: controller.signal,
-        assertExecutionLease: async () => {
-          leaseCheckCount += 1;
-          if (leaseCheckCount === 3) {
-            leaseCheckStarted.resolve();
-            await releaseLeaseCheck.promise;
-          }
+        runtime: {
+          assertExecutionLease: async () => {
+            leaseCheckCount += 1;
+            if (leaseCheckCount === 3) {
+              leaseCheckStarted.resolve();
+              await releaseLeaseCheck.promise;
+            }
+          },
         },
       },
     );
@@ -787,241 +942,6 @@ describe('ExecutionPipeline', () => {
     });
   });
 
-  it('does not normalize a tool containment failure into a ToolResult', async () => {
-    const registry = new ToolRegistry();
-    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
-
-    registerTool(
-      registry,
-      createTool({
-        name: 'ContainmentFailureTool',
-        displayName: 'Containment Failure Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Containment failure tool' },
-        schema: Type.Object({}),
-        // biome-ignore lint/correctness/useYield: exercises a terminal execution failure
-        async *execute() {
-          throw containmentError;
-        },
-      }),
-    );
-
-    await expect(
-      executePipeline(
-        new ExecutionPipeline(registry, {
-          permissionMode: PermissionMode.YOLO,
-        }),
-        'ContainmentFailureTool',
-        {},
-        { permissionMode: PermissionMode.YOLO },
-      ),
-    ).rejects.toBe(containmentError);
-  });
-
-  it('preserves a late containment failure after cancellation wins the tool race', async () => {
-    vi.useFakeTimers();
-    const registry = new ToolRegistry();
-    const controller = new AbortController();
-    const started = deferred();
-    const releaseCleanup = deferred();
-    const containmentError = new HookProcessContainmentError('Hook process cleanup failed');
-
-    registerTool(
-      registry,
-      createTool({
-        name: 'LateContainmentFailureTool',
-        displayName: 'Late Containment Failure Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Late containment failure tool' },
-        schema: Type.Object({}),
-        async *execute(_params, context) {
-          started.resolve();
-          await new Promise<void>((resolve) => {
-            context.signal?.addEventListener('abort', () => resolve(), {
-              once: true,
-            });
-          });
-          await releaseCleanup.promise;
-          throw containmentError;
-        },
-      }),
-    );
-    const pipeline = new ExecutionPipeline(registry, {
-      permissionMode: PermissionMode.YOLO,
-    });
-    const execution = executePipeline(
-      pipeline,
-      'LateContainmentFailureTool',
-      {},
-      {
-        permissionMode: PermissionMode.YOLO,
-        signal: controller.signal,
-      },
-    );
-    const rejection = expect(execution).rejects.toBe(containmentError);
-
-    await started.promise;
-    controller.abort(new Error('request cancelled'));
-    await vi.advanceTimersByTimeAsync(0);
-    releaseCleanup.resolve();
-
-    await rejection;
-    expect(pipeline.getTerminalCleanupFailure()).toBe(containmentError);
-  });
-
-  it('quarantines the pipeline after a late permission containment failure', async () => {
-    const registry = new ToolRegistry();
-    const controller = new AbortController();
-    const started = deferred();
-    const releaseCleanup = Promise.withResolvers<void>();
-    const containmentError = new HookProcessContainmentError(
-      'Permission Hook process cleanup failed',
-    );
-    const executeSpy = vi.fn(() =>
-      completeToolExecution({
-        status: 'success',
-        model: 'unexpected',
-      }),
-    );
-    registerTool(
-      registry,
-      createTool({
-        name: 'PermissionContainmentFailureTool',
-        displayName: 'Permission Containment Failure Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Permission containment failure tool' },
-        schema: Type.Object({}),
-        execute: executeSpy,
-      }),
-    );
-    const permissionHandler = vi.fn(async () => {
-      started.resolve();
-      await releaseCleanup.promise;
-      throw containmentError;
-    });
-    const pipeline = new ExecutionPipeline(registry, {
-      permissionMode: PermissionMode.YOLO,
-      permissionHandler,
-    });
-    const firstExecution = executePipeline(
-      pipeline,
-      'PermissionContainmentFailureTool',
-      {},
-      {
-        permissionMode: PermissionMode.YOLO,
-        signal: controller.signal,
-      },
-    );
-
-    await started.promise;
-    controller.abort(new Error('request cancelled'));
-    await expect(firstExecution).resolves.toMatchObject({
-      status: 'error',
-      error: { message: 'request cancelled' },
-    });
-    releaseCleanup.reject(containmentError);
-    await vi.waitFor(() => {
-      expect(pipeline.getTerminalCleanupFailure()).toBe(containmentError);
-    });
-
-    await expect(
-      executePipeline(
-        pipeline,
-        'PermissionContainmentFailureTool',
-        {},
-        { permissionMode: PermissionMode.YOLO },
-      ),
-    ).rejects.toBe(containmentError);
-    expect(executeSpy).not.toHaveBeenCalled();
-  });
-
-  it('blocks an in-flight tool before its side effect after quarantine', async () => {
-    const registry = new ToolRegistry();
-    const firstPermissionStarted = deferred();
-    const secondExecutionReady = deferred();
-    const releaseFirstPermission = deferred();
-    const releaseSecondExecution = deferred();
-    const firstController = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Permission Hook process cleanup failed',
-    );
-    const executeSpy = vi.fn(() =>
-      completeToolExecution({
-        status: 'success',
-        model: 'unexpected',
-      }),
-    );
-    registerTool(
-      registry,
-      createTool({
-        name: 'ConcurrentContainmentTool',
-        displayName: 'Concurrent Containment Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Concurrent containment tool' },
-        schema: Type.Object({ id: Type.String() }),
-        execute: executeSpy,
-      }),
-    );
-    const permissionHandler = vi.fn(async (request) => {
-      if (request.input.id === 'first') {
-        firstPermissionStarted.resolve();
-        await releaseFirstPermission.promise;
-        throw containmentError;
-      }
-      return { behavior: 'allow' as const };
-    });
-    const pipeline = new ExecutionPipeline(registry, {
-      permissionMode: PermissionMode.YOLO,
-      permissionHandler,
-      concurrencyLimits: { execute: 2 },
-    });
-    const firstExecution = executePipeline(
-      pipeline,
-      'ConcurrentContainmentTool',
-      { id: 'first' },
-      {
-        permissionMode: PermissionMode.YOLO,
-        signal: firstController.signal,
-      },
-    );
-    await firstPermissionStarted.promise;
-
-    const secondExecution = executePipeline(
-      pipeline,
-      'ConcurrentContainmentTool',
-      { id: 'second' },
-      {
-        permissionMode: PermissionMode.YOLO,
-        toolInvocationLifecycle: {
-          onExecutionStarted: async () => {
-            secondExecutionReady.resolve();
-            await releaseSecondExecution.promise;
-          },
-        },
-      },
-    );
-    const secondRejection = expect(secondExecution).rejects.toBe(containmentError);
-    await secondExecutionReady.promise;
-
-    firstController.abort(new Error('request cancelled'));
-    await expect(firstExecution).resolves.toMatchObject({
-      status: 'error',
-      error: { message: 'request cancelled' },
-    });
-    releaseFirstPermission.resolve();
-    await vi.waitFor(() => {
-      expect(pipeline.getTerminalCleanupFailure()).toBe(containmentError);
-    });
-    releaseSecondExecution.resolve();
-
-    await secondRejection;
-    expect(executeSpy).not.toHaveBeenCalled();
-  });
-
   it('uses resolved readonly behavior for plan-mode execution', async () => {
     const registry = new ToolRegistry();
 
@@ -1036,13 +956,16 @@ describe('ExecutionPipeline', () => {
         schema: Type.Object({
           mode: Type.Enum(['read', 'write']),
         }),
-        resolveBehavior: ({ mode }) => ({
-          kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
-          sideEffect: mode === 'read' ? 'pure' : 'idempotent',
-          isReadOnly: mode === 'read',
-          isConcurrencySafe: mode === 'read',
-          isDestructive: mode === 'write',
-        }),
+        resolveBehavior: (params) => {
+          const mode = params?.mode ?? 'write';
+          return {
+            kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
+            sideEffect: mode === 'read' ? 'pure' : 'idempotent',
+            isReadOnly: mode === 'read',
+            isConcurrencySafe: mode === 'read',
+            isDestructive: mode === 'write',
+          };
+        },
         execute: ({ mode }) =>
           completeToolExecution({
             status: 'success',
@@ -1166,7 +1089,6 @@ describe('ExecutionPipeline', () => {
     'permissionRuleHandler',
     'pathSafetyHandler',
     'permissionHandler',
-    'canUseTool',
     'confirmationHandler',
   ] as const) {
     it(`cancels and tracks an uncooperative ${boundary} callback`, async () => {
@@ -1229,15 +1151,9 @@ describe('ExecutionPipeline', () => {
                 behavior: 'allow' as const,
               })) satisfies PermissionHandler)
           : undefined;
-      const canUseTool =
-        boundary === 'canUseTool'
-          ? async (_toolName: string, _input: JsonObject, options: { signal: AbortSignal }) =>
-              waitForRelease(options.signal, { behavior: 'allow' as const })
-          : undefined;
       const pipeline = new ExecutionPipeline(registry, {
         permissionMode: PermissionMode.YOLO,
         permissionHandler,
-        canUseTool,
       });
       let cleanupWasVisibleToEarlierAbortListener = false;
       controller.signal.addEventListener(
@@ -1381,55 +1297,6 @@ describe('ExecutionPipeline', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
-  it('uses permissionHandler instead of legacy canUseTool when both are configured', async () => {
-    const registry = new ToolRegistry();
-    const executeSpy = vi.fn(() =>
-      completeToolExecution({
-        status: 'success',
-        model: 'unexpected',
-      }),
-    );
-    registerTool(
-      registry,
-      createTool({
-        name: 'PermissionPrecedenceTool',
-        displayName: 'Permission Precedence Tool',
-        kind: ToolKind.Execute,
-        sideEffect: 'non_idempotent',
-        description: { short: 'Permission precedence tool' },
-        schema: Type.Object({}),
-        execute: executeSpy,
-      }),
-    );
-    const permissionHandler = vi.fn(async () => ({
-      behavior: 'deny' as const,
-      message: 'denied by permissionHandler',
-    }));
-    const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
-    const pipeline = new ExecutionPipeline(registry, {
-      permissionMode: PermissionMode.YOLO,
-      permissionHandler,
-      canUseTool,
-    });
-
-    const result = await executePipeline(
-      pipeline,
-      'PermissionPrecedenceTool',
-      {},
-      { permissionMode: PermissionMode.YOLO },
-    );
-
-    expect(result).toMatchObject({
-      status: 'error',
-      error: {
-        message: 'denied by permissionHandler',
-      },
-    });
-    expect(permissionHandler).toHaveBeenCalledOnce();
-    expect(canUseTool).not.toHaveBeenCalled();
-    expect(executeSpy).not.toHaveBeenCalled();
-  });
-
   it('rejects permission-handler updates that change authorized filesystem paths', async () => {
     const registry = new ToolRegistry();
     const executeSpy = vi.fn(({ file_path }: { file_path: string }) =>
@@ -1505,13 +1372,16 @@ describe('ExecutionPipeline', () => {
           mode: Type.Enum(['read', 'write']),
           value: Type.String(),
         }),
-        resolveBehavior: ({ mode }) => ({
-          kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Execute,
-          sideEffect: mode === 'read' ? 'pure' : 'non_idempotent',
-          isReadOnly: mode === 'read',
-          isConcurrencySafe: mode === 'read',
-          isDestructive: mode === 'write',
-        }),
+        resolveBehavior: (params) => {
+          const mode = params?.mode ?? 'write';
+          return {
+            kind: mode === 'read' ? ToolKind.ReadOnly : ToolKind.Execute,
+            sideEffect: mode === 'read' ? 'pure' : 'non_idempotent',
+            isReadOnly: mode === 'read',
+            isConcurrencySafe: mode === 'read',
+            isDestructive: mode === 'write',
+          };
+        },
         execute: executeSpy,
       }),
     );
@@ -1544,6 +1414,62 @@ describe('ExecutionPipeline', () => {
       }),
     );
     expect(executeSpy).toHaveBeenCalledWith({ mode: 'write', value: 'patched' }, expect.anything());
+  });
+
+  it('re-prepares permission updates without mutating the previous invocation', async () => {
+    const registry = new ToolRegistry();
+    let checkedParams: { value: string } | undefined;
+    let permissionParams: JsonObject | undefined;
+    const executeSpy = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }),
+    );
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'ImmutableInvocationTool',
+        displayName: 'Immutable Invocation Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Immutable invocation tool' },
+        schema: Type.Object({
+          value: Type.String(),
+        }),
+        checkPermissions: (params) => {
+          checkedParams = params;
+          return { behavior: 'allow' };
+        },
+        execute: executeSpy,
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async (request) => {
+        permissionParams = request.input;
+        return {
+          behavior: 'allow',
+          updatedInput: { value: 'patched' },
+        };
+      },
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'ImmutableInvocationTool',
+      { value: 'original' },
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    expect(result).toMatchObject({ status: 'success', model: 'patched' });
+    expect(checkedParams).toEqual({ value: 'original' });
+    expect(permissionParams).toEqual({ value: 'original' });
+    expect(Object.isFrozen(permissionParams)).toBe(true);
+    expect(executeSpy).toHaveBeenCalledWith({ value: 'patched' }, expect.anything());
+    expect(executeSpy.mock.calls[0]?.[0]).not.toBe(permissionParams);
   });
 
   it('uses preparePermissionMatcher to derive permission signatures after input updates', async () => {
@@ -2362,7 +2288,7 @@ describe('ExecutionPipeline', () => {
         {},
         {
           permissionMode: PermissionMode.YOLO,
-          assertExecutionLease,
+          runtime: { assertExecutionLease },
           toolInvocationLifecycle: {
             onExecutionStarted: async () => {},
           },
@@ -2409,7 +2335,7 @@ describe('ExecutionPipeline', () => {
         {},
         {
           permissionMode: PermissionMode.YOLO,
-          assertExecutionLease,
+          runtime: { assertExecutionLease },
           toolInvocationLifecycle: { onExecutionStarted },
         },
       ),

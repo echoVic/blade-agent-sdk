@@ -10,8 +10,8 @@ import {
 import type { DurableExecutionLease } from './DurableExecutionLease.js';
 import {
   DurableExecutionLeaseError,
+  type DurableExecutionLeaseStore,
   DurableExecutionLeaseTimeoutError,
-  isDurableExecutionLeaseStore,
 } from './DurableExecutionLeaseStore.js';
 import {
   type DurableSessionProjection,
@@ -63,6 +63,8 @@ export interface DurableSessionJournalOptions {
   readonly pageSize?: number;
   readonly maxConflictRetries?: number;
   readonly executionLease?: DurableExecutionLease;
+  /** Explicit lease-state port used to reject unfenced access after fencing begins. */
+  readonly executionLeaseStore?: DurableExecutionLeaseStore;
   /** Maximum wall-clock duration of one Store call. Defaults to 15000ms. */
   readonly storeTimeoutMs?: number;
 }
@@ -235,8 +237,9 @@ export class DurableSessionJournal {
         `Execution lease does not belong to durable Session ${sessionId}`,
       );
     }
+    const executionLeaseStore = options.executionLeaseStore;
     const requiresExecutionLease =
-      !options.executionLease && isDurableExecutionLeaseStore(store)
+      !options.executionLease && executionLeaseStore
         ? await awaitDurableStoreOperation(
             {
               timeoutMs: storeTimeoutMs,
@@ -245,7 +248,7 @@ export class DurableSessionJournal {
                   sessionId,
                 }),
             },
-            (signal) => store.requiresExecutionLease(sessionId, { signal }),
+            (signal) => executionLeaseStore.requiresExecutionLease(sessionId, { signal }),
           )
         : false;
     if (requiresExecutionLease) {
@@ -284,6 +287,11 @@ export class DurableSessionJournal {
   getCommandEvents(commandId: CommandId): readonly DurableEventEnvelope[] | null {
     const events = this.commandEvents.get(commandId);
     return events ? structuredClone(events) : null;
+  }
+
+  replay(commandId: CommandId): DurableCommandCommitResult | null {
+    const events = this.commandEvents.get(commandId);
+    return events ? resultFromExisting('replayed', commandId, events) : null;
   }
 
   refresh(): Promise<DurableSessionProjection> {

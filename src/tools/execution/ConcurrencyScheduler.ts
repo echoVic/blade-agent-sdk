@@ -16,7 +16,7 @@
  */
 
 import { getAbortSignalReason } from '../../utils/abortPromise.js';
-import { ToolKind } from '../types/kind.js';
+import { ToolKind } from '../behavior.js';
 
 export interface ConcurrencyLease {
   release(): void;
@@ -52,7 +52,10 @@ const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
 export class ConcurrencyQueueFullError extends Error {
   readonly code = 'TOOL_CONCURRENCY_QUEUE_FULL';
 
-  constructor(readonly kind: ToolKind, readonly maxQueued: number) {
+  constructor(
+    readonly kind: ToolKind,
+    readonly maxQueued: number,
+  ) {
     super(`Tool concurrency queue for ${kind} is full (${maxQueued} pending requests)`);
     this.name = 'ConcurrencyQueueFullError';
   }

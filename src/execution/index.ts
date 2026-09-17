@@ -1,16 +1,5 @@
 export type {
-  CredentialBroker,
-  CredentialIssueContext,
-  CredentialIssuer,
-  CredentialLease,
-  CredentialRequest,
-  IssuedCredential,
-} from './CredentialBroker.js';
-export { EphemeralCredentialBroker } from './CredentialBroker.js';
-export type {
   ExecutionCheckpoint,
-  ExecutionEgressController,
-  ExecutionEgressLease,
   ExecutionExecRequest,
   ExecutionExecResult,
   ExecutionHandle,

@@ -1,10 +1,6 @@
 import { PermissionMode } from '../../types/constants.js';
-import type {
-  ToolCatalogEntry,
-  ToolCatalogReadView,
-  ToolCatalogSourcePolicy,
-} from '../catalog/ToolCatalog.js';
-import { resolveToolBehaviorHint } from '../types/kind.js';
+import type { RegisteredTool, ToolRegistry, ToolSourcePolicy } from '../registry/ToolRegistry.js';
+import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool, ToolExposureMode } from '../types/tool.js';
 
 export interface RuntimeToolPolicySnapshot {
@@ -12,12 +8,19 @@ export interface RuntimeToolPolicySnapshot {
   deny?: string[];
 }
 
-export interface ToolDiscoveryEntry {
+export interface DiscoverableToolInfo {
   name: string;
-  displayName: string;
+  title: string;
   description: string;
-  mode: Extract<ToolExposureMode, 'deferred' | 'discoverable-only'>;
+  exposureMode: Extract<ToolExposureMode, 'deferred' | 'discoverable-only'>;
   discoveryHint?: string;
+}
+
+export interface DiscoverableCatalogView {
+  listDiscoverable(input: {
+    query: string;
+    permissionMode?: PermissionMode;
+  }): readonly DiscoverableToolInfo[];
 }
 
 export interface ToolExposure {
@@ -29,39 +32,35 @@ export interface ToolExposure {
 export interface ToolExposurePlan {
   declarations: FunctionDeclaration[];
   exposures: ToolExposure[];
-  discoverableTools: ToolDiscoveryEntry[];
+  discoverableTools: DiscoverableToolInfo[];
 }
 
 export interface ToolExposurePlannerOptions {
   permissionMode?: PermissionMode;
   runtimeToolPolicy?: RuntimeToolPolicySnapshot;
   discoveredTools?: Iterable<string>;
-  sourcePolicy?: ToolCatalogSourcePolicy;
+  sourcePolicy?: ToolSourcePolicy;
 }
 
-export class ToolExposurePlanner {
-  constructor(private readonly catalog: ToolCatalogReadView) {}
+export class ToolExposurePlanner implements DiscoverableCatalogView {
+  constructor(
+    private readonly registry: Pick<ToolRegistry, 'entries'>,
+    private readonly getDiscoveredTools: () => ReadonlySet<string> = () => new Set(),
+  ) {}
 
   plan(options: ToolExposurePlannerOptions = {}): ToolExposurePlan {
-    const catalogEntries = this.catalog.getEntries?.();
-    const allTools = catalogEntries?.map((entry) => entry.tool) ?? this.catalog.getAll();
-    const entryByName = new Map(catalogEntries?.map((entry) => [entry.tool.name, entry]) ?? []);
-
-    if (allTools.length === 0 && this.catalog.getFunctionDeclarationsByMode) {
-      return this.planFromDeclarations(options);
-    }
-
     const declarations: FunctionDeclaration[] = [];
     const exposures: ToolExposure[] = [];
-    const discoverableTools: ToolDiscoveryEntry[] = [];
+    const discoverableTools: DiscoverableToolInfo[] = [];
     const discovered = new Set(options.discoveredTools ?? []);
     const deniedTools = new Set(options.runtimeToolPolicy?.deny ?? []);
     const allowSelectors = options.runtimeToolPolicy?.allow;
 
-    for (const tool of allTools) {
+    for (const entry of this.registry.entries()) {
+      const { tool } = entry;
       const blockedReason = this.getBlockedReason(
         tool,
-        entryByName.get(tool.name),
+        entry,
         options.permissionMode,
         allowSelectors,
         deniedTools,
@@ -83,15 +82,15 @@ export class ToolExposurePlanner {
       });
 
       if (exposureMode === 'eager') {
-        declarations.push(tool.getFunctionDeclaration());
+        declarations.push(tool.declaration);
         continue;
       }
 
       discoverableTools.push({
         name: tool.name,
-        displayName: tool.displayName,
+        title: tool.title,
         description: tool.description.short,
-        mode: exposureMode,
+        exposureMode,
         discoveryHint: tool.exposure.discoveryHint || undefined,
       });
     }
@@ -103,43 +102,37 @@ export class ToolExposurePlanner {
     };
   }
 
-  private planFromDeclarations(options: ToolExposurePlannerOptions): ToolExposurePlan {
-    const source = this.catalog.getFunctionDeclarationsByMode?.(options.permissionMode) ?? [];
-    const deniedTools = new Set(options.runtimeToolPolicy?.deny ?? []);
-    const allowSelectors = options.runtimeToolPolicy?.allow;
-    const declarations = source.filter((tool) => {
-      if (deniedTools.has(tool.name)) {
-        return false;
-      }
-      if (!allowSelectors || allowSelectors.length === 0) {
-        return true;
-      }
-      return allowSelectors.some((selector) => matchesToolSelector(selector, tool.name));
-    });
+  listDiscoverable(input: {
+    query: string;
+    permissionMode?: PermissionMode;
+  }): readonly DiscoverableToolInfo[] {
+    const eligible = new Map(
+      this.plan({
+        permissionMode: input.permissionMode,
+        discoveredTools: this.getDiscoveredTools(),
+      }).discoverableTools.map((tool) => [tool.name, tool]),
+    );
 
-    return {
-      declarations,
-      exposures: declarations.map((tool) => ({
-        toolName: tool.name,
-        mode: 'eager' as const,
-      })),
-      discoverableTools: [],
-    };
+    const tools = this.registry.entries().map((entry) => entry.tool);
+    return searchTools(tools, input.query).flatMap((tool) => {
+      const entry = eligible.get(tool.name);
+      return entry ? [entry] : [];
+    });
   }
 
   private getBlockedReason(
     tool: Tool,
-    entry: ToolCatalogEntry | undefined,
+    entry: RegisteredTool,
     permissionMode: PermissionMode | undefined,
     allowSelectors: string[] | undefined,
     deniedTools: Set<string>,
-    sourcePolicy: ToolCatalogSourcePolicy | undefined,
+    sourcePolicy: ToolSourcePolicy | undefined,
   ): string | undefined {
-    if (permissionMode === PermissionMode.PLAN && !resolveToolBehaviorHint(tool).isReadOnly) {
+    if (permissionMode === PermissionMode.PLAN && !tool.staticBehavior.isReadOnly) {
       return 'plan-mode-hidden';
     }
 
-    if (entry && sourcePolicy) {
+    if (sourcePolicy) {
       if (
         sourcePolicy.allowedSources &&
         sourcePolicy.allowedSources.length > 0 &&

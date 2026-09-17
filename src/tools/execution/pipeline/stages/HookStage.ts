@@ -4,12 +4,7 @@ import type { JsonObject } from '../../../../types/json.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import type { ToolResult } from '../../../types/result.js';
 import { createAbortedResult, createHookFailureResult } from '../results.js';
-import { addConfirmationReason, type PipelineExecutionState } from '../state.js';
-
-export interface PostExecutionHookOptions {
-  isTimeout?: boolean;
-  isInterrupt?: boolean;
-}
+import type { PipelineExecutionState } from '../state.js';
 
 /**
  * PreToolUse / PostToolUse / PostToolUseFailure hook boundary.
@@ -28,12 +23,14 @@ export class HookStage {
 
     const hookResult = await this.hookRuntime.applyPreToolUse(state.toolName, state.params, {
       toolUseId: state.hookToolUseId ?? ToolUseId(`tool_use_${executionId}`),
-      permissionMode: state.context.permissionMode,
       abortSignal: state.context.signal,
     });
 
     state.hookToolUseId = hookResult.toolUseId;
-    Object.assign(state.params, hookResult.updatedInput);
+    state.params = {
+      ...state.params,
+      ...hookResult.updatedInput,
+    };
 
     if (hookResult.action === 'abort') {
       state.result = createAbortedResult(
@@ -50,26 +47,19 @@ export class HookStage {
       };
       return;
     }
-
-    if (hookResult.needsConfirmation) {
-      state.needsConfirmation = true;
-      addConfirmationReason(state, 'hook', hookResult.reason);
-    }
   }
 
   async postExecution(
     state: PipelineExecutionState,
     executionId: string,
     result: ToolResult,
-    options: PostExecutionHookOptions = {},
   ): Promise<ToolResult> {
     return await this.postExecutionFor(
       state.toolName,
-      state.params,
+      state.invocation?.params ?? state.params,
       state.context,
       result,
       executionId,
-      options,
     );
   }
 
@@ -83,7 +73,6 @@ export class HookStage {
     context: ExecutionContext,
     result: ToolResult,
     executionId: string,
-    options: PostExecutionHookOptions = {},
   ): Promise<ToolResult> {
     if (!this.hookRuntime || context.signal?.aborted) {
       return result;
@@ -94,15 +83,10 @@ export class HookStage {
       result.status === 'success'
         ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
             toolUseId,
-            permissionMode: context.permissionMode,
             abortSignal: context.signal,
           })
         : await this.hookRuntime.applyPostToolUseFailure(toolName, params, result, {
             toolUseId,
-            permissionMode: context.permissionMode,
-            errorType: result.error?.type,
-            isInterrupt: options.isInterrupt ?? false,
-            isTimeout: options.isTimeout ?? false,
             abortSignal: context.signal,
           });
 

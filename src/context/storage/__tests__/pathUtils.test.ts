@@ -1,86 +1,29 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SessionId } from '../../../types/identifiers.js';
-import {
-  getProjectStoragePath,
-  getSessionFilePath,
-  getSessionFilePathFromStorageRoot,
-  unescapeProjectPath,
-} from '../pathUtils.js';
+import { getSessionFilePathFromStorageRoot, normalizeSessionStorageRoot } from '../pathUtils.js';
 
-const STORAGE_ROOT = '/tmp/test-storage';
-
-describe('pathUtils', () => {
-  describe('unescapeProjectPath', () => {
-    it('should unescape Unix-style path', () => {
-      const result = unescapeProjectPath('-Users-john-projects-my-app');
-      expect(result).toBe('/Users/john/projects/my/app');
-    });
-
-    it('should unescape Windows-style path', () => {
-      const result = unescapeProjectPath('C_-Users-HP-project');
-      expect(result).toBe('C:/Users/HP/project');
-    });
-
-    it('should handle path without leading dash', () => {
-      const result = unescapeProjectPath('relative-path');
-      expect(result).toBe('relative/path');
-    });
+describe('session storage paths', () => {
+  it('normalizes a storage root once', () => {
+    expect(normalizeSessionStorageRoot('/tmp/blade')).toBe(join('/tmp/blade', 'sessions'));
+    expect(normalizeSessionStorageRoot('/tmp/blade/sessions')).toBe('/tmp/blade/sessions');
   });
 
-  describe('getProjectStoragePath', () => {
-    it('should return path under storageRoot/projects/', () => {
-      const result = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
-      expect(result).toContain('projects');
-      expect(result.startsWith(STORAGE_ROOT)).toBe(true);
-    });
-
-    it('should return consistent path for same input', () => {
-      const result1 = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
-      const result2 = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
-      expect(result1).toBe(result2);
-    });
+  it.each([
+    '',
+    '../escape',
+    'nested/session',
+    'nested\\session',
+    'nul\0session',
+  ])('rejects unsafe Session ID %j', (value) => {
+    expect(() => getSessionFilePathFromStorageRoot('/tmp/blade', SessionId(value))).toThrow(
+      TypeError,
+    );
   });
 
-  describe('getSessionFilePath', () => {
-    it('should return .jsonl file path', () => {
-      const result = getSessionFilePath(
-        STORAGE_ROOT,
-        '/Users/john/project',
-        SessionId('session-123'),
-      );
-      expect(result).toContain('session-123.jsonl');
-    });
-
-    it('should be under project storage path', () => {
-      const projectPath = '/Users/john/project';
-      const storagePath = getProjectStoragePath(STORAGE_ROOT, projectPath);
-      const sessionPath = getSessionFilePath(STORAGE_ROOT, projectPath, SessionId('session-123'));
-      expect(sessionPath.startsWith(storagePath)).toBe(true);
-    });
-
-    it.each([
-      '',
-      '../outside',
-      '..\\outside',
-      'nested/session',
-      'nested\\session',
-      'nul\0byte',
-    ])('rejects unsafe Session ID %j', (sessionId) => {
-      expect(() =>
-        getSessionFilePath(STORAGE_ROOT, '/Users/john/project', SessionId(sessionId)),
-      ).toThrow(/path-segment-safe/);
-      expect(() => getSessionFilePathFromStorageRoot(STORAGE_ROOT, SessionId(sessionId))).toThrow(
-        /path-segment-safe/,
-      );
-    });
-
-    it('preserves safe opaque Session IDs', () => {
-      const sessionId = SessionId('session.v2_custom-123');
-
-      expect(getSessionFilePathFromStorageRoot(STORAGE_ROOT, sessionId)).toBe(
-        join(STORAGE_ROOT, 'sessions', `${sessionId}.jsonl`),
-      );
-    });
+  it('resolves a safe Session file', () => {
+    expect(getSessionFilePathFromStorageRoot('/tmp/blade', SessionId('session-1'))).toBe(
+      join('/tmp/blade', 'sessions', 'session-1.jsonl'),
+    );
   });
 });

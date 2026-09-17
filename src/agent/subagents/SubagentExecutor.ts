@@ -1,32 +1,18 @@
 import { nanoid } from 'nanoid';
 import type { BladeConfig } from '../config.js';
-import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
+import type { IBackgroundAgentManager } from '../types.js';
 import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';
 
-/**
- * Subagent 执行器
- *
- * 职责：
- * - 创建子 Agent 实例
- * - 配置工具白名单
- * - 执行任务并返回结果
- * - 将子代理对话流写入独立 JSONL 文件
- */
 export class SubagentExecutor {
   constructor(
     private config: SubagentConfig,
     private bladeConfig: BladeConfig,
     private readonly subagentRegistry?: SubagentRegistry,
-    private readonly backgroundAgentManager?: BackgroundAgentManager,
+    private readonly backgroundAgentManager?: IBackgroundAgentManager,
   ) {}
 
-  /**
-   * 执行 subagent 任务
-   * 无状态设计：systemPrompt 通过 AgentExecutionContext 传入
-   * 子代理对话流写入独立 JSONL 文件 (agent_<id>.jsonl)
-   */
   async execute(context: SubagentContext): Promise<SubagentResult> {
     const startTime = Date.now();
     const agentId = context.subagentSessionId ?? nanoid();

@@ -57,21 +57,16 @@ describe('Compaction file boundary', () => {
     const outsideFile = join(outsideRoot, 'outside.json');
     await writeFile(outsideFile, '{"token":"must-not-leak"}');
 
-    await compact(
-      [{ role: 'user', content: `Inspect ${outsideFile}` }],
-      {
-        trigger: 'auto',
-        modelName: 'gpt-5',
-        maxContextTokens: 8_192,
-        apiKey: 'test-key',
-        filesystemRoots: [workspaceRoot],
-        projectDir: workspaceRoot,
-      },
-    );
+    await compact([{ role: 'user', content: `Inspect ${outsideFile}` }], {
+      trigger: 'auto',
+      modelName: 'gpt-5',
+      maxContextTokens: 8_192,
+      apiKey: 'test-key',
+      filesystemRoots: [workspaceRoot],
+      projectDir: workspaceRoot,
+    });
 
-    const prompts = mockSideQuery.mock.calls.map((call) =>
-      JSON.stringify(call[0]),
-    );
+    const prompts = mockSideQuery.mock.calls.map((call) => JSON.stringify(call[0]));
     expect(prompts.join('\n')).not.toContain('must-not-leak');
   });
 
@@ -79,21 +74,16 @@ describe('Compaction file boundary', () => {
     const allowedFile = join(workspaceRoot, 'context.ts');
     await writeFile(allowedFile, 'const allowedMarker = true;');
 
-    await compact(
-      [{ role: 'user', content: `Inspect ${allowedFile}` }],
-      {
-        trigger: 'auto',
-        modelName: 'gpt-5',
-        maxContextTokens: 8_192,
-        apiKey: 'test-key',
-        filesystemRoots: [workspaceRoot],
-        projectDir: workspaceRoot,
-      },
-    );
+    await compact([{ role: 'user', content: `Inspect ${allowedFile}` }], {
+      trigger: 'auto',
+      modelName: 'gpt-5',
+      maxContextTokens: 8_192,
+      apiKey: 'test-key',
+      filesystemRoots: [workspaceRoot],
+      projectDir: workspaceRoot,
+    });
 
-    const prompts = mockSideQuery.mock.calls.map((call) =>
-      JSON.stringify(call[0]),
-    );
+    const prompts = mockSideQuery.mock.calls.map((call) => JSON.stringify(call[0]));
     expect(prompts.join('\n')).toContain('const allowedMarker = true;');
   });
 });

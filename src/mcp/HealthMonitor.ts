@@ -165,7 +165,7 @@ export class HealthMonitor extends EventEmitter {
 
       console.warn(
         `[HealthMonitor] 健康检查失败（${this.consecutiveFailures}/${this.config.failureThreshold}）:`,
-        getErrorMessage(error)
+        getErrorMessage(error),
       );
 
       let status: HealthStatus;

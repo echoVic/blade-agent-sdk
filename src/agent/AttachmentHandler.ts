@@ -5,157 +5,71 @@ import type { Attachment } from '../prompts/processors/types.js';
 import type { UserMessageContent } from './types.js';
 
 export class AttachmentHandler {
-  private attachmentCollector: AttachmentCollector;
+  private readonly collector: AttachmentCollector;
   private readonly logger: InternalLogger;
 
-  constructor(cwd: string, logger?: InternalLogger) {
-    this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
-    this.attachmentCollector = new AttachmentCollector(
-      {
-        cwd,
-        maxFileSize: 1024 * 1024,
-        maxLines: 2000,
-        maxTokens: 32000,
-      },
+  constructor(cwd: string, logger: InternalLogger = NOOP_LOGGER) {
+    this.logger = logger.child(LogCategory.AGENT);
+    this.collector = new AttachmentCollector(
+      { cwd, maxFileSize: 1024 * 1024, maxLines: 2000, maxTokens: 32000 },
       this.logger.child(LogCategory.PROMPTS),
     );
   }
 
   async processAtMentionsForContent(content: UserMessageContent): Promise<UserMessageContent> {
-    if (typeof content === 'string') {
-      return this.processAtMentions(content);
-    }
-
-    const textParts: string[] = [];
-
-    for (const part of content) {
-      if (part.type === 'text') {
-        textParts.push(part.text);
-      }
-    }
-
-    if (textParts.length === 0) {
-      return content;
-    }
-
-    const combinedText = textParts.join('\n');
-
+    const text =
+      typeof content === 'string'
+        ? content
+        : content
+            .filter((part): part is Extract<ModelContent, { type: 'text' }> => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n');
+    if (!text) return content;
     try {
-      const attachments = await this.attachmentCollector.collect(combinedText);
-
-      if (attachments.length === 0) {
-        return content;
-      }
-
-      this.logger.debug(`✅ Processed ${attachments.length} @ file mentions in multimodal message`);
-
-      const attachmentText = this.buildAttachmentText(attachments);
-
-      if (!attachmentText) {
-        return content;
-      }
-
-      const result: ModelContent[] = [...content, { type: 'text', text: attachmentText }];
-
-      return result;
-    } catch (error) {
-      this.logger.error('Failed to process @ mentions in multimodal message:', error);
-      return content;
-    }
-  }
-
-  private buildAttachmentText(attachments: Attachment[]): string {
-    const contextBlocks: string[] = [];
-    const errors: string[] = [];
-
-    for (const att of attachments) {
-      if (att.type === 'file') {
-        const lineInfo = att.metadata.lineRange
-          ? ` (lines ${att.metadata.lineRange.start}${att.metadata.lineRange.end ? `-${att.metadata.lineRange.end}` : ''})`
-          : '';
-
-        contextBlocks.push(
-          `<file path="${att.path}"${lineInfo ? ` range="${lineInfo}"` : ''}>`,
-          att.content,
-          '</file>',
-        );
-      } else if (att.type === 'directory') {
-        contextBlocks.push(`<directory path="${att.path}">`, att.content, '</directory>');
-      } else if (att.type === 'error') {
-        errors.push(`- @${att.path}: ${att.error}`);
-      }
-    }
-
-    let result = '';
-
-    if (contextBlocks.length > 0) {
-      result += '\n\n<system-reminder>\n';
-      result += 'The following files were mentioned with @ syntax:\n\n';
-      result += contextBlocks.join('\n');
-      result += '\n</system-reminder>';
-    }
-
-    if (errors.length > 0) {
-      result += '\n\n⚠️ Some files could not be loaded:\n';
-      result += errors.join('\n');
-    }
-
-    return result;
-  }
-
-  private async processAtMentions(message: string): Promise<string> {
-    try {
-      const attachments = await this.attachmentCollector.collect(message);
-
-      if (attachments.length === 0) {
-        return message;
-      }
-
+      const attachments = await this.collector.collect(text);
+      if (attachments.length === 0) return content;
+      const suffix = formatAttachments(attachments);
       this.logger.debug(`✅ Processed ${attachments.length} @ file mentions`);
-
-      return this.appendAttachments(message, attachments);
+      return typeof content === 'string'
+        ? content + suffix
+        : [...content, { type: 'text', text: suffix }];
     } catch (error) {
       this.logger.error('Failed to process @ mentions:', error);
-      return message;
+      return content;
     }
   }
+}
 
-  private appendAttachments(message: string, attachments: Attachment[]): string {
-    const contextBlocks: string[] = [];
-    const errors: string[] = [];
-
-    for (const att of attachments) {
-      if (att.type === 'file') {
-        const lineInfo = att.metadata.lineRange
-          ? ` (lines ${att.metadata.lineRange.start}${att.metadata.lineRange.end ? `-${att.metadata.lineRange.end}` : ''})`
-          : '';
-
-        contextBlocks.push(
-          `<file path="${att.path}"${lineInfo ? ` range="${lineInfo}"` : ''}>`,
-          att.content,
-          '</file>',
-        );
-      } else if (att.type === 'directory') {
-        contextBlocks.push(`<directory path="${att.path}">`, att.content, '</directory>');
-      } else if (att.type === 'error') {
-        errors.push(`- @${att.path}: ${att.error}`);
-      }
+function formatAttachments(attachments: Attachment[]): string {
+  const content: string[] = [];
+  const errors: string[] = [];
+  for (const attachment of attachments) {
+    if (attachment.type === 'file') {
+      const range = attachment.metadata.lineRange;
+      const lines = range ? `${range.start}${range.end ? `-${range.end}` : ''}` : undefined;
+      content.push(
+        `<file path="${attachment.path}"${lines ? ` range="${lines}"` : ''}>`,
+        attachment.content,
+        '</file>',
+      );
+    } else if (attachment.type === 'directory') {
+      content.push(`<directory path="${attachment.path}">`, attachment.content, '</directory>');
+    } else {
+      errors.push(`- @${attachment.path}: ${attachment.error}`);
     }
-
-    let enhancedMessage = message;
-
-    if (contextBlocks.length > 0) {
-      enhancedMessage += '\n\n<system-reminder>\n';
-      enhancedMessage += 'The following files were mentioned with @ syntax:\n\n';
-      enhancedMessage += contextBlocks.join('\n');
-      enhancedMessage += '\n</system-reminder>';
-    }
-
-    if (errors.length > 0) {
-      enhancedMessage += '\n\n⚠️ Some files could not be loaded:\n';
-      enhancedMessage += errors.join('\n');
-    }
-
-    return enhancedMessage;
   }
+  return [
+    ...(content.length
+      ? [
+          '',
+          '',
+          '<system-reminder>',
+          'The following files were mentioned with @ syntax:',
+          '',
+          ...content,
+          '</system-reminder>',
+        ]
+      : []),
+    ...(errors.length ? ['', '', '⚠️ Some files could not be loaded:', ...errors] : []),
+  ].join('\n');
 }

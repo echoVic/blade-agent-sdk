@@ -1,10 +1,13 @@
 import { isSteeringInterruptSignal } from '../../../../types/abort.js';
 import { getErrorMessage, getErrorName } from '../../../../utils/errorUtils.js';
+import { executePreparedTool } from '../../../core/createTool.js';
+import { getRuntimeAccess } from '../../../types/execution.js';
 import type { ToolExecution, ToolResult, ToolYield } from '../../../types/result.js';
 import { ToolErrorType } from '../../../types/result.js';
 import { createAbortedResult, createExecutionFailureResult } from '../results.js';
 import type { PipelineExecutionState } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
+import { getToolContext } from '../toolContext.js';
 
 /** Hard ceiling on how long a caller waits for a tool generator to close. */
 export const MAX_TOOL_CLEANUP_WAIT_MS = 5_000;
@@ -24,7 +27,8 @@ export class InvocationStage {
   ) {}
 
   async *run(state: PipelineExecutionState): AsyncGenerator<ToolYield, void, void> {
-    if (!state.invocation) {
+    const invocation = state.invocation;
+    if (!invocation) {
       state.result = createAbortedResult('Pre-execution stage failed; cannot run tool');
       return;
     }
@@ -34,10 +38,10 @@ export class InvocationStage {
     }
 
     await state.context.toolInvocationLifecycle?.onExecutionStarted?.({
-      input: structuredClone(state.params),
-      sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
+      input: structuredClone(invocation.params),
+      sideEffect: invocation.behavior.sideEffect,
     });
-    await state.context.assertExecutionLease?.();
+    await getRuntimeAccess(state.context).assertExecutionLease();
     this.guard.throwIfFailed();
     if (this.guard.hasPendingCleanup()) {
       state.result = this.guard.createPendingResult();
@@ -60,8 +64,8 @@ export class InvocationStage {
     const executionSignal = state.context.signal
       ? AbortSignal.any([state.context.signal, timeoutController.signal])
       : timeoutController.signal;
-    const execution = state.invocation.execute(executionSignal, {
-      ...state.context,
+    const execution = executePreparedTool(state.tool, invocation.params, {
+      ...getToolContext(state.tool, state.context, state.services),
       signal: executionSignal,
     });
 

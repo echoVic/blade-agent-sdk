@@ -1,8 +1,8 @@
 # Runtime Store
 
-`RuntimeStore` 是服务端 Agent 的共享持久化边界。它把 command receipt、domain
-event、effect outbox 和 projection checkpoint 放进同一个事务，同时向现有
-`AgentServer`、Session transcript 和 durable journal 暴露兼容端口。
+`RuntimeStore` 是服务端 Agent 的共享持久化边界。它统一保存 command receipt、
+远程 event、Session 状态、durable journal、worker 路由和 execution lease。
+`PostgresRuntimeStore` 是多进程部署的参考实现。
 
 ## 安装与导入
 
@@ -33,14 +33,14 @@ const server = new AgentServer({
 `tenantId` 调用 `forTenant()`，并把同一个 scoped Store 同时用作：
 
 - `SessionRepository`：只读 transcript projection。
-- `SessionEventStore`：追加 transcript domain event。
+- `SessionEventStore`：原子更新 transcript projection。
 - `DurableEventStore`：Request、Turn、模型、工具与审批 journal。
 - `AgentServerStore`：command receipt、远程 event 和 Session record。
 
 配置 `runtimeStore` 后不允许再覆盖 Session 级 repository、event Store 或
 durable Store；混用会返回 `SESSION_CONFLICT`，防止重新产生双写事实源。
 
-## 事务模型
+## Command 幂等
 
 ```ts
 const claim = await runtimeStore.claimCommand(
@@ -55,52 +55,18 @@ if (claim.status !== 'claimed') {
 }
 
 await runtimeStore.sealCommand(tenantId, commandId, claim.leaseId);
-
-await runtimeStore.commitRuntimeTransaction({
+await runtimeStore.completeCommand(
   tenantId,
-  sessionId,
-  command: {
-    commandId,
-    fingerprint: commandFingerprint,
-    leaseId: claim.leaseId,
-    result: {
-      protocolVersion: 1,
-      commandId,
-      ok: true,
-      data: { accepted: true },
-    },
-  },
-  expectedLastSequence: null,
-  events: [{
-    type: 'request.accepted',
-    data: { requestId: 'request-1' },
-  }],
-  effects: [{
-    effectId: 'effect-1',
-    type: 'tool.execute',
-    payload: { toolName: 'Search' },
-    idempotencyKey: 'request-1:tool-1',
-  }],
-  projection: {
-    name: 'request',
-    expectedOffset: null,
-    offset: 1,
-    state: { status: 'accepted' },
-  },
-});
+  commandId,
+  claim.leaseId,
+  result,
+);
 ```
 
-一次 commit 在单个 PostgreSQL transaction 中完成：
-
-1. 校验 command fingerprint 与可选 lease。
-2. compare-and-append domain events。
-3. 写入具有唯一 idempotency key 的 effect intents。
-4. CAS 更新 projection 和 offset。
-5. 将 command receipt 标记为 completed 并保存结果。
-
-任何一步失败都会回滚全部写入。重复提交已完成的 command 返回
-`status: 'replayed'`，不会重复 event 或 effect。不同 payload 复用同一 command
-ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
+`claimCommand()` 对 command ID 与 fingerprint 做幂等判定；已完成 command
+直接返回已保存结果。`sealCommand()` 在可能产生外部副作用前将 receipt 变为
+不可过期，`completeCommand()` 保存确定性结果。长时间停留在 sealed 状态的
+command 会由恢复扫描标记为 abandoned，调用方必须对账，不能自动重放。
 
 ## PostgreSQL schema
 
@@ -112,9 +78,9 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 | `*_commands` | command fingerprint、lease、状态和确定性结果 |
 | `*_sessions` | tenant-scoped Session record |
 | `*_stream_heads` | 每 Session、每 stream 的单调 sequence |
-| `*_events` | `agent`、`domain`、`durable`、`transcript` 事件 |
-| `*_outbox` | 待执行 effect intent |
-| `*_projections` | projection state 与已消费 offset |
+| `*_events` | `agent` 与 `durable` 事件 |
+| `*_event_keys` | 独立于 event retention 的幂等键 |
+| `*_session_states` | 完整 Session 状态投影 |
 | `*_workers` | worker heartbeat、drain 状态与容量 |
 | `*_execution_leases` | Session execution lease 与 fencing token |
 | `*_session_routes` | Session 调度状态与当前 worker 路由 |
@@ -123,10 +89,9 @@ ID 会抛出 `RUNTIME_STORE_COMMAND_CONFLICT`。
 参数化查询。并发 command 和 stream append 使用 transaction-scoped advisory lock；
 PostgreSQL 是事实源，Redis 不参与 correctness path。
 
-当前数据库 schema 版本为 `3`。`initialize()` 会在全局 advisory lock 内将
-v1 outbox 原地迁移到 worker/effect lease schema，并将 v2 Session route
-状态约束升级为支持 `idle`；domain event schema 继续保持版本 `1`，已有事件
-不需要重写。
+当前数据库 schema 版本为 `5`。`initialize()` 在全局 advisory lock 内创建当前
+schema；如果 metadata 声明其他版本则直接拒绝启动。该 adapter 不携带旧 schema
+迁移链，部署方应显式迁移或重新创建数据库。
 
 `InMemoryAgentServerStore` 仍只适合测试和单进程。生产环境不得把它与
 PostgreSQL transcript 混用。
@@ -134,8 +99,8 @@ PostgreSQL transcript 混用。
 ## Session projection
 
 `SessionRepository` 从本版本开始只描述 read/projection API。
-`SessionEventStore` 描述 append API，`SessionPersistence` 是兼容两者的组合。
-现有 `JsonlSessionRepository` 继续实现组合接口，因此 Node 本地用法不变。
+`SessionEventStore` 描述 append API。实现可以同时实现两个独立端口，但 Session
+要求调用方分别显式注入，且不会根据对象的方法集合自动推断能力。
 
 ```ts
 interface SessionRepository extends SessionStore {
@@ -155,56 +120,17 @@ interface SessionEventStore {
 }
 ```
 
-PostgreSQL transcript append 会在同一个 transaction 中追加 `transcript`
-event 并更新 `session` projection。读取、恢复和 fork 只访问 projection。
-
-## Queue metrics capability
-
-PostgreSQL adapter 实现可选的 `getQueueMetrics(tenantId?)` capability：
-
-```ts
-const metrics = await runtimeStore.getQueueMetrics?.(tenantId);
-```
-
-结果包含所有 Session/effect 状态的零填充计数、当前可领取数量、最老 backlog
-时间与年龄，以及全局 active/draining/offline Worker、总容量、活动 Session
-和可用容量。Session/effect 数据按 tenant 过滤；Worker capacity 是共享调度层的
-全局视图。
-
-该方法在 `WorkerRuntimeStore` 上保持可选，以确保现有第三方 Store 在 `6.0.x`
-中继续兼容。`AgentRuntimeOperations` 遇到不支持该 capability 的 Store 时返回
-HTTP `501`。
-
-## Conformance
-
-第三方 Store 可以直接运行公开的无测试框架 conformance：
-
-```ts
-import {
-  assertRuntimeStoreConformance,
-} from '@blade-ai/agent-sdk/server/infra';
-
-await assertRuntimeStoreConformance(runtimeStore, {
-  tenantId: 'conformance-a',
-  otherTenantId: 'conformance-b',
-});
-```
-
-该套件验证 health、Session projection、tenant isolation、command receipt、
-agent/durable event、原子 commit、事务回滚、projection checkpoint、worker
-路由、lease 恢复与 effect delivery。Store 提供 queue metrics capability 时也会
-验证其 tenant 隔离与容量统计。应在专用 schema 或测试数据库中运行。
+PostgreSQL 的每次写入都会在行锁保护下原子更新 `session_states`。读取、恢复和
+fork 只访问这份投影；不再维护平行 transcript event stream。
 
 ## 运维边界
 
 - schema 初始化需要 DDL 权限；生产环境可在部署阶段提前调用 `initialize()`。
 - `PostgresRuntimeStore` 自建 Pool 时 `close()` 会关闭 Pool；注入的 Pool 由调用方管理。
 - `maxAgentEventsPerSession` 对可重放的远程 SSE 事件执行滚动保留。
-- `maxDurableEventsPerSession`、`maxDomainEventsPerSession` 和
-  `maxTranscriptEventsPerSession`（默认各 `100000`）是非裁剪流的硬写入配额。
+- `maxDurableEventsPerSession`（默认 `100000`）是 durable journal 的硬写入配额。
   达到配额时 Store 拒绝追加，避免静默删除恢复或审计所需的历史。
 - `maxSessionsPerTenant` 只用于 transcript projection 清理。
-- outbox claim、worker heartbeat、Session 路由与恢复见
-  [Worker Runtime](./worker-runtime)。
+- worker heartbeat、Session 路由与恢复见 [Worker Runtime](./worker-runtime)。
 - Redis只能用于通知、wake-up 和短期配额；丢失 Redis 数据不得影响 command、
-  event、effect 或 projection 的正确性。
+  event、Session 状态或 lease 的正确性。

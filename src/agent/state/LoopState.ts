@@ -50,16 +50,8 @@ export class LoopState {
     };
   }
 
-  getTools(): ModelToolDefinition[] {
-    return this.resolveToolsFn();
-  }
-
   getModelService(): ModelService {
     return this.resolveModelServiceFn();
-  }
-
-  getMaxContextTokens(): number {
-    return this.resolveMaxContextTokensFn();
   }
 
   getBaseContextSnapshot(): ContextSnapshot | undefined {
@@ -68,10 +60,6 @@ export class LoopState {
 
   setContextSnapshot(snapshot: ContextSnapshot | undefined): void {
     this.executionContext.contextSnapshot = snapshot;
-  }
-
-  getActiveSkill(): LoopSkillState | undefined {
-    return this.activeSkill;
   }
 
   setActiveSkill(skill: LoopSkillState | undefined): void {

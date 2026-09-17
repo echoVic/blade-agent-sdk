@@ -1,15 +1,12 @@
 # Tools
 
-The SDK exposes three tool authoring APIs:
-
-| API | Schema | Use |
-|-----|--------|-----|
-| `defineTool()` | TypeBox | Lightweight typed definitions accepted by Session |
-| `createTool()` | TypeBox | Full inference, runtime validation, and interruption policy |
-| `toolFromDefinition()` | TypeBox | Convert a definition into the internal `Tool` interface |
+The SDK exposes `defineTool()` as its only custom-tool authoring API. It uses a
+TypeBox parameter schema and returns a `ToolDefinition` accepted directly by
+Agent and Session.
 
 Internally, every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
-`defineTool()` also accepts a regular async function and wraps its return value.
+`defineTool()` accepts one public execution contract: an async function that
+returns JSON data. The SDK wraps that data as an internal successful result.
 
 ## defineTool
 
@@ -32,8 +29,9 @@ const searchDocs = defineTool({
 ```
 
 The returned JSON value becomes both `model` and `data` on the internal success
-result. Use `async *execute` and return a complete `ToolResult` when the tool
-must emit progress, messages, or effects.
+result. Throw an error to report failure. Public definitions do not return
+`ToolResult` or async generators, so result meaning never depends on object
+shape or iterator methods.
 
 The TypeBox schema is the single source of truth for parameter inference,
 runtime validation, and the model-facing JSON Schema. `execute` parameters are
@@ -67,49 +65,33 @@ const lookup = defineTool({
 ```
 
 `kind` and `sideEffect` may both be omitted. When you do set `kind`, use the
-`ToolKind` enum (`ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`)
+`ToolKind` constants (`ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`)
 imported from `@blade-ai/agent-sdk`; TypeScript does not accept raw string
 literals for it.
 
-## createTool
+### Capabilities on demand
+
+Use `services` to declare Session services required by a tool. Its `execute`
+context exposes only declared services. Set `requiresRuntime: true` to request
+execution lease and fencing capabilities:
 
 ```ts
-import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
-import Type from 'typebox';
-
-const deploy = createTool({
-  name: 'Deploy',
-  displayName: 'Deploy',
-  kind: ToolKind.Execute,
-  sideEffect: ToolSideEffect.NON_IDEMPOTENT,
-  description: {
-    short: 'Deploy an application',
-    long: 'Deploy a tested build to staging or production.',
-    important: ['Production requires explicit approval.'],
-  },
-  schema: Type.Object({
-    environment: Type.Enum(['staging', 'production']),
-    version: Type.String(),
-  }),
-  interruptBehavior: 'block',
-  async *execute(params) {
-    yield {
-      kind: 'progress',
-      message: 'Deploying',
-      data: params,
-    };
-    return {
-      status: 'success',
-      model: `Deployed ${params.version} to ${params.environment}`,
-      display: { summary: `Deployment completed: ${params.environment}` },
-    };
+const delegated = defineTool({
+  name: 'Delegate',
+  description: 'Delegate a task',
+  parameters: Type.Object({ prompt: Type.String() }),
+  services: ['subagentRegistry'],
+  requiresRuntime: true,
+  async execute({ prompt }, context) {
+    await context.runtime.assertExecutionLease();
+    return { prompt, agents: context.subagentRegistry.getAllNames() };
   },
 });
 ```
 
-`createTool()` returns a complete `Tool` that can be passed directly to
-`SessionOptions.tools`. Session preserves the instance instead of adapting it,
-so validation, behavior, and interruption settings remain intact.
+`ToolServiceName` defines the available service names. If a Session lacks any
+declared service, it does not register the tool. Undeclared services are not
+exposed, and ordinary tools receive no `runtime` property.
 
 ## Streaming contract
 
@@ -136,11 +118,10 @@ type ToolExecution<TData extends JsonValue = JsonValue> =
   AsyncGenerator<ToolYield, ToolResult<TData>, void>;
 ```
 
-`createTool()` and directly constructed `ToolDefinition` values must still
-return a generator. Use `completeToolExecution(result)` to wrap a terminal
-result. `defineTool()` performs that wrapping for regular async functions.
-Use `collectToolExecution(execution)` when a consumer only needs the return
-value.
+`ToolExecution` is the SDK's internal runtime protocol. Public `defineTool()`
+callbacks return `Promise<JsonValue>` and are compiled into that protocol by
+the Registry; the SDK does not infer result kinds from fields or iterator
+methods.
 
 ## ToolResult
 
@@ -168,9 +149,11 @@ type ToolResult =
   value. Large-result artifact persistence applies to `model`, not `data`.
 - Failed results require both `status: 'error'` and `error`.
 
-## Progress, messages, and effects
+## Runtime progress, messages, and effects
 
-Yield events in the order they happen:
+The compiled runtime `Tool` protocol can yield events in the order they happen.
+This protocol is used by SDK-owned tools and middleware; it is not a second
+`defineTool()` return shape:
 
 ```ts
 async *execute(params) {
@@ -238,26 +221,11 @@ Before publishing, a tool package must:
 
 ## Interruption
 
-`interruptBehavior` controls a tool when a `priority: 'now'` input arrives:
+`interruptBehavior` controls a tool when a `priority: 'now'` input arrives.
+Public `defineTool()` definitions use the conservative `block` default:
 
 - `block` is the default. The tool completes before steering is applied.
 - `cancel` is for tools that observe `context.signal` and reliably release resources.
-
-```ts
-const tool = createTool({
-  // ...
-  sideEffect: ToolSideEffect.IDEMPOTENT,
-  interruptBehavior: 'cancel',
-  async *execute(params, context) {
-    context.signal?.throwIfAborted();
-    try {
-      return await run(params, context.signal);
-    } finally {
-      await releaseResources();
-    }
-  },
-});
-```
 
 Explicit `session.abort()` and `session.close()` are request-level cancellation and are not blocked by `interruptBehavior: 'block'`.
 Both methods wait for active tool cleanup, so custom tools must honor the
@@ -291,14 +259,14 @@ grant and cancellation happen in the same turn, the pipeline rechecks the
 signal and releases every acquired lease before returning the cancellation
 result.
 
-`interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
-`defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
-`cancel` when a custom Session tool can safely stop for a `now` input.
+`defineTool()` / `ToolDefinition` does not expose `interruptBehavior`. Custom
+tools must still observe `context.signal` and clean up promptly during explicit
+`session.abort()` or `session.close()`.
 
 ## Side-effect contract
 
-Every `ToolDefinition`, `ToolConfig`, and complete `Tool` must explicitly
-declare `sideEffect`:
+Every tool should declare an accurate `sideEffect`. A `ToolDefinition` that
+omits it is treated conservatively as `non_idempotent`:
 
 - `pure`: does not mutate external state and can be replayed during recovery.
 - `idempotent`: repeating the same invocation reaches the same intended state
@@ -327,9 +295,10 @@ interface ToolDefinition<
   parameters: TSchema;
   sideEffect?: ToolSideEffect;
   kind?: ToolKind;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   exposure?: ToolExposureConfig;
+  services?: readonly ToolServiceName[];
+  requiresRuntime?: boolean;
   execute(
     params: Type.Static<TSchema>,
     context: ExecutionContext,
@@ -341,22 +310,20 @@ interface ToolDefinition<
 
 ```ts
 interface ExecutionContext {
-  userId?: string;
   sessionId?: SessionId;
   messageId?: MessageId;
   contextSnapshot?: ContextSnapshot;
-  skillActivationPaths?: string[];
   signal?: AbortSignal;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: IBackgroundAgentManager;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
-  discoveredTools?: string[];
-  toolInvocationLifecycle?: ToolInvocationLifecycle; // injected by the runtime
 }
 ```
+
+Session services named in `services` are added to the authoring context on
+demand. Setting `requiresRuntime: true` also provides readonly
+`context.runtime`; registry, exposure-planning, and durable lifecycle
+capabilities are not handed directly to tools.
 
 ```ts
 interface ConfirmationDetails {
@@ -431,8 +398,10 @@ behavior is unchanged.
 ## Built-in tools
 
 `getBuiltinTools()` is exported by `/advanced`. Its local Session facade
-registers this local host tool set automatically; memory tools
-are only included when a `MemoryManager` is supplied explicitly.
+registers this local host tool set automatically. The returned list contains all
+static built-in candidates; the Session registry skips tools whose declared
+services are unavailable. `MemoryRead` and `MemoryWrite` are registered only
+when `SessionOptions.memoryManager` is configured.
 Calling a returned tool's `execute()` method directly bypasses the
 `ExecutionPipeline`. Existing-file `Write` and `Edit` calls still require
 `ExecutionContext.sessionId`; without it, read-before-write cannot be verified
@@ -448,7 +417,15 @@ and the operation fails closed.
 | System | `AskUserQuestion`, `DiscoverTools`, `Skill` |
 | Planning | `EnterPlanMode`, `ExitPlanMode` |
 | Todos | `TodoWrite` |
+| Memory | `MemoryRead`, `MemoryWrite` (requires `SessionOptions.memoryManager`) |
 | MCP resources | `ListMcpResources`, `ReadMcpResource` |
+
+Built-in implementations share four narrow capability owners.
+`file/operationCore.ts` owns authorized paths, write guards, and file-operation
+failures; `search/searchRunner.ts` owns search paths and execution;
+`web/webRequest.ts` owns timeouts, cancellation, proxies, redirects, providers,
+and caching; `task/taskCrud.ts` declares all structured task CRUD tools over one
+`TaskStore`.
 
 Built-in contracts:
 
@@ -469,6 +446,8 @@ Built-in contracts:
 | `TaskGet`, `TaskList` | `Write` | `pure` |
 | `TaskUpdate`, `TaskStop` | `Write` | `idempotent` |
 | `TodoWrite` | `ReadOnly` | `idempotent` |
+| `MemoryRead` | `ReadOnly` | `pure` |
+| `MemoryWrite` | `Write` | `idempotent` |
 | `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion` | `ReadOnly` | `non_idempotent` |
 | `DiscoverTools` | `ReadOnly` | `idempotent` |
 | `Skill` | `Execute` | `non_idempotent` |

@@ -79,12 +79,10 @@ describe('RemoteApprovalBroker', () => {
       status: 408,
     });
     await expect(
-      broker
-        .createHandler('tenant-a', SessionId('session-1'), 'user-a')
-        .requestConfirmation({
-          permissionRequestId: requestId,
-          message: 'Allow?',
-        }),
+      broker.createHandler('tenant-a', SessionId('session-1'), 'user-a').requestConfirmation({
+        permissionRequestId: requestId,
+        message: 'Allow?',
+      }),
     ).rejects.toMatchObject({
       protocolCode: 'SESSION_CONFLICT',
     });

@@ -1,55 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { ModelMessage, ModelToolCall } from '../../../model/message.js';
-import { decideNoToolTurn, RETRY_PROMPT } from '../decideNoToolTurn.js';
 import { decideTurnLimit } from '../decideTurnLimit.js';
 import { planToolExecution } from '../planToolExecution.js';
 
 describe('agent loop decisions', () => {
-  describe('decideNoToolTurn', () => {
-    it('should retry when incomplete intent is detected', async () => {
-      const decision = await decideNoToolTurn('让我先检查一下：', [], 1);
-
-      expect(decision.action).toBe('retry');
-      if (decision.action === 'retry') {
-        expect(decision.message.content).toBe(RETRY_PROMPT);
-      }
-    });
-
-    it('should stop retrying after two retry prompts', async () => {
-      const messages: ModelMessage[] = [
-        { role: 'user', content: RETRY_PROMPT },
-        { role: 'assistant', content: '让我先看一下：' },
-        { role: 'user', content: RETRY_PROMPT },
-      ];
-
-      const decision = await decideNoToolTurn('让我开始修复：', messages, 3);
-
-      expect(decision.action).toBe('finish');
-    });
-
-    it('should continue with reminder when stop hook asks to continue', async () => {
-      const onStopCheck = vi.fn(async () => ({
-        shouldStop: false,
-        continueReason: 'Keep going',
-      }));
-
-      const decision = await decideNoToolTurn('First response', [], 1, onStopCheck);
-
-      expect(decision.action).toBe('continue_with_reminder');
-      if (decision.action === 'continue_with_reminder') {
-        expect(decision.message.content).toContain('Keep going');
-      }
-    });
-
-    it('should finish when stop hook asks to stop', async () => {
-      const onStopCheck = vi.fn(async () => ({ shouldStop: true }));
-
-      const decision = await decideNoToolTurn('Done', [], 1, onStopCheck);
-
-      expect(decision.action).toBe('finish');
-    });
-  });
-
   describe('planToolExecution', () => {
     const toolCall = (name: string): ModelToolCall => ({
       id: `${name}-call`,

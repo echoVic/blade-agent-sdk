@@ -3,35 +3,21 @@ import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { JSONLStore } from '../../context/storage/JSONLStore.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
 import type { ModelContent } from '../../model/message.js';
 import { createSession, forkSession, resumeSession } from '../../node/index.js';
-import { EventId, MessageId, PartId, SessionId } from '../../types/identifiers.js';
+import { SessionId } from '../../types/identifiers.js';
 import type { LogEntry } from '../../types/logging.js';
 import {
   createSession as createServerSession,
   resumeSession as resumeServerSession,
 } from '../Session.js';
-import { isSessionEventStore, type SessionRepository } from '../SessionRepository.js';
-import type { TranscriptEvent } from '../transcript.js';
+import type { SessionRepository } from '../SessionRepository.js';
+import { hasSessionPersistence } from '../SessionState.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-persistence-test-'));
-}
-
-function sessionEvent<T extends TranscriptEvent['type']>(
-  sessionId: SessionId,
-  timestamp: string,
-  id: string,
-  type: T,
-  data: Extract<TranscriptEvent, { type: T }>['data'],
-): Extract<TranscriptEvent, { type: T }> {
-  return { id: EventId(id), sessionId, timestamp, type, version: '1.1.2', data } as Extract<
-    TranscriptEvent,
-    { type: T }
-  >;
 }
 
 function createOptions(workspaceRoot: string) {
@@ -51,13 +37,25 @@ function createOptions(workspaceRoot: string) {
 }
 
 describe('Session persistence', () => {
-  it('recognizes only complete transcript event Stores', () => {
+  it('requires the event Store to be configured explicitly', () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistence = new PersistentStore(workspaceRoot);
+
     expect(
-      isSessionEventStore({
-        saveMessage: async () => 'message-1',
-      } as never),
+      hasSessionPersistence({
+        ...createOptions(workspaceRoot),
+        storagePath: undefined,
+        sessionRepository: persistence,
+      }),
     ).toBe(false);
-    expect(isSessionEventStore(new PersistentStore(createWorkspaceRoot()))).toBe(true);
+    expect(
+      hasSessionPersistence({
+        ...createOptions(workspaceRoot),
+        storagePath: undefined,
+        sessionRepository: persistence,
+        sessionEventStore: persistence,
+      }),
+    ).toBe(true);
   });
 
   it('requires an event writer when a read-only repository is configured', async () => {
@@ -105,6 +103,7 @@ describe('Session persistence', () => {
       ...createOptions(createWorkspaceRoot()),
       storagePath: undefined,
       sessionRepository: repository,
+      sessionEventStore: repository,
     });
     await session.close();
 
@@ -113,6 +112,7 @@ describe('Session persistence', () => {
       sessionId: session.sessionId,
       storagePath: undefined,
       sessionRepository: repository,
+      sessionEventStore: repository,
     });
 
     expect(resumed.sessionId).toBe(session.sessionId);
@@ -159,98 +159,6 @@ describe('Session persistence', () => {
     expect(session.messages[2]?.role).toBe('tool');
     expect(session.messages[3]?.id).toBe(summaryId);
     expect(session.messages[3]?.role).toBe('system');
-
-    await session.close();
-  });
-
-  it('should resume provider-compatible history from a legacy collided ledger', async () => {
-    const workspaceRoot = createWorkspaceRoot();
-    const sessionId = SessionId('legacy-collided-session');
-    const now = new Date().toISOString();
-    const entries = [
-      sessionEvent(sessionId, now, 'session', 'session_created', {
-        sessionId,
-        rootId: sessionId,
-        status: 'running',
-        createdAt: now,
-        updatedAt: now,
-      }),
-      sessionEvent(sessionId, now, 'user', 'message_created', {
-        messageId: MessageId('user-1'),
-        role: 'user',
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'user-text', 'part_created', {
-        partId: PartId('user-text'),
-        messageId: MessageId('user-1'),
-        partType: 'text',
-        payload: { text: 'run two tools' },
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'first-call', 'part_created', {
-        partId: PartId('call-first'),
-        messageId: MessageId('user-1'),
-        partType: 'tool_call',
-        payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'first-result', 'part_created', {
-        partId: PartId('call-first'),
-        messageId: MessageId('call-first'),
-        partType: 'tool_result',
-        payload: { toolCallId: 'call-first', toolName: 'Search', output: 'first result' },
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'second-call', 'part_created', {
-        partId: PartId('call-second'),
-        messageId: MessageId('call-first'),
-        partType: 'tool_call',
-        payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'second-result', 'part_created', {
-        partId: PartId('call-second'),
-        messageId: MessageId('call-second'),
-        partType: 'tool_result',
-        payload: { toolCallId: 'call-second', toolName: 'Search', output: 'second result' },
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'final', 'message_created', {
-        messageId: MessageId('assistant-final'),
-        role: 'assistant',
-        parentMessageId: MessageId('call-second'),
-        createdAt: now,
-      }),
-      sessionEvent(sessionId, now, 'final-text', 'part_created', {
-        partId: PartId('final-text'),
-        messageId: MessageId('assistant-final'),
-        partType: 'text',
-        payload: { text: 'done' },
-        createdAt: now,
-      }),
-    ];
-    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId)).appendBatch(
-      entries,
-    );
-
-    const session = await resumeSession({
-      sessionId,
-      ...createOptions(workspaceRoot),
-    });
-
-    expect(session.messages.map((message) => message.role)).toEqual([
-      'user',
-      'assistant',
-      'tool',
-      'assistant',
-      'tool',
-      'assistant',
-    ]);
-    expect(
-      session.messages
-        .filter((message) => message.role === 'tool')
-        .map((message) => message.tool_call_id),
-    ).toEqual(['call-first', 'call-second']);
 
     await session.close();
   });

@@ -1,677 +1,129 @@
-import { nanoid } from 'nanoid';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import type { ModelContent, ModelToolCall } from '../../model/message.js';
-import type {
-  PersistedToolUse,
-  SessionPersistence,
-  SessionRepositoryCompactionMetadata,
-  SessionRepositoryMessageMetadata,
-  SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef,
-} from '../../session/SessionRepository.js';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
-import type {
-  PersistedPendingInput,
-  TranscriptEvent,
-  TranscriptMessage,
-  TranscriptPart,
-  TranscriptSession,
-} from '../../session/transcript.js';
-import type { MessageRole } from '../../types/constants.js';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
+import { SdkError } from '../../errors/SdkError.js';
 import {
-  EventId,
-  type InputId,
-  MessageId,
-  type MessageId as MessageIdType,
-  PartId,
-  type RequestId,
-  SessionId,
-  ToolUseId,
-  type ToolUseId as ToolUseIdType,
-} from '../../types/identifiers.js';
-import type { JsonObject, JsonValue } from '../../types/json.js';
-import type { ContextData, ConversationContext, SessionContext } from '../types.js';
-import { JSONLStore } from './JSONLStore.js';
-import {
-  detectGitBranch,
-  getSessionFilePathFromStorageRoot,
-  listProjectDirectories,
-  normalizeSessionStorageRoot,
-} from './pathUtils.js';
+  ProjectedSessionRepository,
+  type SessionState,
+  type SessionStateMutation,
+} from '../../session/SessionStore.js';
+import { SessionId } from '../../types/identifiers.js';
+import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
+import { getSessionFilePathFromStorageRoot, normalizeSessionStorageRoot } from './pathUtils.js';
 
-function extractMimeType(url: string): string | undefined {
-  // data: URLs — extract the declared MIME type
-  const dataMatch = /^data:([^;,]+)[;,]/.exec(url);
-  if (dataMatch) {
-    return dataMatch[1];
-  }
+const LOCK_TIMEOUT_MS = 10_000;
 
-  // Remote URLs — attempt to infer MIME type from file extension
-  const extMatch = /\.(\w+)(?:[?#]|$)/.exec(url);
-  if (extMatch) {
-    const ext = (extMatch[1] ?? '').toLowerCase();
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      gif: 'image/gif',
-      webp: 'image/webp',
-      svg: 'image/svg+xml',
-      bmp: 'image/bmp',
-    };
-    if (mimeMap[ext]) {
-      return mimeMap[ext];
-    }
-  }
+class SessionFileError extends SdkError {}
 
-  return undefined;
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code)
+    : undefined;
 }
 
-function parseToolCallArguments(value: string): JsonValue {
-  try {
-    return JSON.parse(value) as JsonValue;
-  } catch {
-    return value;
+function parseState(value: unknown, sessionId: SessionId): SessionState {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !('sessionId' in value) ||
+    value.sessionId !== sessionId ||
+    !('messages' in value) ||
+    !Array.isArray(value.messages) ||
+    !('timeline' in value) ||
+    !Array.isArray(value.timeline)
+  ) {
+    throw new SessionFileError(
+      'SESSION_JSONL_CORRUPT_LOG',
+      `Invalid Session projection for ${sessionId}`,
+    );
   }
+  return structuredClone(value) as SessionState;
 }
 
-/**
- * 持久化存储实现 - JSONL 格式
- * 存储路径: {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
- */
-export class PersistentStore implements SessionPersistence {
+export class PersistentStore extends ProjectedSessionRepository {
   private readonly storageRoot: string;
-  private readonly projectPath?: string;
-  private readonly maxSessions: number;
-  private readonly version: string;
-  /**
-   * 已确认存在（已创建或已检测到文件）的会话 ID 集合。
-   * 避免每次写入都全量读取 JSONL 文件来判断 session_created 是否已写入。
-   */
-  private readonly knownSessions = new Set<string>();
 
-  constructor(storageRoot: string, maxSessions = 100, version = '0.0.10', projectPath?: string) {
+  constructor(
+    storageRoot: string,
+    private readonly maxSessions = 100,
+    private readonly projectPath?: string,
+  ) {
+    super();
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
-    this.projectPath = projectPath;
-    this.maxSessions = maxSessions;
-    this.version = version;
   }
 
-  private createEvent<T extends TranscriptEvent['type']>(
-    type: T,
-    sessionId: SessionId,
-    data: Extract<TranscriptEvent, { type: T }>['data'],
-  ): TranscriptEvent {
-    return {
-      id: EventId(nanoid()),
-      sessionId,
-      timestamp: new Date().toISOString(),
-      type,
-      ...(this.projectPath ? { cwd: this.projectPath } : {}),
-      ...(this.projectPath ? { gitBranch: detectGitBranch(this.projectPath) } : {}),
-      version: this.version,
-      data,
-    } as TranscriptEvent;
-  }
-
-  private async ensureSessionCreated(
-    sessionId: SessionId,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void> {
-    if (this.knownSessions.has(sessionId)) return;
-
-    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-    const store = new JSONLStore(filePath);
-
-    const now = new Date().toISOString();
-    const sessionInfo: TranscriptSession = {
-      sessionId,
-      rootId: subagentInfo?.parentSessionId ?? sessionId,
-      parentId: subagentInfo?.parentSessionId,
-      relationType: subagentInfo ? 'subagent' : undefined,
-      title: undefined,
-      status: 'running',
-      agentType: subagentInfo?.subagentType,
-      model: undefined,
-      permission: undefined,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const entry = this.createEvent('session_created', sessionId, sessionInfo);
-    await store.appendIfEmpty(entry);
-    this.knownSessions.add(sessionId);
-  }
-
-  private buildCompactionMetadata(metadata: {
-    trigger: 'auto' | 'manual';
-    preTokens: number;
-    postTokens?: number;
-    filesIncluded?: string[];
-  }): JsonObject {
-    const extensions: Record<string, JsonValue> = {
-      trigger: metadata.trigger,
-      preTokens: metadata.preTokens,
-    };
-    if (metadata.postTokens !== undefined) extensions.postTokens = metadata.postTokens;
-    if (metadata.filesIncluded) extensions.filesIncluded = metadata.filesIncluded;
-    return {
-      provenance: { source: 'compaction_summary' },
-      extensions,
-    };
-  }
-
-  /**
-   * 初始化存储目录
-   */
   async initialize(): Promise<void> {
-    try {
-      const storagePath = this.storageRoot;
-      await fs.mkdir(storagePath, { recursive: true, mode: 0o700 });
-      console.log(`[PersistentStore] 初始化存储目录: ${storagePath}`);
-    } catch (error) {
-      console.warn('[PersistentStore] 无法创建持久化存储目录:', error);
-    }
+    await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
   }
 
-  async createSession(
-    sessionId: SessionId,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void> {
-    await this.ensureSessionCreated(sessionId, subagentInfo);
+  protected readState(sessionId: SessionId): Promise<SessionState | null> {
+    return this.lock(sessionId, () => this.read(sessionId));
   }
 
-  /**
-   * 保存消息到 JSONL 文件（追加模式）
-   */
-  async saveMessage(
+  protected updateState<T>(
     sessionId: SessionId,
-    messageRole: MessageRole,
-    content: string | ModelContent[],
-    parentMessageId: MessageIdType | null = null,
-    metadata?: SessionRepositoryMessageMetadata,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageIdType> {
+    create: () => SessionState,
+    mutation: SessionStateMutation<T>,
+  ): Promise<T> {
+    return this.lock(sessionId, async () => {
+      const state = (await this.read(sessionId)) ?? create();
+      const result = mutation(state, Date.now());
+      await this.write(state);
+      return result;
+    });
+  }
+
+  async listSessions(): Promise<SessionId[]> {
     try {
-      const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-      const store = new JSONLStore(filePath);
-      await this.ensureSessionCreated(sessionId, subagentInfo);
-      const now = new Date().toISOString();
-      const messageId = MessageId(nanoid());
-      const messageInfo: TranscriptMessage = {
-        messageId,
-        role: messageRole,
-        parentMessageId: parentMessageId ?? undefined,
-        createdAt: now,
-        model: metadata?.modelIdentity?.model ?? metadata?.model,
-        modelIdentity: metadata?.modelIdentity,
-        usage: metadata?.usage,
-        providerOptions: metadata?.providerOptions,
-        provenance: metadata?.provenance,
-        correlation: metadata?.correlation,
-        extensions: metadata?.extensions,
-      };
-      const messageEntry = this.createEvent('message_created', sessionId, messageInfo);
-      const partEntries = this.buildPartEntries(sessionId, messageId, content, now, {
-        reasoningContent: metadata?.reasoningContent,
-        toolCalls: metadata?.toolCalls,
-      });
-      await store.appendBatch([messageEntry, ...partEntries]);
-      return messageId;
+      return (await readdir(this.storageRoot, { withFileTypes: true }))
+        .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
+        .map((file) => SessionId(file.name.slice(0, -'.jsonl'.length)))
+        .sort();
     } catch (error) {
-      console.error(`[PersistentStore] 保存消息失败 (session: ${sessionId}):`, error);
+      if (errorCode(error) === 'ENOENT') return [];
       throw error;
     }
   }
 
-  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
-    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-    const store = new JSONLStore(filePath);
-    await this.ensureSessionCreated(sessionId);
-    await store.append(this.createEvent('input_enqueued', sessionId, input));
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    await this.lock(sessionId, async () => {
+      await unlink(this.path(sessionId)).catch((error: unknown) => {
+        if (errorCode(error) !== 'ENOENT') throw error;
+      });
+    });
   }
 
-  async saveAppliedInputMessage(
-    sessionId: SessionId,
-    inputId: InputId,
-    requestId: RequestId,
-    content: string | ModelContent[],
-    parentMessageId: MessageIdType | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageIdType> {
-    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-    const store = new JSONLStore(filePath);
-    await this.ensureSessionCreated(sessionId, subagentInfo);
-    const now = new Date().toISOString();
-    const messageId = MessageId(nanoid());
-    const messageInfo: TranscriptMessage = {
-      messageId,
-      role: 'user',
-      parentMessageId: parentMessageId ?? undefined,
-      createdAt: now,
-      correlation: {
-        inputId,
-        requestId,
-      },
-    };
-    await store.appendBatch([
-      this.createEvent('message_created', sessionId, messageInfo),
-      ...this.buildPartEntries(sessionId, messageId, content, now, {}),
-      this.createEvent('input_applied', sessionId, {
-        inputId,
-        requestId,
-        messageId,
-        appliedAt: Date.now(),
-      }),
-    ]);
-    return messageId;
-  }
-
-  /**
-   * The local JSONL backend has no server-side recovery cursor, so it records no
-   * projection progress; a reader of this transcript treats the progress as unknown
-   * and stays conservative rather than claiming the history is whole.
-   */
-  async saveHistoryProgress(_sessionId: SessionId, _progress: never): Promise<void> {}
-
-  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
-    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-    const store = new JSONLStore(filePath);
-    await this.ensureSessionCreated(sessionId);
-    await store.append(
-      this.createEvent('input_cancelled', sessionId, {
-        inputId,
-        reason,
-        cancelledAt: Date.now(),
-      }),
+  async cleanupOldSessions(): Promise<void> {
+    const summaries = (
+      await Promise.all((await this.listSessions()).map((id) => this.getSessionSummary(id)))
+    )
+      .filter((summary) => summary !== null)
+      .sort((left, right) => right.lastActivity - left.lastActivity);
+    await Promise.all(
+      summaries.slice(this.maxSessions).map(({ sessionId }) => this.deleteSession(sessionId)),
     );
   }
 
-  /**
-   * 保存工具调用到 JSONL 文件
-   */
-  async saveToolUse(
-    sessionId: SessionId,
-    toolName: string,
-    toolInput: JsonValue,
-    parentMessageId: MessageIdType | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: ToolUseIdType,
-  ): Promise<PersistedToolUse> {
-    try {
-      const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-      const store = new JSONLStore(filePath);
-      await this.ensureSessionCreated(sessionId, subagentInfo);
-      const now = new Date().toISOString();
-      const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
-      const messageId = MessageId(nanoid());
-      const messageInfo: TranscriptMessage = {
-        messageId,
-        role: 'assistant',
-        parentMessageId: parentMessageId ?? undefined,
-        createdAt: now,
-      };
-      const entries: TranscriptEvent[] = [
-        this.createEvent('message_created', sessionId, messageInfo),
-      ];
-      const partInfo: TranscriptPart = {
-        partId: PartId(toolCallId),
-        messageId,
-        partType: 'tool_call',
-        payload: { toolCallId, toolName, input: toolInput },
-        createdAt: now,
-      };
-      entries.push(this.createEvent('part_created', sessionId, partInfo));
-      if (
-        toolName === 'Task' &&
-        toolInput &&
-        typeof toolInput === 'object' &&
-        !Array.isArray(toolInput)
-      ) {
-        const subtaskInput = toolInput;
-        const childSessionId =
-          typeof subtaskInput.subagent_session_id === 'string'
-            ? subtaskInput.subagent_session_id
-            : undefined;
-        const agentType =
-          typeof subtaskInput.subagent_type === 'string' ? subtaskInput.subagent_type : undefined;
-        if (childSessionId && agentType) {
-          const subtaskPart: TranscriptPart = {
-            partId: PartId(nanoid()),
-            messageId,
-            partType: 'subtask_ref',
-            payload: {
-              childSessionId,
-              agentType,
-              status: 'running',
-              summary: typeof subtaskInput.description === 'string' ? subtaskInput.description : '',
-              startedAt: now,
-            },
-            createdAt: now,
-          };
-          entries.push(this.createEvent('part_created', sessionId, subtaskPart));
-        }
-      }
-      await store.appendBatch(entries);
-      return { messageId, toolCallId };
-    } catch (error) {
-      console.error(`[PersistentStore] 保存工具调用失败 (session: ${sessionId}):`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 保存工具结果到 JSONL 文件
-   */
-  async saveToolResult(
-    sessionId: SessionId,
-    toolId: ToolUseIdType,
-    toolName: string,
-    toolOutput: JsonValue,
-    parentMessageId: MessageIdType | null = null,
-    error?: string,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<MessageIdType> {
-    try {
-      const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-      const store = new JSONLStore(filePath);
-      await this.ensureSessionCreated(sessionId, subagentInfo);
-      const now = new Date().toISOString();
-      const messageId = MessageId(nanoid());
-      const messageInfo: TranscriptMessage = {
-        messageId,
-        role: 'tool',
-        parentMessageId: parentMessageId ?? undefined,
-        createdAt: now,
-      };
-      const entries: TranscriptEvent[] = [
-        this.createEvent('message_created', sessionId, messageInfo),
-      ];
-      const toolResultPart: TranscriptPart = {
-        partId: PartId(toolId),
-        messageId,
-        partType: 'tool_result',
-        payload: { toolCallId: toolId, toolName, output: toolOutput, error: error ?? null },
-        createdAt: now,
-      };
-      entries.push(this.createEvent('part_created', sessionId, toolResultPart));
-      if (subagentRef) {
-        const finishedAt = subagentRef.subagentStatus === 'running' ? null : now;
-        const subtaskPart: TranscriptPart = {
-          partId: PartId(nanoid()),
-          messageId,
-          partType: 'subtask_ref',
-          payload: {
-            childSessionId: subagentRef.subagentSessionId,
-            agentType: subagentRef.subagentType,
-            status: subagentRef.subagentStatus,
-            summary: subagentRef.subagentSummary ?? '',
-            startedAt: now,
-            finishedAt,
-          },
-          createdAt: now,
-        };
-        entries.push(this.createEvent('part_created', sessionId, subtaskPart));
-      }
-      await store.appendBatch(entries);
-      return messageId;
-    } catch (error) {
-      console.error(`[PersistentStore] 保存工具结果失败 (session: ${sessionId}):`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 保存压缩边界和总结消息到 JSONL
-   * 用于上下文压缩功能
-   *
-   * @param sessionId 会话 ID
-   * @param summary 压缩总结内容
-   * @param metadata 压缩元数据（触发方式、token 数量、包含的文件等）
-   * @param parentUuid 最后一条保留消息的 UUID（用于建立消息链）
-   * @returns 总结消息的 UUID
-   */
-  async saveCompaction(
-    sessionId: SessionId,
-    summary: string,
-    metadata: SessionRepositoryCompactionMetadata,
-    parentMessageId: MessageIdType | null = null,
-  ): Promise<MessageIdType> {
-    try {
-      const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-      const store = new JSONLStore(filePath);
-      await this.ensureSessionCreated(sessionId);
-      const now = new Date().toISOString();
-      const messageId = MessageId(nanoid());
-      const messageInfo: TranscriptMessage = {
-        messageId,
-        role: 'system',
-        parentMessageId: parentMessageId ?? undefined,
-        createdAt: now,
-      };
-      const compactMetadata = this.buildCompactionMetadata(metadata);
-      const partInfo: TranscriptPart = {
-        partId: PartId(nanoid()),
-        messageId,
-        partType: 'summary',
-        payload: { text: summary, ...compactMetadata },
-        createdAt: now,
-      };
-      const entries = [
-        this.createEvent('message_created', sessionId, messageInfo),
-        this.createEvent('part_created', sessionId, partInfo),
-      ];
-      await store.appendBatch(entries);
-      return messageId;
-    } catch (error) {
-      console.error(`[PersistentStore] 保存压缩失败 (session: ${sessionId}):`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 保存完整上下文数据（向后兼容方法）
-   * 将 ContextData 转为 JSONL 格式保存
-   */
-  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
-    try {
-      await this.createSession(sessionId);
-      const { conversation } = contextData.layers;
-      for (const msg of conversation.messages) {
-        await this.saveMessage(sessionId, msg.role, msg.content, null);
-      }
-    } catch (error) {
-      console.warn(`[PersistentStore] 保存上下文失败 (session: ${sessionId}):`, error);
-    }
-  }
-
-  /**
-   * 加载会话上下文（从 JSONL 重建）
-   */
-  async loadSession(sessionId: SessionId): Promise<SessionContext | null> {
-    const state = await this.getSessionStore().loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-
+  async getStorageStats() {
+    const sessions = await this.listSessions();
+    const sizes = await Promise.all(
+      sessions.map((sessionId) => stat(this.path(sessionId)).then(({ size }) => size)),
+    );
     return {
-      sessionId,
-      userId: undefined,
-      preferences: {},
-      configuration: {},
-      startTime: state.createdAt,
+      totalSessions: sessions.length,
+      totalSize: sizes.reduce((total, size) => total + size, 0),
+      ...(this.projectPath ? { projectPath: this.projectPath } : {}),
     };
   }
 
-  /**
-   * 加载对话上下文（从 JSONL 重建）
-   */
-  async loadConversation(sessionId: SessionId): Promise<ConversationContext | null> {
-    const state = await this.getSessionStore().loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-
-    return {
-      messages: state.timeline.map((entry) => ({
-        id: entry.id,
-        role: entry.message.role,
-        content:
-          typeof entry.message.content === 'string'
-            ? entry.message.content
-            : JSON.stringify(entry.message.content),
-        timestamp: entry.createdAt,
-      })),
-      summary: state.summary,
-      topics: [],
-      lastActivity: state.lastActivity,
-    };
-  }
-
-  async loadState(sessionId: SessionId) {
-    return this.getSessionStore().loadState(sessionId);
-  }
-
-  async loadMessages(sessionId: SessionId) {
-    return this.getSessionStore().loadMessages(sessionId);
-  }
-
-  async forkState(sessionId: SessionId, options?: { messageId?: MessageIdType }) {
-    return this.getSessionStore().forkState(sessionId, options);
-  }
-
-  /**
-   * 获取所有会话列表
-   */
-  async listSessions(): Promise<SessionId[]> {
-    return this.getSessionStore().listSessions();
-  }
-
-  /**
-   * 获取会话摘要信息
-   */
-  async getSessionSummary(sessionId: SessionId): Promise<{
-    sessionId: SessionId;
-    lastActivity: number;
-    messageCount: number;
-    topics: string[];
-  } | null> {
-    const summary = await this.getSessionStore().getSessionSummary(sessionId);
-    if (!summary) {
-      return null;
-    }
-
-    return {
-      sessionId: summary.sessionId,
-      lastActivity: summary.lastActivity,
-      messageCount: summary.messageCount,
-      topics: summary.topics,
-    };
-  }
-
-  /**
-   * 删除会话数据
-   */
-  async deleteSession(sessionId: SessionId): Promise<void> {
-    this.knownSessions.delete(sessionId);
+  async checkStorageHealth() {
+    const probe = join(this.storageRoot, '.health-check');
     try {
-      const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-      const store = new JSONLStore(filePath);
-      await store.delete();
-    } catch (error) {
-      console.warn(`[PersistentStore] 删除会话失败 (session: ${sessionId}):`, error);
-    }
-  }
-
-  /**
-   * 清理旧会话（保持最近的N个会话）
-   */
-  async cleanupOldSessions(): Promise<void> {
-    try {
-      const sessions = await this.listSessions();
-      if (sessions.length <= this.maxSessions) {
-        return;
-      }
-
-      // 获取所有会话的摘要信息并按时间排序
-      const sessionSummaries = await Promise.all(
-        sessions.map((sessionId) => this.getSessionSummary(SessionId(sessionId))),
-      );
-
-      const validSummaries = sessionSummaries
-        .filter((summary): summary is NonNullable<typeof summary> => summary !== null)
-        .sort((a, b) => b.lastActivity - a.lastActivity);
-
-      // 删除最旧的会话
-      const sessionsToDelete = validSummaries
-        .slice(this.maxSessions)
-        .map((summary) => summary.sessionId);
-
-      await Promise.all(sessionsToDelete.map((sessionId) => this.deleteSession(sessionId)));
-
-      console.log(`[PersistentStore] 已清理 ${sessionsToDelete.length} 个旧会话`);
-    } catch (error) {
-      console.error('[PersistentStore] 清理旧会话失败:', error);
-    }
-  }
-
-  /**
-   * 获取存储统计信息
-   */
-  async getStorageStats(): Promise<{
-    totalSessions: number;
-    totalSize: number;
-    projectPath?: string;
-  }> {
-    try {
-      const sessions = await this.listSessions();
-      let totalSize = 0;
-
-      for (const sessionId of sessions) {
-        const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, SessionId(sessionId));
-        const store = new JSONLStore(filePath);
-        const stats = await store.getStats();
-        totalSize += stats.size;
-      }
-
-      return {
-        totalSessions: sessions.length,
-        totalSize,
-        projectPath: this.projectPath,
-      };
-    } catch {
-      return {
-        totalSessions: 0,
-        totalSize: 0,
-        projectPath: this.projectPath,
-      };
-    }
-  }
-
-  /**
-   * 检查存储健康状态
-   */
-  async checkStorageHealth(): Promise<{
-    isAvailable: boolean;
-    canWrite: boolean;
-    error?: string;
-  }> {
-    try {
-      const storagePath = this.storageRoot;
-
-      // 尝试创建目录
-      await fs.mkdir(storagePath, { recursive: true, mode: 0o700 });
-
-      // 尝试写入测试文件
-      const testFile = path.join(storagePath, '.health-check');
-      await fs.writeFile(testFile, 'test', 'utf-8');
-      await fs.unlink(testFile);
-
-      return {
-        isAvailable: true,
-        canWrite: true,
-      };
+      await this.initialize();
+      await writeFile(probe, 'test', { encoding: 'utf8', mode: 0o600 });
+      await unlink(probe);
+      return { isAvailable: true, canWrite: true };
     } catch (error) {
       return {
         isAvailable: false,
@@ -681,105 +133,81 @@ export class PersistentStore implements SessionPersistence {
     }
   }
 
-  /**
-   * 获取所有项目列表
-   */
-  async listAllProjects(): Promise<string[]> {
-    return listProjectDirectories(this.storageRoot);
+  private path(sessionId: SessionId): string {
+    return getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
   }
 
-  private buildPartEntries(
-    sessionId: SessionId,
-    messageId: MessageId,
-    content: string | ModelContent[],
-    createdAt: string,
-    extra?: {
-      reasoningContent?: string;
-      toolCalls?: ModelToolCall[];
-    },
-  ): TranscriptEvent[] {
-    const extraEntries: TranscriptEvent[] = [];
-    if (extra?.reasoningContent) {
-      extraEntries.push(
-        this.createEvent('part_created', sessionId, {
-          partId: PartId(nanoid()),
-          messageId,
-          partType: 'reasoning',
-          payload: { text: extra.reasoningContent },
-          createdAt,
-        } satisfies TranscriptPart),
-      );
-    }
-
-    if (extra?.toolCalls) {
-      for (const toolCall of extra.toolCalls) {
-        extraEntries.push(
-          this.createEvent('part_created', sessionId, {
-            partId: PartId(toolCall.id),
-            messageId,
-            partType: 'tool_call',
-            payload: {
-              toolCallId: toolCall.id,
-              toolName: toolCall.function.name,
-              input: parseToolCallArguments(toolCall.function.arguments),
-            },
-            createdAt,
-          } satisfies TranscriptPart),
+  private async read(sessionId: SessionId): Promise<SessionState | null> {
+    try {
+      return parseState(JSON.parse(await readFile(this.path(sessionId), 'utf8')), sessionId);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') return null;
+      if (error instanceof SessionFileError) throw error;
+      if (error instanceof SyntaxError) {
+        throw new SessionFileError(
+          'SESSION_JSONL_CORRUPT_LOG',
+          `Invalid Session projection for ${sessionId}`,
+          { cause: error },
         );
       }
+      throw new SessionFileError(
+        'SESSION_JSONL_READ_FAILED',
+        `Failed to read Session projection ${this.path(sessionId)}`,
+        { cause: error },
+      );
     }
-
-    if (typeof content === 'string') {
-      return [
-        ...extraEntries,
-        ...(content !== ''
-          ? [
-              this.createEvent('part_created', sessionId, {
-                partId: PartId(nanoid()),
-                messageId,
-                partType: 'text',
-                payload: { text: content },
-                createdAt,
-              } satisfies TranscriptPart),
-            ]
-          : []),
-      ];
-    }
-
-    return [
-      ...extraEntries,
-      ...content.map((part) => {
-        if (part.type === 'text') {
-          return this.createEvent('part_created', sessionId, {
-            partId: PartId(nanoid()),
-            messageId,
-            partType: 'text',
-            payload: {
-              text: part.text,
-              ...(part.providerOptions
-                ? { providerOptions: part.providerOptions as JsonValue }
-                : {}),
-            },
-            createdAt,
-          } satisfies TranscriptPart);
-        }
-
-        const mimeType = extractMimeType(part.image_url.url);
-        return this.createEvent('part_created', sessionId, {
-          partId: PartId(nanoid()),
-          messageId,
-          partType: 'image',
-          payload: {
-            ...(mimeType !== undefined ? { mimeType } : {}),
-            dataUrl: part.image_url.url,
-          },
-          createdAt,
-        } satisfies TranscriptPart);
-      }),
-    ];
   }
 
-  private getSessionStore(): JsonlSessionStore {
-    return new JsonlSessionStore(this.storageRoot);
+  private async write(state: SessionState): Promise<void> {
+    const filePath = this.path(state.sessionId);
+    const existed = await stat(filePath)
+      .then(() => true)
+      .catch((error: unknown) => {
+        if (errorCode(error) === 'ENOENT') return false;
+        throw error;
+      });
+    try {
+      await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
+      await writeFileAtomic(filePath, `${JSON.stringify(state)}\n`, {
+        encoding: 'utf8',
+        fsync: true,
+        mode: 0o600,
+      });
+      if (!existed) await syncParentDirectory(filePath);
+    } catch (error) {
+      throw new SessionFileError(
+        'SESSION_JSONL_WRITE_FAILED',
+        `Failed to write Session projection ${filePath}`,
+        { cause: error },
+      );
+    }
+  }
+
+  private lock<T>(sessionId: SessionId, callback: () => Promise<T>): Promise<T> {
+    const filePath = this.path(sessionId);
+    const lockError = (action: string, cause: unknown) =>
+      new SessionFileError(
+        'SESSION_JSONL_LOCK_FAILED',
+        `Failed to ${action} Session projection lock ${filePath}`,
+        { cause },
+      );
+    return withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: LOCK_TIMEOUT_MS,
+        errors: {
+          prepare: (cause) => lockError('prepare', cause),
+          initialize: (cause) => lockError('initialize', cause),
+          acquire: (cause) => lockError('acquire', cause),
+          release: (cause) => lockError('release', cause),
+          timeout: () =>
+            new SessionFileError(
+              'SESSION_JSONL_LOCK_TIMEOUT',
+              `Timed out locking Session projection ${filePath}`,
+            ),
+        },
+      },
+      callback,
+    );
   }
 }

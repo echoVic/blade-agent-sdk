@@ -19,17 +19,11 @@ A resumable Session requires an explicitly supplied `sessionRepository` and
 
 ## Create a server
 
-The OpenTelemetry adapter is an opt-in peer. Install
-`@opentelemetry/api` and import the adapter from `/server/otel`.
-
 ```ts
 import {
   AgentServer,
   type AgentPrincipal,
 } from '@blade-ai/agent-sdk/server/infra';
-import {
-  OpenTelemetryAgentServerTelemetry,
-} from '@blade-ai/agent-sdk/server/otel';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
@@ -66,7 +60,6 @@ const server = new AgentServer({
     };
   },
   requirePersistentSessions: true,
-  telemetry: new OpenTelemetryAgentServerTelemetry(),
 });
 
 // Mount this Fetch-compatible handler in the HTTP runtime.
@@ -234,21 +227,6 @@ retains; if the log was trimmed, or the projection reports a gap, it also report
 `recoveryIncomplete: true`, because falling back recovers only what is still
 retained and is not claimed to be lossless.
 
-`repairSessionHistory()` rebuilds the missing messages from the durable journal,
-which is the authority: a request's accepted input (by `inputId`), a completed tool
-attempt (by `toolCallId`), and the turn's assistant output (matched through the tool
-calls it requested). Repair only writes data — it never re-runs a model call or a
-tool — writes nothing on a second pass, and leaves the gap open with
-`insufficient-durable-data` when the journal itself was trimmed.
-
-Repair is scoped to the request and turn the *gap* belongs to, read from the gap
-record itself, and it reads the journal as a history: a request that finished
-normally is still repairable even though the execution projection has already
-dropped it. A tool-call declaration in an assistant message is not a tool result,
-so a pending tool call is rebuilt rather than assumed present. The gap is closed
-only after the transcript is re-read and every piece the journal knows about is
-confirmed to be there.
-
 That retained range comes from the store's `getEventStreamRange`, which is part of
 the recovery guarantee: a custom store without it is never handed the event head as
 a cursor. The server replays from `0` when the log is still readable from the
@@ -260,9 +238,6 @@ offering a cursor that may skip content. When `loaded` is false the pending-inpu
 `appendEvent(..., { idempotencyKey })` keeps its idempotency record for the
 Session's lifetime, independent of event retention: a retry whose original event
 has already been trimmed is still recognised as a repeat and returns that event.
-7.4.4 and earlier stored the key as the event's own id with no separate record;
-either shape is recognised and the legacy one is backfilled in place, so an
-upgrade cannot publish an already-published terminal result again.
 
 `AgentClient` generates a stable `commandId` and reuses it when retrying
 network failures, HTTP 408, HTTP 429, and every 5xx response. Each command
@@ -336,15 +311,16 @@ window, `STALE_CURSOR` tells the client to reload Session state.
 | Port | Source of truth |
 |------|-----------------|
 | `SessionRepository` | Read-only transcript state/message projection, fork, and list |
-| `SessionEventStore` | Transcript domain event appends |
+| `SessionEventStore` | Atomic transcript projection updates |
 | `AgentServerStore` | Tenant Session records, command idempotency, and remote event replay |
 | `DurableEventStore` | Request, Turn, model, and tool lifecycle journal and recovery |
 
 These ports have different responsibilities. A production implementation may
 place them in one database, but must not partially commit a boundary that
 requires both. When multiple workers may open the same Session, configure a
-fencing-capable `DurableExecutionLeaseStore` and a unique
-`executionLease.ownerId` for each worker.
+fencing-capable `DurableExecutionLeaseStore` explicitly through
+`durableExecutionLeaseStore`, plus a unique `executionLease.ownerId` for each
+worker.
 
 The included `InMemoryAgentServerStore` is for one process and tests only. It
 does not provide cross-process idempotency, global quotas, or highly available
@@ -369,17 +345,11 @@ Tool confirmation is published as `permission.requested` and completed with a
 approver `subject`, and `permissionRequestId`, and are cancelled on timeout,
 request abort, Session close, or server close.
 
-`OpenTelemetryAgentServerTelemetry` records:
-
-- `blade.agent.server.commands`
-- `blade.agent.server.command.duration`
-- `blade.agent.server.events`
-- `blade.agent.server.command` spans
-
-Metrics and spans omit prompts, tool arguments, provider credentials, subjects,
-and tenant IDs by default. Only `includeTenantAttributes: true` emits a tenant
-attribute. The `auditSink` receives command metadata and outcomes, never input
-payloads.
+`AgentServerTelemetry` is an explicit injection port with `recordCommand()`,
+`recordEvent()`, and `writeAudit()`. The SDK does not bind a telemetry backend;
+applications can connect the port to OpenTelemetry or an existing monitoring
+system. Callbacks receive command and event metadata plus outcome state, never
+prompts, tool arguments, or provider credentials.
 
 ## Production checklist
 

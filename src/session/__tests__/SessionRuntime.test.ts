@@ -4,18 +4,15 @@ import { join } from 'node:path';
 import Type from 'typebox';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
-import { HookManager } from '../../hooks/HookManager.js';
-import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { MemoryManager } from '../../memory/MemoryManager.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecutor.js';
 import { SandboxService } from '../../sandbox/SandboxService.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
-import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
-import { createTool } from '../../tools/core/createTool.js';
+import { defineTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
-import { ToolKind } from '../../tools/types/kind.js';
 import { collectToolExecution, completeToolExecution } from '../../tools/types/result.js';
 import { HookEvent, PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -179,7 +176,7 @@ describe('SessionRuntime', () => {
       .getAll()
       .map((tool) => tool.name);
     expect(toolNames).toEqual(['CustomTool']);
-    expect(runtime.getToolCatalog().getEntry('CustomTool')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('CustomTool')).toMatchObject({
       source: {
         kind: 'custom',
         trustLevel: 'workspace',
@@ -187,6 +184,50 @@ describe('SessionRuntime', () => {
       },
     });
 
+    await runtime.close();
+  });
+
+  it('injects only services declared by a session tool definition', async () => {
+    let injectedSubagentRegistry: unknown;
+    let leakedSkillRegistry: unknown;
+    let injectedRuntime: unknown;
+    const serviceTool = defineTool({
+      name: 'ServiceTool',
+      description: 'Reads an explicitly declared service',
+      parameters: Type.Object({}),
+      services: ['subagentRegistry'] as const,
+      requiresRuntime: true,
+      async execute(_params, context) {
+        injectedSubagentRegistry = context.subagentRegistry;
+        injectedRuntime = context.runtime;
+        // @ts-expect-error The tool did not declare the skillRegistry service.
+        leakedSkillRegistry = context.skillRegistry;
+        return 'ok';
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('service-tool-session'),
+      createOptions({ tools: [serviceTool] }),
+      { models: [] },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(executionPipeline.execute('ServiceTool', {}, {}));
+
+    expect(result.status).toBe('success');
+    expect(injectedSubagentRegistry).toMatchObject({
+      getAllNames: expect.any(Function),
+    });
+    expect(leakedSkillRegistry).toBeUndefined();
+    expect(injectedRuntime).toMatchObject({
+      assertExecutionLease: expect.any(Function),
+      runWithExecutionLease: expect.any(Function),
+    });
     await runtime.close();
   });
 
@@ -245,7 +286,7 @@ describe('SessionRuntime', () => {
         .getAll()
         .map((tool) => tool.name),
     ).toEqual(['Skill']);
-    expect(runtime.getToolCatalog().getEntry('Skill')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('Skill')).toMatchObject({
       source: {
         kind: 'builtin',
         trustLevel: 'trusted',
@@ -256,19 +297,53 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('registers memory tools for server sessions when a manager is provided', async () => {
+    const memoryManager = new MemoryManager({
+      save: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(async () => []),
+      delete: vi.fn(),
+    });
+    const runtime = new SessionRuntime(
+      SessionId('server-session-memory'),
+      createOptions({
+        allowedTools: ['MemoryRead', 'MemoryWrite'],
+        memoryManager,
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      {},
+      NOOP_LOGGER,
+      SERVER_SESSION_HOST,
+    );
+
+    await runtime.initialize();
+
+    expect(
+      runtime
+        .getToolRegistry()
+        .getAll()
+        .map((tool) => tool.name),
+    ).toEqual(['MemoryRead', 'MemoryWrite']);
+
+    await runtime.close();
+  });
+
   it.each([
     'abort',
     'throw',
   ] as const)('preserves the Session tool timeout when a failure hook returns %s', async (hookBehavior) => {
     let observedAbort = false;
-    const slowTool = createTool({
+    const slowTool = defineTool({
       name: 'SlowTool',
       displayName: 'Slow Tool',
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Wait until cancelled' },
-      schema: Type.Object({}),
-      async *execute(_params, context) {
+      parameters: Type.Object({}),
+      async execute(_params, context) {
         await new Promise<void>((_resolve, reject) => {
           context.signal?.addEventListener(
             'abort',
@@ -279,10 +354,7 @@ describe('SessionRuntime', () => {
             { once: true },
           );
         });
-        return {
-          status: 'success',
-          model: 'unexpected',
-        };
+        return 'completed';
       },
     });
     const runtime = new SessionRuntime(
@@ -332,21 +404,17 @@ describe('SessionRuntime', () => {
     vi.useFakeTimers();
     const started = deferred();
     const release = deferred();
-    const slowTool = createTool({
+    const slowTool = defineTool({
       name: 'UncooperativeTool',
       displayName: 'Uncooperative Tool',
       kind: ToolKind.Execute,
       sideEffect: 'non_idempotent',
       description: { short: 'Ignore cancellation until released' },
-      schema: Type.Object({}),
-      // biome-ignore lint/correctness/useYield: exercises an uncooperative terminal execution
-      async *execute() {
+      parameters: Type.Object({}),
+      async execute() {
         started.resolve();
         await release.promise;
-        return {
-          status: 'success',
-          model: 'late success',
-        };
+        return 'late success';
       },
     });
     const runtime = new SessionRuntime(
@@ -491,79 +559,17 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('remains fail closed after permission cleanup reports a containment failure', async () => {
-    const started = deferred();
-    const release = Promise.withResolvers<void>();
-    const controller = new AbortController();
-    const containmentError = new HookProcessContainmentError(
-      'Permission Hook process cleanup failed',
-    );
-    const runtime = new SessionRuntime(
-      SessionId('session-permission-containment-failure'),
-      createOptions({
-        tools: [customTool],
-        allowedTools: ['CustomTool'],
-        permissionHandler: async () => {
-          started.resolve();
-          await release.promise;
-          throw containmentError;
-        },
-      }),
-      {
-        models: [],
-      },
-      PermissionMode.YOLO,
-      createFilesystemContext(workspaceRoot),
-      NOOP_LOGGER,
-    );
-
-    await runtime.initialize();
-    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-    assertDefined(executionPipeline);
-    const resultPromise = collectToolExecution(
-      executionPipeline.execute(
-        'CustomTool',
-        {},
-        {
-          permissionMode: PermissionMode.YOLO,
-          signal: controller.signal,
-        },
-      ),
-    );
-
-    await started.promise;
-    controller.abort(new Error('request cancelled'));
-    await expect(resultPromise).resolves.toMatchObject({
-      status: 'error',
-      error: { message: 'request cancelled' },
-    });
-    release.reject(containmentError);
-    await vi.waitFor(() => {
-      expect(executionPipeline.getTerminalCleanupFailure()).toBe(containmentError);
-    });
-
-    const cancelBackgroundAgents = vi.spyOn(
-      runtime.getBackgroundAgentManager(),
-      'sealCancelAndWait',
-    );
-    await expect(runtime.close()).rejects.toBe(containmentError);
-    expect(cancelBackgroundAgents).toHaveBeenCalledOnce();
-  });
-
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
-    const pluginTool = createTool({
+    const pluginTool = defineTool({
       name: 'PluginTool',
       displayName: 'Plugin Tool',
       kind: ToolKind.ReadOnly,
       sideEffect: 'pure',
       description: { short: 'Plugin test tool' },
-      schema: Type.Object({ value: Type.Optional(Type.String()) }),
-      execute(params) {
-        return completeToolExecution({
-          status: 'success',
-          model: params.value ?? 'missing',
-        });
+      parameters: Type.Object({ value: Type.Optional(Type.String()) }),
+      async execute(params) {
+        return params.value ?? 'missing';
       },
     });
     const runtime = new SessionRuntime(
@@ -600,7 +606,7 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    expect(runtime.getToolCatalog().getEntry('PluginTool')).toMatchObject({
+    expect(runtime.getToolRegistry().getEntry('PluginTool')).toMatchObject({
       source: {
         kind: 'custom',
         trustLevel: 'workspace',
@@ -694,7 +700,7 @@ describe('SessionRuntime', () => {
       try {
         await expect(runtime.initialize(), testCase.label).rejects.toThrow('已注册');
         expect(
-          runtime.getToolCatalog().getEntry(testCase.toolName)?.source.sourceId,
+          runtime.getToolRegistry().getEntry(testCase.toolName)?.source.sourceId,
           testCase.label,
         ).toBe(testCase.expectedSourceId);
       } finally {
@@ -704,7 +710,6 @@ describe('SessionRuntime', () => {
   });
 
   it('should activate and execute hooks contributed only by a plugin', async () => {
-    const enableHooks = vi.spyOn(HookManager.getInstance(), 'enable');
     const pluginHook = vi.fn(async () => ({
       action: 'continue' as const,
       modifiedInput: {
@@ -736,7 +741,6 @@ describe('SessionRuntime', () => {
     await expect(runtime.getHookRuntime().applyUserPromptSubmit('original')).resolves.toBe(
       'modified by plugin',
     );
-    expect(enableHooks).toHaveBeenCalled();
     expect(pluginHook).toHaveBeenCalledOnce();
 
     await runtime.close();
@@ -760,83 +764,6 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().getAll()).toEqual([]);
-
-    await runtime.close();
-  });
-
-  it('should register complete Tool instances without adapting away their behavior', async () => {
-    const execute = vi.fn(({ value }: { value: string }) =>
-      completeToolExecution({
-        status: 'success',
-        model: value,
-      }),
-    );
-    const runtimeTool = createTool({
-      name: 'RuntimeTool',
-      displayName: 'Runtime Tool',
-      kind: ToolKind.ReadOnly,
-      sideEffect: 'pure',
-      interruptBehavior: 'cancel',
-      strict: true,
-      schema: Type.Object({
-        value: Type.String(),
-      }),
-      description: {
-        short: 'Runtime tool',
-      },
-      execute,
-    });
-    const memoryManager = new MemoryManager({
-      save: vi.fn(),
-      get: vi.fn(),
-      list: vi.fn(async () => []),
-      delete: vi.fn(),
-    });
-    const memoryTool = createMemoryReadTool({ manager: memoryManager });
-    const runtime = new SessionRuntime(
-      SessionId('session-complete-tools'),
-      createOptions({
-        allowedTools: ['RuntimeTool', 'MemoryRead'],
-        tools: [runtimeTool, memoryTool],
-      }),
-      {
-        models: [],
-      },
-      PermissionMode.DEFAULT,
-      createFilesystemContext(workspaceRoot),
-      NOOP_LOGGER,
-    );
-
-    await runtime.initialize();
-
-    expect(runtime.getToolRegistry().get('RuntimeTool')).toBe(runtimeTool);
-    expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryTool);
-    expect(runtime.getToolRegistry().get('RuntimeTool')?.interruptBehavior).toBe('cancel');
-
-    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-    assertDefined(executionPipeline);
-    const invalidResult = await collectToolExecution(
-      executionPipeline.execute('RuntimeTool', {}, {}),
-    );
-    expect(invalidResult.status).toBe('error');
-    expect(execute).not.toHaveBeenCalled();
-
-    const validResult = await collectToolExecution(
-      executionPipeline.execute('RuntimeTool', { value: 'validated' }, {}),
-    );
-    expect(validResult).toMatchObject({
-      status: 'success',
-      model: 'validated',
-    });
-    expect(execute).toHaveBeenCalledOnce();
-
-    const memoryResult = await collectToolExecution(
-      executionPipeline.execute('MemoryRead', { operation: 'list' }, {}),
-    );
-    expect(memoryResult).toMatchObject({
-      status: 'success',
-      model: [],
-    });
 
     await runtime.close();
   });
@@ -885,7 +812,9 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().getEntry('mcp__test__test_tool')?.source.sourceId).toBe(
+      'test',
+    );
 
     await runtime.mcpDisconnect('test');
     expect(await runtime.mcpListTools()).toEqual([]);
@@ -894,7 +823,9 @@ describe('SessionRuntime', () => {
     await runtime.mcpReconnect('test');
     expect((await runtime.mcpListTools()).map((tool) => tool.name)).toEqual(['test_tool']);
     expect(runtime.getToolRegistry().get('mcp__test__test_tool')).toBeDefined();
-    expect(runtime.getToolCatalog().getEntry('mcp__test__test_tool')?.source.sourceId).toBe('test');
+    expect(runtime.getToolRegistry().getEntry('mcp__test__test_tool')?.source.sourceId).toBe(
+      'test',
+    );
 
     await runtime.close();
   });
@@ -1012,7 +943,7 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('should combine session prompt hooks with the hook runtime facade', async () => {
+  it('should expose session prompt hooks through the hook runtime facade', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-hooks'),
       createOptions({
@@ -1033,30 +964,15 @@ describe('SessionRuntime', () => {
       NOOP_LOGGER,
     );
 
-    const managerSpy = vi
-      .spyOn(HookManager.getInstance(), 'executeUserPromptSubmitHooks')
-      .mockResolvedValue({
-        proceed: true,
-        updatedPrompt: 'from-hook-manager',
-        contextInjection: 'extra context',
-      });
-
     const rewritten = await runtime.getHookRuntime().applyUserPromptSubmit('original prompt');
 
-    expect(managerSpy).toHaveBeenCalledWith(
-      'from-session-hook',
-      expect.objectContaining({
-        projectDir: workspaceRoot,
-        sessionId: 'session-hooks',
-      }),
-    );
-    expect(rewritten).toBe('from-hook-manager\n\nextra context');
+    expect(rewritten).toBe('from-session-hook');
 
     await runtime.close();
   });
 
-  it('should let permission hooks modify input before canUseTool runs', async () => {
-    const canUseTool = vi.fn(async (_toolName: string, input: JsonObject) => ({
+  it('should let permission hooks modify input before the permission handler runs', async () => {
+    const permissionHandler = vi.fn(async ({ input }: { input: JsonObject }) => ({
       behavior: 'allow' as const,
       updatedInput: input,
     }));
@@ -1070,7 +986,7 @@ describe('SessionRuntime', () => {
     const runtime = new SessionRuntime(
       SessionId('session-4'),
       createOptions({
-        canUseTool,
+        permissionHandler,
         tools: [
           {
             ...customTool,
@@ -1113,10 +1029,12 @@ describe('SessionRuntime', () => {
       ),
     );
 
-    expect(canUseTool).toHaveBeenCalledWith(
-      'CustomTool',
-      expect.objectContaining({ value: 'from-permission-hook' }),
-      expect.objectContaining({ affectedPaths: [] }),
+    expect(permissionHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'CustomTool',
+        input: expect.objectContaining({ value: 'from-permission-hook' }),
+        affectedPaths: [],
+      }),
     );
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ value: 'from-permission-hook' }),

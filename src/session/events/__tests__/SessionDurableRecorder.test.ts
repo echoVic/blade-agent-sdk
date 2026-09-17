@@ -465,6 +465,24 @@ describe('SessionDurableRecorder', () => {
     ).toHaveLength(1);
   });
 
+  it('uses the journal projection when a recorder is reconstructed', async () => {
+    const steeringInputId = InputId('reconstructed-steering-input');
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    await recorder.onInputApplying({ inputId: steeringInputId, priority: 'now' });
+
+    const reconstructed = new SessionDurableRecorder(journal, requestId, 'test-model');
+    await expect(
+      reconstructed.recordAgentEvent({
+        type: 'input_applied',
+        inputId: steeringInputId,
+        requestId,
+        priority: 'now',
+        turn: 1,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('binds a pre-turn terminal event to the latest Request boundary', async () => {
     const steeringInputId = InputId('terminal-steering-input');
     await recorder.recordAccepted(inputId, 'run');

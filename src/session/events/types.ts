@@ -1,6 +1,6 @@
 import type { ModelIdentity } from '../../model/identity.js';
 import type { ModelUsage, TokenUsage } from '../../model/usage.js';
-import type { ToolSideEffect } from '../../tools/types/kind.js';
+import type { ToolSideEffect } from '../../tools/behavior.js';
 import type {
   CommandId,
   EventId,
@@ -18,7 +18,7 @@ import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
 export const DURABLE_EVENT_SCHEMA_VERSION = 4 as const;
-export type DurableEventSchemaVersion = 2 | 3 | typeof DURABLE_EVENT_SCHEMA_VERSION;
+export type DurableEventSchemaVersion = typeof DURABLE_EVENT_SCHEMA_VERSION;
 
 export const DurableEventType = {
   SESSION_CREATED: 'session_created',
@@ -47,6 +47,42 @@ export const DurableEventType = {
 } as const;
 
 export type DurableEventType = (typeof DurableEventType)[keyof typeof DurableEventType];
+
+export const DurableEventScope = {
+  [DurableEventType.SESSION_CREATED]: 'session',
+  [DurableEventType.SESSION_CLOSED]: 'session',
+  [DurableEventType.REQUEST_ACCEPTED]: 'accepted_request',
+  [DurableEventType.REQUEST_STARTED]: 'request',
+  [DurableEventType.REQUEST_COMPLETED]: 'request',
+  [DurableEventType.REQUEST_FAILED]: 'request',
+  [DurableEventType.REQUEST_INTERRUPTED]: 'request',
+  [DurableEventType.TURN_STARTED]: 'turn',
+  [DurableEventType.TURN_COMPLETED]: 'turn',
+  [DurableEventType.TURN_ABORTED]: 'turn',
+  [DurableEventType.MODEL_REQUEST_STARTED]: 'model',
+  [DurableEventType.MODEL_REQUEST_COMPLETED]: 'model',
+  [DurableEventType.MODEL_REQUEST_FAILED]: 'model',
+  [DurableEventType.MODEL_REQUEST_ABORTED]: 'model',
+  [DurableEventType.TOOL_SCHEDULED]: 'scheduled_tool',
+  [DurableEventType.TOOL_STARTED]: 'tool',
+  [DurableEventType.TOOL_COMPLETED]: 'tool',
+  [DurableEventType.TOOL_FAILED]: 'tool',
+  [DurableEventType.TOOL_CANCELLED]: 'tool',
+  [DurableEventType.TOOL_OUTCOME_UNKNOWN]: 'tool',
+  [DurableEventType.PERMISSION_REQUESTED]: 'tool',
+  [DurableEventType.PERMISSION_RESOLVED]: 'tool',
+  [DurableEventType.INPUT_APPLIED]: 'input',
+} as const satisfies Record<DurableEventType, DurableEventScopeName>;
+
+export type DurableEventScopeName =
+  | 'session'
+  | 'accepted_request'
+  | 'request'
+  | 'turn'
+  | 'model'
+  | 'scheduled_tool'
+  | 'tool'
+  | 'input';
 
 export type DurableInputPriority = 'now' | 'next' | 'later';
 export type DurableToolInterruptBehavior = 'block' | 'cancel';
@@ -207,85 +243,60 @@ export interface DurableEventDataMap {
   };
 }
 
-interface SessionEventCorrelation {
-  readonly commandId?: CommandId;
-  readonly modelAttemptId?: never;
-}
-
-interface RequestAcceptedCorrelation {
-  readonly requestId: RequestId;
-  readonly commandId: CommandId;
-}
-
-interface RequestEventCorrelation {
-  readonly requestId: RequestId;
-  readonly commandId?: CommandId;
-  readonly modelAttemptId?: never;
-}
-
-interface TurnEventCorrelation extends RequestEventCorrelation {
-  readonly turnId: TurnId;
-  readonly toolAttemptId?: never;
-}
-
-interface ModelEventCorrelation {
-  readonly requestId: RequestId;
-  readonly turnId: TurnId;
-  readonly modelAttemptId: ModelAttemptId;
-  readonly commandId?: CommandId;
-}
-
-interface ToolScheduledCorrelation {
-  readonly requestId: RequestId;
-  readonly turnId: TurnId;
-  readonly modelAttemptId?: ModelAttemptId;
-  readonly toolAttemptId: ToolAttemptId;
-  readonly commandId?: CommandId;
-}
-
-interface ToolEventCorrelation {
-  readonly requestId: RequestId;
-  readonly turnId: TurnId;
-  readonly toolAttemptId: ToolAttemptId;
-  readonly modelAttemptId?: never;
-  readonly commandId?: CommandId;
-}
-
-interface InputAppliedCorrelation {
-  readonly requestId: RequestId;
-  readonly turnId?: TurnId;
-  readonly modelAttemptId?: never;
-  readonly toolAttemptId?: never;
-  readonly commandId?: CommandId;
-}
-
-interface DurableEventCorrelationMap {
-  [DurableEventType.SESSION_CREATED]: SessionEventCorrelation;
-  [DurableEventType.SESSION_CLOSED]: SessionEventCorrelation;
-  [DurableEventType.REQUEST_ACCEPTED]: RequestAcceptedCorrelation;
-  [DurableEventType.REQUEST_STARTED]: RequestEventCorrelation;
-  [DurableEventType.REQUEST_COMPLETED]: RequestEventCorrelation;
-  [DurableEventType.REQUEST_FAILED]: RequestEventCorrelation;
-  [DurableEventType.REQUEST_INTERRUPTED]: RequestEventCorrelation;
-  [DurableEventType.TURN_STARTED]: TurnEventCorrelation;
-  [DurableEventType.TURN_COMPLETED]: TurnEventCorrelation;
-  [DurableEventType.TURN_ABORTED]: TurnEventCorrelation;
-  [DurableEventType.MODEL_REQUEST_STARTED]: ModelEventCorrelation;
-  [DurableEventType.MODEL_REQUEST_COMPLETED]: ModelEventCorrelation;
-  [DurableEventType.MODEL_REQUEST_FAILED]: ModelEventCorrelation;
-  [DurableEventType.MODEL_REQUEST_ABORTED]: ModelEventCorrelation;
-  [DurableEventType.TOOL_SCHEDULED]: ToolScheduledCorrelation;
-  [DurableEventType.TOOL_STARTED]: ToolEventCorrelation;
-  [DurableEventType.TOOL_COMPLETED]: ToolEventCorrelation;
-  [DurableEventType.TOOL_FAILED]: ToolEventCorrelation;
-  [DurableEventType.TOOL_CANCELLED]: ToolEventCorrelation;
-  [DurableEventType.TOOL_OUTCOME_UNKNOWN]: ToolEventCorrelation;
-  [DurableEventType.PERMISSION_REQUESTED]: ToolEventCorrelation;
-  [DurableEventType.PERMISSION_RESOLVED]: ToolEventCorrelation;
-  [DurableEventType.INPUT_APPLIED]: InputAppliedCorrelation;
-}
-
-type DurableEventCorrelation<TType extends DurableEventType> = DurableEventCorrelationMap[TType];
+type OptionalCommand = { readonly commandId?: CommandId };
+type CorrelationForScope<TScope extends DurableEventScopeName> = TScope extends 'session'
+  ? OptionalCommand & {
+      readonly requestId?: never;
+      readonly turnId?: never;
+      readonly modelAttemptId?: never;
+      readonly toolAttemptId?: never;
+    }
+  : TScope extends 'accepted_request'
+    ? { readonly commandId: CommandId; readonly requestId: RequestId }
+    : TScope extends 'request'
+      ? OptionalCommand & {
+          readonly requestId: RequestId;
+          readonly turnId?: never;
+          readonly modelAttemptId?: never;
+          readonly toolAttemptId?: never;
+        }
+      : TScope extends 'turn'
+        ? OptionalCommand & {
+            readonly requestId: RequestId;
+            readonly turnId: TurnId;
+            readonly modelAttemptId?: never;
+            readonly toolAttemptId?: never;
+          }
+        : TScope extends 'model'
+          ? OptionalCommand & {
+              readonly requestId: RequestId;
+              readonly turnId: TurnId;
+              readonly modelAttemptId: ModelAttemptId;
+              readonly toolAttemptId?: never;
+            }
+          : TScope extends 'scheduled_tool'
+            ? OptionalCommand & {
+                readonly requestId: RequestId;
+                readonly turnId: TurnId;
+                readonly modelAttemptId: ModelAttemptId;
+                readonly toolAttemptId: ToolAttemptId;
+              }
+            : TScope extends 'tool'
+              ? OptionalCommand & {
+                  readonly requestId: RequestId;
+                  readonly turnId: TurnId;
+                  readonly modelAttemptId?: never;
+                  readonly toolAttemptId: ToolAttemptId;
+                }
+              : OptionalCommand & {
+                  readonly requestId: RequestId;
+                  readonly turnId?: TurnId;
+                  readonly modelAttemptId?: never;
+                  readonly toolAttemptId?: never;
+                };
+type DurableEventCorrelation<TType extends DurableEventType> = CorrelationForScope<
+  (typeof DurableEventScope)[TType]
+>;
 
 type DurableEventDraftVariant<TType extends DurableEventType> = {
   readonly type: TType;

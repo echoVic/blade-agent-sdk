@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelMessage } from '../../model/message.js';
+import { ToolKind } from '../../tools/behavior.js';
 import type { ToolResult } from '../../tools/types/result.js';
 import { completeToolExecution } from '../../tools/types/result.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -28,13 +29,26 @@ type BaseConfigOverrides = Partial<
   messages?: ModelMessage[];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
   onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
-  onAfterToolExecEpochDiscard?: NonNullable<
-    NonNullable<AgentLoopConfig['hooks']>['tool']
-  >['afterExecEpochDiscard'];
   onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
   onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
   onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
 };
+
+function mockRuntimeTool(name: string) {
+  const behavior = {
+    kind: ToolKind.Execute,
+    sideEffect: 'non_idempotent' as const,
+    isReadOnly: false,
+    isConcurrencySafe: false,
+    isDestructive: false,
+    interruptBehavior: 'block' as const,
+  };
+  return {
+    name,
+    staticBehavior: behavior,
+    prepare: () => ({ behavior }),
+  };
+}
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
   const {
@@ -43,7 +57,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     messages = [{ role: 'user', content: 'Hi' }] as ModelMessage[],
     executionPipeline = {
       getRegistry: () => ({
-        get: (name: string) => ({ kind: 'execute', name }),
+        get: (name: string) => mockRuntimeTool(name),
       }),
       execute: vi.fn(),
     } as unknown as AgentLoopConfig['executionPipeline'],
@@ -51,7 +65,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     isYoloMode = false,
     onBeforeToolExec,
     onAfterToolExec,
-    onAfterToolExecEpochDiscard,
     onToolExecutionUpdate,
     onAssistantMessage,
     onComplete,
@@ -91,7 +104,6 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     tool: {
       beforeExec: onBeforeToolExec,
       afterExec: onAfterToolExec,
-      afterExecEpochDiscard: onAfterToolExecEpochDiscard,
       onUpdate: onToolExecutionUpdate,
     },
     message: {
@@ -132,7 +144,7 @@ async function collectEvents(
 }
 
 describe('agentLoop streaming integration', () => {
-  it('uses StreamingToolExecutor when streaming=true and tools are present, yielding streaming tool events without double-calling onAfterToolExec', async () => {
+  it('streams the model response before running tools through the shared executor', async () => {
     const toolGate = deferred<ToolResult>();
     const streamChat = vi.fn(async function* () {
       yield {
@@ -187,7 +199,7 @@ describe('agentLoop streaming integration', () => {
           streaming: true,
           executionPipeline: {
             getRegistry: () => ({
-              get: (name: string) => ({ kind: 'execute', name }),
+              get: (name: string) => mockRuntimeTool(name),
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
@@ -233,8 +245,8 @@ describe('agentLoop streaming integration', () => {
     const streamEndIndex = eventTypes.indexOf('stream_end');
     const toolResultIndex = eventTypes.indexOf('tool_result');
 
-    expect(toolStartIndex).toBeLessThan(streamEndIndex);
-    expect(streamEndIndex).toBeLessThan(toolResultIndex);
+    expect(streamEndIndex).toBeLessThan(toolStartIndex);
+    expect(toolStartIndex).toBeLessThan(toolResultIndex);
   });
 
   it('keeps the non-streaming path unchanged when streaming=false', async () => {
@@ -272,7 +284,7 @@ describe('agentLoop streaming integration', () => {
         baseConfig({
           executionPipeline: {
             getRegistry: () => ({
-              get: (name: string) => ({ kind: 'execute', name }),
+              get: (name: string) => mockRuntimeTool(name),
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],

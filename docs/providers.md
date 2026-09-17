@@ -85,6 +85,10 @@ Provider、adapter、模型，或恢复不含来源信息的旧历史时，reaso
 普通 assistant 文本，同时保留 tool call 关联，避免把 Provider 专属 payload
 发送给不兼容的 API。
 
+内置 Provider 的选择由 `services/modelProvider.ts` 中唯一的 typed factory table
+负责。消息、工具 schema、tool call、usage 与 provider options 的转换集中在
+`services/modelAdapter.ts`；`VercelAIModelService` 只编排请求、重试和流消费。
+
 ## 自定义 Provider Adapter
 
 `ProviderRegistry` 是实例级 Registry，不包含进程全局注册状态，因此不同 Session
@@ -189,35 +193,11 @@ Thinking mode 可通过模型配置的 `providerOptions` 透传：
 }
 ```
 
-DeepSeek Context Caching 默认由官方服务端启用，SDK 不需要额外开关。响应 usage 会保留缓存命中与未命中口径：`cacheReadInputTokens` 对应 `prompt_cache_hit_tokens`，`cacheMissInputTokens` / `billableInputTokens` 对应 `prompt_cache_miss_tokens`。如果启用 Agent token budget，可复用内置价格表生成成本配置：
-
-```ts
-import { createDeepSeekTokenBudgetCostConfig } from '@blade-ai/agent-sdk';
-
-const session = await createSession({
-  provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
-  model: 'deepseek-v4-pro',
-  tokenBudget: {
-    maxTotalTokens: 1_000_000,
-    ...createDeepSeekTokenBudgetCostConfig('deepseek-v4-pro'),
-  },
-});
-```
-
-内置价格表按 DeepSeek 官方价格页的 cache hit、cache miss、output 三档折算为 per-token USD。价格变动时，应在业务侧传入自定义 `DeepSeekPricing` 或直接覆盖 `tokenBudget` 的成本字段。
-
-也可以直接对单次 usage 计算成本明细：
-
-```ts
-import { calculateDeepSeekCost, DeepSeekCostTracker } from '@blade-ai/agent-sdk';
-
-const cost = calculateDeepSeekCost(response.usage, 'deepseek-v4-pro');
-console.log(cost?.totalCost);
-
-const tracker = new DeepSeekCostTracker('deepseek-v4-pro');
-tracker.recordResponse(response);
-console.log(tracker.getSnapshot().cacheHitRate);
-```
+DeepSeek Context Caching 默认由官方服务端启用，SDK 不需要额外开关。响应 usage
+会保留缓存命中与未命中口径：`cacheReadInputTokens` 对应
+`prompt_cache_hit_tokens`，`cacheMissInputTokens` / `billableInputTokens`
+对应 `prompt_cache_miss_tokens`。成本策略属于应用配置，SDK 不内置会随服务端
+价格变化而过期的定价表。
 
 ### DeepSeek 缓存命中优化
 
@@ -225,7 +205,6 @@ DeepSeek 服务端会自动缓存 prompt 前缀。SDK 会在 DeepSeek provider �
 
 ```ts
 import {
-  createDeepSeekChatCompletion,
   optimizeDeepSeekCachePrefix,
 } from '@blade-ai/agent-sdk';
 
@@ -239,106 +218,9 @@ const messages = optimizeDeepSeekCachePrefix([
   },
 ]);
 
-const response = await createDeepSeekChatCompletion({
-  apiKey: process.env.DEEPSEEK_API_KEY!,
-  model: 'deepseek-v4-pro',
-  messages,
-});
 ```
 
 这项优化不会重排已经进入多轮对话的 assistant/tool 历史，避免破坏 tool call 因果关系。
-
-### DeepSeek 长上下文分片
-
-对于 64K/128K 级稳定上下文，推荐先分片为稳定前缀消息，再追加本轮问题。默认估算为 4 chars/token，可根据业务 tokenizer 调整。
-
-```ts
-import {
-  createDeepSeekChatCompletion,
-  createDeepSeekLongContextMessages,
-  optimizeDeepSeekCachePrefix,
-} from '@blade-ai/agent-sdk';
-
-const contextMessages = createDeepSeekLongContextMessages(largeDocument, {
-  chunkTokenLimit: 64_000,
-  chunkPrefix: 'repo',
-});
-
-const messages = optimizeDeepSeekCachePrefix([
-  { role: 'system', content: 'Answer from the provided repository context.' },
-  ...contextMessages,
-  { role: 'user', content: '定位鉴权相关代码并给出风险点' },
-]);
-
-await createDeepSeekChatCompletion({
-  apiKey: process.env.DEEPSEEK_API_KEY!,
-  model: 'deepseek-v4-pro',
-  messages,
-});
-```
-
-对于 128K 场景，可以把 `chunkTokenLimit` 设置为 `128_000`，并预留输出空间：
-
-```ts
-const chunks = createDeepSeekLongContextMessages(largeDocument, {
-  chunkTokenLimit: 128_000,
-  maxContextTokens: 128_000,
-  reserveOutputTokens: 8_000,
-});
-```
-
-如果需要先检查哪些分片会进入请求，可以使用计划接口：
-
-```ts
-import { createDeepSeekLongContextPlan } from '@blade-ai/agent-sdk';
-
-const plan = createDeepSeekLongContextPlan(largeDocument, {
-  chunkTokenLimit: 64_000,
-  maxContextTokens: 128_000,
-  reserveOutputTokens: 8_000,
-});
-
-console.log(plan.includedChunkCount, plan.omittedChunkCount);
-```
-
-### DeepSeek 批量请求
-
-DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；SDK 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。批量请求同样会应用稳定前缀重排，可用 `summarizeDeepSeekBatchChatCompletions` 汇总命中率和成本。
-
-```ts
-import {
-  createDeepSeekBatchChatCompletions,
-  summarizeDeepSeekBatchChatCompletions,
-} from '@blade-ai/agent-sdk';
-
-const results = await createDeepSeekBatchChatCompletions({
-  apiKey: process.env.DEEPSEEK_API_KEY!,
-  concurrency: 4,
-  requests: [
-    {
-      id: 'case-1',
-      model: 'deepseek-v4-pro',
-      messages: [{ role: 'user', content: 'Summarize file A' }],
-    },
-    {
-      id: 'case-2',
-      model: 'deepseek-v4-pro',
-      messages: [{ role: 'user', content: 'Summarize file B' }],
-    },
-  ],
-});
-
-const summary = summarizeDeepSeekBatchChatCompletions(results, 'deepseek-v4-pro');
-console.log(summary.cacheHitRate, summary.totalCost);
-
-for (const item of results) {
-  if (item.error) {
-    console.error(item.id, item.error.message);
-  } else {
-    console.log(item.id, item.response?.cost?.totalCost);
-  }
-}
-```
 
 ### OpenAI 兼容
 

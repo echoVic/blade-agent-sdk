@@ -8,10 +8,6 @@ export interface RuntimeContext {
       roots: string[];
       cwd?: string;
     };
-    /**
-     * Sandbox policy for this context. It belongs here rather than in a process
-     * singleton so two Sessions with different policies cannot affect each other.
-     */
     sandbox?: SandboxSettings;
     browser?: {
       pageId?: string;

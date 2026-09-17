@@ -65,7 +65,7 @@ try {
         "const root = await import('@blade-ai/agent-sdk');",
         "const server = await import('@blade-ai/agent-sdk/server/infra');",
         "const node = await import('@blade-ai/agent-sdk/advanced');",
-        "console.log(typeof root.createSession, typeof server.AgentWorker, typeof node.DockerExecutionHost);",
+        "console.log(typeof root.createSession, typeof server.AgentWorker, typeof node.ExecutionHostError);",
         "try { await root.createSession({ provider: { type: 'anthropic', apiKey: 'test' }, model: 'test', persistSession: false }); } catch (error) { console.log(error.message); }",
       ].join(' '),
     ],
@@ -82,7 +82,6 @@ try {
 
   for (const packageName of [
     'pg',
-    'koffi',
     'fs-native-extensions',
     '@vscode/ripgrep',
     '@ai-sdk/anthropic',
@@ -105,10 +104,8 @@ try {
   );
   for (const packageName of [
     'pg',
-    'koffi',
     'fs-native-extensions',
     '@vscode/ripgrep',
-    '@opentelemetry/api',
     '@ai-sdk/anthropic',
     '@ai-sdk/azure',
     '@ai-sdk/deepseek',

@@ -3,17 +3,10 @@ import { nanoid } from 'nanoid';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import type {
   ModelExecutionLifecycle,
-  ModelRequestAbortReason,
   ModelRequestLifecycle,
 } from '../../agent/ModelExecutionLifecycle.js';
-import type {
-  InputApplicationLifecycle,
-  LoopResult,
-  UserMessageContent,
-} from '../../agent/types.js';
-import { SdkError } from '../../errors/SdkError.js';
+import type { InputApplicationLifecycle, UserMessageContent } from '../../agent/types.js';
 import type { ModelIdentity } from '../../model/identity.js';
-import type { TokenUsage } from '../../model/usage.js';
 import type {
   ToolExecutionLifecycle,
   ToolExecutionStartedLifecycle,
@@ -31,111 +24,61 @@ import {
   PermissionRequestId,
   type RequestId,
   ToolAttemptId,
-  ToolUseId,
+  type ToolUseId,
   TurnId,
 } from '../../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import { toJsonValue } from '../../utils/jsonValue.js';
+import {
+  DurableSessionRecoveryRequiredError,
+  SessionDurableRecorderError,
+} from './DurableRecorderErrors.js';
+import {
+  type DurableRequestFinish,
+  durableRequestFinishFromLoopResult,
+  toDurableEventError,
+  toDurableModelResponse,
+} from './DurableRecorderPayload.js';
 import type {
   DurableCommandCommitOptions,
   DurableCommandCommitResult,
   DurableCommandEventDraft,
   DurableSessionJournal,
 } from './DurableSessionJournal.js';
-import type { DurableSessionRecoveryPlan } from './DurableSessionProjector.js';
+import type {
+  DurableRequestProjection,
+  DurableToolAttemptProjection,
+  DurableTurnProjection,
+} from './DurableSessionProjector.js';
 import {
-  type DurableEventError,
-  DurableEventType,
-  type DurableModelResponse,
-  type DurableRequestInterruptReason,
-  type DurableToolCancelReason,
-} from './types.js';
+  modelTerminalEvent,
+  requestTerminalEvent,
+  toolTerminalEvent,
+} from './DurableTerminalEvents.js';
+import { DurableEventType, type DurableToolCancelReason } from './types.js';
 
-type ActiveToolStatus = 'scheduled' | 'started' | 'settled';
+export type { DurableRequestFinish };
+export {
+  DurableSessionRecoveryRequiredError,
+  durableRequestFinishFromLoopResult,
+  SessionDurableRecorderError,
+};
 
-interface ActiveTool {
-  toolAttemptId: ToolAttemptId;
-  toolCallId: ToolUseId;
-  toolName: string;
-  status: ActiveToolStatus;
-  permissionRequestId?: PermissionRequestId;
-  permissionDecision?: ToolPermissionResolution['decision'];
-}
+type ActiveModelAttempt = { modelAttemptId: ModelAttemptId; turnId: TurnId };
 
-interface ActiveTurn {
-  turnId: TurnId;
-  turn: number;
-  modelAttemptId: ModelAttemptId | null;
-  tools: Map<ToolUseId, ActiveTool>;
-}
-
-interface ActiveModelAttempt {
-  modelAttemptId: ModelAttemptId;
-  turnId: TurnId;
-}
-
-function toDurableEventError(error: unknown, fallbackMessage: string): DurableEventError {
-  const record =
-    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : undefined;
-  const rawMessage =
-    error instanceof Error
-      ? error.message
-      : typeof record?.message === 'string'
-        ? record.message
-        : String(error);
-  return {
-    message: rawMessage.trim() === '' ? fallbackMessage : rawMessage,
-    ...(typeof record?.code === 'string' && record.code.trim() !== '' ? { code: record.code } : {}),
-    ...(typeof record?.retryable === 'boolean' ? { retryable: record.retryable } : {}),
-  };
-}
-
-export type DurableRequestFinish =
-  | {
-      status: 'completed';
-      output?: JsonValue;
-      usage?: TokenUsage;
-    }
-  | {
-      status: 'failed';
-      error: unknown;
-    }
-  | {
-      status: 'interrupted';
-      reason: DurableRequestInterruptReason;
-      byInputId?: InputId;
-    };
-
-export class SessionDurableRecorderError extends SdkError {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super('DURABLE_SESSION_RECORDER_INVALID_STATE', message, options);
-  }
-}
-
-export class DurableSessionRecoveryRequiredError extends SdkError {
-  readonly recoveryPlan: DurableSessionRecoveryPlan;
-
-  constructor(recoveryPlan: DurableSessionRecoveryPlan) {
-    super(
-      'DURABLE_SESSION_RECOVERY_REQUIRED',
-      `Session recovery requires action: ${recoveryPlan.action}`,
-    );
-    this.recoveryPlan = structuredClone(recoveryPlan);
-  }
+function isOpenTool(tool: DurableToolAttemptProjection): boolean {
+  return (
+    tool.status === 'scheduled' || tool.status === 'started' || tool.status === 'outcome_unknown'
+  );
 }
 
 export class SessionDurableRecorder
   implements ToolExecutionLifecycle, InputApplicationLifecycle, ModelExecutionLifecycle
 {
-  private activeTurn: ActiveTurn | null = null;
-  private activeModelAttempt: ActiveModelAttempt | null = null;
-  private readonly persistedInputApplications = new Map<InputId, 'now' | 'next'>();
-  private lastBoundaryEventId: EventId | null = null;
+  private readonly pendingToolCalls = new Set<ToolUseId>();
   private boundaryFailed = false;
   private boundaryFailure: unknown;
   private ignoredTurnEnd: number | null = null;
-  private requestStarted = false;
-  private requestFinished = false;
   private handoffRequested = false;
   private completedTurnObserved = false;
   private readonly handoffMutex = new Mutex();
@@ -144,14 +87,7 @@ export class SessionDurableRecorder
     private readonly journal: DurableSessionJournal,
     readonly requestId: RequestId,
     private readonly model: string,
-  ) {
-    const projection = journal.getProjection();
-    const request = projection.activeRequest;
-    if (request?.requestId === requestId && request.activeTurn === null) {
-      this.lastBoundaryEventId = projection.lastEventId;
-      this.requestStarted = request.status === 'running';
-    }
-  }
+  ) {}
 
   assertHandoffReady(): void {
     this.assertBoundaryHealthy();
@@ -159,7 +95,7 @@ export class SessionDurableRecorder
 
   beginHandoff(): boolean {
     this.assertBoundaryHealthy();
-    if (this.requestFinished) {
+    if (!this.getRequest()) {
       return false;
     }
     this.handoffRequested = true;
@@ -176,38 +112,38 @@ export class SessionDurableRecorder
 
   private async finalizeHandoffExclusive(): Promise<void> {
     this.assertBoundaryHealthy();
-    if (!this.handoffRequested || this.requestFinished) {
+    if (!this.handoffRequested) {
       return;
     }
-    if (!this.activeTurn) {
-      const request = this.journal.getProjection().activeRequest;
+    const request = this.getRequest();
+    if (!request) {
+      return;
+    }
+    const turn = request.activeTurn;
+    if (!turn) {
       if (
         this.completedTurnObserved &&
-        request?.requestId === this.requestId &&
         request.status === 'running' &&
-        (request.pendingInputIds ?? []).length === 0
+        request.pendingInputIds.length === 0
       ) {
         await this.startTurn(request.lastTurn + 1);
       }
       return;
     }
 
-    const turn = this.activeTurn;
     const drafts: DurableCommandEventDraft[] = [];
-    if (this.activeModelAttempt) {
+    if (turn.activeModelAttempt) {
       drafts.push({
         type: DurableEventType.MODEL_REQUEST_ABORTED,
         requestId: this.requestId,
-        turnId: this.activeModelAttempt.turnId,
-        modelAttemptId: this.activeModelAttempt.modelAttemptId,
+        turnId: turn.turnId,
+        modelAttemptId: turn.activeModelAttempt.modelAttemptId,
         data: { reason: 'process_restart' },
       });
     }
 
-    const cancelledPermissions: ActiveTool[] = [];
-    const settledTools: ActiveTool[] = [];
-    for (const tool of turn.tools.values()) {
-      if (tool.status === 'settled') {
+    for (const tool of turn.toolAttempts) {
+      if (!isOpenTool(tool) || tool.status === 'outcome_unknown') {
         continue;
       }
       if (tool.status === 'started') {
@@ -222,22 +158,20 @@ export class SessionDurableRecorder
             reason: 'process_restart',
           },
         });
-        settledTools.push(tool);
         continue;
       }
-      if (tool.permissionRequestId && !tool.permissionDecision) {
+      if (tool.permission?.status === 'pending') {
         drafts.push({
           type: DurableEventType.PERMISSION_RESOLVED,
           requestId: this.requestId,
           turnId: turn.turnId,
           toolAttemptId: tool.toolAttemptId,
           data: {
-            permissionRequestId: tool.permissionRequestId,
+            permissionRequestId: tool.permission.permissionRequestId,
             decision: 'cancel',
             message: 'Worker handoff ended permission resolution',
           },
         });
-        cancelledPermissions.push(tool);
       }
       drafts.push({
         type: DurableEventType.TOOL_CANCELLED,
@@ -250,20 +184,10 @@ export class SessionDurableRecorder
           reason: 'process_restart',
         },
       });
-      settledTools.push(tool);
     }
 
-    if (drafts.length === 0) {
-      return;
-    }
+    if (drafts.length === 0) return;
     await this.commitAtCurrentHead(drafts);
-    this.activeModelAttempt = null;
-    for (const tool of cancelledPermissions) {
-      tool.permissionDecision = 'cancel';
-    }
-    for (const tool of settledTools) {
-      tool.status = 'settled';
-    }
   }
 
   async recordAccepted(
@@ -275,7 +199,7 @@ export class SessionDurableRecorder
       readonly context?: JsonObject;
     } = {},
   ): Promise<void> {
-    await this.commitRequestBoundary([
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.REQUEST_ACCEPTED,
         requestId: this.requestId,
@@ -292,11 +216,11 @@ export class SessionDurableRecorder
   }
 
   async recordStarted(inputId: InputId, priority: 'next' | 'later' = 'next'): Promise<void> {
-    this.assertRequestOpen();
-    if (this.requestStarted) {
+    const request = this.requireRequest();
+    if (request.status === 'running') {
       throw new SessionDurableRecorderError(`Request ${this.requestId} was already started`);
     }
-    await this.commitRequestBoundary([
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.INPUT_APPLIED,
         requestId: this.requestId,
@@ -311,7 +235,6 @@ export class SessionDurableRecorder
         data: {},
       },
     ]);
-    this.requestStarted = true;
   }
 
   async onInputApplying(input: {
@@ -319,26 +242,18 @@ export class SessionDurableRecorder
     readonly priority: 'now' | 'next';
   }): Promise<void> {
     this.assertNewWorkAllowed();
-    this.assertRequestOpen();
-    if (!this.requestStarted) {
+    const request = this.requireRequest();
+    if (request.status !== 'running') {
       throw new SessionDurableRecorderError(`Request ${this.requestId} has not started`);
     }
-    if (this.activeTurn) {
+    if (request.activeTurn) {
       throw new SessionDurableRecorderError(
-        `Input ${input.inputId} cannot be prepared while turn ${this.activeTurn.turnId} is active`,
+        `Input ${input.inputId} cannot be prepared while turn ${request.activeTurn.turnId} is active`,
       );
     }
-    const existingPriority = this.persistedInputApplications.get(input.inputId);
-    if (existingPriority) {
-      if (existingPriority !== input.priority) {
-        throw new SessionDurableRecorderError(
-          `Input ${input.inputId} changed priority during durable application`,
-        );
-      }
-      return;
-    }
+    if (request.pendingInputIds.includes(input.inputId)) return;
 
-    await this.commitRequestBoundary([
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.INPUT_APPLIED,
         requestId: this.requestId,
@@ -348,11 +263,10 @@ export class SessionDurableRecorder
         },
       },
     ]);
-    this.persistedInputApplications.set(input.inputId, input.priority);
   }
 
   async recordAgentEvent(event: AgentEvent): Promise<void> {
-    this.assertRequestOpen();
+    this.requireRequest();
     switch (event.type) {
       case 'turn_start':
         if (this.handoffRequested) {
@@ -376,24 +290,17 @@ export class SessionDurableRecorder
         }
         if (!(await this.abortTurn(event.turn, 'request_interrupted'))) {
           throw new SessionDurableRecorderError(
-            `Turn ${this.activeTurn?.turnId ?? event.turn} has a tool outcome that requires reconciliation`,
+            `Turn ${this.getRequest()?.activeTurn?.turnId ?? event.turn} has a tool outcome that requires reconciliation`,
           );
         }
         this.ignoredTurnEnd = event.turn;
         return;
       case 'input_applied': {
-        const persistedPriority = this.persistedInputApplications.get(event.inputId);
-        if (!persistedPriority) {
+        if (!this.requireRequest().pendingInputIds.includes(event.inputId)) {
           throw new SessionDurableRecorderError(
             `Input ${event.inputId} was not persisted before preparation`,
           );
         }
-        if (persistedPriority !== event.priority) {
-          throw new SessionDurableRecorderError(
-            `Input ${event.inputId} changed priority after durable application`,
-          );
-        }
-        this.persistedInputApplications.delete(event.inputId);
         return;
       }
       default:
@@ -409,73 +316,84 @@ export class SessionDurableRecorder
   }): Promise<ModelRequestLifecycle> {
     this.assertNewWorkAllowed();
     const turn = this.requireTurnNumber(input.turn);
-    if (this.activeModelAttempt) {
+    if (turn.activeModelAttempt) {
       throw new SessionDurableRecorderError(
-        `Model attempt ${this.activeModelAttempt.modelAttemptId} is still active`,
+        `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
       );
     }
     const attempt: ActiveModelAttempt = {
       modelAttemptId: ModelAttemptId(nanoid()),
       turnId: turn.turnId,
     };
-    this.activeModelAttempt = attempt;
-    try {
-      await this.commitRequestBoundary([
-        {
-          type: DurableEventType.MODEL_REQUEST_STARTED,
-          requestId: this.requestId,
-          turnId: turn.turnId,
-          modelAttemptId: attempt.modelAttemptId,
-          data: {
-            model: input.model,
-            ...(input.modelIdentity ? { modelIdentity: input.modelIdentity } : {}),
-            streaming: input.streaming,
-          },
+    await this.commitAtCurrentHead([
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId: this.requestId,
+        turnId: turn.turnId,
+        modelAttemptId: attempt.modelAttemptId,
+        data: {
+          model: input.model,
+          ...(input.modelIdentity ? { modelIdentity: input.modelIdentity } : {}),
+          streaming: input.streaming,
         },
-      ]);
-    } catch (error) {
-      if (this.activeModelAttempt === attempt) {
-        this.activeModelAttempt = null;
-      }
-      throw error;
-    }
-    turn.modelAttemptId = attempt.modelAttemptId;
+      },
+    ]);
 
     return {
       modelAttemptId: attempt.modelAttemptId,
-      onCompleted: (response) => this.completeModelRequest(attempt, response),
-      onFailed: (error) => this.failModelRequest(attempt, error),
-      onAborted: (reason) => this.abortModelRequest(attempt, reason),
+      onCompleted: (response) =>
+        this.recordModelOutcome(
+          attempt,
+          modelTerminalEvent(
+            { requestId: this.requestId, ...attempt },
+            { status: 'completed', response: toDurableModelResponse(response) },
+          ),
+        ),
+      onFailed: (error) =>
+        this.recordModelOutcome(
+          attempt,
+          modelTerminalEvent(
+            { requestId: this.requestId, ...attempt },
+            { status: 'failed', error: toDurableEventError(error, 'Model request failed') },
+          ),
+        ),
+      onAborted: (reason) =>
+        this.recordModelOutcome(
+          attempt,
+          modelTerminalEvent(
+            { requestId: this.requestId, ...attempt },
+            { status: 'aborted', reason },
+          ),
+        ),
     };
   }
 
   async finish(finish: DurableRequestFinish): Promise<boolean> {
-    this.assertRequestOpen();
+    const request = this.requireRequest();
     if (this.handoffRequested && finish.status === 'interrupted') {
       return true;
     }
-    if (this.activeTurn) {
+    if (request.activeTurn) {
       if (finish.status === 'completed') {
         throw new SessionDurableRecorderError(
-          `Request ${this.requestId} completed while turn ${this.activeTurn.turnId} was still active`,
+          `Request ${this.requestId} completed while turn ${request.activeTurn.turnId} was still active`,
         );
       }
       const reason = finish.status === 'interrupted' ? 'request_interrupted' : 'error';
-      if (!(await this.abortTurn(this.activeTurn.turn, reason))) {
+      if (!(await this.abortTurn(request.activeTurn.turn, reason))) {
         return false;
       }
     }
 
-    const causationEventId = this.requireLastBoundaryEventId();
-    switch (finish.status) {
-      case 'completed':
-        await this.commitAtCurrentHead([
-          {
-            type: DurableEventType.REQUEST_COMPLETED,
-            requestId: this.requestId,
-            causationEventId,
-            data: {
-              ...(finish.output !== undefined ? { output: finish.output } : {}),
+    const outcome =
+      finish.status === 'failed'
+        ? ({
+            status: 'failed',
+            error: toDurableEventError(finish.error, 'Request failed'),
+          } as const)
+        : finish.status === 'completed'
+          ? {
+              ...finish,
               ...(finish.usage
                 ? {
                     usage: {
@@ -485,60 +403,35 @@ export class SessionDurableRecorder
                     },
                   }
                 : {}),
-            },
-          },
-        ]);
-        break;
-      case 'failed':
-        await this.commitAtCurrentHead([
-          {
-            type: DurableEventType.REQUEST_FAILED,
-            requestId: this.requestId,
-            causationEventId,
-            data: {
-              error: toDurableEventError(finish.error, 'Request failed'),
-            },
-          },
-        ]);
-        break;
-      case 'interrupted':
-        await this.commitAtCurrentHead([
-          {
-            type: DurableEventType.REQUEST_INTERRUPTED,
-            requestId: this.requestId,
-            causationEventId,
-            data: {
-              reason: finish.reason,
-              ...(finish.byInputId ? { byInputId: finish.byInputId } : {}),
-            },
-          },
-        ]);
-        break;
-    }
-    this.requestFinished = true;
+            }
+          : finish;
+    await this.commitAtCurrentHead([
+      requestTerminalEvent(this.requestId, this.requireLastBoundaryEventId(), outcome),
+    ]);
     return true;
   }
 
   async onToolScheduled(event: ToolScheduledLifecycle): Promise<ToolInvocationLifecycle> {
     this.assertNewWorkAllowed();
     const turn = this.requireActiveTurn();
-    if (!event.modelAttemptId || event.modelAttemptId !== turn.modelAttemptId) {
+    if (
+      !event.modelAttemptId ||
+      event.modelAttemptId !== turn.modelAttempts.at(-1)?.modelAttemptId
+    ) {
       throw new SessionDurableRecorderError(
         `Tool call ${event.toolCallId} does not belong to the current model attempt`,
       );
     }
-    if (turn.tools.has(event.toolCallId)) {
+    if (
+      this.pendingToolCalls.has(event.toolCallId) ||
+      turn.toolAttempts.some((tool) => tool.toolCallId === event.toolCallId)
+    ) {
       throw new SessionDurableRecorderError(
         `Tool call ${event.toolCallId} was already scheduled in turn ${turn.turnId}`,
       );
     }
-    const tool: ActiveTool = {
-      toolAttemptId: ToolAttemptId(nanoid()),
-      toolCallId: event.toolCallId,
-      toolName: event.toolName,
-      status: 'scheduled',
-    };
-    turn.tools.set(tool.toolCallId, tool);
+    const toolAttemptId = ToolAttemptId(nanoid());
+    this.pendingToolCalls.add(event.toolCallId);
     try {
       await this.commit([
         {
@@ -546,10 +439,10 @@ export class SessionDurableRecorder
           requestId: this.requestId,
           turnId: turn.turnId,
           modelAttemptId: event.modelAttemptId,
-          toolAttemptId: tool.toolAttemptId,
+          toolAttemptId,
           data: {
-            toolCallId: tool.toolCallId,
-            toolName: tool.toolName,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
             modelInput: event.modelInput,
             input: event.input,
             sideEffect: event.sideEffect,
@@ -557,30 +450,28 @@ export class SessionDurableRecorder
           },
         },
       ]);
-    } catch (error) {
-      if (turn.tools.get(tool.toolCallId) === tool) {
-        turn.tools.delete(tool.toolCallId);
-      }
-      throw error;
+    } finally {
+      this.pendingToolCalls.delete(event.toolCallId);
     }
 
     return {
       onPermissionRequested: (details, input) =>
-        this.recordPermissionRequested(tool, details.message, input),
-      onPermissionResolved: (resolution) => this.recordPermissionResolved(tool, resolution),
-      onExecutionStarted: (event) => this.recordToolStarted(tool, event),
+        this.recordPermissionRequested(toolAttemptId, details.message, input),
+      onPermissionResolved: (resolution) =>
+        this.recordPermissionResolved(toolAttemptId, resolution),
+      onExecutionStarted: (event) => this.recordToolStarted(toolAttemptId, event),
     };
   }
 
   async onToolSettled(event: ToolSettledLifecycle): Promise<void> {
     const turn = this.requireActiveTurn();
-    const tool = turn.tools.get(event.toolCallId);
+    const tool = turn.toolAttempts.find((candidate) => candidate.toolCallId === event.toolCallId);
     if (!tool || tool.toolName !== event.toolName) {
       throw new SessionDurableRecorderError(
         `No scheduled tool matches ${event.toolName} (${event.toolCallId})`,
       );
     }
-    if (tool.status === 'settled') {
+    if (!isOpenTool(tool)) {
       throw new SessionDurableRecorderError(`Tool call ${event.toolCallId} was already settled`);
     }
     if (this.handoffRequested && tool.status === 'scheduled') {
@@ -588,7 +479,7 @@ export class SessionDurableRecorder
     }
 
     if (this.handoffRequested && tool.status === 'started' && event.result.status === 'error') {
-      await this.recordToolOutcomeUnknown(tool, 'process_restart');
+      await this.recordToolOutcomeUnknown(tool.toolAttemptId, 'process_restart');
     } else if (event.result.status === 'success') {
       if (tool.status !== 'started') {
         throw new SessionDurableRecorderError(
@@ -596,74 +487,57 @@ export class SessionDurableRecorder
         );
       }
       await this.commit([
-        {
-          type: DurableEventType.TOOL_COMPLETED,
-          requestId: this.requestId,
-          turnId: turn.turnId,
-          toolAttemptId: tool.toolAttemptId,
-          data: {
-            toolCallId: tool.toolCallId,
-            toolName: tool.toolName,
-            result: event.result.model,
-          },
-        },
+        toolTerminalEvent(this.toolScope(turn, tool), {
+          status: 'completed',
+          result: event.result.model,
+        }),
       ]);
-    } else if (tool.permissionDecision === 'deny' || tool.permissionDecision === 'cancel') {
+    } else if (
+      tool.permission?.status === 'resolved' &&
+      (tool.permission.decision === 'deny' || tool.permission.decision === 'cancel')
+    ) {
       await this.recordToolCancelled(
-        tool,
-        tool.permissionDecision === 'deny' ? 'permission_denied' : 'permission_cancelled',
+        tool.toolAttemptId,
+        tool.permission.decision === 'deny' ? 'permission_denied' : 'permission_cancelled',
       );
     } else if (event.result.error.type === ToolErrorType.INTERRUPTED) {
-      await this.recordToolCancelled(tool, 'request_interrupted');
+      await this.recordToolCancelled(tool.toolAttemptId, 'request_interrupted');
     } else {
       await this.commit([
-        {
-          type: DurableEventType.TOOL_FAILED,
-          requestId: this.requestId,
-          turnId: turn.turnId,
-          toolAttemptId: tool.toolAttemptId,
-          data: {
-            toolCallId: tool.toolCallId,
-            toolName: tool.toolName,
-            error: {
-              message: event.result.error.message,
-              ...(event.result.error.code ? { code: event.result.error.code } : {}),
-            },
+        toolTerminalEvent(this.toolScope(turn, tool), {
+          status: 'failed',
+          error: {
+            message: event.result.error.message,
+            ...(event.result.error.code ? { code: event.result.error.code } : {}),
           },
-        },
+        }),
       ]);
     }
-    tool.status = 'settled';
   }
 
   private async startTurn(turn: number): Promise<void> {
-    if (this.activeTurn) {
-      throw new SessionDurableRecorderError(`Turn ${this.activeTurn.turnId} is still active`);
+    const request = this.requireRequest();
+    if (request.activeTurn) {
+      throw new SessionDurableRecorderError(`Turn ${request.activeTurn.turnId} is still active`);
     }
-    const activeTurn: ActiveTurn = {
-      turnId: TurnId(nanoid()),
-      turn,
-      modelAttemptId: null,
-      tools: new Map(),
-    };
-    await this.commitRequestBoundary([
+    const turnId = TurnId(nanoid());
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.TURN_STARTED,
         requestId: this.requestId,
-        turnId: activeTurn.turnId,
+        turnId,
         data: {
           turn,
           model: this.model,
         },
       },
     ]);
-    this.activeTurn = activeTurn;
   }
 
   private async completeTurn(turn: number, hasToolCalls: boolean): Promise<void> {
     const activeTurn = this.requireTurnNumber(turn);
     this.assertNoActiveModelAttempt(activeTurn);
-    await this.commitRequestBoundary([
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.TURN_COMPLETED,
         requestId: this.requestId,
@@ -674,39 +548,35 @@ export class SessionDurableRecorder
         },
       },
     ]);
-    this.activeTurn = null;
     this.completedTurnObserved = true;
   }
 
   private async abortTurn(turn: number, reason: 'request_interrupted' | 'error'): Promise<boolean> {
     const activeTurn = this.requireTurnNumber(turn);
     this.assertNoActiveModelAttempt(activeTurn);
-    const drafts = [];
-    const cancelledPermissions: ActiveTool[] = [];
-    const settledTools: ActiveTool[] = [];
+    const drafts: DurableCommandEventDraft[] = [];
     let hasUnknownOutcome = false;
 
-    for (const tool of activeTurn.tools.values()) {
-      if (tool.status === 'settled') {
+    for (const tool of activeTurn.toolAttempts) {
+      if (!isOpenTool(tool)) {
         continue;
       }
       if (tool.status === 'started') {
         hasUnknownOutcome = true;
         continue;
       }
-      if (tool.permissionRequestId && !tool.permissionDecision) {
+      if (tool.permission?.status === 'pending') {
         drafts.push({
           type: DurableEventType.PERMISSION_RESOLVED,
           requestId: this.requestId,
           turnId: activeTurn.turnId,
           toolAttemptId: tool.toolAttemptId,
           data: {
-            permissionRequestId: tool.permissionRequestId,
+            permissionRequestId: tool.permission.permissionRequestId,
             decision: 'cancel',
             message: 'Request ended before permission resolution',
           },
-        } as const);
-        cancelledPermissions.push(tool);
+        });
       }
       drafts.push({
         type: DurableEventType.TOOL_CANCELLED,
@@ -718,23 +588,16 @@ export class SessionDurableRecorder
           toolName: tool.toolName,
           reason: reason === 'request_interrupted' ? 'request_interrupted' : 'cascade_abort',
         },
-      } as const);
-      settledTools.push(tool);
+      });
     }
 
     if (drafts.length > 0) {
       await this.commitAtCurrentHead(drafts);
-      for (const tool of cancelledPermissions) {
-        tool.permissionDecision = 'cancel';
-      }
-      for (const tool of settledTools) {
-        tool.status = 'settled';
-      }
     }
     if (hasUnknownOutcome) {
       return false;
     }
-    await this.commitRequestBoundary([
+    await this.commitAtCurrentHead([
       {
         type: DurableEventType.TURN_ABORTED,
         requestId: this.requestId,
@@ -745,145 +608,27 @@ export class SessionDurableRecorder
         },
       },
     ]);
-    this.activeTurn = null;
     return true;
   }
 
-  private async completeModelRequest(
+  private async recordModelOutcome(
     attempt: ActiveModelAttempt,
-    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
+    event: DurableCommandEventDraft,
   ): Promise<void> {
-    await this.handoffMutex.runExclusive(() =>
-      this.completeModelRequestExclusive(attempt, response),
-    );
-  }
-
-  private async completeModelRequestExclusive(
-    attempt: ActiveModelAttempt,
-    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
-  ): Promise<void> {
-    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
-      return;
-    }
-    this.requireModelAttempt(attempt);
-    await this.commitRebasableRequestBoundary([
-      {
-        type: DurableEventType.MODEL_REQUEST_COMPLETED,
-        requestId: this.requestId,
-        turnId: attempt.turnId,
-        modelAttemptId: attempt.modelAttemptId,
-        data: {
-          response: this.toDurableModelResponse(response),
-        },
-      },
-    ]);
-    this.activeModelAttempt = null;
-  }
-
-  private async failModelRequest(attempt: ActiveModelAttempt, error: unknown): Promise<void> {
-    await this.handoffMutex.runExclusive(() => this.failModelRequestExclusive(attempt, error));
-  }
-
-  private async failModelRequestExclusive(
-    attempt: ActiveModelAttempt,
-    error: unknown,
-  ): Promise<void> {
-    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
-      return;
-    }
-    this.requireModelAttempt(attempt);
-    await this.commitRebasableRequestBoundary([
-      {
-        type: DurableEventType.MODEL_REQUEST_FAILED,
-        requestId: this.requestId,
-        turnId: attempt.turnId,
-        modelAttemptId: attempt.modelAttemptId,
-        data: {
-          error: toDurableEventError(error, 'Model request failed'),
-        },
-      },
-    ]);
-    this.activeModelAttempt = null;
-  }
-
-  private async abortModelRequest(
-    attempt: ActiveModelAttempt,
-    reason: ModelRequestAbortReason,
-  ): Promise<void> {
-    await this.handoffMutex.runExclusive(() => this.abortModelRequestExclusive(attempt, reason));
-  }
-
-  private async abortModelRequestExclusive(
-    attempt: ActiveModelAttempt,
-    reason: ModelRequestAbortReason,
-  ): Promise<void> {
-    if (this.handoffRequested && this.activeModelAttempt !== attempt) {
-      return;
-    }
-    this.requireModelAttempt(attempt);
-    await this.commitRebasableRequestBoundary([
-      {
-        type: DurableEventType.MODEL_REQUEST_ABORTED,
-        requestId: this.requestId,
-        turnId: attempt.turnId,
-        modelAttemptId: attempt.modelAttemptId,
-        data: { reason },
-      },
-    ]);
-    this.activeModelAttempt = null;
-  }
-
-  private toDurableModelResponse(
-    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
-  ): DurableModelResponse {
-    return {
-      content: response.content,
-      ...(response.reasoningContent !== undefined
-        ? { reasoningContent: response.reasoningContent }
-        : {}),
-      ...(response.toolCalls && response.toolCalls.length > 0
-        ? {
-            toolCalls: response.toolCalls.map((toolCall) => ({
-              id: ToolUseId(toolCall.id),
-              name: toolCall.function.name,
-              arguments: toolCall.function.arguments,
-            })),
-          }
-        : {}),
-      ...(response.usage
-        ? {
-            usage: {
-              promptTokens: response.usage.promptTokens,
-              completionTokens: response.usage.completionTokens,
-              totalTokens: response.usage.totalTokens,
-              ...(response.usage.reasoningTokens !== undefined
-                ? { reasoningTokens: response.usage.reasoningTokens }
-                : {}),
-              ...(response.usage.cacheCreationInputTokens !== undefined
-                ? { cacheCreationInputTokens: response.usage.cacheCreationInputTokens }
-                : {}),
-              ...(response.usage.cacheReadInputTokens !== undefined
-                ? { cacheReadInputTokens: response.usage.cacheReadInputTokens }
-                : {}),
-              ...(response.usage.cacheMissInputTokens !== undefined
-                ? { cacheMissInputTokens: response.usage.cacheMissInputTokens }
-                : {}),
-              ...(response.usage.billableInputTokens !== undefined
-                ? { billableInputTokens: response.usage.billableInputTokens }
-                : {}),
-            },
-          }
-        : {}),
-    };
+    await this.handoffMutex.runExclusive(async () => {
+      if (this.handoffRequested && !this.isActiveModelAttempt(attempt)) return;
+      this.requireModelAttempt(attempt);
+      await this.commitRebasableRequestBoundary([event]);
+    });
   }
 
   private async recordPermissionRequested(
-    tool: ActiveTool,
+    toolAttemptId: ToolAttemptId,
     message: string,
     input: JsonValue,
   ): Promise<PermissionRequestId> {
     this.assertNewWorkAllowed();
-    const turn = this.requireActiveTurn();
+    const { turn, tool } = this.requireToolAttempt(toolAttemptId);
     const permissionRequestId = PermissionRequestId(nanoid());
     await this.commit([
       {
@@ -900,16 +645,15 @@ export class SessionDurableRecorder
         },
       },
     ]);
-    tool.permissionRequestId = permissionRequestId;
     return permissionRequestId;
   }
 
   private async recordPermissionResolved(
-    tool: ActiveTool,
+    toolAttemptId: ToolAttemptId,
     resolution: ToolPermissionResolution,
   ): Promise<void> {
-    const turn = this.requireActiveTurn();
-    if (tool.permissionRequestId !== resolution.permissionRequestId) {
+    const { turn, tool } = this.requireToolAttempt(toolAttemptId);
+    if (tool.permission?.permissionRequestId !== resolution.permissionRequestId) {
       throw new SessionDurableRecorderError(
         `Permission ${resolution.permissionRequestId} does not match tool ${tool.toolCallId}`,
       );
@@ -923,15 +667,14 @@ export class SessionDurableRecorder
         data: resolution,
       },
     ]);
-    tool.permissionDecision = resolution.decision;
   }
 
   private async recordToolStarted(
-    tool: ActiveTool,
+    toolAttemptId: ToolAttemptId,
     event: ToolExecutionStartedLifecycle,
   ): Promise<void> {
     this.assertNewWorkAllowed();
-    const turn = this.requireActiveTurn();
+    const { turn, tool } = this.requireToolAttempt(toolAttemptId);
     await this.commit([
       {
         type: DurableEventType.TOOL_STARTED,
@@ -946,54 +689,26 @@ export class SessionDurableRecorder
         },
       },
     ]);
-    tool.status = 'started';
   }
 
   private async recordToolCancelled(
-    tool: ActiveTool,
+    toolAttemptId: ToolAttemptId,
     reason: DurableToolCancelReason,
   ): Promise<void> {
-    const turn = this.requireActiveTurn();
+    const { turn, tool } = this.requireToolAttempt(toolAttemptId);
     await this.commit([
-      {
-        type: DurableEventType.TOOL_CANCELLED,
-        requestId: this.requestId,
-        turnId: turn.turnId,
-        toolAttemptId: tool.toolAttemptId,
-        data: {
-          toolCallId: tool.toolCallId,
-          toolName: tool.toolName,
-          reason,
-        },
-      },
+      toolTerminalEvent(this.toolScope(turn, tool), { status: 'cancelled', reason }),
     ]);
   }
 
   private async recordToolOutcomeUnknown(
-    tool: ActiveTool,
+    toolAttemptId: ToolAttemptId,
     reason: 'process_restart' | 'commit_outcome_unknown',
   ): Promise<void> {
-    const turn = this.requireActiveTurn();
+    const { turn, tool } = this.requireToolAttempt(toolAttemptId);
     await this.commitAtCurrentHead([
-      {
-        type: DurableEventType.TOOL_OUTCOME_UNKNOWN,
-        requestId: this.requestId,
-        turnId: turn.turnId,
-        toolAttemptId: tool.toolAttemptId,
-        data: {
-          toolCallId: tool.toolCallId,
-          toolName: tool.toolName,
-          reason,
-        },
-      },
+      toolTerminalEvent(this.toolScope(turn, tool), { status: 'outcome_unknown', reason }),
     ]);
-  }
-
-  private assertRequestOpen(): void {
-    this.assertBoundaryHealthy();
-    if (this.requestFinished) {
-      throw new SessionDurableRecorderError(`Request ${this.requestId} is already terminal`);
-    }
   }
 
   private assertNewWorkAllowed(): void {
@@ -1014,21 +729,36 @@ export class SessionDurableRecorder
   }
 
   private requireLastBoundaryEventId(): EventId {
-    if (!this.lastBoundaryEventId) {
+    const eventId = this.journal.getProjection().lastEventId;
+    if (!eventId) {
       throw new SessionDurableRecorderError(`Request ${this.requestId} has no durable boundary`);
     }
-    return this.lastBoundaryEventId;
+    return eventId;
   }
 
-  private requireActiveTurn(): ActiveTurn {
-    this.assertRequestOpen();
-    if (!this.activeTurn) {
+  private getRequest(): DurableRequestProjection | null {
+    const request = this.journal.getProjection().activeRequest;
+    return request?.requestId === this.requestId ? request : null;
+  }
+
+  private requireRequest(): DurableRequestProjection {
+    this.assertBoundaryHealthy();
+    const request = this.getRequest();
+    if (!request) {
+      throw new SessionDurableRecorderError(`Request ${this.requestId} is already terminal`);
+    }
+    return request;
+  }
+
+  private requireActiveTurn(): DurableTurnProjection {
+    const turn = this.requireRequest().activeTurn;
+    if (!turn) {
       throw new SessionDurableRecorderError(`Request ${this.requestId} has no active turn`);
     }
-    return this.activeTurn;
+    return turn;
   }
 
-  private requireTurnNumber(turn: number): ActiveTurn {
+  private requireTurnNumber(turn: number): DurableTurnProjection {
     const activeTurn = this.requireActiveTurn();
     if (activeTurn.turn !== turn) {
       throw new SessionDurableRecorderError(
@@ -1039,20 +769,49 @@ export class SessionDurableRecorder
   }
 
   private requireModelAttempt(attempt: ActiveModelAttempt): void {
-    this.assertRequestOpen();
-    if (this.activeModelAttempt !== attempt || this.activeTurn?.turnId !== attempt.turnId) {
+    if (!this.isActiveModelAttempt(attempt)) {
       throw new SessionDurableRecorderError(
         `No active model attempt matches ${attempt.modelAttemptId}`,
       );
     }
   }
 
-  private assertNoActiveModelAttempt(turn: ActiveTurn): void {
-    if (this.activeModelAttempt?.turnId === turn.turnId) {
+  private isActiveModelAttempt(attempt: ActiveModelAttempt): boolean {
+    const active = this.getRequest()?.activeTurn?.activeModelAttempt;
+    return (
+      active?.modelAttemptId === attempt.modelAttemptId &&
+      this.getRequest()?.activeTurn?.turnId === attempt.turnId
+    );
+  }
+
+  private assertNoActiveModelAttempt(turn: DurableTurnProjection): void {
+    if (turn.activeModelAttempt) {
       throw new SessionDurableRecorderError(
-        `Model attempt ${this.activeModelAttempt.modelAttemptId} is still active`,
+        `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
       );
     }
+  }
+
+  private requireToolAttempt(toolAttemptId: ToolAttemptId): {
+    turn: DurableTurnProjection;
+    tool: DurableToolAttemptProjection;
+  } {
+    const turn = this.requireActiveTurn();
+    const tool = turn.toolAttempts.find((candidate) => candidate.toolAttemptId === toolAttemptId);
+    if (!tool) {
+      throw new SessionDurableRecorderError(`No active tool attempt matches ${toolAttemptId}`);
+    }
+    return { turn, tool };
+  }
+
+  private toolScope(turn: DurableTurnProjection, tool: DurableToolAttemptProjection) {
+    return {
+      requestId: this.requestId,
+      turnId: turn.turnId,
+      toolAttemptId: tool.toolAttemptId,
+      toolCallId: tool.toolCallId,
+      toolName: tool.toolName,
+    };
   }
 
   private async commit(
@@ -1068,14 +827,6 @@ export class SessionDurableRecorder
     );
   }
 
-  private async commitRequestBoundary(
-    events: Parameters<DurableSessionJournal['commit']>[0]['events'],
-  ): Promise<DurableCommandCommitResult> {
-    const commit = await this.commitAtCurrentHead(events);
-    this.updateLastBoundary(commit);
-    return commit;
-  }
-
   private async commitRebasableRequestBoundary(
     events: Parameters<DurableSessionJournal['commit']>[0]['events'],
   ): Promise<DurableCommandCommitResult> {
@@ -1088,18 +839,7 @@ export class SessionDurableRecorder
       this.boundaryFailure = error;
       throw error;
     }
-    this.updateLastBoundary(commit);
     return commit;
-  }
-
-  private updateLastBoundary(commit: DurableCommandCommitResult): void {
-    const boundary = commit.events.at(-1);
-    if (!boundary) {
-      throw new SessionDurableRecorderError(
-        `Request ${this.requestId} boundary commit returned no events`,
-      );
-    }
-    this.lastBoundaryEventId = boundary.eventId;
   }
 
   private async commitAtCurrentHead(
@@ -1115,28 +855,4 @@ export class SessionDurableRecorder
       throw error;
     }
   }
-}
-
-export function durableRequestFinishFromLoopResult(
-  result: LoopResult,
-  usage: TokenUsage,
-  interruptionReason: DurableRequestInterruptReason = 'user_abort',
-): DurableRequestFinish {
-  if (result.error?.type === 'aborted') {
-    return {
-      status: 'interrupted',
-      reason: interruptionReason,
-    };
-  }
-  if (!result.success && !result.metadata?.shouldExitLoop) {
-    return {
-      status: 'failed',
-      error: result.error?.message ?? 'Agent request failed',
-    };
-  }
-  return {
-    status: 'completed',
-    output: result.finalMessage ?? '',
-    usage,
-  };
 }

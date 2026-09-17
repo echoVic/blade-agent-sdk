@@ -21,6 +21,11 @@ export interface McpServerInfo {
   inProcessHandle?: SdkMcpServerHandle;
 }
 
+export interface McpAvailableTool {
+  readonly tool: Tool;
+  readonly serverName: string;
+}
+
 /**
  * MCP注册表
  * 管理MCP服务器连接和工具发现
@@ -211,7 +216,13 @@ export class McpRegistry extends EventEmitter {
    * 获取指定服务器的可用工具（包含冲突处理）
    */
   async getAvailableToolsByServerNames(serverNames: string[]): Promise<Tool[]> {
-    const tools: Tool[] = [];
+    return (await this.getAvailableToolEntriesByServerNames(serverNames)).map(
+      (entry) => entry.tool,
+    );
+  }
+
+  async getAvailableToolEntriesByServerNames(serverNames: string[]): Promise<McpAvailableTool[]> {
+    const tools: McpAvailableTool[] = [];
     const exposedNames = new Set<string>();
     const targetNames = new Set(serverNames);
 
@@ -227,7 +238,7 @@ export class McpRegistry extends EventEmitter {
           }
           exposedNames.add(toolName);
           const tool = createMcpTool(serverInfo.client, serverName, mcpTool, toolName);
-          tools.push(tool);
+          tools.push({ tool, serverName });
         }
       }
     }

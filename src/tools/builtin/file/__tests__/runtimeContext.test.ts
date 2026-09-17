@@ -30,14 +30,16 @@ describe('file tools runtime context', () => {
   });
 
   it('should return a friendly error when filesystem capability is unavailable', async () => {
-    const invocation = readTool.build({
-      file_path: '/tmp/example.txt',
-      encoding: 'utf8',
-    });
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {}),
-      }),
+      readTool.execute(
+        {
+          file_path: '/tmp/example.txt',
+          encoding: 'utf8',
+        },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {}),
+        },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -47,22 +49,23 @@ describe('file tools runtime context', () => {
   it('rejects reads outside configured filesystem roots', async () => {
     const outsideFile = join(outsideRoot, 'outside.txt');
     await writeFile(outsideFile, 'outside');
-    const invocation = readTool.build({
-      file_path: outsideFile,
-      encoding: 'utf8',
-    });
-
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
-          capabilities: {
-            filesystem: {
-              roots: [workspaceRoot],
-              cwd: workspaceRoot,
+      readTool.execute(
+        {
+          file_path: outsideFile,
+          encoding: 'utf8',
+        },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+            capabilities: {
+              filesystem: {
+                roots: [workspaceRoot],
+                cwd: workspaceRoot,
+              },
             },
-          },
-        }),
-      }),
+          }),
+        },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -75,22 +78,23 @@ describe('file tools runtime context', () => {
     const alias = join(workspaceRoot, 'safe.json');
     await writeFile(outsideFile, '{"secret":true}');
     await symlink(outsideFile, alias);
-    const invocation = readTool.build({
-      file_path: alias,
-      encoding: 'utf8',
-    });
-
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
-          capabilities: {
-            filesystem: {
-              roots: [workspaceRoot],
-              cwd: workspaceRoot,
+      readTool.execute(
+        {
+          file_path: alias,
+          encoding: 'utf8',
+        },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+            capabilities: {
+              filesystem: {
+                roots: [workspaceRoot],
+                cwd: workspaceRoot,
+              },
             },
-          },
-        }),
-      }),
+          }),
+        },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -129,44 +133,51 @@ describe('file tools runtime context', () => {
         edit_mode: 'replace',
       },
     },
-  ] satisfies Array<{ name: string; tool: Tool; params: JsonObject }>)(
-    'rejects $name targets outside configured filesystem roots',
-    async ({ name, tool, params }) => {
-      const outsideFile = join(
-        outsideRoot,
-        name === 'NotebookEdit' ? 'outside.ipynb' : 'outside.txt',
-      );
-      await writeFile(
-        outsideFile,
-        name === 'NotebookEdit'
-          ? JSON.stringify({
-              cells: [{ id: 'cell-1', cell_type: 'code', source: ['original'] }],
-            })
-          : 'original',
-      );
-      const pathKey = name === 'NotebookEdit' ? 'notebook_path' : 'file_path';
-      const invocation = tool.build({
-        ...params,
-        [pathKey]: outsideFile,
-      });
-
-      const result = await collectToolExecution(
-        invocation.execute(new AbortController().signal, {
-          sessionId: SessionId('session-1'),
-          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
-            capabilities: {
-              filesystem: {
-                roots: [workspaceRoot],
-                cwd: workspaceRoot,
-              },
+  ] satisfies Array<{
+    name: string;
+    tool: Tool;
+    params: JsonObject;
+  }>)('rejects $name targets outside configured filesystem roots', async ({
+    name,
+    tool,
+    params,
+  }) => {
+    const outsideFile = join(
+      outsideRoot,
+      name === 'NotebookEdit' ? 'outside.ipynb' : 'outside.txt',
+    );
+    await writeFile(
+      outsideFile,
+      name === 'NotebookEdit'
+        ? JSON.stringify({
+            cells: [{ id: 'cell-1', cell_type: 'code', source: ['original'] }],
+          })
+        : 'original',
+    );
+    const pathKey = name === 'NotebookEdit' ? 'notebook_path' : 'file_path';
+    const input: JsonObject = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) {
+        input[key] = value;
+      }
+    }
+    input[pathKey] = outsideFile;
+    const result = await collectToolExecution(
+      tool.execute(input, {
+        sessionId: SessionId('session-1'),
+        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+          capabilities: {
+            filesystem: {
+              roots: [workspaceRoot],
+              cwd: workspaceRoot,
             },
-          }),
+          },
         }),
-      );
+      }),
+    );
 
-      expect(result.status).toBe('error');
-      expect(result.error?.type).toBe('permission_denied');
-      expect(result.error?.message).toContain('outside authorized roots');
-    },
-  );
+    expect(result.status).toBe('error');
+    expect(result.error?.type).toBe('permission_denied');
+    expect(result.error?.message).toContain('outside authorized roots');
+  });
 });

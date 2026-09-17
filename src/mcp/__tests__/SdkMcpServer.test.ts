@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import Type from 'typebox';
 import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { createSdkMcpServer, tool, type SdkMcpServerHandle } from '../SdkMcpServer.js';
+import { createSdkMcpServer, type SdkMcpServerHandle, tool } from '../SdkMcpServer.js';
 
 describe('SdkMcpServer', () => {
   let client: Client | undefined;
@@ -30,6 +30,7 @@ describe('SdkMcpServer', () => {
       version: '1.0.0',
       tools: [greet],
     });
+    expect(handle.type).toBe('in-process');
     client = new Client({ name: 'typebox-client', version: '1.0.0' });
     await client.connect(await handle.createClientTransport());
 

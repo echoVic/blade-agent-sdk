@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
+import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import { collectToolExecution } from '../../../types/result.js';
-import { createListMcpResourcesTool } from '../listMcpResources.js';
+import { listMcpResourcesTool } from '../listMcpResources.js';
 
 const mockGetAllServers = vi.fn(() => new Map());
 
@@ -9,9 +11,11 @@ const mockRegistry = {
   getAllServers: mockGetAllServers,
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
-const listMcpResourcesTool = createListMcpResourcesTool(mockRegistry);
-const executeListMcpResources = (params: Parameters<typeof listMcpResourcesTool.execute>[0]) =>
-  collectToolExecution(listMcpResourcesTool.execute(params));
+const registry = new ToolRegistry({ mcpRegistry: mockRegistry });
+registry.register(listMcpResourcesTool, BUILTIN_TOOL_SOURCE);
+const pipeline = new ExecutionPipeline(registry);
+const executeListMcpResources = (params: { serverName?: string }) =>
+  collectToolExecution(pipeline.execute(listMcpResourcesTool.name, params, {}));
 
 describe('listMcpResourcesTool', () => {
   beforeEach(() => {
@@ -27,8 +31,8 @@ describe('listMcpResourcesTool', () => {
       expect(listMcpResourcesTool.name).toBe('ListMcpResources');
     });
 
-    it('should have correct displayName', () => {
-      expect(listMcpResourcesTool.displayName).toBe('List MCP Resources');
+    it('should have correct title', () => {
+      expect(listMcpResourcesTool.title).toBe('List MCP Resources');
     });
   });
 
@@ -115,6 +119,20 @@ describe('listMcpResourcesTool', () => {
 
       expect(result.status).toBe('success');
       expect(result.metadata?.errors).toBeDefined();
+    });
+
+    it('should reject malformed resource entries', async () => {
+      const mockClient = {
+        listResources: vi.fn(() => Promise.resolve([{ uri: 'file:///invalid.txt', name: 42 }])),
+      };
+      mockGetAllServers.mockReturnValue(new Map([['invalid-server', { client: mockClient }]]));
+
+      const result = await executeListMcpResources({});
+
+      expect(result.model).toContain('No resources found');
+      expect(result.metadata?.errors).toEqual([
+        expect.stringContaining('resource name must be a string'),
+      ]);
     });
 
     it('should handle unexpected errors', async () => {

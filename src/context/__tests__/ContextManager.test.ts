@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import type { SessionRepository } from '../../session/SessionRepository.js';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
-import { SessionId, ToolUseId } from '../../types/identifiers.js';
+import { SessionId } from '../../types/identifiers.js';
 import { ContextManager } from '../ContextManager.js';
 import { PersistentStore } from '../storage/PersistentStore.js';
 
@@ -42,7 +41,7 @@ describe('ContextManager', () => {
       },
     };
 
-    expect(() => new ContextManager({}, readOnlyRepository)).toThrow(
+    expect(() => new ContextManager(readOnlyRepository)).toThrow(
       /both SessionRepository and SessionEventStore/,
     );
   });
@@ -50,19 +49,7 @@ describe('ContextManager', () => {
   it('should hydrate conversation history from the unified session store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
-    const sessionStore = new JsonlSessionStore(workspaceRoot);
-    const contextManager = new ContextManager(
-      {
-        projectPath: workspaceRoot,
-        storage: {
-          maxMemorySize: 1000,
-          persistentPath: workspaceRoot,
-          cacheSize: 100,
-          compressionEnabled: true,
-        },
-      },
-      persistentStore,
-    );
+    const contextManager = new ContextManager(persistentStore, persistentStore);
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
@@ -85,7 +72,7 @@ describe('ContextManager', () => {
 
     await contextManager.initialize();
     const loaded = await contextManager.loadSession(sessionId);
-    const state = await sessionStore.loadState(sessionId);
+    const state = await persistentStore.loadState(sessionId);
 
     expect(loaded).toBe(true);
     expect(state).not.toBeNull();
@@ -96,59 +83,5 @@ describe('ContextManager', () => {
     expect(state.summary).toBe('Compacted summary');
     expect(state.toolCalls).toHaveLength(1);
     expect(state.toolCalls[0]?.status).toBe('success');
-  });
-
-  it('keeps pending tool-use message IDs scoped to their session', async () => {
-    const workspaceRoot = createWorkspaceRoot();
-    const persistentStore = new PersistentStore(workspaceRoot);
-    const contextManager = new ContextManager(
-      {
-        projectPath: workspaceRoot,
-        storage: {
-          maxMemorySize: 1000,
-          persistentPath: workspaceRoot,
-          cacheSize: 100,
-          compressionEnabled: true,
-        },
-      },
-      persistentStore,
-    );
-    await contextManager.initialize();
-
-    const firstSessionId = SessionId('session-first');
-    await contextManager.createSession(undefined, {}, { sessionId: firstSessionId });
-    await contextManager.addToolCall({
-      id: ToolUseId('call-reused'),
-      name: 'Search',
-      input: { query: 'first' },
-      timestamp: Date.now(),
-      status: 'pending',
-    });
-
-    const secondSessionId = SessionId('session-second');
-    await contextManager.createSession(undefined, {}, { sessionId: secondSessionId });
-    await contextManager.addToolCall({
-      id: ToolUseId('call-reused'),
-      name: 'Search',
-      input: { query: 'second' },
-      timestamp: Date.now(),
-      status: 'pending',
-    });
-    await contextManager.addToolCall({
-      id: ToolUseId('call-reused'),
-      name: 'Search',
-      input: { query: 'second' },
-      output: 'second result',
-      timestamp: Date.now(),
-      status: 'success',
-    });
-
-    const state = await new JsonlSessionStore(workspaceRoot).loadState(secondSessionId);
-
-    assertDefined(state);
-    expect(state.messages.map((message) => message.role)).toEqual(['assistant', 'tool']);
-    expect(state.messages[0]?.tool_calls?.[0]?.id).toBe('call-reused');
-    expect(state.messages[1]?.tool_call_id).toBe('call-reused');
-    expect(state.timeline[1]?.parentMessageId).toBe(state.timeline[0]?.id);
   });
 });

@@ -1,9 +1,3 @@
-/**
- * ModelManager — 模型配置解析、切换、ModelService 创建
- *
- * 从 Agent.ts 拆分，职责单一：管理模型生命周期
- */
-
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { type ModelMiddleware, wrapModelService } from '../middleware/ModelMiddleware.js';
@@ -27,16 +21,14 @@ export class ModelManager {
     private config: BladeConfig,
     private outputFormat?: OutputFormat,
     contextManager?: ContextManager,
-    projectPath?: string,
+    _projectPath?: string,
     logger?: InternalLogger,
     private readonly modelMiddleware: readonly ModelMiddleware[] = [],
     private readonly providerRegistry?: ProviderRegistry,
   ) {
-    this.contextManager = contextManager || new ContextManager({ projectPath });
+    this.contextManager = contextManager || new ContextManager();
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
-
-  // ===== Getters =====
 
   getModelService(): ModelService {
     return this.modelService;
@@ -46,10 +38,6 @@ export class ModelManager {
     return this.contextManager;
   }
 
-  getCurrentModelId(): string | undefined {
-    return this.currentModelId;
-  }
-
   getMaxContextTokens(): number {
     return this.currentModelMaxContextTokens;
   }
@@ -57,8 +45,6 @@ export class ModelManager {
   getProviderRegistry(): ProviderRegistry | undefined {
     return this.providerRegistry;
   }
-
-  // ===== 模型解析 =====
 
   resolveModelConfig(requestedModelId?: string): ModelConfig {
     const modelId =
@@ -73,8 +59,6 @@ export class ModelManager {
     }
     return modelConfig;
   }
-
-  // ===== 模型应用 =====
 
   async applyModelConfig(modelConfig: ModelConfig, label: string): Promise<void> {
     modelConfig = withDeepSeekDefaults(modelConfig);
@@ -119,8 +103,6 @@ export class ModelManager {
     this.currentModelId = modelConfig.id;
     this.config.currentModelId = modelConfig.id;
   }
-
-  // ===== 模型切换 =====
 
   async switchModelIfNeeded(modelId: string): Promise<void> {
     if (!modelId || modelId === this.currentModelId) return;

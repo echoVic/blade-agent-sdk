@@ -1,9 +1,10 @@
 import type { ToolUseId } from '../../../types/identifiers.js';
 import type { JsonObject } from '../../../types/json.js';
+import type { ToolInvocation } from '../../core/ToolInvocation.js';
+import type { ToolServices } from '../../services.js';
 import type { ExecutionContext } from '../../types/execution.js';
-import type { ToolBehavior } from '../../types/kind.js';
 import type { ToolResult } from '../../types/result.js';
-import type { Tool, ToolInvocation } from '../../types/tool.js';
+import type { Tool } from '../../types/tool.js';
 import type { FileLockLease } from '../FileLockManager.js';
 
 /**
@@ -18,14 +19,12 @@ export interface PipelineExecutionState {
   tool: Tool;
   params: JsonObject;
   context: ExecutionContext;
+  services: ToolServices;
   result?: ToolResult;
   invocation?: ToolInvocation;
-  resolvedBehavior?: ToolBehavior;
   permissionCheckResult?: { reason?: string };
-  affectedPaths: string[];
   needsConfirmation: boolean;
   confirmationReasons: ConfirmationReasonEntry[];
-  permissionSignature?: string;
   hookToolUseId?: ToolUseId;
   interrupted: boolean;
   fileLease?: FileLockLease;
@@ -95,21 +94,6 @@ function defaultReasonMessage(source: ConfirmationReasonSource): string {
     case 'handler':
       return 'User confirmation required';
   }
-}
-
-export function buildPermissionSignature(
-  toolName: string,
-  params: JsonObject,
-  tool?: Pick<Tool, 'preparePermissionMatcher'>,
-): string {
-  const signatureContent = tool?.preparePermissionMatcher?.(params)?.signatureContent;
-  return signatureContent ? `${toolName}:${signatureContent}` : toolName;
-}
-
-export function toParamsRecord(params: unknown, fallback: JsonObject): JsonObject {
-  return params && typeof params === 'object' && !Array.isArray(params)
-    ? (params as JsonObject)
-    : fallback;
 }
 
 export function getFileLockPath(params: JsonObject): string | null {

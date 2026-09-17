@@ -8,11 +8,7 @@ describe('SubagentRegistry', () => {
 
     registry.loadBuiltinAgents();
 
-    expect(registry.getAllNames()).toEqual([
-      'general-purpose',
-      'Explore',
-      'Plan',
-    ]);
+    expect(registry.getAllNames()).toEqual(['general-purpose', 'Explore', 'Plan']);
   });
 
   it('allows explicit session-scoped overrides', () => {
@@ -41,19 +37,13 @@ describe('SubagentRegistry', () => {
     const count = registry.loadFromStandardLocations(undefined, '/storage');
 
     expect(count).toBe(3);
-    expect(registry.getAllNames()).toEqual([
-      'general-purpose',
-      'Explore',
-      'Plan',
-    ]);
+    expect(registry.getAllNames()).toEqual(['general-purpose', 'Explore', 'Plan']);
     expect(loadFromDirectory).not.toHaveBeenCalled();
   });
 
   it('scans user and project agent directories when a workspace exists', () => {
     const registry = new SubagentRegistry();
-    const loadFromDirectory = vi
-      .spyOn(registry, 'loadFromDirectory')
-      .mockImplementation(() => {});
+    const loadFromDirectory = vi.spyOn(registry, 'loadFromDirectory').mockImplementation(() => {});
 
     registry.loadFromStandardLocations('/workspace', '/storage');
 

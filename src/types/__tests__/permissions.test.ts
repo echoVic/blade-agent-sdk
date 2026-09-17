@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ToolKind } from '../../tools/types/kind.js';
+import { ToolKind } from '../../tools/behavior.js';
 import { PermissionMode } from '../constants.js';
 import {
   createCompositePermissionHandler,
@@ -297,6 +297,7 @@ describe('createCompositePermissionHandler', () => {
     expect(result).toEqual({
       behavior: 'ask',
       message: 'Need confirmation',
+      updatedInput: { value: 'patched' },
     });
   });
 });

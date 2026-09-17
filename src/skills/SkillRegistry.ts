@@ -8,7 +8,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { filterSkillsByActivation } from './activation.js';
-import { defaultSkillSource, type SkillSource, type SkillSourceConfig } from './types.js';
 import { hasSkillFile, loadSkillContent, loadSkillMetadata } from './SkillLoader.js';
 import type {
   SkillActivationContext,
@@ -17,6 +16,7 @@ import type {
   SkillMetadata,
   SkillRegistryConfig,
 } from './types.js';
+import { defaultSkillSource, type SkillSource, type SkillSourceConfig } from './types.js';
 
 type ResolvedSkillRegistryConfig = Omit<SkillRegistryConfig, 'cwd'> & { cwd?: string };
 

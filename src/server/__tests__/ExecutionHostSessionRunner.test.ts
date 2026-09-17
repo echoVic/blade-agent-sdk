@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SessionRunnerContext } from '../../advanced/SessionRunner.js';
 import type { ExecutionHandle, ExecutionHost } from '../../execution/ExecutionHost.js';
 import {
   ExecutionCheckpointId,
@@ -10,7 +11,6 @@ import {
 } from '../../types/identifiers.js';
 import { ExecutionHostSessionRunner } from '../ExecutionHostSessionRunner.js';
 import type { RuntimeStore } from '../RuntimeStore.js';
-import type { SessionRunnerContext } from '../SessionRunner.js';
 
 const resources = {
   cpus: 1,
@@ -55,7 +55,7 @@ function createHost() {
       metadata: {},
     })),
     terminate: vi.fn(async () => undefined),
-  reclaim: vi.fn(async () => undefined),
+    reclaim: vi.fn(async () => undefined),
   } satisfies ExecutionHost;
 }
 

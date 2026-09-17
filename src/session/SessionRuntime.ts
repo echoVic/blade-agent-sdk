@@ -5,40 +5,40 @@ import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
-import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
-import type { McpServerConfig } from '../mcp/config.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
-import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import { resolveMcpServerName } from '../mcp/toolSource.js';
 import { PluginHost } from '../middleware/PluginHost.js';
-import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
+import type { RuntimeContext } from '../runtime/index.js';
 import { getContextCwd } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { SkillRegistry } from '../skills/SkillRegistry.js';
-import { getBuiltinTools } from '../tools/builtin/index.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { SnapshotManager } from '../tools/builtin/file/SnapshotManager.js';
+import { getBuiltinTools } from '../tools/builtin/index.js';
+import { memoryReadTool, memoryWriteTool } from '../tools/builtin/memory/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { skillTool } from '../tools/builtin/system/skill.js';
 import { TaskStore } from '../tools/builtin/task/TaskStore.js';
 import { TodoManager } from '../tools/builtin/todo/TodoManager.js';
-import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
-import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
-import type { Tool } from '../tools/types/tool.js';
+import { ToolExposurePlanner } from '../tools/exposure/ToolExposurePlanner.js';
+import {
+  BUILTIN_TOOL_SOURCE,
+  ToolRegistry,
+  type ToolSourceInfo,
+} from '../tools/registry/ToolRegistry.js';
+import type { ToolServices } from '../tools/services.js';
+import type { ErasedToolDefinition, Tool } from '../tools/types/tool.js';
 import type { PermissionMode } from '../types/constants.js';
 import { HookEvent } from '../types/constants.js';
 import type { AgentId, SessionId } from '../types/identifiers.js';
 import type { PermissionsConfig } from '../types/permissions.js';
 import {
   createCompositePermissionHandler,
-  createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
   type PermissionResult,
 } from '../types/permissions.js';
@@ -51,26 +51,7 @@ import type {
   McpServerStatus,
   McpToolInfo,
   SessionOptions,
-  SessionTool,
 } from './types.js';
-
-function isSdkMcpServerHandle(
-  config: McpServerConfig | SdkMcpServerHandle,
-): config is SdkMcpServerHandle {
-  return 'createClientTransport' in config && 'server' in config;
-}
-
-function isRuntimeTool(tool: SessionTool): tool is Tool {
-  return (
-    typeof Reflect.get(tool, 'build') === 'function' &&
-    typeof Reflect.get(tool, 'execute') === 'function' &&
-    typeof Reflect.get(tool, 'getFunctionDeclaration') === 'function'
-  );
-}
-
-function toRuntimeTool(tool: SessionTool): Tool {
-  return isRuntimeTool(tool) ? tool : toolFromDefinition(tool);
-}
 
 function resolveStorageRoot(storagePath?: string): string | undefined {
   if (!storagePath) {
@@ -96,8 +77,7 @@ export class SessionRuntime {
   private readonly mcpRegistry: McpRegistry;
   private readonly subagentRegistry: SubagentRegistry;
   private readonly skillRegistry: SkillRegistry;
-  private readonly toolRegistry = new ToolRegistry();
-  private readonly toolCatalog = new ToolCatalog(this.toolRegistry);
+  private readonly toolRegistry: ToolRegistry;
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
   private readonly backgroundAgentManager: BackgroundAgentManager;
@@ -147,31 +127,25 @@ export class SessionRuntime {
       },
       options.providerRegistry,
     );
-    this.contextManager = new ContextManager(
-      {
-        storage: {
-          maxMemorySize: 1000,
-          persistentPath: options.storagePath,
-          persistenceEnabled:
-            options.persistSession !== false &&
-            sessionRepository !== undefined &&
-            sessionEventStore !== undefined,
-          cacheSize: 100,
-          compressionEnabled: true,
-        },
-        projectPath: getContextCwd(defaultContext),
-      },
-      sessionRepository,
-      sessionEventStore,
-    );
+    const toolServices: ToolServices = {
+      subagentRegistry: this.subagentRegistry,
+      mcpRegistry: this.mcpRegistry,
+      skillRegistry: this.skillRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      ...(this.options.memoryManager ? { memoryManager: this.options.memoryManager } : {}),
+    };
+    this.toolRegistry = new ToolRegistry(toolServices);
+    toolServices.discoverableCatalog = new ToolExposurePlanner(this.toolRegistry);
+    this.contextManager =
+      options.persistSession === false
+        ? new ContextManager()
+        : new ContextManager(sessionRepository, sessionEventStore);
     this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
       sessionId,
-      permissionMode,
       callbacks: this.hookCallbacks,
       hookTimeoutMs: options.hookTimeoutMs,
       sessionEndHookTimeoutMs: options.sessionEndHookTimeoutMs,
-      resolveProjectDir: () => getContextCwd(this.defaultContext),
     });
     this.executionPipeline = this.createExecutionPipeline();
   }
@@ -208,10 +182,6 @@ export class SessionRuntime {
 
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
-  }
-
-  getToolCatalog(): ToolCatalog {
-    return this.toolCatalog;
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {
@@ -270,11 +240,13 @@ export class SessionRuntime {
       this.logger.warn(`⚠️  Skill loading error at ${error.path}: ${error.error}`);
     }
     await this.contextManager.initialize();
-    this.initializeHooks();
     if (this.hostProfile === NODE_SESSION_HOST) {
       await this.registerBuiltinTools();
-    } else if (this.options.skills?.length) {
-      this.registerBuiltinToolSet([skillTool]);
+    } else {
+      this.registerBuiltinToolSet([
+        ...(this.options.skills?.length ? [skillTool] : []),
+        ...(this.options.memoryManager ? [memoryReadTool, memoryWriteTool] : []),
+      ]);
     }
     this.registerCustomTools();
     this.registerPluginTools();
@@ -284,24 +256,14 @@ export class SessionRuntime {
   }
 
   async ensureSessionCreated(): Promise<void> {
-    await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+    await this.contextManager.createSession(this.sessionId);
   }
 
   async ensureSessionLoaded(): Promise<void> {
     const loaded = await this.contextManager.loadSession(this.sessionId);
     if (!loaded) {
-      await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+      await this.contextManager.createSession(this.sessionId);
     }
-  }
-
-  prepareTurn(snapshot: ContextSnapshot): void {
-    this.contextManager.updateWorkspace({
-      projectPath: snapshot.cwd,
-      environment: {
-        ...snapshot.environment,
-        ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
-      },
-    });
   }
 
   assertNoPendingCleanup(options: { includeTerminalFailures?: boolean } = {}): void {
@@ -334,8 +296,7 @@ export class SessionRuntime {
 
   private getTerminalCleanupFailures(): Error[] {
     const terminalCleanupFailure = this.executionPipeline.getTerminalCleanupFailure();
-    const hookContainmentFailure = this.hookRuntime.getTerminalContainmentFailure();
-    return Array.from(new Set([terminalCleanupFailure, hookContainmentFailure]))
+    return [terminalCleanupFailure]
       .filter((error) => error !== undefined)
       .map((error) => (error instanceof Error ? error : new Error(String(error))));
   }
@@ -439,24 +400,13 @@ export class SessionRuntime {
       toolTimeoutMs: this.bladeConfig.toolTimeoutMs,
       middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
-      toolCatalog: this.toolCatalog,
     });
-  }
-
-  private initializeHooks(): void {
-    const hookManager = HookManager.getInstance();
-    if (Object.keys(this.hookCallbacks).length > 0) {
-      hookManager.enable();
-    }
   }
 
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
-      sessionId: this.sessionId,
-      configDir: this.storageRoot,
       mcpRegistry: this.mcpRegistry,
       includeMcpProtocolTools: false,
-      subagentRegistry: this.subagentRegistry,
     });
     this.registerBuiltinToolSet(builtinTools);
   }
@@ -466,11 +416,7 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools, {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
-    });
+    this.toolRegistry.registerAll(filteredTools, BUILTIN_TOOL_SOURCE);
   }
 
   private initializeSubagents(): void {
@@ -492,18 +438,20 @@ export class SessionRuntime {
     if (!this.options.tools || this.options.tools.length === 0) {
       return;
     }
-    const tools = this.options.tools.map(toRuntimeTool);
-    this.registerTools(tools);
+    const source = {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'session',
+    } as const;
+    for (const tool of this.options.tools) {
+      this.registerToolDefinition(tool, source);
+    }
   }
 
   private registerPluginTools(): void {
     const registrations = this.pluginHost.getTools();
     for (const { pluginName, tool } of registrations) {
-      const filteredTools = this.filterTools([toRuntimeTool(tool)]);
-      if (filteredTools.length === 0) {
-        continue;
-      }
-      this.toolCatalog.registerAll(filteredTools, {
+      this.registerToolDefinition(tool, {
         kind: 'custom',
         trustLevel: 'workspace',
         sourceId: `plugin:${pluginName}`,
@@ -517,7 +465,7 @@ export class SessionRuntime {
     }
 
     for (const [name, config] of Object.entries(this.options.mcpServers)) {
-      if (isSdkMcpServerHandle(config)) {
+      if (config.type === 'in-process') {
         await this.mcpRegistry.registerInProcessServer(name, config);
         continue;
       }
@@ -545,7 +493,7 @@ export class SessionRuntime {
       throw new Error(`MCP server "${serverName}" not found in configuration`);
     }
 
-    if (isSdkMcpServerHandle(config)) {
+    if (config.type === 'in-process') {
       await this.mcpRegistry.registerInProcessServer(serverName, config);
       return;
     }
@@ -558,48 +506,42 @@ export class SessionRuntime {
       this.toolRegistry.removeMcpTools(serverName);
     }
 
-    const availableTools = await this.mcpRegistry.getAvailableToolsByServerNames(serverNames);
-    for (const tool of this.filterTools(availableTools)) {
-      this.toolCatalog.registerMcpTool(tool, {
+    const availableTools = await this.mcpRegistry.getAvailableToolEntriesByServerNames(serverNames);
+    for (const { tool, serverName } of availableTools) {
+      if (!this.isToolAllowed(tool.name)) {
+        continue;
+      }
+      this.toolRegistry.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveMcpServerName(tool),
+        sourceId: serverName,
+        serverName,
       });
     }
   }
 
-  private registerTools(tools: Tool[]): void {
-    const filteredTools = this.filterTools(tools);
-    if (filteredTools.length === 0) {
+  private registerToolDefinition(tool: ErasedToolDefinition, source: ToolSourceInfo): void {
+    if (!this.isToolAllowed(tool.name)) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools, {
-      kind: 'custom',
-      trustLevel: 'workspace',
-      sourceId: 'session',
-    });
+    this.toolRegistry.registerDefinition(tool, source);
   }
 
   private filterTools(tools: Tool[]): Tool[] {
-    const allowedTools = this.options.allowedTools;
-    const disallowedTools = new Set(this.options.disallowedTools || []);
+    return tools.filter((tool) => this.isToolAllowed(tool.name));
+  }
 
-    return tools.filter((tool) => {
-      if (allowedTools !== undefined && !allowedTools.includes(tool.name)) {
-        return false;
-      }
-      return !disallowedTools.has(tool.name);
-    });
+  private isToolAllowed(name: string): boolean {
+    if (this.options.allowedTools !== undefined && !this.options.allowedTools.includes(name)) {
+      return false;
+    }
+    return !this.options.disallowedTools?.includes(name);
   }
 
   private createPermissionHandler(): PermissionHandler | undefined {
     const hasPermissionCallbacks =
       (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
-    const basePermissionHandler =
-      this.options.permissionHandler ??
-      (this.options.canUseTool
-        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
-        : undefined);
+    const basePermissionHandler = this.options.permissionHandler;
 
     if (!hasPermissionCallbacks && !basePermissionHandler) {
       return undefined;
@@ -616,7 +558,6 @@ export class SessionRuntime {
               abortSignal: request.signal,
             },
           );
-          Object.assign(request.input, hookResult.updatedInput);
           if (hookResult.decision) {
             return hookResult.decision;
           }

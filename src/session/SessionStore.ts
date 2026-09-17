@@ -1,37 +1,29 @@
-import { JSONLStore, JSONLStoreError } from '@/context/storage/JSONLStore.js';
-import {
-  getSessionFilePathFromStorageRoot,
-  normalizeSessionStorageRoot,
-} from '@/context/storage/pathUtils.js';
-import * as fs from 'node:fs/promises';
-import {
-  type ConversationMessage,
-  isConversationMessageSource,
-} from '../model/conversation.js';
-import type {
-  ModelContent,
-  ModelMessage,
-  ModelToolCall,
-} from '../model/message.js';
+import { nanoid } from 'nanoid';
+import type { ConversationMessage } from '../model/conversation.js';
+import type { ModelContent } from '../model/message.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { MessageRole } from '../types/constants.js';
 import {
-  type EventId,
-  InputId,
+  type InputId,
   MessageId,
-  type PartId,
-  RequestId,
-  SessionId,
+  type RequestId,
+  type SessionId,
   ToolUseId,
 } from '../types/identifiers.js';
-import type { JsonObject, JsonValue } from '../types/json.js';
-import type { SessionHistoryProgress } from './historyProgress.js';
+import type { JsonValue } from '../types/json.js';
+import { mergeHistoryProgress, type SessionHistoryProgress } from './historyProgress.js';
 import type {
-  PersistedPendingInput,
-  TranscriptEvent,
-  TranscriptPart,
-  TranscriptSession,
-} from './transcript.js';
+  PersistedToolUse,
+  SessionEventStore,
+  SessionRepository,
+  SessionRepositoryCompactionMetadata,
+  SessionRepositoryHealth,
+  SessionRepositoryMessageMetadata,
+  SessionRepositoryStorageStats,
+  SessionRepositorySubagentInfo,
+  SessionRepositorySubagentRef,
+} from './SessionRepository.js';
+import type { PersistedPendingInput, TranscriptSession } from './transcript.js';
 
 interface SessionTimelineEntry {
   id: MessageId;
@@ -85,11 +77,6 @@ export interface SessionState extends SessionSnapshot {
   toolCalls: SessionToolCallState[];
   subagentRefs: SessionSubagentRef[];
   pendingInputs: PersistedPendingInput[];
-  /**
-   * How far the messages are known to be complete. Absent on transcripts written
-   * before the field existed, which is treated as "unknown": the recovery cursor
-   * then falls back conservatively instead of claiming the history is whole.
-   */
   historyProgress?: SessionHistoryProgress;
 }
 
@@ -105,479 +92,397 @@ export interface SessionStore {
 }
 
 export class NoopSessionStore implements SessionStore {
-  async loadState(_sessionId: SessionId): Promise<SessionState | null> {
+  async loadState(): Promise<null> {
     return null;
   }
-
-  async loadMessages(_sessionId: SessionId): Promise<ConversationMessage[]> {
+  async loadMessages(): Promise<[]> {
     return [];
   }
-
-  async forkState(
-    _sessionId: SessionId,
-    _options?: { messageId?: MessageId },
-  ): Promise<SessionSnapshot | null> {
+  async forkState(): Promise<null> {
     return null;
   }
-
-  async listSessions(): Promise<SessionId[]> {
+  async listSessions(): Promise<[]> {
     return [];
   }
-
-  async getSessionSummary(_sessionId: SessionId): Promise<SessionSummary | null> {
+  async getSessionSummary(): Promise<null> {
     return null;
   }
 }
 
-interface MessageRecord {
-  id: MessageId;
-  parentMessageId?: MessageId;
-  createdAt: number;
-  message: ConversationMessage;
-}
+export type SessionStateMutation<T> = (state: SessionState, now: number) => T;
 
-function toTimestamp(value: string | undefined, fallback: string): number {
-  return new Date(value ?? fallback).getTime();
-}
-
-/**
- * Collapse a ModelContent[] down to `ModelMessage['content']`.
- * Single text-only part is returned as a plain string for backward compat.
- *
- * NOTE: no cloning — this operates on the internal builder state.
- * The final export to `SessionState` is protected by `cloneMessage`.
- */
-function toMessageContent(parts: ModelContent[]): ModelMessage['content'] {
-  if (parts.length === 1 && parts[0]?.type === 'text') {
-    return parts[0].text;
-  }
-
-  return [...parts];
-}
-
-/**
- * Insert or replace a content part in the per-message part list.
- *
- * No cloning is performed — the `content` argument is always a freshly
- * constructed object literal at every call site, and the returned array
- * is only used to fill the mutable builder record.  The boundary clone
- * happens later in `cloneMessage` when the record is exported.
- */
-function upsertContentPart(
-  contentParts: Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>,
-  messageId: MessageId,
-  partId: PartId,
-  content: ModelContent,
-): ModelContent[] {
-  const existing = contentParts.get(messageId) ?? [];
-  const index = existing.findIndex((part) => part.partId === partId);
-
-  if (index === -1) {
-    existing.push({ partId, content });
-  } else {
-    existing[index] = { partId, content };
-  }
-
-  contentParts.set(messageId, existing);
-  return existing.map((part) => part.content);
-}
-
-function stringifyContent(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function legacyMessageEnvelope(
-  metadata?: JsonObject,
-): Pick<ConversationMessage, 'providerOptions' | 'provenance' | 'correlation' | 'extensions'> {
-  if (!metadata) {
-    return {};
-  }
-
-  const { _systemSource, inputId, requestId, deepseekCache, deepseek, ...extensions } = metadata;
-  const deepseekOptions = isJsonObject(deepseek) ? deepseek : undefined;
+function createSessionState(
+  sessionId: SessionId,
+  now: number,
+  subagent?: SessionRepositorySubagentInfo,
+): SessionState {
+  const timestamp = new Date(now).toISOString();
   return {
-    providerOptions:
-      deepseekOptions || deepseekCache !== undefined
-        ? {
-            deepseek: {
-              ...deepseekOptions,
-              ...(deepseekCache !== undefined ? { cache: deepseekCache } : {}),
-            },
-          }
-        : undefined,
-    provenance: isConversationMessageSource(_systemSource) ? { source: _systemSource } : undefined,
-    correlation:
-      typeof inputId === 'string' && typeof requestId === 'string'
-        ? { inputId: InputId(inputId), requestId: RequestId(requestId) }
-        : undefined,
-    extensions: Object.keys(extensions).length > 0 ? extensions : undefined,
+    sessionId,
+    createdAt: now,
+    lastActivity: now,
+    sessionInfo: {
+      sessionId,
+      rootId: subagent?.parentSessionId ?? sessionId,
+      parentId: subagent?.parentSessionId,
+      relationType: subagent ? 'subagent' : undefined,
+      status: 'running',
+      agentType: subagent?.subagentType,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    timeline: [],
+    messages: [],
+    messageIds: [],
+    summaryMessageIds: [],
+    toolCalls: [],
+    subagentRefs: [],
+    pendingInputs: [],
   };
 }
 
-function inferRole(partType: string): MessageRole {
-  switch (partType) {
-    case 'tool_result':
-      return 'tool';
-    case 'summary':
-      return 'system';
-    default:
-      return 'assistant';
-  }
+function appendMessage(
+  state: SessionState,
+  id: MessageId,
+  message: ConversationMessage,
+  now: number,
+  parentMessageId?: MessageId,
+): void {
+  state.timeline.push({ id, parentMessageId, createdAt: now, message: cloneMessage(message) });
+  state.messages.push(cloneMessage(message));
+  state.messageIds.push(id);
+  state.lastActivity = now;
+  state.sessionInfo.updatedAt = new Date(now).toISOString();
 }
 
-function isEmptyAssistantMessage(message: ConversationMessage): boolean {
-  return (
-    message.role === 'assistant' &&
-    message.content === '' &&
-    !message.reasoningContent &&
-    !message.tool_calls?.length
+function messageMetadata(
+  metadata: SessionRepositoryMessageMetadata = {},
+): Partial<ConversationMessage> {
+  const model = metadata.modelIdentity?.model ?? metadata.model;
+  return {
+    reasoningContent: metadata.reasoningContent,
+    tool_calls: metadata.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
+    modelIdentity: metadata.modelIdentity ? structuredClone(metadata.modelIdentity) : undefined,
+    providerOptions: metadata.providerOptions,
+    provenance: metadata.provenance,
+    correlation: metadata.correlation,
+    telemetry:
+      model || metadata.usage
+        ? {
+            model,
+            usage: metadata.usage
+              ? {
+                  inputTokens: metadata.usage.input_tokens,
+                  outputTokens: metadata.usage.output_tokens,
+                }
+              : undefined,
+          }
+        : undefined,
+    extensions: metadata.extensions,
+  };
+}
+
+function readableState(state: SessionState): SessionState {
+  const settled = new Set(
+    state.toolCalls.filter((call) => call.status !== 'pending').map((call) => call.id),
   );
-}
-
-interface ToolCallOccurrence {
-  key: string;
-  sourceMessageId: MessageId;
-  toolCallId: ToolUseId;
-  matched: boolean;
-}
-
-interface ToolOccurrencePlan {
-  callsByEventId: Map<EventId, ToolCallOccurrence>;
-  resultsByEventId: Map<EventId, ToolCallOccurrence>;
-}
-
-function getPartToolCallId(part: TranscriptPart): ToolUseId {
-  const payload = isJsonObject(part.payload) ? part.payload : {};
-  return ToolUseId(typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId);
-}
-
-function createToolOccurrencePlan(entries: TranscriptEvent[]): ToolOccurrencePlan {
-  const callsByEventId = new Map<EventId, ToolCallOccurrence>();
-  const resultsByEventId = new Map<EventId, ToolCallOccurrence>();
-  const callsBySource = new Map<string, ToolCallOccurrence>();
-  const latestResultBySource = new Map<string, ToolCallOccurrence>();
-  const unmatchedByToolCallId = new Map<string, ToolCallOccurrence[]>();
-  let occurrenceIndex = 0;
-
-  for (const entry of entries) {
-    if (entry.type !== 'part_created' && entry.type !== 'part_updated') continue;
-    const part = entry.data;
-    if (part.partType !== 'tool_call' && part.partType !== 'tool_result') continue;
-
-    const toolCallId = getPartToolCallId(part);
-    const sourceKey = `${part.messageId}\0${toolCallId}`;
-
-    if (part.partType === 'tool_call') {
-      let occurrence = callsBySource.get(sourceKey);
-      if (!occurrence) {
-        occurrence = {
-          key: `tool-call:${occurrenceIndex++}`,
-          sourceMessageId: part.messageId,
-          toolCallId,
-          matched: false,
-        };
-        callsBySource.set(sourceKey, occurrence);
-        const unmatched = unmatchedByToolCallId.get(toolCallId) ?? [];
-        unmatched.push(occurrence);
-        unmatchedByToolCallId.set(toolCallId, unmatched);
-      }
-      callsByEventId.set(entry.id, occurrence);
-      continue;
+  const timeline = state.timeline.flatMap((entry) => {
+    if (
+      entry.message.role === 'tool' &&
+      (!entry.message.tool_call_id || !settled.has(ToolUseId(entry.message.tool_call_id)))
+    ) {
+      return [];
     }
-
-    let occurrence =
-      entry.type === 'part_updated' ? latestResultBySource.get(sourceKey) : undefined;
-    if (!occurrence) {
-      const unmatched = unmatchedByToolCallId.get(toolCallId) ?? [];
-      occurrence = unmatched.shift();
-      if (!occurrence) continue;
-      occurrence.matched = true;
-      latestResultBySource.set(sourceKey, occurrence);
+    if (entry.message.role !== 'assistant' || !entry.message.tool_calls?.length) return [entry];
+    const toolCalls = entry.message.tool_calls.filter((call) => settled.has(ToolUseId(call.id)));
+    if (toolCalls.length === 0 && entry.message.content === '' && !entry.message.reasoningContent) {
+      return [];
     }
-    resultsByEventId.set(entry.id, occurrence);
-  }
-
-  return { callsByEventId, resultsByEventId };
+    return [{ ...entry, message: { ...entry.message, tool_calls: toolCalls } }];
+  });
+  const messageIds = timeline.map((entry) => entry.id);
+  return {
+    ...state,
+    timeline,
+    messageIds,
+    messages: timeline.map((entry) => cloneMessage(entry.message)),
+    subagentRefs: state.subagentRefs.filter((ref) => messageIds.includes(ref.messageId)),
+  };
 }
 
-function getToolCallState(
-  toolCalls: Map<string, SessionToolCallState>,
-  stateKey: string,
-  defaults: SessionToolCallState,
-): SessionToolCallState {
-  const existing = toolCalls.get(stateKey);
-  if (existing) {
-    return existing;
-  }
-
-  toolCalls.set(stateKey, defaults);
-  return defaults;
-}
-
-export class JsonlSessionStore implements SessionStore {
-  private readonly storageRoot: string;
-
-  constructor(storageRoot: string) {
-    this.storageRoot = normalizeSessionStorageRoot(storageRoot);
-  }
+export abstract class ProjectedSessionRepository implements SessionRepository, SessionEventStore {
+  abstract initialize(): Promise<void>;
+  abstract listSessions(): Promise<SessionId[]>;
+  abstract deleteSession(sessionId: SessionId): Promise<void>;
+  abstract cleanupOldSessions(): Promise<void>;
+  abstract getStorageStats(): Promise<SessionRepositoryStorageStats>;
+  abstract checkStorageHealth(): Promise<SessionRepositoryHealth>;
+  protected abstract readState(sessionId: SessionId): Promise<SessionState | null>;
+  protected abstract updateState<T>(
+    sessionId: SessionId,
+    create: () => SessionState,
+    mutation: SessionStateMutation<T>,
+  ): Promise<T>;
 
   async loadState(sessionId: SessionId): Promise<SessionState | null> {
-    const entries = await this.readEntries(sessionId);
-    if (entries.length === 0) {
-      return null;
-    }
+    const state = await this.readState(sessionId);
+    return state ? readableState(state) : null;
+  }
 
-    const messageRecords = new Map<MessageId, MessageRecord>();
-    const contentParts = new Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>();
-    const orderedMessageIds: MessageId[] = [];
-    const summaryMessageIds = new Set<MessageId>();
-    const toolCalls = new Map<string, SessionToolCallState>();
-    const toolOccurrencePlan = createToolOccurrencePlan(entries);
-    const projectedCallMessageIds = new Map<string, MessageId>();
-    const callMessageIdsByOccurrence = new Map<string, MessageId>();
-    const resultMessageIdsByOccurrence = new Map<string, MessageId>();
-    const resultOccurrenceByMessageId = new Map<string, string>();
-    const subagentRefs: SessionSubagentRef[] = [];
-    const pendingInputs = new Map<string, PersistedPendingInput>();
-    let sessionInfo: Partial<TranscriptSession> = { sessionId };
-    let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
-    let lastActivity = createdAt;
-    let summary: string | undefined;
+  async createSession(
+    sessionId: SessionId,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<void> {
+    await this.mutate(sessionId, () => undefined, subagentInfo);
+  }
 
-    const ensureMessageRecord = (
-      messageId: MessageId,
-      role: MessageRole,
-      timestamp: string,
-      parentMessageId?: MessageId,
-    ): MessageRecord => {
-      const existing = messageRecords.get(messageId);
-      if (existing) {
-        if (parentMessageId) {
-          existing.parentMessageId = parentMessageId;
-        }
-        if (!existing.message.id) {
-          existing.message.id = messageId;
-        }
-        if (!existing.message.role) {
-          existing.message.role = role;
-        }
-        return existing;
-      }
-
-      const record: MessageRecord = {
-        id: messageId,
-        parentMessageId,
-        createdAt: toTimestamp(undefined, timestamp),
-        message: {
-          id: messageId,
-          role,
-          content: '',
-        },
-      };
-      messageRecords.set(messageId, record);
-      orderedMessageIds.push(messageId);
-      return record;
-    };
-
-    for (const entry of entries) {
-      lastActivity = toTimestamp(undefined, entry.timestamp);
-
-      if (entry.type === 'session_created') {
-        sessionInfo = { ...entry.data, sessionId };
-        createdAt = toTimestamp(entry.data.createdAt, entry.timestamp);
-        continue;
-      }
-
-      if (entry.type === 'session_updated') {
-        sessionInfo = { ...sessionInfo, ...entry.data, sessionId };
-        continue;
-      }
-
-      if (entry.type === 'message_created') {
-        const data = entry.data;
-        const record = ensureMessageRecord(
-          data.messageId,
-          data.role,
-          entry.timestamp,
-          data.parentMessageId,
-        );
-        record.createdAt = toTimestamp(data.createdAt, entry.timestamp);
-        record.parentMessageId = data.parentMessageId;
-        record.message.role = data.role;
-        record.message.id = data.messageId;
-        record.message.modelIdentity = data.modelIdentity ? { ...data.modelIdentity } : undefined;
-
-        const legacyEnvelope = legacyMessageEnvelope(data.customMetadata);
-        record.message.providerOptions = data.providerOptions ?? legacyEnvelope.providerOptions;
-        record.message.provenance = data.provenance ?? legacyEnvelope.provenance;
-        record.message.correlation = data.correlation ?? legacyEnvelope.correlation;
-        record.message.telemetry =
-          data.model || data.usage
-            ? {
-                model: data.model,
-                usage: data.usage
-                  ? {
-                      inputTokens: data.usage.input_tokens,
-                      outputTokens: data.usage.output_tokens,
-                    }
-                  : undefined,
-              }
-            : undefined;
-        record.message.extensions = data.extensions ?? legacyEnvelope.extensions;
-
-        continue;
-      }
-
-      if (entry.type === 'input_enqueued') {
-        pendingInputs.set(entry.data.inputId, {
-          ...entry.data,
-          content: cloneJsonValue(entry.data.content),
-        });
-        continue;
-      }
-
-      if (entry.type === 'input_applied' || entry.type === 'input_cancelled') {
-        pendingInputs.delete(entry.data.inputId);
-        continue;
-      }
-
-      if (entry.type !== 'part_created' && entry.type !== 'part_updated') {
-        continue;
-      }
-
-      const data = entry.data;
-      const occurrence =
-        data.partType === 'tool_call'
-          ? toolOccurrencePlan.callsByEventId.get(entry.id)
-          : data.partType === 'tool_result'
-            ? toolOccurrencePlan.resultsByEventId.get(entry.id)
-            : undefined;
-      if ((data.partType === 'tool_call' || data.partType === 'tool_result') && !occurrence) {
-        continue;
-      }
-      if (data.partType === 'tool_call' && !occurrence?.matched) {
-        continue;
-      }
-
-      let messageId = data.messageId;
-      let inferredParentMessageId: MessageId | undefined;
-      if (data.partType === 'tool_call' && occurrence) {
-        const sourceRecord = messageRecords.get(data.messageId);
-        if (sourceRecord && sourceRecord.message.role !== 'assistant') {
-          messageId =
-            projectedCallMessageIds.get(data.messageId) ??
-            MessageId(`${data.messageId}:tool-calls`);
-          projectedCallMessageIds.set(data.messageId, messageId);
-          inferredParentMessageId = data.messageId;
-        }
-        callMessageIdsByOccurrence.set(occurrence.key, messageId);
-      } else if (data.partType === 'tool_result' && occurrence) {
-        const projectedMessageId = resultMessageIdsByOccurrence.get(occurrence.key);
-        if (projectedMessageId) {
-          messageId = projectedMessageId;
-        } else {
-          const sourceRecord = messageRecords.get(data.messageId);
-          const currentOwner = resultOccurrenceByMessageId.get(data.messageId);
-          if (
-            (sourceRecord && sourceRecord.message.role !== 'tool') ||
-            (currentOwner && currentOwner !== occurrence.key)
-          ) {
-            messageId = MessageId(`${data.messageId}:tool-result:${occurrence.key}`);
-          }
-          resultMessageIdsByOccurrence.set(occurrence.key, messageId);
-          resultOccurrenceByMessageId.set(messageId, occurrence.key);
-        }
-        inferredParentMessageId = callMessageIdsByOccurrence.get(occurrence.key);
-      }
-
-      const record = ensureMessageRecord(
-        messageId,
-        inferRole(data.partType),
-        entry.timestamp,
-        messageRecords.has(messageId) ? undefined : inferredParentMessageId,
-      );
-
-      this.applyPartToMessage({
-        part: data,
-        record,
-        contentParts,
-        toolCalls,
-        toolOccurrenceKey: occurrence?.key,
-        subagentRefs,
-        summaryMessageIds,
-        onSummary: (value) => {
-          summary = value;
-        },
-      });
-    }
-
-    // Build the timeline directly from the mutable builder records (no clone).
-    // `messages` is cloned from the same records so the two arrays are independent.
-    const records = orderedMessageIds
-      .map((messageId) => messageRecords.get(messageId))
-      .filter((record): record is MessageRecord => record !== undefined);
-    const referencedMessageIds = new Set([
-      ...records.flatMap((record) => (record.parentMessageId ? [record.parentMessageId] : [])),
-      ...subagentRefs.map((ref) => ref.messageId),
-    ]);
-    const timeline = records
-      .filter(
-        (record) => !isEmptyAssistantMessage(record.message) || referencedMessageIds.has(record.id),
-      )
-      .map((record) => ({
-        id: record.id,
-        parentMessageId: record.parentMessageId,
-        createdAt: record.createdAt,
-        message: record.message,
-      }));
-
-    const messageIds = timeline.map((entry) => entry.id);
-    const messages = timeline.map((entry) => cloneMessage(entry.message));
-    const snapshotSummary =
-      this.getLastSummaryForIds(messageIds, summaryMessageIds, timeline) ?? summary;
-
-    return {
+  saveMessage(
+    sessionId: SessionId,
+    role: MessageRole,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
+    metadata?: SessionRepositoryMessageMetadata,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
       sessionId,
-      createdAt,
-      lastActivity,
-      sessionInfo,
-      timeline,
-      messages,
-      messageIds,
-      summary: snapshotSummary,
-      summaryMessageIds: Array.from(summaryMessageIds),
-      // input/output already cloned when written into the map (applyPartToMessage),
-      // so a shallow spread is sufficient here.
-      toolCalls: Array.from(toolCalls.values()).map((toolCall) => ({
-        ...toolCall,
-      })),
-      subagentRefs: subagentRefs
-        .filter((ref) => messageIds.includes(ref.messageId))
-        .map((ref) => ({ ...ref })),
-      pendingInputs: Array.from(pendingInputs.values()).map((input) => ({
-        ...input,
-        content: cloneJsonValue(input.content),
-      })),
-    };
+      (state, now) => {
+        appendMessage(
+          state,
+          id,
+          { id, role, content: structuredClone(content), ...messageMetadata(metadata) },
+          now,
+          parentMessageId ?? undefined,
+        );
+        for (const call of metadata?.toolCalls ?? []) {
+          let input: JsonValue = call.function.arguments;
+          try {
+            input = JSON.parse(call.function.arguments) as JsonValue;
+          } catch {
+            // Preserve provider text when it is not valid JSON.
+          }
+          state.toolCalls.push({
+            id: ToolUseId(call.id),
+            name: call.function.name,
+            input,
+            messageId: id,
+            timestamp: now,
+            status: 'pending',
+          });
+        }
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
+    return this.mutate(sessionId, (state, now) => {
+      state.pendingInputs = [
+        ...state.pendingInputs.filter((item) => item.inputId !== input.inputId),
+        { ...input, content: cloneJsonValue(input.content) },
+      ];
+      state.lastActivity = now;
+    });
+  }
+
+  saveAppliedInputMessage(
+    sessionId: SessionId,
+    inputId: InputId,
+    requestId: RequestId,
+    content: string | ModelContent[],
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
+      sessionId,
+      (state, now) => {
+        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
+        appendMessage(
+          state,
+          id,
+          {
+            id,
+            role: 'user',
+            content: structuredClone(content),
+            correlation: { inputId, requestId },
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveInputCancelled(sessionId: SessionId, inputId: InputId): Promise<void> {
+    return this.mutate(sessionId, (state, now) => {
+      state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
+      state.lastActivity = now;
+    });
+  }
+
+  saveToolUse(
+    sessionId: SessionId,
+    toolName: string,
+    input: JsonValue,
+    parentMessageId: MessageId | null = null,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    requestedToolCallId?: ToolUseId,
+  ): Promise<PersistedToolUse> {
+    const messageId = MessageId(nanoid());
+    const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
+    return this.mutate(
+      sessionId,
+      (state, now) => {
+        appendMessage(
+          state,
+          messageId,
+          {
+            id: messageId,
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: toolName,
+                  arguments: typeof input === 'string' ? input : JSON.stringify(input),
+                },
+              },
+            ],
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        state.toolCalls.push({
+          id: toolCallId,
+          name: toolName,
+          input: cloneJsonValue(input),
+          messageId,
+          timestamp: now,
+          status: 'pending',
+        });
+        return { messageId, toolCallId };
+      },
+      subagentInfo,
+    );
+  }
+
+  saveToolResult(
+    sessionId: SessionId,
+    toolId: ToolUseId,
+    toolName: string,
+    output: JsonValue,
+    parentMessageId: MessageId | null = null,
+    error?: string,
+    subagentInfo?: SessionRepositorySubagentInfo,
+    subagentRef?: SessionRepositorySubagentRef,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(
+      sessionId,
+      (state, now) => {
+        appendMessage(
+          state,
+          id,
+          {
+            id,
+            role: 'tool',
+            content: error ? `Error: ${error}` : stringify(output),
+            tool_call_id: toolId,
+            name: toolName,
+          },
+          now,
+          parentMessageId ?? undefined,
+        );
+        const call = state.toolCalls.findLast(
+          (item) => item.id === toolId && item.status === 'pending',
+        );
+        if (call) {
+          Object.assign(call, {
+            output: cloneJsonValue(output),
+            error,
+            status: error ? 'error' : 'success',
+          });
+        }
+        if (subagentRef) {
+          state.subagentRefs.push({
+            messageId: id,
+            childSessionId: subagentRef.subagentSessionId,
+            agentType: subagentRef.subagentType,
+            status: subagentRef.subagentStatus,
+            summary: subagentRef.subagentSummary,
+            startedAt: new Date(now).toISOString(),
+            finishedAt:
+              subagentRef.subagentStatus === 'running' ? null : new Date(now).toISOString(),
+          });
+        }
+        return id;
+      },
+      subagentInfo,
+    );
+  }
+
+  saveCompaction(
+    sessionId: SessionId,
+    summary: string,
+    metadata: SessionRepositoryCompactionMetadata,
+    parentMessageId: MessageId | null = null,
+  ): Promise<MessageId> {
+    const id = MessageId(nanoid());
+    return this.mutate(sessionId, (state, now) => {
+      appendMessage(
+        state,
+        id,
+        {
+          id,
+          role: 'system',
+          content: summary,
+          provenance: { source: 'compaction_summary' },
+          extensions: {
+            trigger: metadata.trigger,
+            preTokens: metadata.preTokens,
+            ...(metadata.postTokens !== undefined ? { postTokens: metadata.postTokens } : {}),
+            ...(metadata.filesIncluded ? { filesIncluded: metadata.filesIncluded } : {}),
+          },
+        },
+        now,
+        parentMessageId ?? undefined,
+      );
+      state.summary = summary;
+      state.summaryMessageIds.push(id);
+      return id;
+    });
+  }
+
+  saveHistoryProgress(sessionId: SessionId, progress: SessionHistoryProgress): Promise<void> {
+    return this.mutate(sessionId, (state) => {
+      state.historyProgress = mergeHistoryProgress(state.historyProgress, progress);
+    });
+  }
+
+  clearHistoryGap(
+    sessionId: SessionId,
+    repairedMessages: number,
+    options: { readonly coveredRequestId?: RequestId } = {},
+  ): Promise<void> {
+    return this.mutate(sessionId, (state) => {
+      state.historyProgress = mergeHistoryProgress(state.historyProgress, {
+        state: 'complete',
+        updatedAt: Date.now(),
+        repairedMessages,
+        ...(options.coveredRequestId ? { coveredRequestId: options.coveredRequestId } : {}),
+      });
+    });
   }
 
   async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
-    const state = await this.loadState(sessionId);
-    return state?.messages ?? [];
+    return (await this.loadState(sessionId))?.messages.map(cloneMessage) ?? [];
   }
 
   async forkState(
@@ -585,273 +490,52 @@ export class JsonlSessionStore implements SessionStore {
     options?: { messageId?: MessageId },
   ): Promise<SessionSnapshot | null> {
     const state = await this.loadState(sessionId);
-    if (!state) {
-      return null;
+    if (!state) return null;
+    const end = options?.messageId ? state.messageIds.indexOf(options.messageId) + 1 : undefined;
+    if (end === 0) {
+      throw new Error(`Message with ID "${options?.messageId}" not found in session history`);
     }
-
-    let endIndex = state.timeline.length;
-    if (options?.messageId) {
-      const index = state.messageIds.indexOf(options.messageId);
-      if (index === -1) {
-        throw new Error(`ModelMessage with ID "${options.messageId}" not found in session history`);
-      }
-      endIndex = index + 1;
-    }
-
-    const timeline = state.timeline.slice(0, endIndex);
-    const messageIds = timeline.map((entry) => entry.id);
-    const messages = timeline.map((entry) => cloneMessage(entry.message));
-
+    const timeline = state.timeline.slice(0, end);
+    const summary = [...timeline]
+      .reverse()
+      .find((entry) => state.summaryMessageIds.includes(entry.id))?.message.content;
     return {
       sessionId,
-      messages,
-      messageIds,
-      lastActivity:
-        timeline.length > 0 ? (timeline.at(-1)?.createdAt ?? state.createdAt) : state.createdAt,
-      summary: this.getLastSummaryForIds(messageIds, new Set(state.summaryMessageIds), timeline),
+      messages: timeline.map((entry) => cloneMessage(entry.message)),
+      messageIds: timeline.map((entry) => entry.id),
+      lastActivity: timeline.at(-1)?.createdAt ?? state.createdAt,
+      summary: typeof summary === 'string' ? summary : undefined,
     };
-  }
-
-  async listSessions(): Promise<SessionId[]> {
-    try {
-      const storagePath = this.storageRoot;
-      const files = await fs.readdir(storagePath, { withFileTypes: true });
-      return files
-        .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
-        .map((file) => SessionId(file.name.replace(/\.jsonl$/, '')))
-        .sort();
-    } catch {
-      return [];
-    }
   }
 
   async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
     const state = await this.loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-
-    return {
-      sessionId,
-      lastActivity: state.lastActivity,
-      messageCount: state.messages.filter(
-        (message) => message.role === 'user' || message.role === 'assistant',
-      ).length,
-      topics: [],
-      summaryText: state.summary,
-    };
-  }
-
-  private async readEntries(sessionId: SessionId): Promise<TranscriptEvent[]> {
-    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
-    const store = new JSONLStore(filePath);
-    const entries = await store.readAll();
-    const mismatched = entries.find((entry) => entry.sessionId !== sessionId);
-    if (mismatched) {
-      throw new JSONLStoreError(
-        'SESSION_JSONL_CORRUPT_LOG',
-        `Session JSONL record ${mismatched.id} belongs to ${mismatched.sessionId}, expected ${sessionId}`,
-      );
-    }
-    return entries;
-  }
-
-  private applyPartToMessage(params: {
-    part: TranscriptPart;
-    record: MessageRecord;
-    contentParts: Map<MessageId, Array<{ partId: PartId; content: ModelContent }>>;
-    toolCalls: Map<string, SessionToolCallState>;
-    toolOccurrenceKey?: string;
-    subagentRefs: SessionSubagentRef[];
-    summaryMessageIds: Set<MessageId>;
-    onSummary: (summary: string) => void;
-  }): void {
-    const {
-      part,
-      record,
-      contentParts,
-      toolCalls,
-      toolOccurrenceKey,
-      subagentRefs,
-      summaryMessageIds,
-      onSummary,
-    } = params;
-
-    switch (part.partType) {
-      case 'reasoning': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const text = typeof payload.text === 'string' ? payload.text : '';
-        record.message.role = 'assistant';
-        record.message.reasoningContent = record.message.reasoningContent
-          ? `${record.message.reasoningContent}${text}`
-          : text;
-        break;
-      }
-      case 'text': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const providerOptions = isJsonObject(payload.providerOptions)
-          ? (payload.providerOptions as Extract<ModelContent, { type: 'text' }>['providerOptions'])
-          : undefined;
-        const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
-          type: 'text',
-          text: typeof payload.text === 'string' ? payload.text : '',
-          ...(providerOptions ? { providerOptions } : {}),
-        });
-        record.message.content = toMessageContent(nextParts);
-        break;
-      }
-      case 'image': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        // `dataUrl` is the canonical field written by PersistentStore; `url` is
-        // accepted as a legacy / external-source fallback.
-        const url =
-          typeof payload.dataUrl === 'string'
-            ? payload.dataUrl
-            : typeof payload.url === 'string'
-              ? payload.url
-              : '';
-        const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
-          type: 'image_url',
-          image_url: {
-            url,
-          },
-        });
-        record.message.content = toMessageContent(nextParts);
-        break;
-      }
-      case 'tool_call': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const toolName = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
-        const toolCallId = ToolUseId(
-          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
-        );
-        const input = cloneJsonValue(payload.input as JsonValue);
-        const toolCall: ModelToolCall = {
-          id: toolCallId,
-          type: 'function',
-          function: {
-            name: toolName,
-            arguments: typeof input === 'string' ? input : stringifyContent(input),
-          },
-        };
-
-        record.message.role = 'assistant';
-        record.message.tool_calls = [
-          ...(record.message.tool_calls ?? []).filter((call) => call.id !== toolCall.id),
-          toolCall,
-        ];
-
-        const toolCallState = getToolCallState(toolCalls, toolOccurrenceKey ?? toolCallId, {
-          id: toolCallId,
-          name: toolName,
-          input,
-          messageId: record.id,
-          timestamp: record.createdAt,
-          status: 'pending',
-        });
-        toolCallState.messageId = record.id;
-        break;
-      }
-      case 'tool_result': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const toolCallId = ToolUseId(
-          typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId,
-        );
-        const toolName = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
-        const output = cloneJsonValue(payload.output as JsonValue);
-        const error = typeof payload.error === 'string' ? payload.error : undefined;
-
-        record.message.role = 'tool';
-        record.message.tool_call_id = toolCallId;
-        record.message.name = toolName;
-        record.message.content = error ? `Error: ${error}` : stringifyContent(output);
-
-        const toolCallState = getToolCallState(toolCalls, toolOccurrenceKey ?? toolCallId, {
-          id: toolCallId,
-          name: toolName,
-          input: {},
-          messageId: record.id,
-          timestamp: record.createdAt,
-          status: error ? 'error' : 'success',
-        });
-        toolCallState.name = toolName;
-        toolCallState.messageId = record.id;
-        toolCallState.output = output;
-        toolCallState.status = error ? 'error' : 'success';
-        toolCallState.error = error;
-        break;
-      }
-      case 'summary': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const text = typeof payload.text === 'string' ? payload.text : '';
-        record.message.role = 'system';
-        record.message.content = text;
-        const legacyEnvelope = legacyMessageEnvelope(
-          isJsonObject(payload.metadata) ? payload.metadata : undefined,
-        );
-        record.message.provenance =
-          (isJsonObject(payload.provenance) &&
-          isConversationMessageSource(payload.provenance.source)
-            ? { source: payload.provenance.source }
-            : undefined) ?? legacyEnvelope.provenance;
-        record.message.extensions =
-          (isJsonObject(payload.extensions) ? payload.extensions : undefined) ??
-          legacyEnvelope.extensions;
-        summaryMessageIds.add(record.id);
-        onSummary(text);
-        break;
-      }
-      case 'subtask_ref': {
-        const payload = isJsonObject(part.payload) ? part.payload : {};
-        const childSessionId =
-          typeof payload.childSessionId === 'string' ? payload.childSessionId : undefined;
-        const agentType = typeof payload.agentType === 'string' ? payload.agentType : undefined;
-        const status = payload.status;
-        if (
-          childSessionId &&
-          agentType &&
-          (status === 'running' ||
-            status === 'completed' ||
-            status === 'failed' ||
-            status === 'cancelled')
-        ) {
-          subagentRefs.push({
-            messageId: MessageId(record.id),
-            childSessionId: SessionId(childSessionId),
-            agentType,
-            status,
-            summary: typeof payload.summary === 'string' ? payload.summary : undefined,
-            startedAt: typeof payload.startedAt === 'string' ? payload.startedAt : undefined,
-            finishedAt:
-              typeof payload.finishedAt === 'string' || payload.finishedAt === null
-                ? payload.finishedAt
-                : undefined,
-          });
+    return state
+      ? {
+          sessionId,
+          lastActivity: state.lastActivity,
+          messageCount: state.messages.filter(
+            (message) => message.role === 'user' || message.role === 'assistant',
+          ).length,
+          topics: [],
+          summaryText: state.summary,
         }
-        break;
-      }
-      default:
-        break;
-    }
+      : null;
   }
 
-  private getLastSummaryForIds(
-    messageIds: string[],
-    summaryMessageIds: Set<string>,
-    timeline: Array<{ id: string; message: ConversationMessage }>,
-  ): string | undefined {
-    for (let index = messageIds.length - 1; index >= 0; index -= 1) {
-      const messageId = messageIds[index];
-      if (!messageId || !summaryMessageIds.has(messageId)) {
-        continue;
-      }
-
-      const entry = timeline.find((item) => item.id === messageId);
-      if (entry && typeof entry.message.content === 'string') {
-        return entry.message.content;
-      }
-    }
-
-    return undefined;
+  private mutate<T>(
+    sessionId: SessionId,
+    mutation: SessionStateMutation<T>,
+    subagentInfo?: SessionRepositorySubagentInfo,
+  ): Promise<T> {
+    return this.updateState(
+      sessionId,
+      () => createSessionState(sessionId, Date.now(), subagentInfo),
+      mutation,
+    );
   }
+}
+
+function stringify(value: JsonValue): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }

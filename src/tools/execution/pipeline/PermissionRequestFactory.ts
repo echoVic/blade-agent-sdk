@@ -1,6 +1,6 @@
 import type { PermissionMode } from '../../../types/constants.js';
 import type { PermissionHandlerRequest } from '../../../types/permissions.js';
-import { isReadOnlyKind, ToolKind } from '../../types/kind.js';
+import type { ToolInvocation } from '../../core/ToolInvocation.js';
 import type { ApprovalLedger } from './ApprovalLedger.js';
 import type { PipelineExecutionState } from './state.js';
 
@@ -17,45 +17,43 @@ export class PermissionRequestFactory {
     private readonly ledger: ApprovalLedger,
   ) {}
 
-  build(state: PipelineExecutionState, affectedPaths: string[]): PermissionHandlerRequest {
-    const resolvedBehavior = state.resolvedBehavior;
-    const toolKind = resolvedBehavior?.kind ?? state.tool.kind ?? ToolKind.Execute;
-    const invocationDescription = state.invocation?.getDescription();
-
+  build(state: PipelineExecutionState): PermissionHandlerRequest {
+    const invocation = requireInvocation(state);
     return {
       toolName: state.toolName,
-      input: state.params,
+      input: invocation.params,
       signal: state.context.signal || new AbortController().signal,
       permissionMode: state.context.permissionMode || this.defaultPermissionMode,
-      sessionApproved: this.ledger.isApproved(state.permissionSignature),
-      affectedPaths,
-      toolKind,
-      toolMeta: this.buildToolMeta(state, toolKind, invocationDescription),
+      sessionApproved: this.ledger.isApproved(invocation.permissionSignature),
+      affectedPaths: [...invocation.affectedPaths],
+      toolKind: invocation.behavior.kind,
+      toolMeta: this.buildToolMeta(invocation),
     };
   }
 
   sync(request: PermissionHandlerRequest, state: PipelineExecutionState): void {
-    const resolvedBehavior = state.resolvedBehavior;
-    const toolKind = resolvedBehavior?.kind ?? state.tool.kind ?? ToolKind.Execute;
-    request.input = state.params;
-    request.affectedPaths = state.affectedPaths;
-    request.toolKind = toolKind;
-    request.toolMeta = this.buildToolMeta(state, toolKind, state.invocation?.getDescription());
+    const invocation = requireInvocation(state);
+    request.input = invocation.params;
+    request.affectedPaths = [...invocation.affectedPaths];
+    request.toolKind = invocation.behavior.kind;
+    request.toolMeta = this.buildToolMeta(invocation);
   }
 
-  private buildToolMeta(
-    state: PipelineExecutionState,
-    toolKind: ToolKind,
-    description: string | undefined,
-  ): PermissionHandlerRequest['toolMeta'] {
-    const resolvedBehavior = state.resolvedBehavior;
+  private buildToolMeta(invocation: ToolInvocation): PermissionHandlerRequest['toolMeta'] {
     return {
-      sideEffect: resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
-      isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
-      isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? isReadOnlyKind(toolKind),
-      isDestructive: resolvedBehavior?.isDestructive ?? false,
-      signature: state.permissionSignature,
-      description,
+      sideEffect: invocation.behavior.sideEffect,
+      isReadOnly: invocation.behavior.isReadOnly,
+      isConcurrencySafe: invocation.behavior.isConcurrencySafe,
+      isDestructive: invocation.behavior.isDestructive,
+      signature: invocation.permissionSignature,
+      description: invocation.description,
     };
   }
+}
+
+function requireInvocation(state: PipelineExecutionState): ToolInvocation {
+  if (!state.invocation) {
+    throw new Error(`Tool invocation '${state.toolName}' has not been prepared`);
+  }
+  return state.invocation;
 }

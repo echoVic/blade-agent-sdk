@@ -41,11 +41,9 @@ const stable = await runJson('benchmarks/runtime.mjs');
 const recovery = await runJson(
   'examples/postgres-worker-recovery/run.mjs',
 );
-const faults = await runJson('benchmarks/fault-injection.mjs');
 const evaluation = evaluateRuntimeRegression(policy, {
   stable,
   recovery,
-  faults,
 });
 const report = {
   schemaVersion: 1,
@@ -59,11 +57,9 @@ const report = {
   metrics: evaluation.metrics,
   policy,
   checks: evaluation.checks,
-  faultInjectionMatrix: evaluation.faultInjectionMatrix,
   sourceReports: {
     stable,
     recovery,
-    faults,
   },
 };
 

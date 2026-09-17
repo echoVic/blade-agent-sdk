@@ -4,9 +4,9 @@
  * 负责从用户消息中提取 @ 提及，读取文件内容，并转换为附件对象
  */
 
-import fg from 'fast-glob';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import fg from 'fast-glob';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { splitPath } from '../../utils/pathHelpers.js';
 import { PathSecurity } from '../../utils/pathSecurity.js';
@@ -81,9 +81,7 @@ export class AttachmentCollector {
         // 错误情况：返回错误附件
         const mention = mentions[index];
         const error =
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason);
+          result.reason instanceof Error ? result.reason.message : String(result.reason);
 
         this.logger.warn(`Failed to process @${mention.path}:`, error);
 
@@ -108,10 +106,7 @@ export class AttachmentCollector {
     }
 
     // 安全验证
-    const absolutePath = await PathSecurity.validatePath(
-      mention.path,
-      this.options.cwd
-    );
+    const absolutePath = await PathSecurity.validatePath(mention.path, this.options.cwd);
 
     // 解析符号链接
     const realPath = await PathSecurity.resolveSymlink(absolutePath, this.options.cwd);
@@ -137,7 +132,7 @@ export class AttachmentCollector {
   private async readFile(
     absolutePath: string,
     relativePath: string,
-    lineRange?: LineRange
+    lineRange?: LineRange,
   ): Promise<Attachment> {
     // 检查缓存
     const cached = this.fileCache.get(absolutePath);
@@ -151,7 +146,7 @@ export class AttachmentCollector {
     if (stats.size > this.options.maxFileSize) {
       throw new Error(
         `File too large: ${Math.round(stats.size / 1024 / 1024)}MB ` +
-          `(max ${Math.round(this.options.maxFileSize / 1024 / 1024)}MB)`
+          `(max ${Math.round(this.options.maxFileSize / 1024 / 1024)}MB)`,
       );
     }
 
@@ -161,9 +156,7 @@ export class AttachmentCollector {
       content = await fs.readFile(absolutePath, 'utf-8');
     } catch (_error) {
       // 尝试以二进制方式读取（可能是非文本文件）
-      throw new Error(
-        `Cannot read file as text: ${relativePath}. It may be a binary file.`
-      );
+      throw new Error(`Cannot read file as text: ${relativePath}. It may be a binary file.`);
     }
 
     // 缓存结果
@@ -181,7 +174,7 @@ export class AttachmentCollector {
   private formatFileAttachment(
     relativePath: string,
     content: string,
-    lineRange?: LineRange
+    lineRange?: LineRange,
   ): Attachment {
     const lines = content.split('\n');
     let finalContent = content;
@@ -196,7 +189,7 @@ export class AttachmentCollector {
       // 验证行号范围
       if (start >= lines.length) {
         throw new Error(
-          `Line range start (${lineRange.start}) exceeds file length (${lines.length} lines)`
+          `Line range start (${lineRange.start}) exceeds file length (${lines.length} lines)`,
         );
       }
 
@@ -204,10 +197,7 @@ export class AttachmentCollector {
       finalContent = lines.slice(start, endIndex).join('\n');
 
       // 添加行号信息
-      const lineNumbers = Array.from(
-        { length: endIndex - start },
-        (_, i) => start + i + 1
-      );
+      const lineNumbers = Array.from({ length: endIndex - start }, (_, i) => start + i + 1);
       const numberedLines = finalContent
         .split('\n')
         .map((line, i) => `${lineNumbers[i]}: ${line}`)
@@ -242,7 +232,7 @@ export class AttachmentCollector {
    */
   private async renderDirectoryTree(
     absolutePath: string,
-    relativePath: string
+    relativePath: string,
   ): Promise<Attachment> {
     // 递归查找所有文件
     const files = (await fg('**/*', {
@@ -279,9 +269,7 @@ export class AttachmentCollector {
     // 限制显示的文件数
     const maxFiles = 500;
     const suffix =
-      files.length > maxFiles
-        ? `\n\n[... and ${files.length - maxFiles} more files]`
-        : '';
+      files.length > maxFiles ? `\n\n[... and ${files.length - maxFiles} more files]` : '';
 
     return {
       type: 'directory',
@@ -327,12 +315,7 @@ export class AttachmentCollector {
   /**
    * 打印树形结构为 ASCII 格式
    */
-  private printTree(
-    tree: FileTree,
-    rootPath: string,
-    prefix = '',
-    _isLast = true
-  ): string {
+  private printTree(tree: FileTree, rootPath: string, prefix = '', _isLast = true): string {
     const lines: string[] = [];
 
     // 根目录
@@ -434,7 +417,7 @@ export class AttachmentCollector {
             truncated: false,
           };
         }
-      })
+      }),
     );
 
     // 组装结果
@@ -445,14 +428,12 @@ export class AttachmentCollector {
     // 格式化为多文件附件
     const contentParts = results.map(
       (r) =>
-        `--- ${r.path} (${r.lines} lines${r.truncated ? ', truncated' : ''}) ---\n${r.content}`
+        `--- ${r.path} (${r.lines} lines${r.truncated ? ', truncated' : ''}) ---\n${r.content}`,
     );
 
     const content = contentParts.join('\n\n');
     const suffix =
-      files.length > maxFiles
-        ? `\n\n[... and ${files.length - maxFiles} more files matched]`
-        : '';
+      files.length > maxFiles ? `\n\n[... and ${files.length - maxFiles} more files matched]` : '';
 
     return {
       type: 'file',

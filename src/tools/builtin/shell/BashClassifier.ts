@@ -1,0 +1,134 @@
+export type BashCommandCategory = 'destructive' | 'write' | 'readonly';
+
+export interface BashClassification {
+  category: BashCommandCategory;
+  reason: string;
+  matchedPattern?: string;
+}
+
+const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  {
+    pattern: /\$(?:\{?[A-Za-z_][A-Za-z0-9_]*\}?|\()/,
+    reason: 'shell expansion can hide executable commands',
+  },
+  {
+    pattern: /(?:\$\([^)]*\)|`[^`]*`|[<>]\([^)]*\))/,
+    reason: 'shell or process substitution can hide executable commands',
+  },
+  {
+    pattern: /\brm\s+(-[a-z]*f[a-z]*|-[a-z]*r[a-z]*f[a-z]*|--force|--recursive)/i,
+    reason: 'force/recursive remove',
+  },
+  { pattern: /\brm\b/, reason: 'file removal' },
+  { pattern: /\brmdir\b/, reason: 'directory removal' },
+  { pattern: /\bshred\b/, reason: 'secure file deletion' },
+  { pattern: /\bdd\b/, reason: 'raw copy or disk write (dd)' },
+  { pattern: /\bmkfs\b/, reason: 'filesystem format' },
+  { pattern: /\bfdisk\b/, reason: 'disk partition' },
+  { pattern: /\bformat\b/, reason: 'disk format' },
+  { pattern: /\bdrop\s+(table|database|schema)/i, reason: 'database drop' },
+  { pattern: /\btruncate\b/, reason: 'file/table truncation' },
+  { pattern: /\bgit\s+reset\s+--hard\b/, reason: 'hard git reset' },
+  { pattern: /\bgit\s+push\s+.*--force\b/, reason: 'force git push' },
+  { pattern: /\bgit\s+push\s+.*-f\b/, reason: 'force git push' },
+  { pattern: /\bgit\s+push\b[^\n;&|]*\s\+[^\s]+/, reason: 'force git push refspec' },
+  { pattern: /\bgit\s+clean\s+-[a-z]*f/, reason: 'git clean force' },
+  { pattern: /\bgit\s+branch\s+-D\b/, reason: 'force branch delete' },
+  { pattern: /\bkill\s+-9\b/, reason: 'force kill process' },
+  { pattern: /\bpkill\b/, reason: 'kill processes by name' },
+  { pattern: /\bnpm\s+publish\b/, reason: 'publish to npm registry' },
+  { pattern: /\bcurl\b.*\|\s*(bash|sh|zsh)\b/, reason: 'pipe URL to shell' },
+  { pattern: /\bwget\b.*\|\s*(bash|sh|zsh)\b/, reason: 'pipe URL to shell' },
+  {
+    pattern: /\b(eval|source)\b|(?:^|[;&|]\s*)\s*(bash|sh|zsh)\b/,
+    reason: 'dynamic shell execution',
+  },
+  { pattern: />\s*\/dev\/[a-z]+[0-9]/, reason: 'write to block device' },
+];
+
+const WRITE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\bmv\b/, reason: 'move/rename file' },
+  { pattern: /\bcp\b/, reason: 'copy file' },
+  { pattern: /\bmkdir\b/, reason: 'create directory' },
+  { pattern: /\btouch\b/, reason: 'create/update file' },
+  { pattern: /\bchmod\b/, reason: 'change permissions' },
+  { pattern: /\bchown\b/, reason: 'change ownership' },
+  { pattern: /\bln\b/, reason: 'create link' },
+  { pattern: /\bnpm\s+(install|uninstall|update|ci)\b/, reason: 'npm package management' },
+  {
+    pattern: /\bpnpm\s+(install|uninstall|update|add|remove)\b/,
+    reason: 'pnpm package management',
+  },
+  { pattern: /\byarn\s+(install|add|remove|upgrade)\b/, reason: 'yarn package management' },
+  {
+    pattern: /\bgit\s+(commit|add|checkout|merge|rebase|stash|tag)\b/,
+    reason: 'git write operation',
+  },
+  { pattern: /\bgit\s+push\b/, reason: 'git push' },
+  { pattern: /\bsudo\b/, reason: 'elevated privileges' },
+  { pattern: /\bsystemctl\s+(start|stop|restart|enable|disable)\b/, reason: 'service management' },
+  { pattern: /\bapt(-get)?\s+(install|remove|purge)\b/, reason: 'package installation' },
+  { pattern: /\bbrew\s+(install|uninstall|upgrade)\b/, reason: 'homebrew package management' },
+  { pattern: /\bpip\s+(install|uninstall)\b/, reason: 'pip package management' },
+  { pattern: /\bssh\b/, reason: 'remote connection' },
+  { pattern: /\bscp\b/, reason: 'secure copy' },
+  { pattern: /\brsync\b/, reason: 'file sync' },
+  {
+    pattern: /\bcurl\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--data|--upload-file)/,
+    reason: 'HTTP write request',
+  },
+  { pattern: /\bwget\b.*(-O|--output-document)/, reason: 'download to file' },
+  { pattern: /\btee\b/, reason: 'write to file via tee' },
+  { pattern: />>/, reason: 'append redirect' },
+  { pattern: /(?<![>])>(?![>])/, reason: 'output redirect' },
+];
+
+const READONLY_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /^\s*(pwd|whoami|date)\s*$/i, reason: 'read-only shell builtin' },
+  { pattern: /^\s*(id|uname)(?:\s+[-\w]+)*\s*$/i, reason: 'read-only system inspection' },
+  {
+    pattern: /^\s*(ls|cat|head|tail|wc|grep|rg)(?:\s+[^;&|<>`$()\n]+)*\s*$/i,
+    reason: 'read-only file inspection',
+  },
+  {
+    pattern: /^\s*git\s+(status|diff|log|show|rev-parse)(?:\s+[^;&|<>`$()\n]+)*\s*$/i,
+    reason: 'read-only git inspection',
+  },
+  {
+    pattern: /^\s*(node|npm|pnpm|yarn|python|python3)\s+(--version|-v)\s*$/i,
+    reason: 'runtime version inspection',
+  },
+  {
+    pattern: /^\s*(env|printenv)(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*$/i,
+    reason: 'environment inspection',
+  },
+];
+
+export const BashClassifier = {
+  classify(command: string): BashClassification {
+    for (const { pattern, reason } of DESTRUCTIVE_PATTERNS) {
+      if (pattern.test(command)) {
+        return { category: 'destructive', reason, matchedPattern: pattern.source };
+      }
+    }
+    for (const { pattern, reason } of WRITE_PATTERNS) {
+      if (pattern.test(command)) {
+        return { category: 'write', reason, matchedPattern: pattern.source };
+      }
+    }
+    for (const { pattern, reason } of READONLY_PATTERNS) {
+      if (pattern.test(command)) {
+        return { category: 'readonly', reason, matchedPattern: pattern.source };
+      }
+    }
+    return { category: 'write', reason: 'command is not proven read-only' };
+  },
+
+  isDestructive(command: string): boolean {
+    return BashClassifier.classify(command).category === 'destructive';
+  },
+
+  isReadOnly(command: string): boolean {
+    return BashClassifier.classify(command).category === 'readonly';
+  },
+};

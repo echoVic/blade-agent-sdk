@@ -49,9 +49,11 @@ describe('FileLockManager', () => {
       // acquireLock stores currentLock.then(() => undefined) internally,
       // which creates an unhandled rejection branch in bun test.
       // So we test error recovery instead of direct error propagation.
-      await manager.acquireLock('/tmp/file-err.ts', async () => {
-        throw new Error('operation failed');
-      }).catch(() => {});
+      await manager
+        .acquireLock('/tmp/file-err.ts', async () => {
+          throw new Error('operation failed');
+        })
+        .catch(() => {});
 
       // Can still use the lock after failure
       const result = await manager.acquireLock('/tmp/file-err.ts', async () => 'recovered');
@@ -157,12 +159,14 @@ describe('FileLockManager', () => {
       const manager = FileLockManager.getInstance();
       const executionOrder: string[] = [];
 
-      const op1 = manager.acquireLock('/tmp/file.ts', async () => {
-        executionOrder.push('op1');
-        throw new Error('op1 failed');
-      }).catch(() => {
-        // 捕获错误，不让 Promise.all 短路
-      });
+      const op1 = manager
+        .acquireLock('/tmp/file.ts', async () => {
+          executionOrder.push('op1');
+          throw new Error('op1 failed');
+        })
+        .catch(() => {
+          // 捕获错误，不让 Promise.all 短路
+        });
 
       const op2 = manager.acquireLock('/tmp/file.ts', async () => {
         executionOrder.push('op2');
@@ -245,9 +249,9 @@ describe('FileLockManager', () => {
       const reason = new Error('cancelled before lock');
       controller.abort(reason);
 
-      await expect(
-        manager.acquire('/tmp/cancelled.ts', 'write', controller.signal),
-      ).rejects.toBe(reason);
+      await expect(manager.acquire('/tmp/cancelled.ts', 'write', controller.signal)).rejects.toBe(
+        reason,
+      );
       expect(manager.isLocked('/tmp/cancelled.ts')).toBe(false);
     });
 
@@ -256,11 +260,7 @@ describe('FileLockManager', () => {
       const holder = await manager.acquire('/tmp/queued.ts');
       const controller = new AbortController();
       const reason = new Error('cancelled while waiting for lock');
-      const cancelled = manager.acquire(
-        '/tmp/queued.ts',
-        'write',
-        controller.signal,
-      );
+      const cancelled = manager.acquire('/tmp/queued.ts', 'write', controller.signal);
       const next = manager.acquire('/tmp/queued.ts');
       const cancelledResult = expect(cancelled).rejects.toBe(reason);
 
@@ -283,11 +283,7 @@ describe('FileLockManager', () => {
       controller.signal.addEventListener('abort', () => holder.release(), {
         once: true,
       });
-      const cancelled = manager.acquire(
-        filePath,
-        'write',
-        controller.signal,
-      );
+      const cancelled = manager.acquire(filePath, 'write', controller.signal);
       const next = manager.acquire(filePath);
       const cancelledResult = expect(cancelled).rejects.toBe(reason);
 
@@ -628,7 +624,7 @@ describe('FileLockManager', () => {
         manager.acquireLock('/tmp/file.ts', async () => {
           results.push(i);
           return i;
-        })
+        }),
       );
 
       const returnValues = await Promise.all(promises);
@@ -674,7 +670,7 @@ describe('FileLockManager', () => {
       const fileCount = 20;
 
       const promises = Array.from({ length: fileCount }, (_, i) =>
-        manager.acquireLock(`/tmp/file${i}.ts`, async () => `result-${i}`)
+        manager.acquireLock(`/tmp/file${i}.ts`, async () => `result-${i}`),
       );
 
       const results = await Promise.all(promises);

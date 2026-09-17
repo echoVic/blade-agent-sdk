@@ -3,4 +3,4 @@
  * 提供任务分解和进度跟踪功能
  */
 
-export { createTodoWriteTool } from './todoWrite.js';
+export { todoWriteTool } from './todoWrite.js';

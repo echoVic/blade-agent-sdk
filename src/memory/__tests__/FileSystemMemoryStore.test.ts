@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, rm, rm as remove, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdtemp, readFile, rm as remove, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { FileSystemMemoryStore } from '../FileSystemMemoryStore.js';
 
 const tempDirs: string[] = [];
@@ -143,7 +143,7 @@ describe('FileSystemMemoryStore', () => {
         description: 'should fail',
         type: 'feedback',
         body: 'no slugs allowed',
-      })
+      }),
     ).rejects.toThrow(/slug/);
 
     await expect(store.list()).resolves.toEqual([]);

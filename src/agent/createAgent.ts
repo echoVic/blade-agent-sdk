@@ -1,3 +1,4 @@
+import type Type from 'typebox';
 import type { ProviderConnectionConfig } from '../model/config.js';
 import { withNodeSessionRepository } from '../node/withNodeSessionRepository.js';
 import type { RuntimeContext } from '../runtime/index.js';
@@ -9,11 +10,13 @@ import type {
   SendOptions,
   SessionHookEvent,
   SessionOptions,
-  SessionTool,
 } from '../session/types.js';
-import type { ToolKind } from '../tools/types/kind.js';
+import type { ToolKind } from '../tools/behavior.js';
+import type { ToolServiceName } from '../tools/services.js';
+import type { ToolDefinition } from '../tools/types/tool.js';
 import type { PermissionDecision } from '../types/constants.js';
 import { PermissionMode } from '../types/constants.js';
+import type { JsonValue } from '../types/json.js';
 import type {
   PermissionHandler,
   PermissionHandlerRequest,
@@ -55,7 +58,6 @@ type RootAgentOption =
   | 'maxTurns'
   | 'permissionMode'
   | 'permissionHandler'
-  | 'canUseTool'
   | 'hooks';
 
 export interface AgentAdvancedOptions extends Omit<SessionOptions, RootAgentOption> {
@@ -71,7 +73,7 @@ export interface AgentOptions {
   profile?: AgentProfile;
   provider?: ProviderConnectionConfig['type'];
   baseUrl?: string;
-  tools?: readonly SessionTool[];
+  tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
   systemPrompt?: string;
   temperature?: number;
   maxOutputTokens?: number;
@@ -92,12 +94,10 @@ export async function createAgent(options: AgentOptions): Promise<Agent> {
     defaultContext,
     permissionMode: _legacyPermissionMode,
     permissionHandler: _legacyPermissionHandler,
-    canUseTool: _legacyCanUseTool,
     ...advanced
   } = (options.advanced ?? {}) as AgentAdvancedOptions & {
     permissionMode?: PermissionMode;
     permissionHandler?: PermissionHandler;
-    canUseTool?: unknown;
   };
   const profile = options.profile ?? (options.filesystem ? 'local' : 'server');
   const hostProfile = profile === 'local' ? NODE_SESSION_HOST : SERVER_SESSION_HOST;

@@ -1,14 +1,3 @@
-/**
- * streamChatResponse — 纯流式响应收集
- *
- * 从 StreamResponseHandler 类提取为自由函数。职责：
- * - 从 modelService.streamChat 收集完整 ModelResponse（content / reasoningContent / toolCalls / usage）
- * - 产出 content_delta / thinking_delta 增量事件
- * - 0-chunk 空响应 / streaming-not-supported 错误自动降级到 modelService.chat
- *
- * 没有类成员状态 — 纯 generator。
- */
-
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { streamDebug } from '../../logging/StreamDebugLogger.js';

@@ -286,106 +286,46 @@ const toolEventBase = {
   name: z.string(),
 };
 
+const eventSchema = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
+  z.object({ ...eventBase, type: z.literal(type), ...shape }).strict();
+const toolEventSchema = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
+  z.object({ ...toolEventBase, type: z.literal(type), ...shape }).strict();
+
 const sessionStreamEventSchemaImpl = z.discriminatedUnion('type', [
-  z.object({ ...eventBase, type: z.literal('turn_start'), turn: z.number().int() }).strict(),
-  z.object({ ...eventBase, type: z.literal('turn_end'), turn: z.number().int() }).strict(),
-  z
-    .object({
-      ...eventBase,
-      type: z.literal('turn_interrupted'),
-      inputId: inputIdSchema,
-      requestId: requestIdSchema,
-      turn: z.number().int(),
-    })
-    .strict(),
-  z
-    .object({
-      ...eventBase,
-      type: z.literal('input_applied'),
-      inputId: inputIdSchema,
-      requestId: requestIdSchema,
-      priority: z.enum(['now', 'next']),
-      turn: z.number().int(),
-    })
-    .strict(),
-  z.object({ ...eventBase, type: z.literal('content'), delta: z.string() }).strict(),
-  z.object({ ...eventBase, type: z.literal('thinking'), delta: z.string() }).strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_use'),
-      input: jsonValueSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_progress'),
-      progress: toolProgressSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_message'),
-      content: toolDisplayContentSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_runtime_patch'),
-      patch: runtimePatchSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_context_patch'),
-      patch: runtimeContextPatchSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_new_messages'),
-      messages: z.array(modelMessageSchema),
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_permission_updates'),
-      updates: z.array(permissionUpdateSchema),
-    })
-    .strict(),
-  z
-    .object({
-      ...toolEventBase,
-      type: z.literal('tool_result'),
-      output: jsonValueSchema,
-      display: toolDisplayContentSchema.optional(),
-      isError: z.boolean().optional(),
-    })
-    .strict(),
-  z.object({ ...eventBase, type: z.literal('usage'), usage: tokenUsageSchema }).strict(),
-  z
-    .object({
-      ...eventBase,
-      type: z.literal('result'),
-      subtype: z.enum(['success', 'error']),
-      content: z.string().optional(),
-      error: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      ...eventBase,
-      type: z.literal('error'),
-      message: z.string(),
-      code: z.string().optional(),
-    })
-    .strict(),
+  eventSchema('turn_start', { turn: z.number().int() }),
+  eventSchema('turn_end', { turn: z.number().int() }),
+  eventSchema('turn_interrupted', {
+    inputId: inputIdSchema,
+    requestId: requestIdSchema,
+    turn: z.number().int(),
+  }),
+  eventSchema('input_applied', {
+    inputId: inputIdSchema,
+    requestId: requestIdSchema,
+    priority: z.enum(['now', 'next']),
+    turn: z.number().int(),
+  }),
+  eventSchema('content', { delta: z.string() }),
+  eventSchema('thinking', { delta: z.string() }),
+  toolEventSchema('tool_use', { input: jsonValueSchema }),
+  toolEventSchema('tool_progress', { progress: toolProgressSchema }),
+  toolEventSchema('tool_message', { content: toolDisplayContentSchema }),
+  toolEventSchema('tool_runtime_patch', { patch: runtimePatchSchema }),
+  toolEventSchema('tool_context_patch', { patch: runtimeContextPatchSchema }),
+  toolEventSchema('tool_new_messages', { messages: z.array(modelMessageSchema) }),
+  toolEventSchema('tool_permission_updates', { updates: z.array(permissionUpdateSchema) }),
+  toolEventSchema('tool_result', {
+    output: jsonValueSchema,
+    display: toolDisplayContentSchema.optional(),
+    isError: z.boolean().optional(),
+  }),
+  eventSchema('usage', { usage: tokenUsageSchema }),
+  eventSchema('result', {
+    subtype: z.enum(['success', 'error']),
+    content: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  eventSchema('error', { message: z.string(), code: z.string().optional() }),
 ]);
 
 export const sessionStreamEventSchema = sessionStreamEventSchemaImpl as z.ZodType<

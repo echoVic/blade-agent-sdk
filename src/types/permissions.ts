@@ -1,6 +1,6 @@
+import type { ToolKind, ToolSideEffect } from '../tools/behavior.js';
+import { ToolKind as ToolKindValue } from '../tools/behavior.js';
 import type { ToolEffect } from '../tools/types/effects.js';
-import type { ToolKind, ToolSideEffect } from '../tools/types/kind.js';
-import { ToolKind as ToolKindValue } from '../tools/types/kind.js';
 import {
   SensitiveFileDetector,
   SensitivityLevel,
@@ -45,20 +45,8 @@ export type PermissionResult =
   | {
       behavior: 'ask';
       message?: string;
+      updatedInput?: JsonObject;
     };
-
-export interface CanUseToolOptions {
-  signal: AbortSignal;
-  toolKind: ToolKind;
-  sideEffect: ToolSideEffect;
-  affectedPaths: string[];
-}
-
-export type CanUseTool = (
-  toolName: string,
-  input: JsonObject,
-  options: CanUseToolOptions,
-) => Promise<PermissionResult>;
 
 export interface PermissionHandlerRequest {
   toolName: string;
@@ -85,16 +73,6 @@ interface PathSafetyPermissionOptions {
 }
 
 type CompositePermissionStrategy = 'first-wins' | 'deny-wins';
-
-export function createPermissionHandlerFromCanUseTool(canUseTool: CanUseTool): PermissionHandler {
-  return async (request) =>
-    canUseTool(request.toolName, request.input, {
-      signal: request.signal,
-      toolKind: request.toolKind,
-      sideEffect: request.toolMeta.sideEffect,
-      affectedPaths: request.affectedPaths,
-    });
-}
 
 export function createModePermissionHandler(
   defaultMode: PermissionMode = PermissionMode.DEFAULT,
@@ -272,9 +250,10 @@ export function createCompositePermissionHandler(
       behavior: 'allow',
     };
     let firstAskResult: Extract<PermissionResult, { behavior: 'ask' }> | undefined;
+    let currentRequest = request;
 
     for (const handler of activeHandlers) {
-      const result = await handler(request);
+      const result = await handler(currentRequest);
 
       if (result.behavior === 'deny') {
         return result;
@@ -282,14 +261,25 @@ export function createCompositePermissionHandler(
 
       if (result.behavior === 'ask') {
         if (strategy === 'first-wins') {
-          return result;
+          return {
+            ...result,
+            ...(mergedAllowResult.updatedInput
+              ? { updatedInput: mergedAllowResult.updatedInput }
+              : {}),
+          };
         }
         firstAskResult ??= result;
         continue;
       }
 
       if (result.updatedInput) {
-        Object.assign(request.input, result.updatedInput);
+        currentRequest = {
+          ...currentRequest,
+          input: Object.freeze({
+            ...currentRequest.input,
+            ...result.updatedInput,
+          }),
+        };
         mergedAllowResult.updatedInput = {
           ...(mergedAllowResult.updatedInput ?? {}),
           ...result.updatedInput,
@@ -308,7 +298,13 @@ export function createCompositePermissionHandler(
       }
     }
 
-    return firstAskResult ?? mergedAllowResult;
+    if (firstAskResult) {
+      return {
+        ...firstAskResult,
+        ...(mergedAllowResult.updatedInput ? { updatedInput: mergedAllowResult.updatedInput } : {}),
+      };
+    }
+    return mergedAllowResult;
   };
 }
 

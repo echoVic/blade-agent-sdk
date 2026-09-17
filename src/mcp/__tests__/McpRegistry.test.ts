@@ -52,7 +52,7 @@ describe('McpRegistry', () => {
       await registry.registerServer('test', config);
 
       await expect(registry.registerServer('test', config)).rejects.toThrow(
-        'MCP服务器 "test" 已经注册'
+        'MCP服务器 "test" 已经注册',
       );
     });
 
@@ -98,7 +98,7 @@ describe('McpRegistry', () => {
   describe('connectServer', () => {
     it('should throw error for unregistered server', async () => {
       await expect(registry.connectServer('non-existent')).rejects.toThrow(
-        'MCP服务器 "non-existent" 未注册'
+        'MCP服务器 "non-existent" 未注册',
       );
     });
   });
@@ -231,16 +231,45 @@ describe('McpRegistry', () => {
         'mcp__remote__Bash',
       ]);
     });
+
+    it('preserves the exact server name alongside generated tools', async () => {
+      await registry.registerServer('remote docs', { command: 'test-server' });
+      const server = registry.getServerStatus('remote docs');
+      if (!server) throw new Error('Expected registered MCP server');
+      server.status = McpConnectionStatus.CONNECTED;
+      server.tools = [
+        {
+          name: 'Search',
+          description: 'Search docs',
+          inputSchema: { type: 'object' },
+        },
+      ];
+
+      expect(registry).toHaveProperty('getAvailableToolEntriesByServerNames');
+      const entries = await Reflect.apply(
+        Reflect.get(registry, 'getAvailableToolEntriesByServerNames') as (
+          names: string[],
+        ) => Promise<unknown>,
+        registry,
+        [['remote docs']],
+      );
+      expect(entries).toEqual([
+        {
+          serverName: 'remote docs',
+          tool: expect.objectContaining({
+            name: expect.stringMatching(/^mcp__remote_docs_/),
+          }),
+        },
+      ]);
+    });
   });
 
   describe('event-driven state sync', () => {
     it('should clear lastError when the client reconnects after an error', async () => {
       const handlers: Record<string, (...args: unknown[]) => void> = {};
-      mockOn.mockImplementation(
-        (event: string, handler: (...args: unknown[]) => void) => {
-          handlers[event] = handler;
-        }
-      );
+      mockOn.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+        handlers[event] = handler;
+      });
 
       await registry.registerServer('test', { command: 'test-server' });
 

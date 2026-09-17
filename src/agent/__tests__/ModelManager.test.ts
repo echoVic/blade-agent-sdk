@@ -111,12 +111,4 @@ describe('ModelManager', () => {
       await mm.switchModelIfNeeded('nonexistent');
     });
   });
-
-  describe('getters before initialization', () => {
-    it('should return undefined for currentModelId initially', () => {
-      const config = createTestConfig([createModelConfig()]);
-      const mm = new ModelManager(config);
-      expect(mm.getCurrentModelId()).toBeUndefined();
-    });
-  });
 });

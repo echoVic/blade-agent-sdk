@@ -18,11 +18,13 @@ export class FileLockStage {
   ) {}
 
   async acquire(state: PipelineExecutionState): Promise<void> {
-    const filePath = getFileLockPath(state.params);
+    const invocation = state.invocation;
+    if (!invocation) {
+      throw new Error(`Tool invocation '${state.toolName}' has not been prepared`);
+    }
+    const filePath = getFileLockPath(invocation.params);
     const lockMode =
-      state.resolvedBehavior?.isReadOnly === true && state.resolvedBehavior.isConcurrencySafe
-        ? 'read'
-        : 'write';
+      invocation.behavior.isReadOnly && invocation.behavior.isConcurrencySafe ? 'read' : 'write';
     try {
       state.fileLease = filePath
         ? await FileLockManager.getInstance(this.logger).acquire(

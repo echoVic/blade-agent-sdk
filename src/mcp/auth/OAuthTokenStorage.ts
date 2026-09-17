@@ -55,16 +55,14 @@ export class OAuthTokenStorage {
   /**
    * 保存所有凭证
    */
-  private async saveAllCredentials(
-    credentialsMap: Map<string, OAuthCredentials>
-  ): Promise<void> {
+  private async saveAllCredentials(credentialsMap: Map<string, OAuthCredentials>): Promise<void> {
     await this.ensureConfigDir();
 
     const credentials = Array.from(credentialsMap.values());
     await fs.writeFile(
       this.tokenFilePath,
       JSON.stringify(credentials, null, 2),
-      { mode: 0o600 } // 限制文件权限
+      { mode: 0o600 }, // 限制文件权限
     );
   }
 
@@ -75,7 +73,7 @@ export class OAuthTokenStorage {
     serverName: string,
     token: OAuthToken,
     clientId?: string,
-    tokenUrl?: string
+    tokenUrl?: string,
   ): Promise<void> {
     const credentials = await this.loadAllCredentials();
 

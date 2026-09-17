@@ -19,13 +19,9 @@ import type {
   TraceStatus,
 } from './types.js';
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function durationMs(startedAt: string, endedAt: string): number {
-  return Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
-}
+const now = (): string => new Date().toISOString();
+const duration = (start: string, end: string): number =>
+  Math.max(0, Date.parse(end) - Date.parse(start));
 
 function jsonSize(value: unknown): number {
   try {
@@ -35,7 +31,7 @@ function jsonSize(value: unknown): number {
   }
 }
 
-function toJsonValue(value: unknown): JsonValue {
+function jsonValue(value: unknown): JsonValue {
   if (value === undefined) return null;
   try {
     return JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -46,16 +42,16 @@ function toJsonValue(value: unknown): JsonValue {
 
 export class TraceRecorder implements HookTraceCollector {
   readonly trace: AgentTrace;
-  private readonly spanStack = new Map<SpanId, TraceSpan>();
+  private readonly openSpans = new Map<SpanId, TraceSpan>();
   private readonly capturePayloads: boolean;
   private readonly rootSpanId: SpanId;
 
   constructor(
     sessionId: SessionId,
-    options: ObservabilityOptions | undefined,
+    options?: ObservabilityOptions,
     metadata: Record<string, JsonValue | undefined> = {},
   ) {
-    const startedAt = nowIso();
+    const startedAt = now();
     this.capturePayloads = options?.capturePayloads ?? false;
     this.trace = {
       id: TraceId(`trace_${nanoid()}`),
@@ -87,11 +83,11 @@ export class TraceRecorder implements HookTraceCollector {
       kind,
       name,
       status: 'running',
-      startedAt: nowIso(),
-      attributes: attributes ? this.summarizeRecord(attributes) : undefined,
+      startedAt: now(),
+      attributes: attributes ? this.summarize(attributes) : undefined,
     };
     this.trace.spans.push(span);
-    this.spanStack.set(id, span);
+    this.openSpans.set(id, span);
     return id;
   }
 
@@ -100,20 +96,13 @@ export class TraceRecorder implements HookTraceCollector {
     status: TraceStatus = 'success',
     attributes?: Record<string, unknown>,
   ): void {
-    const span = this.spanStack.get(spanId);
+    const span = this.openSpans.get(spanId);
     if (!span || span.endedAt) return;
-
-    const endedAt = nowIso();
+    span.endedAt = now();
+    span.durationMs = duration(span.startedAt, span.endedAt);
     span.status = status;
-    span.endedAt = endedAt;
-    span.durationMs = durationMs(span.startedAt, endedAt);
-    if (attributes) {
-      span.attributes = {
-        ...span.attributes,
-        ...this.summarizeRecord(attributes),
-      };
-    }
-    this.spanStack.delete(spanId);
+    if (attributes) span.attributes = { ...span.attributes, ...this.summarize(attributes) };
+    this.openSpans.delete(spanId);
   }
 
   addEvent(type: string, data?: Record<string, unknown>, spanId?: SpanId): void {
@@ -122,37 +111,37 @@ export class TraceRecorder implements HookTraceCollector {
       traceId: this.trace.id,
       spanId,
       type,
-      timestamp: nowIso(),
-      data: data ? this.summarizeRecord(data) : undefined,
+      timestamp: now(),
+      data: data ? this.summarize(data) : undefined,
     });
   }
 
   recordTurnStart(turn: number, maxTurns?: number): SpanId {
-    const spanId = this.startSpan('turn', `turn.${turn}`, { turn, maxTurns });
-    this.addEvent('turn_start', { turn, maxTurns }, spanId);
-    return spanId;
+    const span = this.startSpan('turn', `turn.${turn}`, { turn, maxTurns });
+    this.addEvent('turn_start', { turn, maxTurns }, span);
+    return span;
   }
 
-  recordTurnEnd(spanId: SpanId | undefined, turn: number): void {
-    this.addEvent('turn_end', { turn }, spanId);
-    if (spanId) this.endSpan(spanId);
+  recordTurnEnd(span: SpanId | undefined, turn: number): void {
+    this.addEvent('turn_end', { turn }, span);
+    if (span) this.endSpan(span);
   }
 
   recordToolStart(toolCallId: ToolUseId, name: string, input: unknown): SpanId {
-    const spanId = this.startSpan('tool', name, { toolCallId, input });
-    this.addEvent('tool_use', { toolCallId, name, input }, spanId);
-    return spanId;
+    const span = this.startSpan('tool', name, { toolCallId, input });
+    this.addEvent('tool_use', { toolCallId, name, input }, span);
+    return span;
   }
 
   recordToolResult(
-    spanId: SpanId | undefined,
+    span: SpanId | undefined,
     toolCallId: ToolUseId,
     name: string,
     output: unknown,
-    isError?: boolean,
+    isError = false,
   ): void {
-    this.addEvent('tool_result', { toolCallId, name, output, isError: isError ?? false }, spanId);
-    if (spanId) this.endSpan(spanId, isError ? 'error' : 'success', { output });
+    this.addEvent('tool_result', { toolCallId, name, output, isError }, span);
+    if (span) this.endSpan(span, isError ? 'error' : 'success', { output });
   }
 
   recordUsage(usage: TokenUsage): void {
@@ -160,34 +149,35 @@ export class TraceRecorder implements HookTraceCollector {
   }
 
   recordHookStart(event: HookEvent, payload: Record<string, unknown>): SpanId {
-    const spanId = this.startSpan('hook', event, { event, payload });
-    this.addEvent('hook_start', { event, payload }, spanId);
-    return spanId;
+    const span = this.startSpan('hook', event, { event, payload });
+    this.addEvent('hook_start', { event, payload }, span);
+    return span;
   }
 
-  recordHookEnd(spanId: SpanId, payload?: Record<string, unknown>): void {
-    this.addEvent('hook_end', payload, spanId);
-    this.endSpan(spanId, 'success', payload);
+  recordHookEnd(span: SpanId, payload?: Record<string, unknown>): void {
+    this.addEvent('hook_end', payload, span);
+    this.endSpan(span, 'success', payload);
   }
 
-  recordHookError(spanId: SpanId, error: unknown): void {
-    this.addEvent('hook_error', { error: this.errorMessage(error) }, spanId);
-    this.endSpan(spanId, 'error', { error: this.errorMessage(error) });
+  recordHookError(span: SpanId, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.addEvent('hook_error', { error: message }, span);
+    this.endSpan(span, 'error', { error: message });
   }
 
   finish(status: Exclude<TraceStatus, 'running'>, data?: Record<string, unknown>): AgentTrace {
-    const endedAt = nowIso();
-    for (const spanId of [...this.spanStack.keys()]) {
-      this.endSpan(spanId, status);
-    }
-    this.trace.status = status;
-    this.trace.endedAt = endedAt;
-    this.trace.durationMs = durationMs(this.trace.startedAt, endedAt);
+    const endedAt = now();
+    for (const span of [...this.openSpans.keys()]) this.endSpan(span, status);
+    Object.assign(this.trace, {
+      status,
+      endedAt,
+      durationMs: duration(this.trace.startedAt, endedAt),
+    });
     if (data) this.addEvent(status === 'success' ? 'result' : 'error', data);
     return this.getTrace();
   }
 
-  private summarizeRecord(
+  private summarize(
     record: Record<string, unknown>,
   ): Record<string, JsonValue | TracePayloadSummary | undefined> {
     return Object.fromEntries(
@@ -195,48 +185,20 @@ export class TraceRecorder implements HookTraceCollector {
     );
   }
 
-  private summarizeValue(value: unknown): JsonValue | TracePayloadSummary {
+  private summarizeValue(value: unknown): TracePayloadSummary {
+    const type = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+    const length = typeof value === 'string' ? value.length : jsonSize(value);
     if (this.capturePayloads) {
-      return {
-        type: this.typeOf(value),
-        preview: this.preview(value),
-        length: typeof value === 'string' ? value.length : jsonSize(value),
-        value: toJsonValue(value),
-      };
+      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+      return { type, preview: serialized.slice(0, 200), length, value: jsonValue(value) };
     }
-
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return {
-        type: 'object',
-        preview: '[redacted]',
-        keys: Object.keys(value as Record<string, unknown>).slice(0, 20),
-        length: jsonSize(value),
-      };
-    }
-
     return {
-      type: this.typeOf(value),
+      type,
       preview: '[redacted]',
-      length: typeof value === 'string' ? value.length : jsonSize(value),
+      length,
+      ...(value && typeof value === 'object' && !Array.isArray(value)
+        ? { keys: Object.keys(value).slice(0, 20) }
+        : {}),
     };
-  }
-
-  private typeOf(value: unknown): string {
-    if (Array.isArray(value)) return 'array';
-    if (value === null) return 'null';
-    return typeof value;
-  }
-
-  private preview(value: unknown): string {
-    if (typeof value === 'string') return value.slice(0, 200);
-    try {
-      return JSON.stringify(value).slice(0, 200);
-    } catch {
-      return String(value).slice(0, 200);
-    }
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 }

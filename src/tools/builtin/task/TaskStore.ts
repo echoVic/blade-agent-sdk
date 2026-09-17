@@ -55,16 +55,12 @@ const instances = new Map<string, TaskStore>();
 
 export class TaskStore {
   private tasks = new Map<string, Task>();
-  private readonly legacyPersistPath: string | undefined;
   private readonly persistDirectory: string | undefined;
 
   private constructor(
     readonly sessionId: SessionId,
     configDir?: string,
   ) {
-    this.legacyPersistPath = configDir
-      ? path.join(configDir, 'tasks', `${sessionId}.json`)
-      : undefined;
     this.persistDirectory = configDir
       ? path.join(configDir, 'tasks', String(sessionId))
       : undefined;
@@ -194,29 +190,21 @@ export class TaskStore {
 
   /** Load tasks from disk (call after getInstance if you want to restore state). */
   async load(): Promise<void> {
-    if (!this.persistDirectory || !this.legacyPersistPath) return;
-    const persistDirectory = this.persistDirectory;
+    if (!this.persistDirectory) return;
     try {
-      const files = (await readdir(persistDirectory)).filter((file) => file.endsWith('.json'));
+      const files = (await readdir(this.persistDirectory)).filter((file) => file.endsWith('.json'));
       const data = await Promise.all(
         files.map(
           async (file) =>
-            JSON.parse(await readFile(path.join(persistDirectory, file), 'utf-8')) as Task,
+            JSON.parse(
+              await readFile(path.join(this.persistDirectory as string, file), 'utf-8'),
+            ) as Task,
         ),
       );
       this.tasks.clear();
       for (const task of data) {
         this.tasks.set(task.id, task);
       }
-      return;
-    } catch {
-      // Fall through to the legacy aggregate file.
-    }
-    try {
-      const raw = await readFile(this.legacyPersistPath, 'utf-8');
-      const data: Task[] = JSON.parse(raw);
-      this.tasks = new Map(data.map((task) => [task.id, task]));
-      await this.persistTasks(this.tasks.keys());
     } catch {
       // No persisted state exists yet.
     }

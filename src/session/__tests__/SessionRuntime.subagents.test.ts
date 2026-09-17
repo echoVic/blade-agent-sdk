@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import type { RuntimeContext } from '../../runtime/index.js';
+import { collectToolExecution } from '../../tools/types/result.js';
 import { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
 import type { SessionOptions } from '../types.js';
@@ -30,13 +31,27 @@ function createFilesystemContext(workspaceRoot: string): RuntimeContext {
   };
 }
 
-function getTaskDescription(runtime: InstanceType<typeof SessionRuntime>): string {
-  const taskTool = runtime.getToolRegistry().get('Task');
-  if (!taskTool) {
-    throw new Error('Task tool not registered');
+async function getAvailableSubagents(
+  runtime: InstanceType<typeof SessionRuntime>,
+): Promise<string> {
+  const pipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+  if (!pipeline) {
+    throw new Error('Execution pipeline not configured');
   }
 
-  return taskTool.getFunctionDeclaration().description;
+  const result = await collectToolExecution(
+    pipeline.execute(
+      'Task',
+      {
+        subagent_type: 'missing-agent',
+        description: 'Inspect registry',
+        prompt: 'Report the available subagent types.',
+        run_in_background: false,
+      },
+      {},
+    ),
+  );
+  return String(result.model);
 }
 
 describe('SessionRuntime subagents', () => {
@@ -86,8 +101,8 @@ describe('SessionRuntime subagents', () => {
     await runtimeA.initialize();
     await runtimeB.initialize();
 
-    const descriptionA = getTaskDescription(runtimeA);
-    const descriptionB = getTaskDescription(runtimeB);
+    const descriptionA = await getAvailableSubagents(runtimeA);
+    const descriptionB = await getAvailableSubagents(runtimeB);
 
     expect(descriptionA).toContain('general-purpose');
     expect(descriptionA).toContain('session-auditor');
@@ -120,7 +135,7 @@ describe('SessionRuntime subagents', () => {
 
     await runtime.initialize();
 
-    const description = getTaskDescription(runtime);
+    const description = await getAvailableSubagents(runtime);
     expect(description).toContain('general-purpose');
     expect(description).toContain('assistant');
   });

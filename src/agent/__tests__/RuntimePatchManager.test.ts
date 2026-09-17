@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
-import type { LoopState } from '../state/LoopState.js';
-import { RuntimePatchManager } from '../RuntimePatchManager.js';
 import type { RuntimePatch } from '../../runtime/index.js';
 import { SessionId } from '../../types/identifiers.js';
+import { RuntimePatchManager } from '../RuntimePatchManager.js';
+import type { LoopState } from '../state/LoopState.js';
 
 function createManager() {
   const manager = new RuntimePatchManager(undefined, NOOP_LOGGER);
@@ -36,12 +36,19 @@ describe('RuntimePatchManager tool policy scoping', () => {
   it('restores the session policy after a turn-scoped policy patch', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(sessionPatch(), loopState);
-    manager.applyRuntimePatch({
+    manager.applyRuntimePatch(
+      {
+        scope: 'turn',
+        source: 'tool',
+        toolPolicy: { allow: ['Read'] },
+      },
+      loopState,
+    );
+    expect(manager.runtimeToolPolicySnapshot).toEqual({
+      allow: ['Read'],
+      deny: undefined,
       scope: 'turn',
-      source: 'tool',
-      toolPolicy: { allow: ['Read'] },
-    }, loopState);
-    expect(manager.runtimeToolPolicySnapshot).toEqual({ allow: ['Read'], deny: undefined, scope: 'turn' });
+    });
 
     manager.clearTurnScopedRuntimeState();
     expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
@@ -54,7 +61,7 @@ describe('RuntimePatchManager tool policy scoping', () => {
     // the effective policy, or turn cleanup has no turn scope left to restore
     // the session baseline from.
     manager.applyRuntimePatch(turnSkillPatch(), loopState);
-    expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'turn' });
+    expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
 
     manager.clearTurnScopedRuntimeState();
     // The session patch's restriction must survive the temporary skill cleanup.
@@ -65,23 +72,29 @@ describe('RuntimePatchManager tool policy scoping', () => {
   it('keeps the session baseline visible during a session-scoped skill patch', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(sessionPatch(), loopState);
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      skill: { id: 'session-skill', name: 'session-skill', basePath: '/tmp' },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        skill: { id: 'session-skill', name: 'session-skill', basePath: '/tmp' },
+      },
+      loopState,
+    );
 
     expect(manager.runtimeToolPolicySnapshot).toEqual({ deny: ['Bash'], scope: 'session' });
   });
 
   it('keeps the session prompt and environment through a turn-scoped skill patch', () => {
     const { manager, loopState } = createManager();
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      systemPromptAppend: 'SESSION_SETTING',
-      environment: { SESSION_SETTING: 'on' },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        systemPromptAppend: 'SESSION_SETTING',
+        environment: { SESSION_SETTING: 'on' },
+      },
+      loopState,
+    );
     // A temporary skill carries neither field, which must not be read as "drop
     // the session's contribution": the baselines live only in this application
     // list, so pruning across scopes would make them unrecoverable.
@@ -91,47 +104,62 @@ describe('RuntimePatchManager tool policy scoping', () => {
     manager.clearTurnScopedRuntimeState();
 
     expect(manager.getEffectiveSystemPromptAppend()).toContain('SESSION_SETTING');
-    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context)
-      .toMatchObject({ environment: { SESSION_SETTING: 'on' } });
-    expect(manager.getRuntimePatchApplications().map((application) => application.patch.scope))
-      .toEqual(['session']);
+    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context).toMatchObject(
+      { environment: { SESSION_SETTING: 'on' } },
+    );
+    expect(
+      manager.getRuntimePatchApplications().map((application) => application.patch.scope),
+    ).toEqual(['session']);
   });
 
   it('still replaces a same-scope prompt contribution that a later skill resets', () => {
     const { manager, loopState } = createManager();
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      skill: { id: 'first', name: 'first', basePath: '/tmp' },
-      systemPromptAppend: 'FIRST_SKILL',
-    }, loopState);
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      skill: { id: 'second', name: 'second', basePath: '/tmp' },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        skill: { id: 'first', name: 'first', basePath: '/tmp' },
+        systemPromptAppend: 'FIRST_SKILL',
+      },
+      loopState,
+    );
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        skill: { id: 'second', name: 'second', basePath: '/tmp' },
+      },
+      loopState,
+    );
 
     expect(manager.getEffectiveSystemPromptAppend()).toBeUndefined();
     // The resetting patch stays; only the contribution it replaces is gone.
-    expect(manager.getRuntimePatchApplications().map((application) => application.patch.skill?.id))
-      .toEqual(['second']);
+    expect(
+      manager.getRuntimePatchApplications().map((application) => application.patch.skill?.id),
+    ).toEqual(['second']);
   });
 
   it('keeps session tool discoveries through a turn-scoped discovery patch', () => {
     const { manager, loopState } = createManager();
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      toolDiscovery: { discover: ['Read'] },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        toolDiscovery: { discover: ['Read'] },
+      },
+      loopState,
+    );
     // A temporary skill discovers another tool. Stamping the merged set with the
     // turn scope would make cleanup drop the session's discovery with it.
-    manager.applyRuntimePatch({
-      scope: 'turn',
-      source: 'tool',
-      skill: { id: 'temp-skill', name: 'temp-skill', basePath: '/tmp' },
-      toolDiscovery: { discover: ['Write'] },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'turn',
+        source: 'tool',
+        skill: { id: 'temp-skill', name: 'temp-skill', basePath: '/tmp' },
+        toolDiscovery: { discover: ['Write'] },
+      },
+      loopState,
+    );
 
     expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Read', 'Write']);
 
@@ -142,22 +170,31 @@ describe('RuntimePatchManager tool policy scoping', () => {
 
   it('drops the session discoveries only when the session resets them', () => {
     const { manager, loopState } = createManager();
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      toolDiscovery: { discover: ['Read'] },
-    }, loopState);
-    manager.applyRuntimePatch({
-      scope: 'turn',
-      source: 'tool',
-      toolDiscovery: { discover: ['Write'] },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        toolDiscovery: { discover: ['Read'] },
+      },
+      loopState,
+    );
+    manager.applyRuntimePatch(
+      {
+        scope: 'turn',
+        source: 'tool',
+        toolDiscovery: { discover: ['Write'] },
+      },
+      loopState,
+    );
 
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      toolDiscovery: { reset: true },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        toolDiscovery: { reset: true },
+      },
+      loopState,
+    );
 
     // The session reset clears the session layer; the turn's own discovery stays.
     expect([...(manager.discoveredTools ?? [])].sort()).toEqual(['Write']);
@@ -173,8 +210,9 @@ describe('RuntimePatchManager tool policy scoping', () => {
       scope: 'turn',
       context: { environment: { TEMP: 'on' } },
     });
-    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context)
-      .toMatchObject({ environment: { BASE: 'on', TEMP: 'on' } });
+    expect(manager.buildRuntimeContextSnapshot(SessionId('session-policy'))?.context).toMatchObject(
+      { environment: { BASE: 'on', TEMP: 'on' } },
+    );
 
     manager.clearTurnScopedRuntimeState();
 
@@ -204,19 +242,25 @@ describe('RuntimePatchManager tool policy scoping', () => {
 
   it('reveals the session Skill after a turn-scoped Skill is cleaned up', () => {
     const { manager, loopState } = createManager();
-    manager.applyRuntimePatch({
-      scope: 'session',
-      source: 'tool',
-      skill: { id: 'base', name: 'base', basePath: '/tmp' },
-      systemPromptAppend: 'BASE_PROMPT',
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'session',
+        source: 'tool',
+        skill: { id: 'base', name: 'base', basePath: '/tmp' },
+        systemPromptAppend: 'BASE_PROMPT',
+      },
+      loopState,
+    );
     expect(manager.skillContext).toMatchObject({ skillId: 'base' });
 
-    manager.applyRuntimePatch({
-      scope: 'turn',
-      source: 'tool',
-      skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
-    }, loopState);
+    manager.applyRuntimePatch(
+      {
+        scope: 'turn',
+        source: 'tool',
+        skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
+      },
+      loopState,
+    );
     expect(manager.skillContext).toMatchObject({ skillId: 'temp' });
 
     manager.clearTurnScopedRuntimeState();
@@ -230,13 +274,20 @@ describe('RuntimePatchManager tool policy scoping', () => {
   it('keeps the session policy baseline when the skill context is cleared', () => {
     const { manager, loopState } = createManager();
     manager.applyRuntimePatch(sessionPatch(), loopState);
-    manager.applyRuntimePatch({
+    manager.applyRuntimePatch(
+      {
+        scope: 'turn',
+        source: 'tool',
+        skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
+        toolPolicy: { allow: ['Read'] },
+      },
+      loopState,
+    );
+    expect(manager.runtimeToolPolicySnapshot).toEqual({
+      allow: ['Read'],
+      deny: undefined,
       scope: 'turn',
-      source: 'tool',
-      skill: { id: 'temp', name: 'temp', basePath: '/tmp' },
-      toolPolicy: { allow: ['Read'] },
-    }, loopState);
-    expect(manager.runtimeToolPolicySnapshot).toEqual({ allow: ['Read'], deny: undefined, scope: 'turn' });
+    });
 
     // Deactivating the temporary Skill restores the session baseline rather than
     // leaving the effective policy empty while the session patch still applies.

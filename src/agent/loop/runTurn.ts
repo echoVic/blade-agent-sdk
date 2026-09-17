@@ -1,361 +1,147 @@
-/**
- * runTurn — 单回合 LLM 调用 + 流式事件桥接
- *
- * 职责：
- * - 根据配置选择流式/非流式分支
- * - 将 StreamingToolExecutor / streamChatResponse / ModelService 的事件
- *   统一转换成 AgentEvent 流
- * - 返回 chatResponse + 可选的 executionResults（仅流式 + 有工具时）
- *
- * agentLoop 主循环消费这个 generator，只负责循环调度。
- */
-
 import type { JSONSchema7 } from 'json-schema';
 import type { InternalLogger } from '../../logging/Logger.js';
 import { type ModelIdentity, resolveModelIdentity } from '../../model/identity.js';
-import type { ModelMessage, ModelToolCall } from '../../model/message.js';
+import type { ModelMessage } from '../../model/message.js';
 import type { ModelResponse } from '../../model/service.js';
-import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolEffect } from '../../tools/types/effects.js';
-import type { ToolResult } from '../../tools/types/result.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import type { PermissionMode } from '../../types/constants.js';
-import type { MessageId, ModelAttemptId } from '../../types/identifiers.js';
-import type { JsonObject } from '../../types/json.js';
+import type { ModelAttemptId } from '../../types/identifiers.js';
 import type { AgentEvent } from '../AgentEvent.js';
-import type { ExecutionEpoch } from '../ExecutionEpoch.js';
-import type { ModelExecutionLifecycle } from '../ModelExecutionLifecycle.js';
-import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
+import type { ModelExecutionLifecycle, ModelRequestLifecycle } from '../ModelExecutionLifecycle.js';
 import type { TurnState } from '../state/TurnState.js';
-import { AsyncEventQueue } from './AsyncEventQueue.js';
-import type {
-  ToolExecutionContext,
-  ToolExecutionOutcome,
-  ToolExecutionUpdate,
-} from './runToolCall.js';
 import { streamChatResponse } from './streamChatResponse.js';
-import { toolUpdateToAgentEvent } from './toolUpdateToAgentEvent.js';
-
-export interface RunTurnToolHooks {
-  onBeforeExec?: (ctx: {
-    toolCall: ModelToolCall;
-    params: JsonObject;
-  }) => Promise<MessageId | null>;
-  onAfterExec?: (ctx: {
-    toolCall: ModelToolCall;
-    result: ToolResult;
-    effects: ToolEffect[];
-    toolMessageId: MessageId | null;
-  }) => Promise<void>;
-  onAfterExecEpochDiscard?: (ctx: {
-    toolCall: ModelToolCall;
-    toolMessageId: MessageId | null;
-    reason: string;
-  }) => Promise<void>;
-  onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
-}
 
 export interface RunTurnInput {
   turnState: TurnState;
   messages: readonly ModelMessage[];
-  executionPipeline: ExecutionPipeline;
   streaming?: boolean;
   signal?: AbortSignal;
-  requestSignal?: AbortSignal;
-  steeringSignal?: AbortSignal;
-  epoch: ExecutionEpoch;
-  executionContext: ToolExecutionContext;
-  permissionMode?: PermissionMode;
   modelExecutionLifecycle?: ModelExecutionLifecycle;
-  toolHooks: RunTurnToolHooks;
   logger?: InternalLogger;
 }
-
-export type StreamingExecutionResult = ToolExecutionOutcome;
 
 export interface TurnOutcome {
   chatResponse: ModelResponse;
   modelIdentity: ModelIdentity;
   modelAttemptId?: ModelAttemptId;
-  /** 若走了 streaming+tools 分支，工具已顺带执行完；非流式路径为 undefined */
-  streamingExecutionResults?: StreamingExecutionResult[];
 }
 
-type TurnExecutionOutcome = Omit<TurnOutcome, 'modelIdentity'>;
+function abortReason(signal?: AbortSignal): 'steering' | 'request_interrupted' {
+  return isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted';
+}
 
-/**
- * 单回合执行。所有副作用通过 hooks 注入，事件通过 yield 输出。
- */
+async function settleFailure(
+  lifecycle: ModelRequestLifecycle | undefined,
+  signal: AbortSignal | undefined,
+  error: unknown,
+): Promise<void> {
+  if (!lifecycle) return;
+  try {
+    if (signal?.aborted) {
+      await lifecycle.onAborted(abortReason(signal));
+    } else {
+      await lifecycle.onFailed(error);
+    }
+  } catch (settlementError) {
+    throw new AggregateError(
+      [error, settlementError],
+      'Model request and durable settlement both failed',
+    );
+  }
+}
+
+async function* requestModel(
+  input: RunTurnInput,
+  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
+): AsyncGenerator<AgentEvent, ModelResponse> {
+  const { modelService } = input.turnState;
+  if (input.streaming) {
+    const stream = streamChatResponse(
+      () => modelService,
+      input.messages,
+      tools,
+      input.signal,
+      input.logger,
+    );
+    let completed = false;
+    try {
+      while (true) {
+        const next = await stream.next();
+        if (next.done) {
+          completed = true;
+          return next.value;
+        }
+        yield next.value;
+      }
+    } finally {
+      if (!completed) await stream.return(undefined as never);
+    }
+  }
+
+  if (modelService.chatWithRetryEvents) {
+    const stream = modelService.chatWithRetryEvents(input.messages, tools, input.signal);
+    let completed = false;
+    try {
+      while (true) {
+        const next = await stream.next();
+        if (next.done) {
+          completed = true;
+          return next.value;
+        }
+        yield {
+          type: 'api_retry',
+          attempt: next.value.attempt,
+          maxRetries: next.value.maxRetries,
+          delayMs: next.value.delayMs,
+          error: next.value.error,
+        };
+      }
+    } finally {
+      if (!completed) await stream.return(undefined as never);
+    }
+  }
+
+  return await modelService.chat(input.messages, tools, input.signal);
+}
+
 export async function* runTurn(input: RunTurnInput): AsyncGenerator<AgentEvent, TurnOutcome> {
-  const { turnState, messages, streaming, signal, logger } = input;
-  const tools = turnState.tools as Array<{
+  const tools = input.turnState.tools as Array<{
     name: string;
     description: string;
     parameters: JSONSchema7;
   }>;
-  const turnModelService = turnState.modelService;
-  const modelIdentity = resolveModelIdentity(turnModelService.getConfig());
-  const requestLifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
-    turn: turnState.turn,
+  const modelIdentity = resolveModelIdentity(input.turnState.modelService.getConfig());
+  const lifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
+    turn: input.turnState.turn,
     model: modelIdentity.model,
     modelIdentity,
-    streaming: streaming === true,
+    streaming: input.streaming === true,
   });
-  await turnState.executionContext.assertExecutionLease?.();
+  await input.turnState.executionContext.assertExecutionLease?.();
 
-  let settlementAttempted = false;
-  const settleCompleted = async (response: ModelResponse): Promise<void> => {
-    if (!requestLifecycle || settlementAttempted) {
-      return;
-    }
-    settlementAttempted = true;
-    await requestLifecycle.onCompleted(response);
-  };
+  let settled = false;
   try {
-    let outcome: TurnExecutionOutcome;
-    try {
-      // 分支 1：streaming + 有工具 — 流式边解析边执行
-      if (streaming && tools.length > 0) {
-        outcome = yield* runStreamingWithTools(
-          input,
-          tools,
-          requestLifecycle?.modelAttemptId,
-          settleCompleted,
-        );
-      } else if (streaming) {
-        // 分支 2：streaming only — 纯流式，无工具执行
-        const stream = streamChatResponse(() => turnModelService, messages, tools, signal, logger);
-        let chatResponse: ModelResponse | undefined;
-        let streamCompleted = false;
-        try {
-          while (true) {
-            const { value, done } = await stream.next();
-            if (done) {
-              chatResponse = value;
-              streamCompleted = true;
-              break;
-            }
-            if (value.type === 'content_delta') {
-              yield { type: 'content_delta', delta: value.delta };
-            } else {
-              yield { type: 'thinking_delta', delta: value.delta };
-            }
-          }
-        } finally {
-          if (!streamCompleted) {
-            await stream.return(undefined as never);
-          }
-        }
-        if (!chatResponse) {
-          throw new Error('Stream terminated without chat response');
-        }
-        outcome = { chatResponse };
-      } else if (typeof turnModelService.chatWithRetryEvents === 'function') {
-        // 分支 3：非流式 + 带重试事件
-        const retryGen = turnModelService.chatWithRetryEvents(messages, tools, signal);
-        let chatResponse: ModelResponse | undefined;
-        let retryStreamCompleted = false;
-        try {
-          while (true) {
-            const { value, done } = await retryGen.next();
-            if (done) {
-              chatResponse = value;
-              retryStreamCompleted = true;
-              break;
-            }
-            yield {
-              type: 'api_retry',
-              attempt: value.attempt,
-              maxRetries: value.maxRetries,
-              delayMs: value.delayMs,
-              error: value.error,
-            };
-          }
-        } finally {
-          if (!retryStreamCompleted) {
-            await retryGen.return(undefined as never);
-          }
-        }
-        if (!chatResponse) {
-          throw new Error('Model retry stream terminated without a chat response');
-        }
-        outcome = { chatResponse };
-      } else {
-        // 分支 4：纯非流式
-        outcome = {
-          chatResponse: await turnModelService.chat(messages, tools, signal),
-        };
-      }
-    } catch (error) {
-      if (requestLifecycle && !settlementAttempted) {
-        settlementAttempted = true;
-        try {
-          if (signal?.aborted) {
-            await requestLifecycle.onAborted(
-              isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
-            );
-          } else {
-            await requestLifecycle.onFailed(error);
-          }
-        } catch (lifecycleError) {
-          throw new AggregateError(
-            [error, lifecycleError],
-            'Model request and durable settlement both failed',
-          );
-        }
-      }
-      throw error;
+    const chatResponse = yield* requestModel(input, tools);
+    if (input.signal?.aborted) {
+      settled = true;
+      await lifecycle?.onAborted(abortReason(input.signal));
+    } else {
+      settled = true;
+      await lifecycle?.onCompleted(chatResponse);
     }
-
-    if (requestLifecycle && !settlementAttempted) {
-      if (signal?.aborted) {
-        settlementAttempted = true;
-        await requestLifecycle.onAborted(
-          isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
-        );
-      } else {
-        await settleCompleted(outcome.chatResponse);
-      }
-    }
-    return {
-      ...outcome,
-      modelIdentity,
-      ...(requestLifecycle?.modelAttemptId
-        ? { modelAttemptId: requestLifecycle.modelAttemptId }
-        : {}),
-    };
-  } finally {
-    if (requestLifecycle && !settlementAttempted) {
-      await requestLifecycle.onAborted(
-        isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
-      );
-    }
-  }
-}
-
-async function* runStreamingWithTools(
-  input: RunTurnInput,
-  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
-  modelAttemptId: ModelAttemptId | undefined,
-  onModelResponse: (response: ModelResponse) => Promise<void>,
-): AsyncGenerator<AgentEvent, TurnExecutionOutcome> {
-  const {
-    turnState,
-    messages,
-    executionPipeline,
-    signal,
-    requestSignal,
-    steeringSignal,
-    epoch,
-    executionContext,
-    permissionMode,
-    toolHooks,
-    logger,
-  } = input;
-
-  const streamingExecutor = new StreamingToolExecutor(() => turnState.modelService, logger);
-  const closeController = new AbortController();
-  const modelSignal = signal
-    ? AbortSignal.any([signal, closeController.signal])
-    : closeController.signal;
-  const toolRequestSignal = requestSignal
-    ? AbortSignal.any([requestSignal, closeController.signal])
-    : closeController.signal;
-
-  const queue = new AsyncEventQueue<AgentEvent>({
-    isLive: () => epoch.isValid,
-    // A slow consumer used to let text deltas pile up without bound. Merging
-    // consecutive deltas of the same kind keeps every character while holding the
-    // buffer down, and the queue's own cap fails loudly if a producer still
-    // outruns its consumer.
-    coalesce: (pending, incoming) => {
-      if (pending.type !== incoming.type) {
-        return undefined;
-      }
-      if (pending.type === 'content_delta' && incoming.type === 'content_delta') {
-        return { type: 'content_delta', delta: pending.delta + incoming.delta };
-      }
-      if (pending.type === 'thinking_delta' && incoming.type === 'thinking_delta') {
-        return { type: 'thinking_delta', delta: pending.delta + incoming.delta };
-      }
-      return undefined;
-    },
-  });
-  const registry = executionPipeline.getRegistry();
-
-  let chatResponse: ModelResponse | undefined;
-  let streamingExecutionResults: StreamingExecutionResult[] | undefined;
-  let executionError: unknown;
-
-  const executionPromise = streamingExecutor
-    .collectAndExecute(
-      messages,
-      tools,
-      modelSignal,
-      {
-        executionPipeline,
-        executionContext: modelAttemptId
-          ? { ...executionContext, modelAttemptId }
-          : executionContext,
-        logger,
-        permissionMode,
-        requestSignal: toolRequestSignal,
-        steeringSignal,
-        hooks: {
-          onBeforeToolExec: toolHooks.onBeforeExec,
-        },
-        onAfterToolExecEpochDiscard: toolHooks.onAfterExecEpochDiscard,
-        onContentDelta: (delta) => queue.enqueue({ type: 'content_delta', delta }),
-        onThinkingDelta: (delta) => queue.enqueue({ type: 'thinking_delta', delta }),
-        onModelResponse,
-        onStreamEnd: () => {
-          if (!signal?.aborted) queue.enqueue({ type: 'stream_end' });
-        },
-        onToolExecutionUpdate: async (update) => {
-          await toolHooks.onUpdate?.(update);
-          const agentEvent = toolUpdateToAgentEvent(update, registry);
-          if (agentEvent) queue.enqueue(agentEvent);
-        },
-      },
-      epoch,
-    )
-    .then(({ chatResponse: resp, executionResults }) => {
-      chatResponse = resp;
-      streamingExecutionResults = executionResults;
-    })
-    .catch((error: unknown) => {
-      executionError = error;
-    })
-    .finally(() => {
-      queue.close();
-    });
-
-  let executionCompleted = false;
-  try {
-    for await (const event of queue) {
-      yield event;
-    }
-
-    await executionPromise;
-    executionCompleted = true;
-
-    if (executionError) {
-      throw executionError;
-    }
-
-    if (!chatResponse) {
-      throw new Error('Streaming executor completed without chat response');
-    }
-
     return {
       chatResponse,
-      ...(modelAttemptId ? { modelAttemptId } : {}),
-      streamingExecutionResults,
+      modelIdentity,
+      ...(lifecycle?.modelAttemptId ? { modelAttemptId: lifecycle.modelAttemptId } : {}),
     };
+  } catch (error) {
+    if (!settled) {
+      settled = true;
+      await settleFailure(lifecycle, input.signal, error);
+    }
+    throw error;
   } finally {
-    if (!executionCompleted) {
-      closeController.abort(new Error('Streaming model turn closed by consumer'));
-      await executionPromise;
+    if (!settled) {
+      await lifecycle?.onAborted(abortReason(input.signal));
     }
   }
 }

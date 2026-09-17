@@ -2,24 +2,17 @@ import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
 import type { JsonObject, JsonValue } from '../../types/json.js';
 import type { PermissionResult } from '../../types/permissions.js';
-import type { ExecutionContext } from './execution.js';
-import type { ToolBehavior, ToolKind, ToolSideEffect } from './kind.js';
-import type { ToolExecution, ToolResult, ToolValidationError } from './result.js';
+import type { ToolBehavior, ToolKind, ToolSideEffect } from '../behavior.js';
+import type { ToolInvocation } from '../core/ToolInvocation.js';
+import type { ToolServiceMap, ToolServiceName } from '../services.js';
+import type { ExecutionContext, RuntimeAccess } from './execution.js';
+import type { ToolExecution, ToolValidationError } from './result.js';
 
 export interface FunctionDeclaration {
   name: string;
   description: string;
   parameters: JSONSchema7;
-}
-
-export interface ToolInvocation<TParams = unknown> {
-  readonly toolName: string;
-  readonly params: TParams;
-
-  getDescription(): string;
-  getAffectedPaths(): string[];
-  validate?(context?: Partial<ExecutionContext>): Promise<ToolValidationError | undefined>;
-  execute(signal: AbortSignal, context?: Partial<ExecutionContext>): ToolExecution;
+  strict?: boolean;
 }
 
 export interface ToolDescription {
@@ -33,11 +26,18 @@ export interface ToolDescription {
   important?: string[];
 }
 
-export type ToolSchema<TSchema extends Type.TSchema = Type.TSchema> = TSchema | (() => TSchema);
-
 export type ToolDescriptionResolver<TParams = JsonObject> = (params?: TParams) => ToolDescription;
 
 export type ToolExposureMode = 'eager' | 'deferred' | 'discoverable-only';
+
+export type BuiltinToolGroup =
+  | 'filesystem'
+  | 'shell'
+  | 'web'
+  | 'task'
+  | 'memory'
+  | 'system'
+  | 'mcp-resources';
 
 export interface ToolExposureConfig {
   mode?: ToolExposureMode;
@@ -50,9 +50,30 @@ export interface PreparedPermissionMatcher {
   abstractRule?: string;
 }
 
+type ToolDefinitionBaseContext = Pick<
+  ExecutionContext,
+  | 'signal'
+  | 'sessionId'
+  | 'messageId'
+  | 'contextSnapshot'
+  | 'skillActivationPaths'
+  | 'permissionMode'
+  | 'confirmationHandler'
+  | 'bladeConfig'
+>;
+
+export type ToolDefinitionContext<
+  TServices extends ToolServiceName,
+  TRequiresRuntime extends boolean,
+> = ToolDefinitionBaseContext &
+  Pick<ToolServiceMap, TServices> &
+  (TRequiresRuntime extends true ? { runtime: RuntimeAccess } : Record<never, never>);
+
 export interface ToolDefinition<
   TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
 > {
   name: string;
   aliases?: string[];
@@ -67,20 +88,27 @@ export interface ToolDefinition<
    */
   sideEffect?: ToolSideEffect;
   kind?: ToolKind;
-  category?: string;
-  tags?: string[];
+  group?: BuiltinToolGroup;
   exposure?: ToolExposureConfig;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution<TData>;
+  services?: readonly TServices[];
+  requiresRuntime?: TRequiresRuntime;
+  /** Method variance keeps schema-specific definitions assignable to heterogeneous collections. */
+  execute(
+    params: Type.Static<TSchema>,
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
+  ): ToolExecution<TData>;
 }
 
 export type ToolDefinitionInput<
   TSchema extends Type.TSchema = Type.TSchema,
   TData extends JsonValue = JsonValue,
-> = Omit<ToolDefinition<TSchema, TData>, 'execute'> & {
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+> = Omit<ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>, 'execute'> & {
   execute: (
     params: Type.Static<TSchema>,
-    context: ExecutionContext,
-  ) => ToolExecution<TData> | Promise<TData | ToolResult<TData>>;
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
+  ) => Promise<TData>;
 };
 
 /**
@@ -89,11 +117,18 @@ export type ToolDefinitionInput<
  * Authoring remains strongly typed; erasure happens only when definitions enter
  * a Session-owned collection and are compiled into runtime Tool instances.
  */
-export type ErasedToolDefinition = Omit<ToolDefinition<Type.TSchema, JsonValue>, 'execute'> & {
-  execute: (params: never, context: ExecutionContext) => ToolExecution<JsonValue>;
+export type ErasedToolDefinition = Omit<
+  ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>,
+  'execute'
+> & {
+  execute: (params: never, context: never) => ToolExecution<JsonValue>;
 };
 
-export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
+export interface ToolConfig<
+  TSchema extends Type.TSchema = Type.TSchema,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+> {
   name: string;
   aliases?: string[];
   displayName: string;
@@ -105,11 +140,16 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
   strict?: boolean;
   maxResultSizeChars?: number;
   interruptBehavior?: 'cancel' | 'block';
-  schema: ToolSchema<TSchema>;
+  services?: readonly TServices[];
+  requiresRuntime?: TRequiresRuntime;
+  schema: TSchema;
   description: ToolDescription;
   describe?: ToolDescriptionResolver<Type.Static<TSchema>>;
   exposure?: ToolExposureConfig;
-  execute: (params: Type.Static<TSchema>, context: ExecutionContext) => ToolExecution;
+  execute: (
+    params: Type.Static<TSchema>,
+    context: ToolDefinitionContext<TServices, TRequiresRuntime>,
+  ) => ToolExecution;
   validateInput?: (
     params: Type.Static<TSchema>,
     context: ExecutionContext,
@@ -118,49 +158,39 @@ export interface ToolConfig<TSchema extends Type.TSchema = Type.TSchema> {
     params: Type.Static<TSchema>,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params: Type.Static<TSchema>) => Partial<ToolBehavior> | ToolBehavior;
-  resolveBehaviorHint?: () => Partial<ToolBehavior> | ToolBehavior;
-  version?: string;
-  category?: string;
-  tags?: string[];
+  resolveBehavior?: (params?: Type.Static<TSchema>) => Partial<ToolBehavior> | ToolBehavior;
+  group?: BuiltinToolGroup;
   preparePermissionMatcher?: (params: Type.Static<TSchema>) => PreparedPermissionMatcher;
 }
 
-export interface Tool<TParams = unknown> {
+export interface ToolValidationOutcome {
+  readonly params: JsonObject;
+  readonly error?: ToolValidationError;
+}
+
+export interface Tool {
   readonly name: string;
-  readonly aliases?: string[];
-  readonly displayName: string;
-  readonly kind: ToolKind;
-  readonly sideEffect: ToolSideEffect;
-  readonly isReadOnly: boolean;
-  readonly isConcurrencySafe: boolean;
-  readonly isDestructive?: boolean;
-  readonly strict: boolean;
-  readonly maxResultSizeChars: number;
-  readonly interruptBehavior: 'cancel' | 'block';
+  readonly aliases: readonly string[];
+  readonly title: string;
   readonly description: ToolDescription;
+  readonly staticBehavior: ToolBehavior;
+  readonly declaration: FunctionDeclaration;
+  readonly maxResultSizeChars: number;
+  readonly services: readonly ToolServiceName[];
+  readonly requiresRuntime: boolean;
+  readonly group?: BuiltinToolGroup;
   readonly exposure: Required<ToolExposureConfig> & {
     mode: ToolExposureMode;
   };
-  readonly version: string;
-  readonly category?: string;
-  readonly tags: string[];
 
-  getFunctionDeclaration(): FunctionDeclaration;
-  describe(params?: unknown): ToolDescription;
-  getMetadata(): Record<string, unknown>;
-  build(params: unknown): ToolInvocation<TParams>;
-  execute(params: unknown, context?: ExecutionContext): ToolExecution;
-
-  validateInput?: (
-    params: unknown,
+  readonly prepare: (raw: unknown) => ToolInvocation;
+  readonly execute: (params: JsonObject, context?: ExecutionContext) => ToolExecution;
+  readonly validate?: (
+    params: JsonObject,
     context: ExecutionContext,
-  ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
-  checkPermissions?: (
-    params: unknown,
+  ) => Promise<ToolValidationOutcome>;
+  readonly checkPermissions?: (
+    params: JsonObject,
     context: ExecutionContext,
   ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
-  resolveBehavior?: (params: unknown) => ToolBehavior;
-  getBehaviorHint?: () => ToolBehavior;
-  preparePermissionMatcher?: (params: unknown) => PreparedPermissionMatcher;
 }

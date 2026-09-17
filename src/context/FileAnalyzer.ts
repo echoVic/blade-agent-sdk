@@ -7,8 +7,8 @@ import { open } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { ModelMessage, ModelToolCall } from '../model/message.js';
 import {
-    type FilesystemPathScope,
-    resolveAuthorizedFilesystemPath,
+  type FilesystemPathScope,
+  resolveAuthorizedFilesystemPath,
 } from '../tools/validation/filesystemPath.js';
 import { SensitiveFileDetector } from '../tools/validation/SensitiveFileDetector.js';
 import type { JsonObject } from '../types/json.js';

@@ -3,9 +3,9 @@ import { composeMiddleware } from '../../../middleware/composeMiddleware.js';
 import type { ToolMiddleware, ToolMiddlewareRequest } from '../../../middleware/ToolMiddleware.js';
 import type { JsonObject } from '../../../types/json.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
+import { resolveBehavior, ToolSideEffect } from '../../behavior.js';
 import type { ToolRegistry } from '../../registry/ToolRegistry.js';
-import type { ExecutionContext } from '../../types/execution.js';
-import { resolveToolBehaviorSafely, ToolSideEffect } from '../../types/kind.js';
+import { type ExecutionContext, getRuntimeAccess } from '../../types/execution.js';
 import {
   ToolErrorType,
   type ToolExecution,
@@ -58,17 +58,16 @@ export class MiddlewareBoundary {
     private readonly logger: InternalLogger,
   ) {}
 
-  async *run(input: MiddlewareBoundaryInput): AsyncGenerator<ToolYield, MiddlewareBoundaryOutcome, void> {
+  async *run(
+    input: MiddlewareBoundaryInput,
+  ): AsyncGenerator<ToolYield, MiddlewareBoundaryOutcome, void> {
     const { toolName, context: protectedContext } = input;
     const initialRequest: ToolMiddlewareRequest = {
       toolName,
       input: { ...input.params },
       context: protectedContext,
     };
-    const initialBehavior = resolveToolBehaviorSafely(
-      this.registry.get(toolName),
-      initialRequest.input,
-    );
+    const initialBehavior = resolveBehavior(this.registry.get(toolName), initialRequest.input);
     let effectiveRequest = initialRequest;
     let delegatedExecution: ToolExecution | undefined;
     let coreStarted = false;
@@ -84,10 +83,7 @@ export class MiddlewareBoundary {
       if (request.context !== protectedContext) {
         throw new Error('Tool middleware cannot replace the execution context');
       }
-      const effectiveBehavior = resolveToolBehaviorSafely(
-        this.registry.get(toolName),
-        request.input,
-      );
+      const effectiveBehavior = resolveBehavior(this.registry.get(toolName), request.input);
       if (
         initialBehavior &&
         effectiveBehavior &&
@@ -217,10 +213,10 @@ export class MiddlewareBoundary {
   private async recordMiddlewareShortCircuit(request: ToolMiddlewareRequest): Promise<void> {
     const tool = this.registry.get(request.toolName);
     const sideEffect =
-      resolveToolBehaviorSafely(tool, request.input)?.sideEffect ??
-      tool?.sideEffect ??
+      resolveBehavior(tool, request.input)?.sideEffect ??
+      tool?.staticBehavior.sideEffect ??
       ToolSideEffect.NON_IDEMPOTENT;
-    await request.context.assertExecutionLease?.();
+    await getRuntimeAccess(request.context).assertExecutionLease();
     await request.context.toolInvocationLifecycle?.onExecutionStarted?.({
       input: structuredClone(request.input),
       sideEffect,

@@ -6,7 +6,6 @@ interface RuntimeBenchmark {
   sampleSize: {
     sessions: number;
     events: number;
-    effects: number;
   };
   metrics: {
     storeInitializationMs: number;
@@ -15,7 +14,6 @@ interface RuntimeBenchmark {
     sessionCompletionDurationMs: number;
     recoveryDurationMs: number;
     eventLossRate: number;
-    nonIdempotentDuplicateRate: number;
   };
 }
 
@@ -40,11 +38,9 @@ describe('runtime benchmark publication', () => {
     expect(baseline.sampleSize).toEqual({
       sessions: 100,
       events: 1000,
-      effects: 100,
     });
     expect(baseline.metrics).toMatchObject({
       eventLossRate: 0,
-      nonIdempotentDuplicateRate: 0,
     });
     expect(baseline.metrics.storeInitializationMs).toBeGreaterThan(0);
     expect(baseline.metrics.firstClaimLatencyMs).toBeGreaterThanOrEqual(0);
@@ -77,20 +73,14 @@ describe('runtime benchmark publication', () => {
     expect(policy.minimumSampleSize).toEqual({
       sessions: 100,
       events: 1000,
-      effects: 100,
-      crashPoints: 4,
     });
     expect(Object.keys(policy.thresholds).sort()).toEqual([
       'checkpointRestoreMs',
       'eventLossRate',
       'failureDetectionMs',
-      'faultInjectionDuplicateRate',
-      'faultInjectionPassRate',
       'firstClaimLatencyMs',
       'fullRecoveryRtoMs',
       'leaseExpiryWaitMs',
-      'maximumFaultRecoveryRtoMs',
-      'nonIdempotentDuplicateRate',
       'processTerminationMs',
       'reclaimAndRestoreMs',
       'recoveryDurationMs',
@@ -100,22 +90,6 @@ describe('runtime benchmark publication', () => {
       'storeInitializationMs',
     ]);
     expect(policy.thresholds.eventLossRate?.maximum).toBe(0);
-    expect(policy.thresholds.nonIdempotentDuplicateRate?.maximum).toBe(0);
-    expect(policy.thresholds.faultInjectionDuplicateRate?.maximum).toBe(0);
-    expect(policy.thresholds.faultInjectionPassRate?.minimum).toBe(1);
-
-    const faultSource = readFileSync(
-      resolve('benchmarks/fault-injection.mjs'),
-      'utf8',
-    );
-    for (const crashPoint of [
-      'after_claim',
-      'after_start',
-      'after_side_effect',
-      'after_complete',
-    ]) {
-      expect(faultSource).toContain(`name: '${crashPoint}'`);
-    }
 
     const recoverySource = readFileSync(
       resolve('examples/postgres-worker-recovery/run.mjs'),

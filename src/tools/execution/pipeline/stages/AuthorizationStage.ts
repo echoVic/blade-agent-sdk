@@ -1,5 +1,3 @@
-import { getAbortSignalReason } from '../../../../utils/abortPromise.js';
-import { getErrorMessage } from '../../../../utils/errorUtils.js';
 import type { PermissionMode } from '../../../../types/constants.js';
 import {
   createPathSafetyPermissionHandler,
@@ -7,6 +5,8 @@ import {
   type PermissionHandler,
   type PermissionsConfig,
 } from '../../../../types/permissions.js';
+import { getAbortSignalReason } from '../../../../utils/abortPromise.js';
+import { getErrorMessage } from '../../../../utils/errorUtils.js';
 import { validationErrorToToolResult } from '../../../types/result.js';
 import type { ApprovalLedger } from '../ApprovalLedger.js';
 import type { InvocationBinder } from '../InvocationBinder.js';
@@ -15,6 +15,7 @@ import type { PermissionRequestFactory } from '../PermissionRequestFactory.js';
 import { createAbortedResult } from '../results.js';
 import { addConfirmationReason, type PipelineExecutionState } from '../state.js';
 import { isTerminalCleanupFailure, type TerminalCleanupGuard } from '../TerminalCleanupGuard.js';
+import { getToolContext } from '../toolContext.js';
 
 export interface AuthorizationStageOptions {
   permissionConfig: PermissionsConfig;
@@ -50,26 +51,22 @@ export class AuthorizationStage {
 
   async authorize(state: PipelineExecutionState): Promise<void> {
     try {
-      const invocation = this.binder.rebuild(state);
-      if (!invocation) {
-        throw new Error(`Failed to build invocation for tool: ${state.tool.name}`);
-      }
+      this.binder.rebuild(state);
+      const toolContext = getToolContext(state.tool, state.context, state.services);
 
-      const validationError = invocation.validate
-        ? await this.guard.awaitPermissionCallback(
-            () => invocation.validate?.(state.context),
-            state.context.signal,
-          )
-        : undefined;
+      const validationError = await this.binder.revalidate(state);
       if (validationError) {
         state.result = validationErrorToToolResult(validationError);
         return;
       }
-      this.binder.sync(state, invocation);
+      const invocation = state.invocation;
+      if (!invocation) {
+        throw new Error(`Failed to prepare invocation for tool: ${state.tool.name}`);
+      }
 
       const toolPermissionResult = state.tool.checkPermissions
         ? await this.guard.awaitPermissionCallback(
-            () => state.tool.checkPermissions?.(invocation.params, state.context),
+            () => state.tool.checkPermissions?.(invocation.params, toolContext),
             state.context.signal,
           )
         : undefined;
@@ -77,8 +74,10 @@ export class AuthorizationStage {
         toolPermissionResult?.behavior === 'allow' ? toolPermissionResult.updatedInput : undefined;
 
       if (toolPermissionUpdatedInput) {
-        Object.assign(state.params, toolPermissionUpdatedInput);
-        this.binder.rebuild(state);
+        this.binder.rebuild(state, {
+          ...invocation.params,
+          ...toolPermissionUpdatedInput,
+        });
         const updatedValidationError = await this.binder.revalidate(state);
         if (updatedValidationError) {
           state.result = validationErrorToToolResult(updatedValidationError);
@@ -100,11 +99,11 @@ export class AuthorizationStage {
 
       // The binder keeps `permissionSignature` in step with the rebuilt invocation.
       let checkResult = await this.guard.awaitPermissionCallback(
-        () => this.ruleHandler(this.requests.build(state, state.affectedPaths)),
+        () => this.ruleHandler(this.requests.build(state)),
         state.context.signal,
       );
 
-      const hasRememberedApproval = this.ledger.isApproved(state.permissionSignature);
+      const hasRememberedApproval = this.ledger.isApproved(state.invocation?.permissionSignature);
       if (hasRememberedApproval) {
         state.needsConfirmation = false;
         checkResult = {
@@ -128,7 +127,7 @@ export class AuthorizationStage {
           );
           return;
         case 'ask':
-          if (this.ledger.isApproved(state.permissionSignature)) {
+          if (this.ledger.isApproved(state.invocation?.permissionSignature)) {
             state.needsConfirmation = false;
           } else {
             state.needsConfirmation = true;
@@ -140,7 +139,7 @@ export class AuthorizationStage {
       }
 
       const pathSafetyResult = await this.guard.awaitPermissionCallback(
-        () => this.pathSafetyHandler(this.requests.build(state, state.affectedPaths)),
+        () => this.pathSafetyHandler(this.requests.build(state)),
         state.context.signal,
       );
       this.decisions.apply(pathSafetyResult, state);

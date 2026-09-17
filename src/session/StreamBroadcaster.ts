@@ -76,9 +76,6 @@ export class StreamBroadcaster {
         return this.options.includeThinking
           ? { type: 'thinking', delta: event.delta, sessionId }
           : null;
-      case 'content':
-        traceRecorder?.addEvent('content', { content: event.content });
-        return { type: 'content', delta: event.content, sessionId };
       case 'thinking':
         traceRecorder?.addEvent('thinking', { content: event.content });
         return this.options.includeThinking
@@ -87,113 +84,12 @@ export class StreamBroadcaster {
       case 'tool_start':
         return this.projectToolStart(event, sessionId, traceRecorder);
       case 'tool_progress':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_progress',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            progress: event.progress,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_progress',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          progress: event.progress,
-          sessionId,
-        };
       case 'tool_message':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_message',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            content: event.content,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_message',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          content: event.content,
-          sessionId,
-        };
       case 'tool_runtime_patch':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_runtime_patch',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            patch: event.patch,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_runtime_patch',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          patch: event.patch,
-          sessionId,
-        };
       case 'tool_context_patch':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_context_patch',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            patch: event.patch,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_context_patch',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          patch: event.patch,
-          sessionId,
-        };
       case 'tool_new_messages':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_new_messages',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            messages: event.messages,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_new_messages',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          messages: event.messages,
-          sessionId,
-        };
       case 'tool_permission_updates':
-        if (event.toolCall.type !== 'function') return null;
-        traceRecorder?.addEvent(
-          'tool_permission_updates',
-          {
-            toolCallId: event.toolCall.id,
-            name: event.toolCall.function.name,
-            updates: event.updates,
-          },
-          this.toolSpans.get(event.toolCall.id),
-        );
-        return {
-          type: 'tool_permission_updates',
-          id: ToolUseId(event.toolCall.id),
-          name: event.toolCall.function.name,
-          updates: event.updates,
-          sessionId,
-        };
+        return this.projectToolUpdate(event, sessionId, traceRecorder);
       case 'tool_result':
         return this.projectToolResult(event, sessionId, traceRecorder);
       case 'token_usage':
@@ -211,7 +107,6 @@ export class StreamBroadcaster {
       case 'stream_end':
       case 'budget_warning':
       case 'compacting':
-      case 'todo_update':
       case 'api_retry':
       case 'model_fallback':
       case 'recovery':
@@ -286,6 +181,56 @@ export class StreamBroadcaster {
       isError: event.result.status === 'error',
       sessionId,
     };
+  }
+
+  private projectToolUpdate(
+    event: Extract<
+      AgentEvent,
+      {
+        type:
+          | 'tool_progress'
+          | 'tool_message'
+          | 'tool_runtime_patch'
+          | 'tool_context_patch'
+          | 'tool_new_messages'
+          | 'tool_permission_updates';
+      }
+    >,
+    sessionId: SessionId,
+    traceRecorder?: TraceRecorder,
+  ): SessionStreamEvent | null {
+    if (event.toolCall.type !== 'function') return null;
+    const common = {
+      id: ToolUseId(event.toolCall.id),
+      name: event.toolCall.function.name,
+      sessionId,
+    };
+    const trace = (data: Record<string, unknown>) =>
+      traceRecorder?.addEvent(
+        event.type,
+        { toolCallId: event.toolCall.id, name: event.toolCall.function.name, ...data },
+        this.toolSpans.get(event.toolCall.id),
+      );
+    switch (event.type) {
+      case 'tool_progress':
+        trace({ progress: event.progress });
+        return { type: event.type, ...common, progress: event.progress };
+      case 'tool_message':
+        trace({ content: event.content });
+        return { type: event.type, ...common, content: event.content };
+      case 'tool_runtime_patch':
+        trace({ patch: event.patch });
+        return { type: event.type, ...common, patch: event.patch };
+      case 'tool_context_patch':
+        trace({ patch: event.patch });
+        return { type: event.type, ...common, patch: event.patch };
+      case 'tool_new_messages':
+        trace({ messages: event.messages });
+        return { type: event.type, ...common, messages: event.messages };
+      case 'tool_permission_updates':
+        trace({ updates: event.updates });
+        return { type: event.type, ...common, updates: event.updates };
+    }
   }
 }
 

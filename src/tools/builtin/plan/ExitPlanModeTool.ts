@@ -1,10 +1,9 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import Type from 'typebox';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * ExitPlanMode tool
@@ -12,15 +11,14 @@ import { lazySchema } from '../../validation/lazySchema.js';
  */
 export const exitPlanModeTool = createTool({
   name: 'ExitPlanMode',
+  group: 'system',
   displayName: 'Exit Plan Mode',
   kind: ToolKind.ReadOnly,
   sideEffect: 'non_idempotent',
 
-  schema: lazySchema(() =>
-    Type.Object({
-      plan: Type.String({ description: 'The complete implementation plan in markdown format' }),
-    }),
-  ),
+  schema: Type.Object({
+    plan: Type.String({ description: 'The complete implementation plan in markdown format' }),
+  }),
 
   // 工具描述
   description: {

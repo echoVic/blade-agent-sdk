@@ -165,10 +165,7 @@ export class BackgroundShellManager {
       processInfo.errorMessage = error.message;
       processInfo.endTime = Date.now();
       processInfo.process = undefined;
-      const appended = appendBoundedOutput(
-        processInfo.pendingStderr,
-        `\n[error] ${error.message}`,
-      );
+      const appended = appendBoundedOutput(processInfo.pendingStderr, `\n[error] ${error.message}`);
       processInfo.pendingStderr = appended.content;
       processInfo.stderrBytesDropped += appended.droppedBytes;
     });

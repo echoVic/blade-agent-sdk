@@ -1,5 +1,5 @@
 import type { InternalLogger } from '../../../logging/Logger.js';
-import type { PermissionResult as CanUseToolResult } from '../../../types/permissions.js';
+import type { PermissionResult } from '../../../types/permissions.js';
 import { normalizePermissionEffects } from '../../types/effects.js';
 import type { ApprovalLedger } from './ApprovalLedger.js';
 import { createAbortedResult } from './results.js';
@@ -23,18 +23,15 @@ export class PermissionDecisionApplier {
     private readonly logger: InternalLogger,
   ) {}
 
-  apply(result: CanUseToolResult, state: PipelineExecutionState): void {
+  apply(result: PermissionResult, state: PipelineExecutionState): void {
     switch (result.behavior) {
       case 'allow':
-        if (result.updatedInput) {
-          Object.assign(state.params, result.updatedInput);
-        }
         for (const effect of normalizePermissionEffects(result)) {
           if (effect.type === 'permissionUpdates') {
             this.ledger.applyPermissionUpdates(effect.updates);
           }
         }
-        if (this.ledger.isApproved(state.permissionSignature)) {
+        if (this.ledger.isApproved(state.invocation?.permissionSignature)) {
           state.needsConfirmation = false;
           state.confirmationReasons = [];
         }
@@ -46,7 +43,7 @@ export class PermissionDecisionApplier {
 
       case 'deny':
         this.ledger.recordDenial(
-          state.permissionSignature,
+          state.invocation?.permissionSignature,
           state.toolName,
           result.message || 'Denied by permissionHandler',
         );

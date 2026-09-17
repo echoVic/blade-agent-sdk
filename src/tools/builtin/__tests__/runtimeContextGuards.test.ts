@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -29,15 +29,16 @@ describe('tool runtime context guards', () => {
   });
 
   it('should reject Glob without filesystem capability', async () => {
-    const invocation = globTool.build({
-      pattern: '**/*.ts',
-      max_results: 10,
-      include_directories: false,
-      case_sensitive: false,
-    });
-
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
+      globTool.execute(
+        {
+          pattern: '**/*.ts',
+          max_results: 10,
+          include_directories: false,
+          case_sensitive: false,
+        },
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -45,16 +46,17 @@ describe('tool runtime context guards', () => {
   });
 
   it('should reject Grep without filesystem capability', async () => {
-    const invocation = grepTool.build({
-      pattern: 'needle',
-      output_mode: 'files_with_matches',
-      '-i': false,
-      '-n': true,
-      multiline: false,
-    });
-
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
+      grepTool.execute(
+        {
+          pattern: 'needle',
+          output_mode: 'files_with_matches',
+          '-i': false,
+          '-n': true,
+          multiline: false,
+        },
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -62,14 +64,15 @@ describe('tool runtime context guards', () => {
   });
 
   it('should reject Bash without an explicit cwd or filesystem context cwd', async () => {
-    const invocation = bashTool.build({
-      command: 'pwd',
-      timeout: 1000,
-      run_in_background: false,
-    });
-
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, { contextSnapshot: emptySnapshot }),
+      bashTool.execute(
+        {
+          command: 'pwd',
+          timeout: 1000,
+          run_in_background: false,
+        },
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
     expect(result.status).toBe('error');
@@ -80,18 +83,20 @@ describe('tool runtime context guards', () => {
     ['Glob', globTool, { pattern: '**/*.ts' }],
     ['Grep', grepTool, { pattern: 'needle' }],
   ])('should reject %s paths outside configured filesystem roots', async (_name, tool, params) => {
-    const invocation = tool.build({ ...params, path: outsideRoot });
     const result = await collectToolExecution(
-      invocation.execute(new AbortController().signal, {
-        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
-          capabilities: {
-            filesystem: {
-              roots: [workspaceRoot],
-              cwd: workspaceRoot,
+      tool.execute(
+        { ...params, path: outsideRoot },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+            capabilities: {
+              filesystem: {
+                roots: [workspaceRoot],
+                cwd: workspaceRoot,
+              },
             },
-          },
-        }),
-      }),
+          }),
+        },
+      ),
     );
 
     expect(result.status).toBe('error');

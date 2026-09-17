@@ -13,8 +13,8 @@ import type {
   ResumeSessionCommand,
   SubmitInputCommand,
 } from '../protocol/index.js';
+import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import { createSession, forkSession, resumeSession } from '../session/Session.js';
-import { isSessionEventStore } from '../session/SessionRepository.js';
 import type {
   ISession,
   PendingSessionInput,
@@ -24,7 +24,6 @@ import type {
 import type { CommandId, RequestId, SessionId } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
 import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
-import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import type { AgentServerSessionRecord, AgentServerStore } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
 import type { RuntimeTenantStore } from './RuntimeStore.js';
@@ -454,9 +453,10 @@ export class InProcessSessionExecutor implements SessionExecutor {
 
   private async resolveSessionOptions(context: AgentServerSessionContext): Promise<SessionOptions> {
     const options = await this.options.resolveSessionOptions(context);
-    const hasEventStore =
-      options.sessionEventStore || isSessionEventStore(options.sessionRepository);
-    if (this.options.requirePersistentSessions && (!options.sessionRepository || !hasEventStore)) {
+    if (
+      this.options.requirePersistentSessions &&
+      (!options.sessionRepository || !options.sessionEventStore)
+    ) {
       throw new AgentProtocolError(
         'SESSION_CONFLICT',
         'This executor requires sessionRepository and sessionEventStore',

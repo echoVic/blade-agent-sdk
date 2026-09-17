@@ -4,6 +4,7 @@ import type {
   AgentMiddlewareConfig,
   AgentPlugin,
   BuiltinProviderType,
+  BuiltinToolGroup,
   ConfirmationDetails,
   ConfirmationHandler,
   ConversationMessage,
@@ -46,15 +47,14 @@ import type {
   ProviderAdapter,
   ProviderRegistryErrorCode,
   ProviderType,
+  RuntimeAccess,
   RuntimePatch,
+  SdkMcpServerHandle,
   SessionEventStore,
   SessionHandoffErrorCode,
   SessionHandoffResult,
   SessionOptions,
-  SessionPersistence,
   SessionRepository,
-  SessionTool,
-  ToolCatalogEntry,
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
@@ -68,6 +68,8 @@ import type {
   ToolProgress,
   ToolResult,
   ToolScheduledLifecycle,
+  ToolServiceMap,
+  ToolServiceName,
   ToolSettledLifecycle,
   ToolYield,
   UserMessageContent,
@@ -80,7 +82,6 @@ import {
   collectToolExecution,
   completeToolExecution,
   composeMiddleware,
-  CredentialLeaseId,
   DEFAULT_DURABLE_STORE_TIMEOUT_MS,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -100,6 +101,7 @@ import {
   DurableSessionRecoveryError,
   DurableSessionRecoveryRequiredError,
   definePlugin,
+  defineTool,
   durableEventCursor,
   EventId,
   EventSequence,
@@ -125,19 +127,18 @@ import {
   SubagentExecutor,
   SubagentRegistry,
   ToolAttemptId,
-  ToolCatalog,
   ToolErrorType,
   ToolSideEffect,
   TurnId,
   WorkerId,
 } from '../index.js';
 import {
-  createMemoryReadTool,
-  createMemoryWriteTool,
   FileSystemMemoryStore,
   JsonlDurableEventStore,
   JsonlSessionRepository,
   MemoryManager,
+  memoryReadTool,
+  memoryWriteTool,
 } from '../node/index.js';
 
 describe('root exports', () => {
@@ -145,20 +146,26 @@ describe('root exports', () => {
     expect('getBuiltinTools' in root).toBe(false);
     expect('FileSystemMemoryStore' in root).toBe(false);
     expect('MemoryManager' in root).toBe(false);
-    expect('createMemoryReadTool' in root).toBe(false);
+    expect('memoryReadTool' in root).toBe(false);
     expect('JsonlDurableEventStore' in root).toBe(false);
     expect('JsonlSessionRepository' in root).toBe(false);
     expect('createSdkMcpServer' in root).toBe(false);
   });
 
+  it('exposes defineTool as the only tool authoring function', () => {
+    expect(defineTool).toBeTypeOf('function');
+    expect('createTool' in root).toBe(false);
+    expect('toolFromDefinition' in root).toBe(false);
+    expect('ToolCatalog' in root).toBe(false);
+  });
+
   it('exports shared primitives at root and local adapters from the Node entrypoint', () => {
     expect(MemoryManager).toBeDefined();
     expect(FileSystemMemoryStore).toBeDefined();
-    expect(createMemoryReadTool).toBeDefined();
-    expect(createMemoryWriteTool).toBeDefined();
+    expect(memoryReadTool).toBeDefined();
+    expect(memoryWriteTool).toBeDefined();
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();
-    expect(ToolCatalog).toBeDefined();
     expect(collectToolExecution).toBeTypeOf('function');
     expect(completeToolExecution).toBeTypeOf('function');
     expect(composeMiddleware).toBeTypeOf('function');
@@ -231,7 +238,6 @@ describe('root exports', () => {
     expect(ExecutionLeaseId('lease-1')).toBe('lease-1');
     expect(ExecutionId('execution-1')).toBe('execution-1');
     expect(ExecutionCheckpointId('checkpoint-1')).toBe('checkpoint-1');
-    expect(CredentialLeaseId('credential-1')).toBe('credential-1');
     expect(FencingToken(1)).toBe(1);
     expect(WorkerId('worker-1')).toBe('worker-1');
     expect(DurableSessionJournal.open).toBeTypeOf('function');
@@ -271,6 +277,20 @@ describe('root exports', () => {
     >();
     expectTypeOf<ConfirmationDetails['abortSignal']>().toEqualTypeOf<AbortSignal | undefined>();
     expectTypeOf<ConfirmationHandler['requestConfirmation']>().toBeFunction();
+    expectTypeOf<RuntimeAccess['assertExecutionLease']>().toEqualTypeOf<() => Promise<void>>();
+    expectTypeOf<RuntimeAccess['executionFence']>().toEqualTypeOf<
+      DurableExecutionFence | undefined
+    >();
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('executionFence');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('assertExecutionLease');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('runWithExecutionLease');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('toolRegistry');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('toolCatalog');
+    expectTypeOf<ExecutionContext>().not.toHaveProperty('discoveredTools');
+    expectTypeOf<ToolServiceName>().toEqualTypeOf<keyof ToolServiceMap>();
+    expectTypeOf<BuiltinToolGroup>().toEqualTypeOf<
+      'filesystem' | 'shell' | 'web' | 'task' | 'memory' | 'system' | 'mcp-resources'
+    >();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
     expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
       'pure' | 'idempotent' | 'non_idempotent'
@@ -295,7 +315,6 @@ describe('root exports', () => {
     expectTypeOf<ProviderRegistryErrorCode>().toEqualTypeOf<
       'PROVIDER_ADAPTER_INVALID' | 'PROVIDER_ADAPTER_DUPLICATE' | 'PROVIDER_ADAPTER_NOT_FOUND'
     >();
-    expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
     expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<'event' | 'caught_up'>();
@@ -362,6 +381,9 @@ describe('root exports', () => {
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<DurableExecutionLeaseStore['acquireExecutionLease']>().toBeFunction();
     expectTypeOf<DurableExecutionLeaseStore['withExecutionLease']>().toBeFunction();
+    expectTypeOf<
+      Parameters<typeof DurableExecutionLease.acquire>[0]
+    >().toEqualTypeOf<DurableExecutionLeaseStore>();
     expectTypeOf<DurableExecutionFence['fencingToken']>().toEqualTypeOf<
       ReturnType<typeof FencingToken>
     >();
@@ -374,19 +396,19 @@ describe('root exports', () => {
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined
     >();
+    expectTypeOf<SessionOptions['durableExecutionLeaseStore']>().toEqualTypeOf<
+      DurableExecutionLeaseStore | undefined
+    >();
     expectTypeOf<SessionOptions['sessionRepository']>().toEqualTypeOf<
       SessionRepository | undefined
     >();
     expectTypeOf<SessionOptions['sessionEventStore']>().toEqualTypeOf<
       SessionEventStore | undefined
     >();
-    expectTypeOf<SessionPersistence>().toMatchTypeOf<SessionRepository>();
     expectTypeOf<SessionOptions['executionLease']>().toEqualTypeOf<
       DurableExecutionLeaseOptions | undefined
     >();
-    expectTypeOf<ExecutionContext['executionFence']>().toEqualTypeOf<
-      DurableExecutionFence | undefined
-    >();
+    expectTypeOf<SdkMcpServerHandle['type']>().toEqualTypeOf<'in-process'>();
     expectTypeOf<
       ReturnType<ISession['getExecutionLease']>
     >().toEqualTypeOf<DurableExecutionLeaseSnapshot | null>();
@@ -403,9 +425,6 @@ describe('root exports', () => {
     expect(SessionHandoffError).toBeDefined();
     expectTypeOf<ReturnType<ISession['subscribeDurableEvents']>>().toEqualTypeOf<
       Promise<DurableEventSubscription>
-    >();
-    expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
-      'builtin' | 'custom' | 'mcp' | 'session'
     >();
     expectTypeOf<ToolExecutionUpdate['type']>().toEqualTypeOf<
       | 'tool_ready'

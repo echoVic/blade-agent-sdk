@@ -6,10 +6,10 @@ default `createAgent()` facade. Lower-level Session APIs live under
 components under `/server/infra`.
 
 `/server/infra` targets Node.js server processes, not edge runtimes.
-PostgreSQL, OpenTelemetry, non-bundled provider adapters, and native Node
-enhancements are optional peers. PostgreSQL and OTel use dedicated adapter
-subpaths so canonical entrypoints do not load absent peers. Some packages can
-still be present transitively through base dependencies.
+PostgreSQL, non-bundled provider adapters, and native Node enhancements are
+optional peers. PostgreSQL uses a dedicated adapter subpath so canonical
+entrypoints do not load an absent peer. Some packages can still be present
+transitively through base dependencies.
 
 The package also ships the `create-blade-agent` executable. Its
 `--preset <local|web|production>` option selects the generated project
@@ -23,13 +23,15 @@ JavaScript package export.
 |-------|---------|----------|
 | `@blade-ai/agent-sdk` | Node.js | Default `createAgent`, tool authoring, and public type entry |
 | `@blade-ai/agent-sdk/browser` | Browser and Node.js | `AgentClient`, protocol schemas, parsers, events, and constants |
-| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, Runtime Store contracts, and conformance suites |
+| `@blade-ai/agent-sdk/protocol` | Browser and Node.js | Wire protocol schemas and parsers |
+| `@blade-ai/agent-sdk/server/infra` | Node.js server | `AgentServer`, Workers, and Runtime Store contracts |
+| `@blade-ai/agent-sdk/server/postgres` | Node.js server | `PostgresRuntimeStore` adapter |
 | `@blade-ai/agent-sdk/advanced` | Node.js | Local/server Sessions, `SessionRunner`, execution hosts, and Node adapters |
 
 The former `/node`, `/server`, `/core`, `/model`, `/session`, `/middleware`,
-`/tools`, `/protocol`, and `/server/testing` paths are deprecated compatibility
-aliases. Optional PostgreSQL and OTel adapters retain `/server/postgres` and
-`/server/otel` so canonical imports do not force-load peer dependencies.
+and `/tools` compatibility aliases have been removed. The optional PostgreSQL
+adapter lives at `/server/postgres`, so canonical imports do not force-load
+`pg`.
 The package is ESM-only. Browser calls to server-only APIs resolve to explicit
 stubs.
 
@@ -70,7 +72,7 @@ Types:
 `ProviderRegistryErrorCode`, `ProviderType`,
 `ResumeOptions`, `SendOptions`, `SessionHandoffErrorCode`,
 `SessionHandoffResult`, `SessionOptions`, `SessionRepository`,
-`SessionEventStore`, `SessionPersistence`, `SessionTool`, `SessionStreamEvent`,
+`SessionEventStore`, `SessionStreamEvent`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolExecutionRecord`,
 `ToolDefinition`, and `ToolResult`.
 
@@ -119,8 +121,6 @@ Runtime:
 - `SdkSessionRunner`
 - `ExecutionHostSessionRunner`
 - `AgentWorker`
-- `AgentRuntimeOperations`
-- `EffectDispatcher`
 - `AgentClient`
 - `RemoteAgentSession`
 - `InMemoryAgentServerStore`
@@ -149,36 +149,25 @@ Types:
 - `RuntimeStore`
 - `RuntimeTenantStore`
 - `RUNTIME_STORE_SCHEMA_VERSION`
-- `RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION`
-- `RuntimeCommandCommit`
-- `RuntimeCommitResult`
-- `RuntimeDomainEvent`
-- `RuntimeDomainEventDraft`
-- `RuntimeDomainEventPage`
-- `RuntimeEffectIntent`
-- `RuntimeEffectRecord`
-- `RuntimeEffectStatus`
 - `RuntimeWorkerRecord`
 - `RuntimeWorkerRegistration`
 - `RuntimeSessionRoute`
 - `RuntimeSessionClaim`
+- `RuntimeSessionClaimOptions`
 - `RuntimeSessionState`
-- `RuntimeEffectClaim`
-- `RuntimeEffectLease`
-- `RuntimeEffectExecutionMode`
-- `RuntimeEffectReconciliation`
-- `RuntimeQueueMetrics`
-- `RuntimeEffectHandler`
-- `RuntimeEffectHandlerContext`
-- `RetryableRuntimeEffectError`
-- `UncertainRuntimeEffectError`
+- `RuntimeSessionTransition`
+- `RuntimeSessionSettlement`
+- `RuntimeRecoveryResult`
 - `SessionRunner`
 - `SessionRunnerContext`
 - `SessionRunResult`
 - `WorkerRuntimeStore`
 - `WorkerRuntimeError`
-- `RuntimeProjectionCheckpoint`
-- `RuntimeProjectionRecord`
+- `AgentWorkerHealth`
+- `AgentWorkerMetrics`
+- `AgentWorkerSnapshot`
+- `AgentWorkerTelemetry`
+- `AgentWorkerErrorMetric`
 - `AgentCommandClaim`
 - `AgentServerSessionRecord`
 - `AgentServerTelemetry`
@@ -197,11 +186,10 @@ Types:
 - `AgentInitializationData`
 - `AgentClientCapabilities`
 - `AgentProtocolErrorCode`
-- `assertRuntimeStoreConformance` (`/server/infra`)
 
 `PostgresRuntimeStore` is exported by `/server/postgres`.
-`OpenTelemetryAgentServerTelemetry` and
-`OpenTelemetryAgentWorkerTelemetry` are exported by `/server/otel`.
+`AgentServerTelemetry` and `AgentWorkerTelemetry` are injection ports exported
+by `/server/infra`; the SDK does not bind them to a specific backend.
 
 See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 [Worker Runtime](./worker-runtime), and
@@ -211,12 +199,10 @@ See [Server Runtime](./server-runtime), [Runtime Store](./runtime-store),
 
 Runtime:
 
-- `EphemeralCredentialBroker`
 - `ExecutionHostError`
 - `DockerExecutionHost` (`/advanced`)
 - `ExecutionId`
 - `ExecutionCheckpointId`
-- `CredentialLeaseId`
 
 Types:
 
@@ -230,14 +216,6 @@ Types:
 - `ExecutionResourceLimits`
 - `ExecutionNetworkPolicy`
 - `ExecutionWorkspaceSource`
-- `ExecutionEgressController`
-- `ExecutionEgressLease`
-- `CredentialBroker`
-- `CredentialIssuer`
-- `CredentialRequest`
-- `CredentialLease`
-- `CredentialIssueContext`
-- `IssuedCredential`
 - `ExecutionHostErrorCode`
 - `DockerExecutionHostOptions` (`/advanced`)
 
@@ -248,7 +226,6 @@ Runtime:
 - `DurableExecutionLease`
 - `DurableExecutionLeaseError`
 - `executionFence`
-- `isDurableExecutionLeaseStore`
 - `DURABLE_EXECUTION_LEASE_FORMAT`
 - `JsonlDurableEventStore` (`/advanced`)
 - `DurableEventSubscription`
@@ -365,27 +342,26 @@ Authoring and execution:
 
 | Export | Purpose |
 |--------|---------|
-| `defineTool` | Define an async-function or generator tool with TypeBox |
-| `createTool` | Create a TypeBox-backed runtime tool |
-| `toolFromDefinition` | Convert a definition to `Tool` |
+| `defineTool` | Define a TypeBox-validated async tool that returns JSON data |
 | `collectToolExecution` | Drain a generator and return its terminal result |
 | `completeToolExecution` | Wrap a terminal result in a generator |
 | `getBuiltinTools` | Build the `/advanced` local tool set |
-| `createMemoryReadTool` | Create an opt-in memory reader (`/advanced`) |
-| `createMemoryWriteTool` | Create an opt-in memory writer (`/advanced`) |
+| `memoryReadTool` | Static opt-in memory reader (`/advanced`) |
+| `memoryWriteTool` | Static opt-in memory writer (`/advanced`) |
 
 Types:
 
-`ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
-`FunctionDeclaration`, `Tool`,
-`ToolBehavior`, `ToolConfig`, `ToolDefinition`,
+`BuiltinToolGroup`, `ConfirmationDetails`, `ConfirmationHandler`, `ConfirmationResponse`,
+`ToolBehavior`, `ToolDefinition`,
 `ToolDefinitionInput`, `ToolDescription`,
-`ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
+`ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
 `ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,
 `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
 `ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
-`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`, `ToolSideEffect`,
+`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSideEffect`,
+`RuntimeAccess`,
+`ToolServiceMap`, `ToolServiceName`,
 `ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:
@@ -394,22 +370,18 @@ Constants:
 - `ToolSideEffect`: `PURE`, `IDEMPOTENT`, and `NON_IDEMPOTENT`
 - `ToolErrorType`: validation, permission, execution, interruption, timeout, and network errors
 
-`ToolConfig` requires a `sideEffect` declaration. `ToolDefinition` defaults to
-`non_idempotent` when it is omitted. The resolved value determines whether a
-started tool can be replayed during durable recovery.
+`ToolDefinition` defaults to `non_idempotent` when `sideEffect` is omitted. The
+resolved value determines whether a started tool can be replayed during durable
+recovery.
 
-## Tool catalog
+Compiled tools and invocation snapshots remain runtime-internal; hook or
+permission input updates trigger a fresh validation and preparation pass.
 
-Runtime:
-
-- `ToolCatalog`
+## Tool source policy
 
 Types:
 
-- `ToolCatalogEntry`
-- `ToolCatalogReadView`
-- `ToolCatalogSourcePolicy`
-- `ToolSourceInfo`
+- `ToolSourcePolicy`
 - `ToolSourceKind`
 - `ToolTrustLevel`
 - `WebFetchSecurityPolicy`
@@ -432,6 +404,8 @@ Types:
 - `SdkMcpServerHandle`
 - `SdkTool`
 
+`SdkMcpServerHandle` is discriminated by `type: 'in-process'`.
+
 There is no `@blade-ai/agent-sdk/mcp` entry point. Import these exports from `/advanced`.
 
 ## Memory
@@ -450,8 +424,9 @@ Types:
 
 Memory tools are opt-in.
 
-`createMemoryReadTool()` and `createMemoryWriteTool()` return complete `Tool`
-instances that can be passed directly to `SessionOptions.tools`.
+`memoryReadTool` and `memoryWriteTool` are static `Tool` instances. Set
+`SessionOptions.memoryManager` to register them and inject that manager only into
+the tools that declare the service.
 
 ## Providers
 
@@ -509,13 +484,10 @@ Helpers:
 - `createCompositePermissionHandler`
 - `createModePermissionHandler`
 - `createPathSafetyPermissionHandler`
-- `createPermissionHandlerFromCanUseTool`
 - `createRuleBasedPermissionHandler`
 
 Types:
 
-- `CanUseTool`
-- `CanUseToolOptions`
 - `ConfirmationDetails` (`abortSignal` is the active Request signal)
 - `ConfirmationHandler`
 - `ConfirmationResponse`
@@ -533,23 +505,15 @@ Constants:
 
 ## Hooks
 
-Runtime:
-
-- `getHookSchemas`
-
 Types and constants:
 
 - `HookCallback`
 - `HookInput`
 - `HookOutput`
 - `HookEvent`
-- `DecisionBehavior`
-- `HookExitCode`
-- `HookType`
 
-`HookEvent` has 22 shell-hook protocol events.
-`AgentOptions.advanced.hooks` and `SessionOptions.hooks` only accept the eight
-events in `SessionHookEvent`; see [Hooks](./hooks).
+`HookEvent`, `AgentOptions.advanced.hooks`, and `SessionOptions.hooks` use the
+eight events in `SessionHookEvent`; see [Hooks](./hooks).
 
 ## Middleware and plugins
 
@@ -635,37 +599,17 @@ Types:
 
 Functions and constants:
 
-- `calculateDeepSeekCost`
-- `createDeepSeekBatchChatCompletions`
-- `createDeepSeekChatCompletion`
-- `createDeepSeekFimCompletion`
-- `createDeepSeekLongContextChunks`
-- `createDeepSeekLongContextMessages`
-- `createDeepSeekLongContextPlan`
-- `createDeepSeekTokenBudgetCostConfig`
-- `estimateDeepSeekTokens`
-- `getDeepSeekPricing`
 - `normalizeDeepSeekModel`
 - `optimizeDeepSeekCachePrefix`
 - `resolveDeepSeekBaseUrl`
 - `sanitizeDeepSeekStrictSchema`
-- `summarizeDeepSeekBatchChatCompletions`
 - `DEEPSEEK_BETA_BASE_URL`
 - `DEEPSEEK_DEFAULT_BASE_URL`
 - `DEEPSEEK_DEFAULT_MODEL`
-- `DEEPSEEK_DEFAULT_PRICING`
-- `DeepSeekCostTracker`
 
 Types:
 
-`DeepSeekBatchChatCompletionItem`, `DeepSeekBatchChatCompletionOptions`,
-`DeepSeekBatchChatCompletionResult`, `DeepSeekBatchChatCompletionSummary`,
-`DeepSeekCacheOptimizationOptions`, `DeepSeekChatCompletionOptions`,
-`DeepSeekChatCompletionResponse`, `DeepSeekChatMessage`,
-`DeepSeekCostBreakdown`, `DeepSeekCostSnapshot`,
-`DeepSeekFimCompletionOptions`, `DeepSeekFimCompletionResponse`,
-`DeepSeekLongContextChunk`, `DeepSeekLongContextOptions`,
-`DeepSeekLongContextPlan`, `DeepSeekPricing`, and `DeepSeekProviderOptions`.
+`DeepSeekCacheOptimizationOptions` and `DeepSeekProviderOptions`.
 
 ## Errors
 

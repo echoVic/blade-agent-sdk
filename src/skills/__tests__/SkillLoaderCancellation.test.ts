@@ -23,11 +23,9 @@ describe('inline command cancellation', () => {
     const controller = new AbortController();
 
     // The command writes a marker only if it keeps running for a while.
-    const pending = processInlineCommands(
-      `!\`sleep 3 && echo yes > ${marker}\``,
-      root,
-      { signal: controller.signal },
-    );
+    const pending = processInlineCommands(`!\`sleep 3 && echo yes > ${marker}\``, root, {
+      signal: controller.signal,
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 200));
     const before = Date.now();
@@ -48,11 +46,9 @@ describe('inline command cancellation', () => {
     const controller = new AbortController();
     controller.abort(new Error('cancelled'));
 
-    const result = await processInlineCommands(
-      `!\`echo yes > ${marker}\``,
-      root,
-      { signal: controller.signal },
-    );
+    const result = await processInlineCommands(`!\`echo yes > ${marker}\``, root, {
+      signal: controller.signal,
+    });
 
     const { existsSync } = await import('node:fs');
     expect(existsSync(marker)).toBe(false);

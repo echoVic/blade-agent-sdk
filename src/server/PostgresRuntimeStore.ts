@@ -1,10 +1,5 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from 'pg';
-import type { ContextData } from '../context/types.js';
-import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelContent } from '../model/message.js';
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentCommandResult,
@@ -13,94 +8,47 @@ import {
   parseAgentCommandResult,
   parseAgentServerEvent,
 } from '../protocol/index.js';
-import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import {
   DurableEventSequenceConflictError,
   DurableEventStoreError,
-  type DurableEventOperationOptions,
 } from '../session/events/DurableEventStore.js';
-import type {
-  DurableExecutionLease,
-  DurableExecutionLeaseAcquireOptions,
-} from '../session/events/DurableExecutionLeaseStore.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from '../session/events/schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
-  DurableEventType,
   type DurableEventAppendOptions,
   type DurableEventAppendResult,
   type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventPage,
   type DurableEventReadOptions,
+  DurableEventType,
 } from '../session/events/types.js';
-import type {
-  PersistedToolUse,
-  SessionRepositoryCompactionMetadata,
-  SessionRepositoryHealth,
-  SessionRepositoryMessageMetadata,
-  SessionRepositoryStorageStats,
-  SessionRepositorySubagentInfo,
-  SessionRepositorySubagentRef,
-} from '../session/SessionRepository.js';
-import type { SessionSnapshot, SessionState, SessionSummary } from '../session/SessionStore.js';
-import type { PersistedPendingInput, TranscriptSession } from '../session/transcript.js';
-import type { MessageRole } from '../types/constants.js';
+import type { SessionRepositoryStorageStats } from '../session/SessionRepository.js';
+import type { SessionState, SessionStateMutation } from '../session/SessionStore.js';
 import {
-  CommandId,
-  EventId,
+  type CommandId,
+  type EventId,
   EventSequence,
   ExecutionLeaseId,
-  FencingToken,
-  type InputId,
-  MessageId,
-  type RequestId,
   SessionId,
-  ToolUseId,
-  WorkerId,
 } from '../types/identifiers.js';
-import type { JsonObject, JsonValue } from '../types/json.js';
-import { mergeHistoryProgress, type SessionHistoryProgress } from '../session/historyProgress.js';
-import { toJsonValue } from '../utils/jsonValue.js';
+import type { JsonObject } from '../types/json.js';
 import type { AgentCommandClaim, AgentServerSessionRecord } from './AgentServerStore.js';
+import { PostgresContext, postgresAdvisoryLockKey, postgresJsonObject } from './PostgresContext.js';
+import { PostgresEventStreams } from './PostgresEventStreams.js';
+import { type PostgresSessionRow, postgresSessionRecord } from './PostgresRows.js';
+import { PostgresTenantRuntimeStore } from './PostgresTenantRuntimeStore.js';
+import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
 import {
-  RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
   RUNTIME_STORE_SCHEMA_VERSION,
-  type RuntimeCommandCommit,
-  type RuntimeCommitResult,
-  type RuntimeDomainEvent,
-  type RuntimeDomainEventPage,
-  type RuntimeEffectRecord,
-  type RuntimeEffectStatus,
-  type RuntimeProjectionRecord,
   type RuntimeStore,
   RuntimeStoreError,
   type RuntimeTenantStore,
 } from './RuntimeStore.js';
-import { PostgresWorkerRuntime } from './PostgresWorkerRuntime.js';
-import type {
-  RuntimeEffectClaim,
-  RuntimeEffectClaimOptions,
-  RuntimeEffectFailureOptions,
-  RuntimeEffectLease,
-  RuntimeEffectReconciliation,
-  RuntimeQueueMetrics,
-  RuntimeRecoveryResult,
-  RuntimeSessionClaim,
-  RuntimeSessionClaimOptions,
-  RuntimeSessionRoute,
-  RuntimeSessionSettlement,
-  RuntimeSessionTransition,
-  RuntimeWorkerRecord,
-  RuntimeWorkerRegistration,
-} from './WorkerRuntime.js';
 
 const DEFAULT_MAX_EVENTS_PER_SESSION = 10_000;
 const DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION = 100_000;
-const DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION = 100_000;
-const DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION = 100_000;
 const DEFAULT_MAX_SESSIONS_PER_TENANT = 10_000;
-const SESSION_PROJECTION = 'session';
 
 export interface PostgresRuntimeStoreOptions {
   readonly connectionString?: string;
@@ -110,14 +58,7 @@ export interface PostgresRuntimeStoreOptions {
   readonly tablePrefix?: string;
   readonly maxAgentEventsPerSession?: number;
   readonly maxDurableEventsPerSession?: number;
-  readonly maxDomainEventsPerSession?: number;
-  readonly maxTranscriptEventsPerSession?: number;
   readonly maxSessionsPerTenant?: number;
-}
-
-interface StreamHeadRow extends QueryResultRow {
-  first_sequence: string | number;
-  next_sequence: string | number;
 }
 
 interface PayloadRow extends QueryResultRow {
@@ -133,310 +74,48 @@ interface CommandRow extends QueryResultRow {
   abandon_reason?: string | null;
 }
 
-interface ProjectionRow extends QueryResultRow {
-  projection_offset: string | number;
+interface StateRow extends QueryResultRow {
   state: unknown;
-  updated_at: Date | string;
-}
-
-interface EffectRow extends QueryResultRow {
-  tenant_id: string;
-  session_id: string;
-  command_id: string;
-  effect_id: string;
-  effect_type: string;
-  payload: unknown;
-  idempotency_key: string;
-  execution_mode: 'idempotent' | 'at_most_once';
-  status: RuntimeEffectStatus;
-  attempts: number;
-  available_at: Date | string;
-  created_at: Date | string;
-  worker_id: string | null;
-  lease_id: string | null;
-  fencing_token: string | number;
-  lease_expires_at: Date | string | null;
-  started_at: Date | string | null;
-  completed_at: Date | string | null;
-  result: unknown | null;
-  error: unknown | null;
-}
-
-function quoteIdentifier(value: string, label: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw new RangeError(`${label} must be a PostgreSQL identifier`);
-  }
-  return `"${value}"`;
-}
-
-function asNumber(value: string | number): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `PostgreSQL returned an unsafe integer: ${String(value)}`,
-    );
-  }
-  return parsed;
-}
-
-function asIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function asJsonObject(value: unknown): JsonObject {
-  return structuredClone(value) as JsonObject;
 }
 
 function asSessionState(value: unknown): SessionState {
   return structuredClone(value) as SessionState;
 }
 
-function parseRuntimeDomainEvent(value: unknown): RuntimeDomainEvent {
-  assertJsonObject(value, 'runtime domain event');
-  const event = asJsonObject(value);
-  if (
-    event.schemaVersion !== RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION ||
-    typeof event.eventId !== 'string' ||
-    typeof event.tenantId !== 'string' ||
-    typeof event.sessionId !== 'string' ||
-    typeof event.commandId !== 'string' ||
-    typeof event.sequence !== 'number' ||
-    !Number.isSafeInteger(event.sequence) ||
-    event.sequence < 1 ||
-    typeof event.type !== 'string' ||
-    typeof event.occurredAt !== 'string' ||
-    typeof event.recordedAt !== 'string'
-  ) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      'PostgreSQL returned an invalid runtime domain event',
-    );
-  }
-  assertJsonObject(event.data, 'runtime domain event data');
-
-  return {
-    schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
-    eventId: EventId(event.eventId),
-    tenantId: event.tenantId,
-    sessionId: SessionId(event.sessionId),
-    commandId: CommandId(event.commandId),
-    sequence: EventSequence(event.sequence),
-    type: event.type,
-    data: asJsonObject(event.data),
-    occurredAt: event.occurredAt,
-    recordedAt: event.recordedAt,
-  };
-}
-
-function advisoryLockKey(key: string): readonly [number, number] {
-  // A hash collision can only add serialization. Every mutation remains scoped
-  // by full tenant/session/stream columns and row-level predicates.
-  const digest = createHash('sha256').update(key).digest();
-  return [digest.readInt32BE(0), digest.readInt32BE(4)];
-}
-
-function isPostgresUniqueViolation(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
-}
-
-function assertStrictJsonValue(value: unknown, label: string, seen = new WeakSet<object>()): void {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return;
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        `${label} contains a non-finite number`,
-      );
-    }
-    return;
-  }
-  if (typeof value !== 'object') {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a non-JSON value`,
-    );
-  }
-  if (seen.has(value)) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a circular reference`,
-    );
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      assertStrictJsonValue(item, `${label}[${index}]`, seen);
-    });
-    seen.delete(value);
-    return;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} contains a non-plain object`,
-    );
-  }
-  for (const [key, item] of Object.entries(value)) {
-    assertStrictJsonValue(item, `${label}.${key}`, seen);
-  }
-  seen.delete(value);
-}
-
-function assertJsonObject(value: unknown, label: string): void {
-  assertStrictJsonValue(value, label);
-  let converted: JsonValue;
-  try {
-    converted = toJsonValue(value);
-  } catch (error) {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} is not JSON serializable`,
-      { cause: error },
-    );
-  }
-  if (converted === null || Array.isArray(converted) || typeof converted !== 'object') {
-    throw new RuntimeStoreError(
-      'RUNTIME_STORE_INVALID_TRANSACTION',
-      `${label} must be a JSON object`,
-    );
-  }
-}
-
-function initialSessionState(
-  sessionId: SessionId,
-  now: number,
-  subagentInfo?: SessionRepositorySubagentInfo,
-): SessionState {
-  const timestamp = new Date(now).toISOString();
-  const sessionInfo: Partial<TranscriptSession> = {
-    sessionId,
-    rootId: subagentInfo?.parentSessionId ?? sessionId,
-    parentId: subagentInfo?.parentSessionId,
-    relationType: subagentInfo ? 'subagent' : undefined,
-    status: 'running',
-    agentType: subagentInfo?.subagentType,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  return {
-    sessionId,
-    createdAt: now,
-    lastActivity: now,
-    sessionInfo,
-    timeline: [],
-    messages: [],
-    messageIds: [],
-    summaryMessageIds: [],
-    toolCalls: [],
-    subagentRefs: [],
-    pendingInputs: [],
-  };
-}
-
-function appendMessage(
-  state: SessionState,
-  messageId: MessageId,
-  message: ConversationMessage,
-  createdAt: number,
-  parentMessageId?: MessageId,
-): void {
-  state.timeline.push({
-    id: messageId,
-    parentMessageId,
-    createdAt,
-    message: cloneMessage(message),
-  });
-  state.messages.push(cloneMessage(message));
-  state.messageIds.push(messageId);
-  state.lastActivity = createdAt;
-}
-
-function messageEnvelope(
-  metadata?: SessionRepositoryMessageMetadata,
-): Pick<
-  ConversationMessage,
-  'providerOptions' | 'provenance' | 'correlation' | 'telemetry' | 'extensions'
-> {
-  if (!metadata) {
-    return {};
-  }
-  const model = metadata.modelIdentity?.model ?? metadata.model;
-  return {
-    providerOptions: metadata.providerOptions,
-    provenance: metadata.provenance,
-    correlation: metadata.correlation,
-    telemetry:
-      model || metadata.usage
-        ? {
-            model,
-            usage: metadata.usage
-              ? {
-                  inputTokens: metadata.usage.input_tokens,
-                  outputTokens: metadata.usage.output_tokens,
-                }
-              : undefined,
-          }
-        : undefined,
-    extensions: metadata.extensions,
-  };
-}
-
-export class PostgresRuntimeStore implements RuntimeStore {
-  private readonly pool: Pool;
+export class PostgresRuntimeStore extends PostgresWorkerRuntime implements RuntimeStore {
   private readonly ownsPool: boolean;
-  private readonly schema: string;
-  private readonly prefix: string;
   private readonly maxAgentEventsPerSession: number;
   private readonly maxDurableEventsPerSession: number;
-  private readonly maxDomainEventsPerSession: number;
-  private readonly maxTranscriptEventsPerSession: number;
   private readonly maxSessionsPerTenant: number;
-  private readonly transactionContext = new AsyncLocalStorage<PoolClient>();
-  private readonly workerRuntime: PostgresWorkerRuntime;
+  private readonly streams: PostgresEventStreams;
   private initialization?: Promise<void>;
 
   constructor(options: PostgresRuntimeStoreOptions = {}) {
     if (!options.pool && !options.connectionString && !options.poolConfig) {
       throw new TypeError('PostgresRuntimeStore requires pool, connectionString, or poolConfig');
     }
-    this.pool =
+    const pool =
       options.pool ??
       new Pool({
         ...options.poolConfig,
         connectionString: options.connectionString ?? options.poolConfig?.connectionString,
       });
-    this.ownsPool = !options.pool;
-    this.schema = quoteIdentifier(options.schema ?? 'public', 'schema');
-    this.prefix = quoteIdentifier(options.tablePrefix ?? 'blade_runtime', 'tablePrefix').slice(
-      1,
-      -1,
+    const db = new PostgresContext(
+      pool,
+      options.schema ?? 'public',
+      options.tablePrefix ?? 'blade_runtime',
     );
+    super(db);
+    this.streams = new PostgresEventStreams(db, () => this.initialize());
+    this.ownsPool = !options.pool;
     this.maxAgentEventsPerSession =
       options.maxAgentEventsPerSession ?? DEFAULT_MAX_EVENTS_PER_SESSION;
     this.maxDurableEventsPerSession =
       options.maxDurableEventsPerSession ?? DEFAULT_MAX_DURABLE_EVENTS_PER_SESSION;
-    this.maxDomainEventsPerSession =
-      options.maxDomainEventsPerSession ?? DEFAULT_MAX_DOMAIN_EVENTS_PER_SESSION;
-    this.maxTranscriptEventsPerSession =
-      options.maxTranscriptEventsPerSession ?? DEFAULT_MAX_TRANSCRIPT_EVENTS_PER_SESSION;
-    this.maxSessionsPerTenant =
-      options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
-    this.workerRuntime = new PostgresWorkerRuntime(
-      this.pool,
-      this.schema,
-      this.prefix,
-      () => this.initialize(),
-      this.transactionContext,
-    );
+    this.maxSessionsPerTenant = options.maxSessionsPerTenant ?? DEFAULT_MAX_SESSIONS_PER_TENANT;
     for (const [name, value] of [
       ['maxAgentEventsPerSession', this.maxAgentEventsPerSession],
       ['maxDurableEventsPerSession', this.maxDurableEventsPerSession],
-      ['maxDomainEventsPerSession', this.maxDomainEventsPerSession],
-      ['maxTranscriptEventsPerSession', this.maxTranscriptEventsPerSession],
       ['maxSessionsPerTenant', this.maxSessionsPerTenant],
     ] as const) {
       if (!Number.isSafeInteger(value) || value < 1) {
@@ -471,7 +150,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }> {
     try {
       await this.initialize();
-      await this.queryClient().query('SELECT 1');
+      await this.db.client().query('SELECT 1');
       return {
         ready: true,
         details: {
@@ -506,11 +185,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('Command claim parameters are invalid');
     }
     await this.initialize();
-    return this.transaction(async (client) => {
-      await this.lock(client, `command:${tenantId}:${commandId}`);
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `command:${tenantId}:${commandId}`);
       const existing = await client.query<CommandRow>(
         `SELECT command_fingerprint, lease_id, status, expires_at, result, abandon_reason
-           FROM ${this.table('commands')}
+           FROM ${this.db.table('commands')}
           WHERE tenant_id = $1 AND command_id = $2
           FOR UPDATE`,
         [tenantId, commandId],
@@ -528,9 +207,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
       if (row?.status === 'abandoned') {
         return {
           status: 'abandoned',
-          reason: typeof row.abandon_reason === 'string'
-            ? row.abandon_reason
-            : 'This command was abandoned after sealing',
+          reason:
+            typeof row.abandon_reason === 'string'
+              ? row.abandon_reason
+              : 'This command was abandoned after sealing',
         };
       }
       const now = Date.now();
@@ -544,7 +224,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       const leaseId = ExecutionLeaseId(nanoid());
       const expiresAt = new Date(now + ttlMs);
       await client.query(
-        `INSERT INTO ${this.table('commands')} (
+        `INSERT INTO ${this.db.table('commands')} (
            tenant_id, command_id, command_fingerprint, lease_id,
            status, expires_at, created_at, updated_at
          ) VALUES ($1, $2, $3, $4, 'claimed', $5, NOW(), NOW())
@@ -567,8 +247,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const result = await this.db.client().query<PostgresSessionRow>(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'sealed', expires_at = 'infinity', updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
           AND status = 'claimed' AND result IS NULL`,
@@ -586,8 +266,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     result: AgentCommandResult,
   ): Promise<void> {
     await this.initialize();
-    const updated = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const updated = await this.db.client().query(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'completed', expires_at = 'infinity',
               result = $4::jsonb, updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
@@ -605,8 +285,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
     await this.initialize();
-    await this.queryClient().query(
-      `DELETE FROM ${this.table('commands')}
+    await this.db.client().query(
+      `DELETE FROM ${this.db.table('commands')}
         WHERE tenant_id = $1 AND command_id = $2 AND lease_id = $3
           AND status = 'claimed'`,
       [tenantId, commandId, leaseId],
@@ -623,8 +303,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
       throw new RangeError('An abandoned command requires a reason');
     }
     await this.initialize();
-    const result = await this.queryClient().query(
-      `UPDATE ${this.table('commands')}
+    const result = await this.db.client().query(
+      `UPDATE ${this.db.table('commands')}
           SET status = 'abandoned', abandon_reason = $3, updated_at = NOW()
         WHERE tenant_id = $1 AND command_id = $2
           AND status = 'sealed' AND result IS NULL`,
@@ -635,8 +315,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
     await this.initialize();
-    await this.queryClient().query(
-      `INSERT INTO ${this.table('sessions')} (
+    await this.db.client().query(
+      `INSERT INTO ${this.db.table('sessions')} (
          tenant_id, session_id, created_by, status,
          created_at, updated_at, metadata
        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
@@ -661,37 +341,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<AgentServerSessionRecord | null> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
-         FROM ${this.table('sessions')}
+         FROM ${this.db.table('sessions')}
         WHERE tenant_id = $1 AND session_id = $2`,
       [tenantId, sessionId],
     );
-    const row = result.rows[0] as
-      | {
-          tenant_id: string;
-          session_id: string;
-          created_by: string;
-          status: 'active' | 'closed';
-          created_at: Date | string;
-          updated_at: Date | string;
-          metadata: JsonObject;
-        }
-      | undefined;
-    return row
-      ? {
-          tenantId: row.tenant_id,
-          createdBy: row.created_by,
-          sessionId: SessionId(row.session_id),
-          status: row.status,
-          createdAt: asIso(row.created_at),
-          updatedAt: asIso(row.updated_at),
-          ...(Object.keys(row.metadata ?? {}).length > 0
-            ? { metadata: asJsonObject(row.metadata) }
-            : {}),
-        }
-      : null;
+    return result.rows[0] ? postgresSessionRecord(result.rows[0]) : null;
   }
 
   async listSessions(
@@ -710,37 +367,18 @@ export class PostgresRuntimeStore implements RuntimeStore {
     ) {
       throw new RangeError('Session list pagination is invalid');
     }
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query<PostgresSessionRow>(
       `SELECT tenant_id, session_id, created_by, status,
               created_at, updated_at, metadata
-         FROM ${this.table('sessions')}
+         FROM ${this.db.table('sessions')}
         WHERE tenant_id = $1
         ORDER BY updated_at DESC, session_id ASC
         OFFSET $2 LIMIT $3`,
       [tenantId, offset, limit + 1],
     );
     const hasMore = result.rows.length > limit;
-    const rows = result.rows.slice(0, limit) as Array<{
-      tenant_id: string;
-      session_id: string;
-      created_by: string;
-      status: 'active' | 'closed';
-      created_at: Date | string;
-      updated_at: Date | string;
-      metadata: JsonObject;
-    }>;
     return {
-      sessions: rows.map((row) => ({
-        tenantId: row.tenant_id,
-        createdBy: row.created_by,
-        sessionId: SessionId(row.session_id),
-        status: row.status,
-        createdAt: asIso(row.created_at),
-        updatedAt: asIso(row.updated_at),
-        ...(Object.keys(row.metadata ?? {}).length > 0
-          ? { metadata: asJsonObject(row.metadata) }
-          : {}),
-      })),
+      sessions: result.rows.slice(0, limit).map(postgresSessionRecord),
       ...(hasMore ? { nextCursor: String(offset + limit) } : {}),
     };
   }
@@ -756,11 +394,11 @@ export class PostgresRuntimeStore implements RuntimeStore {
     }
     await this.initialize();
     const idempotencyKey = options.idempotencyKey;
-    return this.transaction(async (client) => {
+    return this.db.transaction(async (client) => {
       if (idempotencyKey !== undefined) {
         // Serialised against other appends to this stream, so the check cannot
         // race a concurrent publisher of the same key.
-        await this.lock(client, `stream:${tenantId}:${sessionId}:agent`);
+        await this.db.lock(client, `stream:${tenantId}:${sessionId}:agent`);
         const existing = await this.readIdempotencyRecord(
           client,
           tenantId,
@@ -771,7 +409,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           return parseAgentServerEvent(existing);
         }
       }
-      const [stored] = await this.appendStream(
+      const [stored] = await this.streams.append(
         client,
         tenantId,
         sessionId,
@@ -795,15 +433,6 @@ export class PostgresRuntimeStore implements RuntimeStore {
     });
   }
 
-  /**
-   * The payload an idempotency key already stored, read from the record rather
-   * than the event log so event retention cannot forget it.
-   *
-   * Stores written before the key table existed (7.4.4 and earlier) kept the key
-   * as the event's own id, so a missing record falls back to that shape and
-   * backfills it. Without this an upgrade would not recognise a terminal result
-   * published by the previous version and would publish it again.
-   */
   private async readIdempotencyRecord(
     client: PoolClient,
     tenantId: string,
@@ -812,48 +441,15 @@ export class PostgresRuntimeStore implements RuntimeStore {
   ): Promise<JsonObject | null> {
     const result = await client.query<PayloadRow>(
       `SELECT payload
-         FROM ${this.table('event_keys')}
+         FROM ${this.db.table('event_keys')}
         WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3`,
       [tenantId, sessionId, idempotencyKey],
     );
     const row = result.rows[0];
     if (row) {
-      return asJsonObject(row.payload);
+      return postgresJsonObject(row.payload);
     }
-
-    const legacy = await client.query<PayloadRow>(
-      `SELECT payload
-         FROM ${this.table('events')}
-        WHERE tenant_id = $1 AND session_id = $2
-          AND stream_name = 'agent' AND event_id = $3`,
-      [tenantId, sessionId, idempotencyKey],
-    );
-    const legacyRow = legacy.rows[0];
-    if (!legacyRow) {
-      return null;
-    }
-    const payload = asJsonObject(legacyRow.payload);
-    await this.backfillIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, payload);
-    return payload;
-  }
-
-  /** Record a key that only exists in the pre-7.4.5 event-id shape. */
-  private async backfillIdempotencyRecord(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    idempotencyKey: string,
-    payload: JsonObject,
-  ): Promise<void> {
-    const sequence = Number(payload.sequence);
-    const eventId = payload.eventId;
-    if (!Number.isSafeInteger(sequence) || typeof eventId !== 'string') {
-      return;
-    }
-    await this.writeIdempotencyRecord(client, tenantId, sessionId, idempotencyKey, {
-      eventId: EventId(eventId),
-      sequence: EventSequence(sequence),
-    }, payload);
+    return null;
   }
 
   private async writeIdempotencyRecord(
@@ -865,7 +461,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     payload: unknown = event,
   ): Promise<void> {
     await client.query(
-      `INSERT INTO ${this.table('event_keys')} (
+      `INSERT INTO ${this.db.table('event_keys')} (
          tenant_id, session_id, idempotency_key, sequence, event_id, payload
        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
        ON CONFLICT (tenant_id, session_id, idempotency_key) DO NOTHING`,
@@ -885,22 +481,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
   ): Promise<{ firstSequence: number; headSequence: number } | null> {
     await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
-      `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
-      [tenantId, sessionId],
-    );
-    const row = result.rows[0];
-    if (!row) {
-      return null;
-    }
-    const nextSequence = asNumber(row.next_sequence);
-    const firstSequence = asNumber(row.first_sequence);
-    if (nextSequence <= firstSequence) {
-      return null;
-    }
-    return { firstSequence, headSequence: nextSequence - 1 };
+    return this.streams.range(tenantId, sessionId, 'agent');
   }
 
   async getEventByIdempotencyKey(
@@ -909,13 +490,8 @@ export class PostgresRuntimeStore implements RuntimeStore {
     idempotencyKey: string,
   ): Promise<AgentServerEvent | null> {
     await this.initialize();
-    return this.transaction(async (client) => {
-      const payload = await this.readIdempotencyRecord(
-        client,
-        tenantId,
-        sessionId,
-        idempotencyKey,
-      );
+    return this.db.transaction(async (client) => {
+      const payload = await this.readIdempotencyRecord(client, tenantId, sessionId, idempotencyKey);
       return payload ? parseAgentServerEvent(payload) : null;
     });
   }
@@ -925,7 +501,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
     sessionId: SessionId,
     options: { after?: number; limit?: number } = {},
   ): Promise<AgentEventPage> {
-    const page = await this.readStream(tenantId, sessionId, 'agent', options.after, options.limit);
+    const page = await this.streams.read(
+      tenantId,
+      sessionId,
+      'agent',
+      options.after,
+      options.limit,
+    );
     const events = page.payloads.map((payload) => parseAgentServerEvent(payload));
     const last = events.at(-1);
     return {
@@ -943,423 +525,13 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }
 
   async getLatestEventSequence(tenantId: string, sessionId: SessionId): Promise<number | null> {
-    await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
-      `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'agent'`,
-      [tenantId, sessionId],
-    );
-    const row = result.rows[0];
-    return row ? asNumber(row.next_sequence) - 1 : null;
-  }
-
-  async commitRuntimeTransaction(commit: RuntimeCommandCommit): Promise<RuntimeCommitResult> {
-    await this.initialize();
-    this.validateRuntimeCommit(commit);
-    if (commit.projection && commit.events?.length && commit.projection.offset < 1) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'Projection offset must reference a committed event',
-      );
-    }
-    try {
-      return await this.transaction(async (client) => {
-        await this.lock(client, `command:${commit.tenantId}:${commit.command.commandId}`);
-        const commandResult = await client.query<CommandRow>(
-          `SELECT command_fingerprint, lease_id, status, expires_at, result
-             FROM ${this.table('commands')}
-            WHERE tenant_id = $1 AND command_id = $2
-            FOR UPDATE`,
-          [commit.tenantId, commit.command.commandId],
-        );
-        const existing = commandResult.rows[0];
-        if (existing && existing.command_fingerprint !== commit.command.fingerprint) {
-          throw new RuntimeStoreError(
-            'RUNTIME_STORE_COMMAND_CONFLICT',
-            `Command ${commit.command.commandId} has a different fingerprint`,
-          );
-        }
-        if (existing?.result !== null && existing?.result !== undefined) {
-          return this.loadCommittedRuntimeResult(client, commit);
-        }
-        if (commit.command.leaseId) {
-          if (!existing || existing.lease_id !== commit.command.leaseId) {
-            throw new RuntimeStoreError(
-              'RUNTIME_STORE_LEASE_LOST',
-              `Command lease ${commit.command.commandId}/${commit.command.leaseId} is not active`,
-            );
-          }
-        } else if (existing) {
-          throw new RuntimeStoreError(
-            'RUNTIME_STORE_LEASE_LOST',
-            `Command ${commit.command.commandId} already has an active receipt`,
-          );
-        } else {
-          await client.query(
-            `INSERT INTO ${this.table('commands')} (
-               tenant_id, command_id, command_fingerprint, lease_id,
-               status, expires_at, created_at, updated_at
-             ) VALUES ($1, $2, $3, $4, 'sealed', 'infinity', NOW(), NOW())`,
-            [
-              commit.tenantId,
-              commit.command.commandId,
-              commit.command.fingerprint,
-              `atomic:${commit.command.commandId}`,
-            ],
-          );
-        }
-
-        const storedEvents = await this.appendDomainEvents(client, commit);
-        const effects = await this.insertEffects(client, commit);
-        const projection = commit.projection
-          ? await this.writeProjection(client, commit)
-          : undefined;
-
-        const completed = await client.query(
-          `UPDATE ${this.table('commands')}
-              SET status = 'completed', expires_at = 'infinity',
-                  result = $4::jsonb, updated_at = NOW()
-            WHERE tenant_id = $1 AND command_id = $2
-              AND command_fingerprint = $3`,
-          [
-            commit.tenantId,
-            commit.command.commandId,
-            commit.command.fingerprint,
-            JSON.stringify(commit.command.result),
-          ],
-        );
-        if (completed.rowCount !== 1) {
-          throw new RuntimeStoreError(
-            'RUNTIME_STORE_LEASE_LOST',
-            `Command ${commit.command.commandId} could not be completed`,
-          );
-        }
-        return {
-          status: 'committed',
-          events: storedEvents,
-          effects,
-          ...(projection ? { projection } : {}),
-        };
-      });
-    } catch (error) {
-      if (isPostgresUniqueViolation(error)) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_COMMAND_CONFLICT',
-          `Runtime transaction ${commit.command.commandId} reuses an event or effect identity`,
-          { cause: error },
-        );
-      }
-      throw error;
-    }
-  }
-
-  async readDomainEvents(
-    tenantId: string,
-    sessionId: SessionId,
-    options: { readonly after?: number; readonly limit?: number } = {},
-  ): Promise<RuntimeDomainEventPage> {
-    const page = await this.readStream(tenantId, sessionId, 'domain', options.after, options.limit);
-    return {
-      events: page.payloads.map(parseRuntimeDomainEvent),
-      headSequence: page.headSequence === null ? null : EventSequence(page.headSequence),
-      hasMore: page.hasMore,
-    };
-  }
-
-  async listEffects(
-    tenantId: string,
-    options: {
-      readonly sessionId?: SessionId;
-      readonly status?: RuntimeEffectStatus;
-      readonly limit?: number;
-    } = {},
-  ): Promise<readonly RuntimeEffectRecord[]> {
-    await this.initialize();
-    const limit = options.limit ?? 100;
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
-      throw new RangeError('Effect list limit must be between 1 and 1000');
-    }
-    const values: unknown[] = [tenantId];
-    const predicates = ['tenant_id = $1'];
-    if (options.sessionId) {
-      values.push(options.sessionId);
-      predicates.push(`session_id = $${values.length}`);
-    }
-    if (options.status) {
-      values.push(options.status);
-      predicates.push(`status = $${values.length}`);
-    }
-    values.push(limit);
-    const result = await this.queryClient().query<EffectRow>(
-      `SELECT *
-         FROM ${this.table('outbox')}
-        WHERE ${predicates.join(' AND ')}
-        ORDER BY created_at ASC, effect_id ASC
-        LIMIT $${values.length}`,
-      values,
-    );
-    return result.rows.map((row) => this.effectRecord(row));
-  }
-
-  async getProjection(
-    tenantId: string,
-    sessionId: SessionId,
-    name: string,
-  ): Promise<RuntimeProjectionRecord | null> {
-    await this.initialize();
-    const result = await this.queryClient().query<ProjectionRow>(
-      `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3`,
-      [tenantId, sessionId, name],
-    );
-    const row = result.rows[0];
-    return row
-      ? {
-          tenantId,
-          sessionId,
-          name,
-          offset: asNumber(row.projection_offset),
-          state: asJsonObject(row.state),
-          updatedAt: asIso(row.updated_at),
-        }
-      : null;
+    return (await this.streams.range(tenantId, sessionId, 'agent'))?.headSequence ?? null;
   }
 
   async close(): Promise<void> {
     if (this.ownsPool) {
-      await this.pool.end();
+      await this.db.pool.end();
     }
-  }
-
-  registerWorker(
-    registration: RuntimeWorkerRegistration,
-  ): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.registerWorker(registration);
-  }
-
-  heartbeatWorker(
-    workerId: WorkerId,
-    ttlMs: number,
-  ): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.heartbeatWorker(workerId, ttlMs);
-  }
-
-  drainWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord> {
-    return this.workerRuntime.drainWorker(workerId);
-  }
-
-  getWorker(workerId: WorkerId): Promise<RuntimeWorkerRecord | null> {
-    return this.workerRuntime.getWorker(workerId);
-  }
-
-  enqueueSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: {
-      readonly priority?: number;
-      readonly metadata?: JsonObject;
-    },
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.enqueueSession(tenantId, sessionId, options);
-  }
-
-  claimSession(
-    options: RuntimeSessionClaimOptions,
-  ): Promise<RuntimeSessionClaim | null> {
-    return this.workerRuntime.claimSession(options);
-  }
-
-  renewSessionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    ttlMs: number,
-  ): Promise<RuntimeSessionClaim> {
-    return this.workerRuntime.renewSessionLease(tenantId, lease, ttlMs);
-  }
-
-  transitionSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    transition: RuntimeSessionTransition,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.transitionSession(
-      tenantId,
-      lease,
-      transition,
-    );
-  }
-
-  settleSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    settlement: RuntimeSessionSettlement,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.settleSession(
-      tenantId,
-      lease,
-      settlement,
-    );
-  }
-
-  handoffSession(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    metadata?: JsonObject,
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.handoffSession(tenantId, lease, metadata);
-  }
-
-  preemptSession(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: {
-      readonly reason?: JsonObject;
-      readonly requeue?: boolean;
-    },
-  ): Promise<RuntimeSessionRoute> {
-    return this.workerRuntime.preemptSession(tenantId, sessionId, options);
-  }
-
-  getSessionRoute(
-    tenantId: string,
-    sessionId: SessionId,
-  ): Promise<RuntimeSessionRoute | null> {
-    return this.workerRuntime.getSessionRoute(tenantId, sessionId);
-  }
-
-  listWorkerSessions(
-    workerId: WorkerId,
-  ): Promise<readonly RuntimeSessionRoute[]> {
-    return this.workerRuntime.listWorkerSessions(workerId);
-  }
-
-  getQueueMetrics(tenantId?: string): Promise<RuntimeQueueMetrics> {
-    return this.workerRuntime.getQueueMetrics(tenantId);
-  }
-
-  recoverExpiredWork(): Promise<RuntimeRecoveryResult> {
-    return this.workerRuntime.recoverExpiredWork();
-  }
-
-  claimEffects(
-    options: RuntimeEffectClaimOptions,
-  ): Promise<readonly RuntimeEffectClaim[]> {
-    return this.workerRuntime.claimEffects(options);
-  }
-
-  renewEffectLease(
-    lease: RuntimeEffectLease,
-    ttlMs: number,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.renewEffectLease(lease, ttlMs);
-  }
-
-  startEffect(lease: RuntimeEffectLease): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.startEffect(lease);
-  }
-
-  completeEffect(
-    lease: RuntimeEffectLease,
-    result?: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.completeEffect(lease, result);
-  }
-
-  failEffect(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-    options?: RuntimeEffectFailureOptions,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.failEffect(lease, error, options);
-  }
-
-  markEffectUncertain(
-    lease: RuntimeEffectLease,
-    error: JsonObject,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.markEffectUncertain(lease, error);
-  }
-
-  reconcileEffect(
-    tenantId: string,
-    effectId: string,
-    outcome: RuntimeEffectReconciliation,
-  ): Promise<RuntimeEffectRecord> {
-    return this.workerRuntime.reconcileEffect(tenantId, effectId, outcome);
-  }
-
-  requiresExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options?: DurableEventOperationOptions,
-  ): Promise<boolean> {
-    return this.workerRuntime.requiresExecutionLease(
-      tenantId,
-      sessionId,
-      options,
-    );
-  }
-
-  acquireExecutionLease(
-    tenantId: string,
-    sessionId: SessionId,
-    options: DurableExecutionLeaseAcquireOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.acquireExecutionLease(
-      tenantId,
-      sessionId,
-      options,
-    );
-  }
-
-  renewExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    ttlMs: number,
-    options?: DurableEventOperationOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.workerRuntime.renewExecutionLease(
-      tenantId,
-      lease,
-      ttlMs,
-      options,
-    );
-  }
-
-  assertExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.workerRuntime.assertExecutionLease(tenantId, lease, options);
-  }
-
-  withExecutionLease<T>(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    operation: () => Promise<T>,
-    options?: DurableEventOperationOptions,
-  ): Promise<T> {
-    return this.workerRuntime.withExecutionLease(
-      tenantId,
-      lease,
-      operation,
-      options,
-    );
-  }
-
-  releaseExecutionLease(
-    tenantId: string,
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.workerRuntime.releaseExecutionLease(
-      tenantId,
-      lease,
-      options,
-    );
   }
 
   async appendDurableEvents(
@@ -1387,19 +559,14 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
     });
     options.signal?.throwIfAborted();
-    const appended = await this.transaction(async (client) => {
-      await this.workerRuntime.assertExecutionFenceWithClient(
+    const appended = await this.db.transaction(async (client) => {
+      await this.assertExecutionFenceWithClient(
         client,
         tenantId,
         sessionId,
         options.executionFence,
       );
-      const previousSequence = await this.currentHead(
-        client,
-        tenantId,
-        sessionId,
-        'durable',
-      );
+      const previousSequence = await this.streams.head(client, tenantId, sessionId, 'durable');
       if (
         options.expectedLastSequence !== undefined &&
         options.expectedLastSequence !== previousSequence
@@ -1409,7 +576,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
           previousSequence === null ? null : EventSequence(previousSequence),
         );
       }
-      const events = await this.appendStream(
+      const events = await this.streams.append(
         client,
         tenantId,
         sessionId,
@@ -1470,7 +637,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
       return;
     }
     try {
-      await this.saveHistoryProgress(tenantId, sessionId, {
+      await this.forTenant(tenantId).saveHistoryProgress?.(sessionId, {
         state: 'complete',
         requestId,
         coveredRequestId: requestId,
@@ -1489,7 +656,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
     options: DurableEventReadOptions = {},
   ): Promise<DurableEventPage> {
     options.signal?.throwIfAborted();
-    const page = await this.readStream(
+    const page = await this.streams.read(
       tenantId,
       sessionId,
       'durable',
@@ -1507,149 +674,51 @@ export class PostgresRuntimeStore implements RuntimeStore {
   }
 
   async getDurableHead(tenantId: string, sessionId: SessionId): Promise<EventSequence | null> {
-    await this.initialize();
-    const result = await this.queryClient().query<StreamHeadRow>(
-      `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'durable'`,
-      [tenantId, sessionId],
-    );
-    const row = result.rows[0];
-    return row ? EventSequence(asNumber(row.next_sequence) - 1) : null;
-  }
-
-  /**
-   * Record how far the message projection is complete, in the projection itself.
-   *
-   * The record is written in the same transaction as the messages it describes, so
-   * the cursor never has to infer progress from the event log. An open gap survives
-   * later successful writes unless the caller is the repair path.
-   */
-  async saveHistoryProgress(
-    tenantId: string,
-    sessionId: SessionId,
-    progress: SessionHistoryProgress,
-    options: { readonly clearGap?: boolean } = {},
-  ): Promise<void> {
-    await this.mutateSessionState(
-      tenantId,
-      sessionId,
-      'transcript.history_progress',
-      { state: progress.state, ...(progress.detail ? { detail: progress.detail } : {}) },
-      (state, now) => {
-        const next = { ...progress, updatedAt: progress.updatedAt || now };
-        const current = state.historyProgress;
-        state.historyProgress = options.clearGap
-          ? // The repair closed the gap, so the failed state no longer blocks the
-            // merge - but the boundary still cannot regress.
-            mergeHistoryProgress(
-              current ? { ...current, state: 'complete' } : undefined,
-              next,
-            )
-          : mergeHistoryProgress(current, next);
-      },
-    );
+    const head = (await this.streams.range(tenantId, sessionId, 'durable'))?.headSequence;
+    return head === undefined ? null : EventSequence(head);
   }
 
   async loadSessionState(tenantId: string, sessionId: SessionId): Promise<SessionState | null> {
-    const projection = await this.getProjection(tenantId, sessionId, SESSION_PROJECTION);
-    return projection ? asSessionState(projection.state) : null;
+    await this.initialize();
+    const result = await this.db.client().query<StateRow>(
+      `SELECT state FROM ${this.db.table('session_states')}
+        WHERE tenant_id = $1 AND session_id = $2`,
+      [tenantId, sessionId],
+    );
+    return result.rows[0] ? asSessionState(result.rows[0].state) : null;
   }
 
   async mutateSessionState<T>(
     tenantId: string,
     sessionId: SessionId,
-    eventType: string,
-    eventData: JsonObject,
-    mutate: (state: SessionState, now: number) => T,
-    subagentInfo?: SessionRepositorySubagentInfo,
+    create: () => SessionState,
+    mutate: SessionStateMutation<T>,
   ): Promise<T> {
-    return this.mutateSessionStateBatch(
-      tenantId,
-      sessionId,
-      [{ type: eventType, data: eventData }],
-      mutate,
-      subagentInfo,
-    );
-  }
-
-  async mutateSessionStateBatch<T>(
-    tenantId: string,
-    sessionId: SessionId,
-    events: readonly {
-      readonly type: string;
-      readonly data: JsonObject;
-    }[],
-    mutate: (state: SessionState, now: number) => T,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<T> {
-    if (events.length === 0) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'A Session projection mutation requires at least one event',
-      );
-    }
     await this.initialize();
-    return this.transaction(async (client) => {
-      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
-      const projectionResult = await client.query<ProjectionRow>(
-        `SELECT projection_offset, state, updated_at
-           FROM ${this.table('projections')}
-          WHERE tenant_id = $1 AND session_id = $2
-            AND projection_name = $3
-          FOR UPDATE`,
-        [tenantId, sessionId, SESSION_PROJECTION],
+    return this.db.transaction(async (client) => {
+      await this.db.lock(client, `session-state:${tenantId}:${sessionId}`);
+      const stored = await client.query<StateRow>(
+        `SELECT state FROM ${this.db.table('session_states')}
+          WHERE tenant_id = $1 AND session_id = $2 FOR UPDATE`,
+        [tenantId, sessionId],
       );
       const now = Date.now();
-      const state = projectionResult.rows[0]
-        ? asSessionState(projectionResult.rows[0].state)
-        : initialSessionState(sessionId, now, subagentInfo);
+      const state = stored.rows[0] ? asSessionState(stored.rows[0].state) : create();
+      const historyProgress = state.historyProgress;
       const result = mutate(state, now);
-      if (events.some((event) => event.type !== 'transcript.history_progress')) {
-        // Messages and their progress commit together: a reader never sees a
-        // message whose write is not reflected in the recorded progress.
-        state.historyProgress = mergeHistoryProgress(state.historyProgress, {
-          state: state.historyProgress?.state === 'failed' ? 'failed' : 'in_progress',
+      if (state.historyProgress === historyProgress) {
+        state.historyProgress = {
+          ...historyProgress,
+          state: historyProgress?.state === 'failed' ? 'failed' : 'in_progress',
           updatedAt: now,
-        });
-      }
-      const stored = await this.appendStream(
-        client,
-        tenantId,
-        sessionId,
-        'transcript',
-        undefined,
-        events.map((event) => ({ sequence, eventId, recordedAt }) => ({
-          schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
-          eventId,
-          sequence,
-          tenantId,
-          sessionId,
-          commandId: CommandId(`transcript:${eventId}`),
-          type: event.type,
-          data: event.data,
-          occurredAt: recordedAt,
-          recordedAt,
-        })),
-        undefined,
-        this.maxTranscriptEventsPerSession,
-      );
-      const offset = stored.at(-1)?.sequence;
-      if (offset === undefined) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          'A Session projection mutation produced no events',
-        );
+        };
       }
       await client.query(
-        `INSERT INTO ${this.table('projections')} (
-           tenant_id, session_id, projection_name, projection_offset, state, updated_at
-         ) VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-         ON CONFLICT (tenant_id, session_id, projection_name) DO UPDATE SET
-           projection_offset = EXCLUDED.projection_offset,
-           state = EXCLUDED.state,
-           updated_at = NOW()`,
-        [tenantId, sessionId, SESSION_PROJECTION, offset, JSON.stringify(state)],
+        `INSERT INTO ${this.db.table('session_states')} (tenant_id, session_id, state, updated_at)
+         VALUES ($1, $2, $3::jsonb, NOW())
+         ON CONFLICT (tenant_id, session_id) DO UPDATE
+         SET state = EXCLUDED.state, updated_at = NOW()`,
+        [tenantId, sessionId, JSON.stringify(state)],
       );
       return result;
     });
@@ -1657,63 +726,44 @@ export class PostgresRuntimeStore implements RuntimeStore {
 
   async deleteSessionProjection(tenantId: string, sessionId: SessionId): Promise<void> {
     await this.initialize();
-    await this.transaction(async (client) => {
-      await this.lock(client, `projection:${tenantId}:${sessionId}:${SESSION_PROJECTION}`);
-      await this.lock(client, `stream:${tenantId}:${sessionId}:transcript`);
-      await client.query(
-        `DELETE FROM ${this.table('events')}
-          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
+    await this.db
+      .client()
+      .query(
+        `DELETE FROM ${this.db.table('session_states')} WHERE tenant_id = $1 AND session_id = $2`,
         [tenantId, sessionId],
       );
-      await client.query(
-        `DELETE FROM ${this.table('stream_heads')}
-          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = 'transcript'`,
-        [tenantId, sessionId],
-      );
-      await client.query(
-        `DELETE FROM ${this.table('projections')}
-          WHERE tenant_id = $1 AND session_id = $2
-            AND projection_name = $3`,
-        [tenantId, sessionId, SESSION_PROJECTION],
-      );
-    });
   }
 
   async listSessionProjectionIds(tenantId: string): Promise<SessionId[]> {
     await this.initialize();
-    const result = await this.queryClient().query(
-      `SELECT session_id
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND projection_name = $2
-        ORDER BY session_id ASC`,
-      [tenantId, SESSION_PROJECTION],
+    const result = await this.db.client().query(
+      `SELECT session_id FROM ${this.db.table('session_states')}
+        WHERE tenant_id = $1 ORDER BY session_id ASC`,
+      [tenantId],
     );
     return result.rows.map((row) => SessionId(String(row.session_id)));
   }
 
   async cleanupSessionProjections(tenantId: string): Promise<void> {
     await this.initialize();
-    const result = await this.queryClient().query(
-      `SELECT session_id
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND projection_name = $2
-        ORDER BY (state->>'lastActivity')::bigint DESC, session_id ASC
-        OFFSET $3`,
-      [tenantId, SESSION_PROJECTION, this.maxSessionsPerTenant],
+    await this.db.client().query(
+      `DELETE FROM ${this.db.table('session_states')}
+        WHERE tenant_id = $1 AND session_id IN (
+          SELECT session_id FROM ${this.db.table('session_states')}
+          WHERE tenant_id = $1
+          ORDER BY (state->>'lastActivity')::bigint DESC, session_id ASC OFFSET $2
+        )`,
+      [tenantId, this.maxSessionsPerTenant],
     );
-    for (const row of result.rows) {
-      await this.deleteSessionProjection(tenantId, SessionId(String(row.session_id)));
-    }
   }
 
   async sessionStorageStats(tenantId: string): Promise<SessionRepositoryStorageStats> {
     await this.initialize();
-    const result = await this.queryClient().query(
+    const result = await this.db.client().query(
       `SELECT COUNT(*)::int AS total_sessions,
               COALESCE(SUM(octet_length(state::text)), 0)::bigint AS total_size
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND projection_name = $2`,
-      [tenantId, SESSION_PROJECTION],
+         FROM ${this.db.table('session_states')} WHERE tenant_id = $1`,
+      [tenantId],
     );
     return {
       totalSessions: Number(result.rows[0]?.total_sessions ?? 0),
@@ -1721,143 +771,23 @@ export class PostgresRuntimeStore implements RuntimeStore {
     };
   }
 
-  private validateRuntimeCommit(commit: RuntimeCommandCommit): void {
-    for (const [label, value] of [
-      ['tenantId', commit.tenantId],
-      ['sessionId', commit.sessionId],
-      ['commandId', commit.command.commandId],
-      ['command fingerprint', commit.command.fingerprint],
-    ] as const) {
-      if (!String(value).trim()) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `${label} must not be empty`,
-        );
-      }
-    }
-    try {
-      parseAgentCommandResult(commit.command.result);
-    } catch (error) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'Command result is not a valid protocol result',
-        { cause: error },
-      );
-    }
-    if (
-      commit.expectedLastSequence !== undefined &&
-      commit.expectedLastSequence !== null &&
-      (!Number.isSafeInteger(commit.expectedLastSequence) || commit.expectedLastSequence < 1)
-    ) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'expectedLastSequence must be null or a positive safe integer',
-      );
-    }
-
-    const eventIds = new Set<string>();
-    for (const [index, event] of (commit.events ?? []).entries()) {
-      if (!event.type.trim()) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Event type at index ${index} must not be empty`,
-        );
-      }
-      assertJsonObject(event.data, `Event data at index ${index}`);
-      if (event.eventId) {
-        if (eventIds.has(event.eventId)) {
-          throw new RuntimeStoreError(
-            'RUNTIME_STORE_INVALID_TRANSACTION',
-            `Duplicate eventId in transaction: ${event.eventId}`,
-          );
-        }
-        eventIds.add(event.eventId);
-      }
-      if (event.occurredAt && !Number.isFinite(Date.parse(event.occurredAt))) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Event occurredAt at index ${index} is invalid`,
-        );
-      }
-    }
-
-    const effectIds = new Set<string>();
-    const idempotencyKeys = new Set<string>();
-    for (const [index, effect] of (commit.effects ?? []).entries()) {
-      if (!effect.effectId.trim() || !effect.type.trim() || !effect.idempotencyKey.trim()) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Effect identifiers at index ${index} must not be empty`,
-        );
-      }
-      if (effectIds.has(effect.effectId) || idempotencyKeys.has(effect.idempotencyKey)) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Duplicate effect identity at index ${index}`,
-        );
-      }
-      effectIds.add(effect.effectId);
-      idempotencyKeys.add(effect.idempotencyKey);
-      assertJsonObject(effect.payload, `Effect payload at index ${index}`);
-      if (
-        effect.executionMode !== undefined &&
-        effect.executionMode !== 'idempotent' &&
-        effect.executionMode !== 'at_most_once'
-      ) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Effect executionMode at index ${index} is invalid`,
-        );
-      }
-      if (effect.availableAt && !Number.isFinite(Date.parse(effect.availableAt))) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          `Effect availableAt at index ${index} is invalid`,
-        );
-      }
-    }
-
-    if (commit.projection) {
-      if (
-        !commit.projection.name.trim() ||
-        !Number.isSafeInteger(commit.projection.offset) ||
-        commit.projection.offset < 0
-      ) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          'Projection name and offset are invalid',
-        );
-      }
-      if (
-        commit.projection.expectedOffset !== undefined &&
-        commit.projection.expectedOffset !== null &&
-        (!Number.isSafeInteger(commit.projection.expectedOffset) ||
-          commit.projection.expectedOffset < 0)
-      ) {
-        throw new RuntimeStoreError(
-          'RUNTIME_STORE_INVALID_TRANSACTION',
-          'Projection expectedOffset is invalid',
-        );
-      }
-      assertJsonObject(commit.projection.state, 'Projection state');
-    }
-  }
-
   private async createSchema(): Promise<void> {
-    const client = await this.pool.connect();
-    const lockKey = advisoryLockKey(`runtime-store-schema:${this.schema}:${this.prefix}`);
+    const client = await this.db.pool.connect();
+    const lockKey = postgresAdvisoryLockKey(
+      `runtime-store-schema:${this.db.schema}:${this.db.prefix}`,
+    );
     let lockAcquired = false;
     try {
       await client.query('SELECT pg_advisory_lock($1, $2)', [lockKey[0], lockKey[1]]);
       lockAcquired = true;
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.db.schema}`);
       await client.query(`
-      CREATE TABLE IF NOT EXISTS ${this.table('metadata')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('metadata')} (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('commands')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('commands')} (
         tenant_id TEXT NOT NULL,
         command_id TEXT NOT NULL,
         command_fingerprint TEXT NOT NULL,
@@ -1871,7 +801,7 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, command_id)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('sessions')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('sessions')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         created_by TEXT NOT NULL,
@@ -1882,12 +812,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_sessions_listing_idx
-        ON ${this.table('sessions')} (
+      CREATE INDEX IF NOT EXISTS ${this.db.prefix}_sessions_listing_idx
+        ON ${this.db.table('sessions')} (
           tenant_id, updated_at DESC, session_id ASC
         );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('stream_heads')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('stream_heads')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         stream_name TEXT NOT NULL,
@@ -1896,13 +826,12 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, stream_name)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('events')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('events')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         stream_name TEXT NOT NULL,
         sequence BIGINT NOT NULL,
         event_id TEXT NOT NULL,
-        command_id TEXT,
         event_type TEXT NOT NULL,
         payload JSONB NOT NULL,
         occurred_at TIMESTAMPTZ NOT NULL,
@@ -1911,14 +840,10 @@ export class PostgresRuntimeStore implements RuntimeStore {
         UNIQUE (tenant_id, event_id)
       );
 
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_events_command_idx
-        ON ${this.table('events')} (tenant_id, command_id)
-        WHERE command_id IS NOT NULL;
-
       -- Idempotency records live outside the trimmable event log: a retry that
       -- outlives event retention must still be recognised as a repeat, and the
       -- stored payload lets the repeat return the original event either way.
-      CREATE TABLE IF NOT EXISTS ${this.table('event_keys')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('event_keys')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         idempotency_key TEXT NOT NULL,
@@ -1929,78 +854,33 @@ export class PostgresRuntimeStore implements RuntimeStore {
         PRIMARY KEY (tenant_id, session_id, idempotency_key)
       );
 
-      CREATE TABLE IF NOT EXISTS ${this.table('outbox')} (
-        tenant_id TEXT NOT NULL,
-        effect_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        command_id TEXT NOT NULL,
-        effect_type TEXT NOT NULL,
-        payload JSONB NOT NULL,
-        idempotency_key TEXT NOT NULL,
-        execution_mode TEXT NOT NULL DEFAULT 'idempotent'
-          CONSTRAINT ${this.prefix}_outbox_execution_mode_check
-          CHECK (execution_mode IN ('idempotent', 'at_most_once')),
-        status TEXT NOT NULL DEFAULT 'pending'
-          CONSTRAINT ${this.prefix}_outbox_status_check
-          CHECK (
-            status IN (
-              'pending', 'claimed', 'executing',
-              'completed', 'failed', 'uncertain'
-            )
-          ),
-        attempts INTEGER NOT NULL DEFAULT 0,
-        available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        worker_id TEXT,
-        lease_id TEXT,
-        fencing_token BIGINT NOT NULL DEFAULT 0,
-        lease_expires_at TIMESTAMPTZ,
-        started_at TIMESTAMPTZ,
-        completed_at TIMESTAMPTZ,
-        result JSONB,
-        error JSONB,
-        PRIMARY KEY (tenant_id, effect_id),
-        UNIQUE (tenant_id, idempotency_key)
-      );
-
-      CREATE INDEX IF NOT EXISTS ${this.prefix}_outbox_pending_idx
-        ON ${this.table('outbox')} (tenant_id, status, available_at);
-
-      CREATE TABLE IF NOT EXISTS ${this.table('projections')} (
+      CREATE TABLE IF NOT EXISTS ${this.db.table('session_states')} (
         tenant_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
-        projection_name TEXT NOT NULL,
-        projection_offset BIGINT NOT NULL,
         state JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (tenant_id, session_id, projection_name)
+        PRIMARY KEY (tenant_id, session_id)
       );
     `);
       const storedVersion = await client.query(
         `SELECT value
-           FROM ${this.table('metadata')}
+           FROM ${this.db.table('metadata')}
           WHERE key = 'schema_version'`,
       );
       const previousSchemaVersion = storedVersion.rows[0]
         ? Number(storedVersion.rows[0].value)
-        : 1;
-      if (
-        previousSchemaVersion !== 1 &&
-        previousSchemaVersion !== 2 &&
-        previousSchemaVersion !== 3 &&
-        previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION
-      ) {
+        : RUNTIME_STORE_SCHEMA_VERSION;
+      if (previousSchemaVersion !== RUNTIME_STORE_SCHEMA_VERSION) {
         throw new RuntimeStoreError(
           'RUNTIME_STORE_INVALID_TRANSACTION',
           `Unsupported Runtime Store schema version: ${String(storedVersion.rows[0]?.value)}`,
         );
       }
-      await this.workerRuntime.createSchema(client, previousSchemaVersion);
+      await this.createWorkerSchema(client);
       await client.query(
-        `INSERT INTO ${this.table('metadata')} AS metadata (key, value)
+        `INSERT INTO ${this.db.table('metadata')} (key, value)
          VALUES ('schema_version', $1)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-         WHERE metadata.value IN ('1', '2', '3')`,
+         ON CONFLICT (key) DO NOTHING`,
         [String(RUNTIME_STORE_SCHEMA_VERSION)],
       );
     } finally {
@@ -2011,965 +891,5 @@ export class PostgresRuntimeStore implements RuntimeStore {
       }
       client.release();
     }
-  }
-
-  private table(suffix: string): string {
-    return `${this.schema}.${quoteIdentifier(`${this.prefix}_${suffix}`, 'table')}`;
-  }
-
-  private queryClient(): Pool | PoolClient {
-    return this.transactionContext.getStore() ?? this.pool;
-  }
-
-  private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
-    const activeClient = this.transactionContext.getStore();
-    if (activeClient) {
-      const savepoint = quoteIdentifier(
-        `runtime_nested_${nanoid().replaceAll('-', '_')}`,
-        'savepoint',
-      );
-      await activeClient.query(`SAVEPOINT ${savepoint}`);
-      try {
-        const result = await operation(activeClient);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`);
-        return result;
-      } catch (error) {
-        await activeClient.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
-        await activeClient.query(`RELEASE SAVEPOINT ${savepoint}`)
-          .catch(() => undefined);
-        throw error;
-      }
-    }
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await this.transactionContext.run(
-        client,
-        () => operation(client),
-      );
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  private async lock(client: PoolClient, key: string): Promise<void> {
-    const lockKey = advisoryLockKey(key);
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [lockKey[0], lockKey[1]]);
-  }
-
-  private async currentHead(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    streamName: string,
-  ): Promise<number | null> {
-    await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
-    const result = await client.query<StreamHeadRow>(
-      `SELECT first_sequence, next_sequence
-         FROM ${this.table('stream_heads')}
-        WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
-        FOR UPDATE`,
-      [tenantId, sessionId, streamName],
-    );
-    return result.rows[0] ? asNumber(result.rows[0].next_sequence) - 1 : null;
-  }
-
-  private async appendStream<
-    TPayload extends {
-      readonly eventId: EventId;
-      readonly sequence: EventSequence;
-      readonly type: string;
-      readonly occurredAt: string;
-      readonly commandId?: CommandId;
-    },
-  >(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    streamName: string,
-    knownHead: number | null | undefined,
-    factories: readonly ((fields: {
-      sequence: EventSequence;
-      eventId: EventId;
-      recordedAt: string;
-    }) => TPayload)[],
-    retention?: number,
-    quota?: number,
-  ): Promise<TPayload[]> {
-    const current =
-      knownHead === undefined
-        ? await this.currentHead(client, tenantId, sessionId, streamName)
-        : knownHead;
-    const firstSequence = (current ?? 0) + 1;
-    const recordedAt = new Date().toISOString();
-    const payloads = factories.map((factory, index) =>
-      factory({
-        sequence: EventSequence(firstSequence + index),
-        eventId: EventId(nanoid()),
-        recordedAt,
-      }),
-    );
-    if (payloads.length === 0) {
-      return [];
-    }
-    if (quota !== undefined && firstSequence - 1 + payloads.length > quota) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_QUOTA_EXCEEDED',
-        `Event quota exceeded for ${streamName} stream ${tenantId}/${sessionId}`,
-      );
-    }
-    const rows = payloads.map((payload, index) => ({
-      tenant_id: tenantId,
-      session_id: sessionId,
-      stream_name: streamName,
-      sequence: firstSequence + index,
-      event_id: String(payload.eventId),
-      command_id: typeof payload.commandId === 'string' ? payload.commandId : null,
-      event_type: String(payload.type),
-      payload,
-      occurred_at: String(payload.occurredAt ?? recordedAt),
-      recorded_at: recordedAt,
-    }));
-    await client.query(
-      `INSERT INTO ${this.table('events')} (
-         tenant_id, session_id, stream_name, sequence, event_id,
-         command_id, event_type, payload, occurred_at, recorded_at
-       )
-       SELECT entry.tenant_id, entry.session_id, entry.stream_name,
-              entry.sequence, entry.event_id, entry.command_id,
-              entry.event_type, entry.payload, entry.occurred_at,
-              entry.recorded_at
-         FROM jsonb_to_recordset($1::jsonb) AS entry(
-           tenant_id TEXT,
-           session_id TEXT,
-           stream_name TEXT,
-           sequence BIGINT,
-           event_id TEXT,
-           command_id TEXT,
-           event_type TEXT,
-           payload JSONB,
-           occurred_at TIMESTAMPTZ,
-           recorded_at TIMESTAMPTZ
-         )`,
-      [JSON.stringify(rows)],
-    );
-    const nextSequence = firstSequence + payloads.length;
-    const retainedFirst = retention ? Math.max(1, nextSequence - retention) : 1;
-    await client.query(
-      `INSERT INTO ${this.table('stream_heads')} (
-         tenant_id, session_id, stream_name, first_sequence, next_sequence
-       ) VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (tenant_id, session_id, stream_name) DO UPDATE SET
-         first_sequence = EXCLUDED.first_sequence,
-         next_sequence = EXCLUDED.next_sequence`,
-      [tenantId, sessionId, streamName, retainedFirst, nextSequence],
-    );
-    if (retention) {
-      await client.query(
-        `DELETE FROM ${this.table('events')}
-          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
-            AND sequence < $4`,
-        [tenantId, sessionId, streamName, retainedFirst],
-      );
-    }
-    return payloads;
-  }
-
-  private async readStream(
-    tenantId: string,
-    sessionId: SessionId,
-    streamName: string,
-    after = 0,
-    limit = 100,
-  ): Promise<{
-    payloads: JsonObject[];
-    headSequence: number | null;
-    hasMore: boolean;
-  }> {
-    await this.initialize();
-    if (!Number.isSafeInteger(after) || after < 0) {
-      throw new RangeError('Event cursor is invalid');
-    }
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
-      throw new RangeError('Event page limit must be between 1 and 1000');
-    }
-    return this.transaction(async (client) => {
-      await this.lock(client, `stream:${tenantId}:${sessionId}:${streamName}`);
-      const headResult = await client.query<StreamHeadRow>(
-        `SELECT first_sequence, next_sequence
-           FROM ${this.table('stream_heads')}
-          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3`,
-        [tenantId, sessionId, streamName],
-      );
-      const head = headResult.rows[0];
-      if (!head) {
-        if (after > 0) {
-          throw new RangeError('Event cursor is ahead of the session head');
-        }
-        return { payloads: [], headSequence: null, hasMore: false };
-      }
-      const firstSequence = asNumber(head.first_sequence);
-      const nextSequence = asNumber(head.next_sequence);
-      if (after < firstSequence - 1) {
-        throw new RangeError('Event cursor is stale');
-      }
-      if (after >= nextSequence) {
-        throw new RangeError('Event cursor is ahead of the session head');
-      }
-      const result = await client.query<PayloadRow>(
-        `SELECT payload
-           FROM ${this.table('events')}
-          WHERE tenant_id = $1 AND session_id = $2 AND stream_name = $3
-            AND sequence > $4
-          ORDER BY sequence ASC
-          LIMIT $5`,
-        [tenantId, sessionId, streamName, after, limit + 1],
-      );
-      return {
-        payloads: result.rows.slice(0, limit).map((row) => asJsonObject(row.payload)),
-        headSequence: nextSequence - 1,
-        hasMore: result.rows.length > limit,
-      };
-    });
-  }
-
-  private async appendDomainEvents(
-    client: PoolClient,
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeDomainEvent[]> {
-    const current = await this.currentHead(client, commit.tenantId, commit.sessionId, 'domain');
-    if (commit.expectedLastSequence !== undefined && commit.expectedLastSequence !== current) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_SEQUENCE_CONFLICT',
-        `Expected runtime event sequence ${String(commit.expectedLastSequence)}, ` +
-          `but current sequence is ${String(current)}`,
-      );
-    }
-    const payloads = await this.appendStream(
-      client,
-      commit.tenantId,
-      commit.sessionId,
-      'domain',
-      current,
-      (commit.events ?? []).map((draft) => ({ sequence, eventId, recordedAt }) => ({
-        schemaVersion: RUNTIME_DOMAIN_EVENT_SCHEMA_VERSION,
-        eventId: draft.eventId ?? eventId,
-        tenantId: commit.tenantId,
-        sessionId: commit.sessionId,
-        commandId: commit.command.commandId,
-        sequence,
-        type: draft.type,
-        data: draft.data,
-        occurredAt: draft.occurredAt ?? recordedAt,
-        recordedAt,
-      })),
-      undefined,
-      this.maxDomainEventsPerSession,
-    );
-    return payloads;
-  }
-
-  private async insertEffects(
-    client: PoolClient,
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeEffectRecord[]> {
-    const effects: RuntimeEffectRecord[] = [];
-    for (const effect of commit.effects ?? []) {
-      const result = await client.query<EffectRow>(
-        `INSERT INTO ${this.table('outbox')} (
-           tenant_id, effect_id, session_id, command_id, effect_type,
-           payload, idempotency_key, available_at, execution_mode
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6::jsonb, $7,
-           COALESCE($8::timestamptz, NOW()), $9
-         )
-         RETURNING *`,
-        [
-          commit.tenantId,
-          effect.effectId,
-          commit.sessionId,
-          commit.command.commandId,
-          effect.type,
-          JSON.stringify(effect.payload),
-          effect.idempotencyKey,
-          effect.availableAt ?? null,
-          effect.executionMode ?? 'idempotent',
-        ],
-      );
-      const row = result.rows[0];
-      if (row) {
-        effects.push(this.effectRecord(row));
-      }
-    }
-    return effects;
-  }
-
-  private async writeProjection(
-    client: PoolClient,
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeProjectionRecord> {
-    const projection = commit.projection;
-    if (!projection) {
-      throw new RuntimeStoreError('RUNTIME_STORE_INVALID_TRANSACTION', 'Projection is required');
-    }
-    const domainHead = await this.currentHead(client, commit.tenantId, commit.sessionId, 'domain');
-    if (projection.offset !== (domainHead ?? 0)) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        `Projection ${projection.name} offset ${projection.offset} ` +
-          `does not match domain head ${String(domainHead)}`,
-      );
-    }
-    await this.lock(client, `projection:${commit.tenantId}:${commit.sessionId}:${projection.name}`);
-    const current = await client.query<ProjectionRow>(
-      `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3
-        FOR UPDATE`,
-      [commit.tenantId, commit.sessionId, projection.name],
-    );
-    const currentOffset = current.rows[0] ? asNumber(current.rows[0].projection_offset) : null;
-    if (projection.expectedOffset !== undefined && projection.expectedOffset !== currentOffset) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_PROJECTION_CONFLICT',
-        `Expected ${projection.name} offset ${String(projection.expectedOffset)}, ` +
-          `but current offset is ${String(currentOffset)}`,
-      );
-    }
-    await client.query(
-      `INSERT INTO ${this.table('projections')} (
-         tenant_id, session_id, projection_name, projection_offset, state, updated_at
-       ) VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-       ON CONFLICT (tenant_id, session_id, projection_name) DO UPDATE SET
-         projection_offset = EXCLUDED.projection_offset,
-         state = EXCLUDED.state,
-         updated_at = NOW()`,
-      [
-        commit.tenantId,
-        commit.sessionId,
-        projection.name,
-        projection.offset,
-        JSON.stringify(projection.state),
-      ],
-    );
-    const stored = await this.getProjectionWithClient(
-      client,
-      commit.tenantId,
-      commit.sessionId,
-      projection.name,
-    );
-    if (!stored) {
-      throw new RuntimeStoreError(
-        'RUNTIME_STORE_INVALID_TRANSACTION',
-        'Projection commit did not produce a record',
-      );
-    }
-    return stored;
-  }
-
-  private async loadCommittedRuntimeResult(
-    client: PoolClient,
-    commit: RuntimeCommandCommit,
-  ): Promise<RuntimeCommitResult> {
-    const events = await client.query<PayloadRow>(
-      `SELECT payload
-         FROM ${this.table('events')}
-        WHERE tenant_id = $1 AND session_id = $2
-          AND stream_name = 'domain' AND command_id = $3
-        ORDER BY sequence ASC`,
-      [commit.tenantId, commit.sessionId, commit.command.commandId],
-    );
-    const effects = await client.query<EffectRow>(
-      `SELECT *
-         FROM ${this.table('outbox')}
-        WHERE tenant_id = $1 AND session_id = $2 AND command_id = $3
-        ORDER BY created_at ASC, effect_id ASC`,
-      [commit.tenantId, commit.sessionId, commit.command.commandId],
-    );
-    const projection = commit.projection
-      ? await this.getProjectionWithClient(
-          client,
-          commit.tenantId,
-          commit.sessionId,
-          commit.projection.name,
-        )
-      : null;
-    return {
-      status: 'replayed',
-      events: events.rows.map((row) => parseRuntimeDomainEvent(row.payload)),
-      effects: effects.rows.map((row) => this.effectRecord(row)),
-      ...(projection ? { projection } : {}),
-    };
-  }
-
-  private async getProjectionWithClient(
-    client: PoolClient,
-    tenantId: string,
-    sessionId: SessionId,
-    name: string,
-  ): Promise<RuntimeProjectionRecord | null> {
-    const result = await client.query<ProjectionRow>(
-      `SELECT projection_offset, state, updated_at
-         FROM ${this.table('projections')}
-        WHERE tenant_id = $1 AND session_id = $2 AND projection_name = $3`,
-      [tenantId, sessionId, name],
-    );
-    const row = result.rows[0];
-    return row
-      ? {
-          tenantId,
-          sessionId,
-          name,
-          offset: asNumber(row.projection_offset),
-          state: asJsonObject(row.state),
-          updatedAt: asIso(row.updated_at),
-        }
-      : null;
-  }
-
-  private effectRecord(row: EffectRow): RuntimeEffectRecord {
-    return {
-      tenantId: row.tenant_id,
-      sessionId: SessionId(row.session_id),
-      commandId: CommandId(row.command_id),
-      effectId: row.effect_id,
-      type: row.effect_type,
-      payload: asJsonObject(row.payload),
-      idempotencyKey: row.idempotency_key,
-      executionMode: row.execution_mode,
-      status: row.status,
-      attempts: row.attempts,
-      availableAt: asIso(row.available_at),
-      createdAt: asIso(row.created_at),
-      ...(row.worker_id ? { workerId: WorkerId(row.worker_id) } : {}),
-      ...(row.lease_id ? { leaseId: ExecutionLeaseId(row.lease_id) } : {}),
-      ...(asNumber(row.fencing_token) > 0
-        ? { fencingToken: FencingToken(asNumber(row.fencing_token)) }
-        : {}),
-      ...(row.lease_expires_at
-        ? { leaseExpiresAt: asIso(row.lease_expires_at) }
-        : {}),
-      ...(row.started_at ? { startedAt: asIso(row.started_at) } : {}),
-      ...(row.completed_at ? { completedAt: asIso(row.completed_at) } : {}),
-      ...(row.result ? { result: asJsonObject(row.result) } : {}),
-      ...(row.error ? { error: asJsonObject(row.error) } : {}),
-    };
-  }
-}
-
-class PostgresTenantRuntimeStore implements RuntimeTenantStore {
-  constructor(
-    private readonly runtime: PostgresRuntimeStore,
-    private readonly tenantId: string,
-  ) {}
-
-  initialize(): Promise<void> {
-    return this.runtime.initialize();
-  }
-
-  async createSession(
-    sessionId: SessionId,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<void> {
-    const existing = await this.runtime.loadSessionState(this.tenantId, sessionId);
-    if (existing) {
-      return;
-    }
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.session_created',
-      {
-        ...(subagentInfo
-          ? {
-              parentSessionId: subagentInfo.parentSessionId,
-              subagentType: subagentInfo.subagentType,
-              isSidechain: subagentInfo.isSidechain,
-            }
-          : {}),
-      },
-      () => initialSessionState(sessionId, Date.now(), subagentInfo),
-      subagentInfo,
-    );
-  }
-
-  async saveMessage(
-    sessionId: SessionId,
-    messageRole: MessageRole,
-    content: string | ModelContent[],
-    parentMessageId: MessageId | null = null,
-    metadata?: SessionRepositoryMessageMetadata,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.message_saved',
-      { messageId, role: messageRole },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: messageRole,
-            content: structuredClone(content),
-            reasoningContent: metadata?.reasoningContent,
-            tool_calls: metadata?.toolCalls ? structuredClone(metadata.toolCalls) : undefined,
-            modelIdentity: metadata?.modelIdentity
-              ? structuredClone(metadata.modelIdentity)
-              : undefined,
-            ...messageEnvelope(metadata),
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveInputEnqueued(sessionId: SessionId, input: PersistedPendingInput): Promise<void> {
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_enqueued',
-      { inputId: input.inputId },
-      (state, now) => {
-        state.pendingInputs = [
-          ...state.pendingInputs.filter((item) => item.inputId !== input.inputId),
-          {
-            ...input,
-            content: cloneJsonValue(input.content),
-          },
-        ];
-        state.lastActivity = now;
-      },
-    );
-  }
-
-  async saveAppliedInputMessage(
-    sessionId: SessionId,
-    inputId: InputId,
-    requestId: RequestId,
-    content: string | ModelContent[],
-    parentMessageId: MessageId | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_applied',
-      { inputId, requestId, messageId },
-      (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'user',
-            content: structuredClone(content),
-            correlation: { inputId, requestId },
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveInputCancelled(sessionId: SessionId, inputId: InputId, reason: string): Promise<void> {
-    await this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.input_cancelled',
-      { inputId, reason },
-      (state, now) => {
-        state.pendingInputs = state.pendingInputs.filter((input) => input.inputId !== inputId);
-        state.lastActivity = now;
-      },
-    );
-  }
-
-  async saveToolUse(
-    sessionId: SessionId,
-    toolName: string,
-    toolInput: JsonValue,
-    parentMessageId: MessageId | null = null,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    requestedToolCallId?: ToolUseId,
-  ): Promise<PersistedToolUse> {
-    const messageId = MessageId(nanoid());
-    const toolCallId = requestedToolCallId ?? ToolUseId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.tool_use_saved',
-      { messageId, toolCallId, toolName },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'assistant',
-            content: '',
-            tool_calls: [
-              {
-                id: toolCallId,
-                type: 'function',
-                function: {
-                  name: toolName,
-                  arguments: typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput),
-                },
-              },
-            ],
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        state.toolCalls.push({
-          id: toolCallId,
-          name: toolName,
-          input: cloneJsonValue(toolInput),
-          messageId,
-          timestamp: now,
-          status: 'pending',
-        });
-        return { messageId, toolCallId };
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveToolResult(
-    sessionId: SessionId,
-    toolId: ToolUseId,
-    toolName: string,
-    toolOutput: JsonValue,
-    parentMessageId: MessageId | null = null,
-    error?: string,
-    subagentInfo?: SessionRepositorySubagentInfo,
-    subagentRef?: SessionRepositorySubagentRef,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.tool_result_saved',
-      { messageId, toolId, toolName },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'tool',
-            content: error
-              ? `Error: ${error}`
-              : typeof toolOutput === 'string'
-                ? toolOutput
-                : JSON.stringify(toolOutput),
-            tool_call_id: toolId,
-            name: toolName,
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        const call = [...state.toolCalls]
-          .reverse()
-          .find((item) => item.id === toolId && item.status === 'pending');
-        if (call) {
-          call.output = cloneJsonValue(toolOutput);
-          call.error = error;
-          call.status = error ? 'error' : 'success';
-        }
-        if (subagentRef) {
-          state.subagentRefs.push({
-            messageId,
-            childSessionId: subagentRef.subagentSessionId,
-            agentType: subagentRef.subagentType,
-            status: subagentRef.subagentStatus,
-            summary: subagentRef.subagentSummary,
-            startedAt: new Date(now).toISOString(),
-            finishedAt:
-              subagentRef.subagentStatus === 'running' ? null : new Date(now).toISOString(),
-          });
-        }
-        return messageId;
-      },
-      subagentInfo,
-    );
-  }
-
-  async saveCompaction(
-    sessionId: SessionId,
-    summary: string,
-    metadata: SessionRepositoryCompactionMetadata,
-    parentMessageId: MessageId | null = null,
-  ): Promise<MessageId> {
-    const messageId = MessageId(nanoid());
-    return this.runtime.mutateSessionState(
-      this.tenantId,
-      sessionId,
-      'transcript.compaction_saved',
-      { messageId, trigger: metadata.trigger },
-      (state, now) => {
-        appendMessage(
-          state,
-          messageId,
-          {
-            id: messageId,
-            role: 'system',
-            content: summary,
-            provenance: { source: 'compaction_summary' },
-            extensions: {
-              trigger: metadata.trigger,
-              preTokens: metadata.preTokens,
-              ...(metadata.postTokens !== undefined ? { postTokens: metadata.postTokens } : {}),
-              ...(metadata.filesIncluded ? { filesIncluded: metadata.filesIncluded } : {}),
-            },
-          },
-          now,
-          parentMessageId ?? undefined,
-        );
-        state.summary = summary;
-        state.summaryMessageIds.push(messageId);
-        return messageId;
-      },
-    );
-  }
-
-  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
-    const messages = contextData.layers.conversation.messages.map((message) => ({
-      messageId: MessageId(nanoid()),
-      role: message.role,
-      content: structuredClone(message.content),
-    }));
-    if (messages.length === 0) {
-      return;
-    }
-    await this.runtime.mutateSessionStateBatch(
-      this.tenantId,
-      sessionId,
-      messages.map(({ messageId, role }) => ({
-        type: 'transcript.message_saved',
-        data: { messageId, role },
-      })),
-      (state, now) => {
-        for (const message of messages) {
-          appendMessage(
-            state,
-            message.messageId,
-            {
-              id: message.messageId,
-              role: message.role,
-              content: message.content,
-            },
-            now,
-          );
-        }
-      },
-    );
-  }
-
-  loadState(sessionId: SessionId): Promise<SessionState | null> {
-    return this.runtime.loadSessionState(this.tenantId, sessionId);
-  }
-
-  saveHistoryProgress(
-    sessionId: SessionId,
-    progress: SessionHistoryProgress,
-  ): Promise<void> {
-    return this.runtime.saveHistoryProgress(this.tenantId, sessionId, progress);
-  }
-
-  clearHistoryGap(
-    sessionId: SessionId,
-    repairedMessages: number,
-    options: { readonly coveredRequestId?: RequestId } = {},
-  ): Promise<void> {
-    return this.runtime.saveHistoryProgress(
-      this.tenantId,
-      sessionId,
-      {
-        state: 'complete',
-        updatedAt: Date.now(),
-        repairedMessages,
-        ...(options.coveredRequestId ? { coveredRequestId: options.coveredRequestId } : {}),
-      },
-      { clearGap: true },
-    );
-  }
-
-  async loadMessages(sessionId: SessionId): Promise<ConversationMessage[]> {
-    const state = await this.loadState(sessionId);
-    return state?.messages.map((message) => cloneMessage(message)) ?? [];
-  }
-
-  async forkState(
-    sessionId: SessionId,
-    options?: { messageId?: MessageId },
-  ): Promise<SessionSnapshot | null> {
-    const state = await this.loadState(sessionId);
-    if (!state) {
-      return null;
-    }
-    let endIndex = state.timeline.length;
-    if (options?.messageId) {
-      const index = state.messageIds.indexOf(options.messageId);
-      if (index === -1) {
-        throw new Error(`Message with ID "${options.messageId}" not found in session history`);
-      }
-      endIndex = index + 1;
-    }
-    const timeline = state.timeline.slice(0, endIndex);
-    const messageIds = timeline.map((entry) => entry.id);
-    return {
-      sessionId,
-      messages: timeline.map((entry) => cloneMessage(entry.message)),
-      messageIds,
-      lastActivity: timeline.at(-1)?.createdAt ?? state.createdAt,
-      summary: [...timeline].reverse().find((entry) => state.summaryMessageIds.includes(entry.id))
-        ?.message.content as string | undefined,
-    };
-  }
-
-  listSessions(): Promise<SessionId[]> {
-    return this.runtime.listSessionProjectionIds(this.tenantId);
-  }
-
-  async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
-    const state = await this.loadState(sessionId);
-    return state
-      ? {
-          sessionId,
-          lastActivity: state.lastActivity,
-          messageCount: state.messages.filter(
-            (message) => message.role === 'user' || message.role === 'assistant',
-          ).length,
-          topics: [],
-          summaryText: state.summary,
-        }
-      : null;
-  }
-
-  deleteSession(sessionId: SessionId): Promise<void> {
-    return this.runtime.deleteSessionProjection(this.tenantId, sessionId);
-  }
-
-  cleanupOldSessions(): Promise<void> {
-    return this.runtime.cleanupSessionProjections(this.tenantId);
-  }
-
-  getStorageStats(): Promise<SessionRepositoryStorageStats> {
-    return this.runtime.sessionStorageStats(this.tenantId);
-  }
-
-  async checkStorageHealth(): Promise<SessionRepositoryHealth> {
-    const health = await this.runtime.healthCheck();
-    return {
-      isAvailable: health.ready,
-      canWrite: health.ready,
-      ...(!health.ready && health.details?.error ? { error: String(health.details.error) } : {}),
-    };
-  }
-
-  append(
-    sessionId: SessionId,
-    events: readonly DurableEventDraft[],
-    options?: DurableEventAppendOptions,
-  ): Promise<DurableEventAppendResult> {
-    return this.runtime.appendDurableEvents(this.tenantId, sessionId, events, options);
-  }
-
-  read(sessionId: SessionId, options?: DurableEventReadOptions): Promise<DurableEventPage> {
-    return this.runtime.readDurableEvents(this.tenantId, sessionId, options);
-  }
-
-  getHeadSequence(sessionId: SessionId): Promise<EventSequence | null> {
-    return this.runtime.getDurableHead(this.tenantId, sessionId);
-  }
-
-  requiresExecutionLease(
-    sessionId: SessionId,
-    options?: DurableEventOperationOptions,
-  ): Promise<boolean> {
-    return this.runtime.requiresExecutionLease(
-      this.tenantId,
-      sessionId,
-      options,
-    );
-  }
-
-  acquireExecutionLease(
-    sessionId: SessionId,
-    options: DurableExecutionLeaseAcquireOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.runtime.acquireExecutionLease(
-      this.tenantId,
-      sessionId,
-      options,
-    );
-  }
-
-  renewExecutionLease(
-    lease: DurableExecutionLease,
-    ttlMs: number,
-    options?: DurableEventOperationOptions,
-  ): Promise<DurableExecutionLease> {
-    return this.runtime.renewExecutionLease(
-      this.tenantId,
-      lease,
-      ttlMs,
-      options,
-    );
-  }
-
-  assertExecutionLease(
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.runtime.assertExecutionLease(
-      this.tenantId,
-      lease,
-      options,
-    );
-  }
-
-  withExecutionLease<T>(
-    lease: DurableExecutionLease,
-    operation: () => Promise<T>,
-    options?: DurableEventOperationOptions,
-  ): Promise<T> {
-    return this.runtime.withExecutionLease(
-      this.tenantId,
-      lease,
-      operation,
-      options,
-    );
-  }
-
-  releaseExecutionLease(
-    lease: DurableExecutionLease,
-    options?: DurableEventOperationOptions,
-  ): Promise<void> {
-    return this.runtime.releaseExecutionLease(
-      this.tenantId,
-      lease,
-      options,
-    );
   }
 }

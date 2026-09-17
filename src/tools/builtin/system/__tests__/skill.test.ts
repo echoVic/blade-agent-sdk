@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SkillRegistry } from '../../../../skills/SkillRegistry.js';
 import { SessionId } from '../../../../types/identifiers.js';
+import { ExecutionPipeline } from '../../../execution/ExecutionPipeline.js';
+import { BUILTIN_TOOL_SOURCE, ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/execution.js';
 import { collectToolExecution, type ToolYield } from '../../../types/result.js';
 import { skillTool } from '../skill.js';
@@ -20,13 +22,15 @@ async function createProjectSkill(
 }
 
 async function executeSkill(
-  params: Parameters<typeof skillTool.build>[0],
-  context: Partial<ExecutionContext>,
+  params: { skill: string; args?: string },
+  context: ExecutionContext,
+  skillRegistry: SkillRegistry,
 ) {
-  const invocation = skillTool.build(params);
+  const registry = new ToolRegistry({ skillRegistry });
+  registry.register(skillTool, BUILTIN_TOOL_SOURCE);
   const events: ToolYield[] = [];
   const result = await collectToolExecution(
-    invocation.execute(new AbortController().signal, context),
+    new ExecutionPipeline(registry).execute(skillTool.name, params, context),
     (event) => {
       events.push(event);
     },
@@ -79,7 +83,7 @@ Focus on source files.
       skillActivationPaths: ['docs/readme.md'],
     } satisfies Partial<ExecutionContext>;
 
-    const { result } = await executeSkill({ skill: 'src-only' }, context);
+    const { result } = await executeSkill({ skill: 'src-only' }, context, registry);
 
     expect(result.status).toBe('error');
     expect(result.error?.message).toContain('conditions are not satisfied');
@@ -117,7 +121,11 @@ Focus on source files.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const { result } = await executeSkill({ skill: 'src-only', args: 'src/index.ts' }, context);
+    const { result } = await executeSkill(
+      { skill: 'src-only', args: 'src/index.ts' },
+      context,
+      registry,
+    );
 
     expect(result.status).toBe('success');
     expect(String(result.model)).toContain('Focus on source files.');
@@ -157,7 +165,7 @@ Review code carefully.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const { result, events } = await executeSkill({ skill: 'reviewer' }, context);
+    const { result, events } = await executeSkill({ skill: 'reviewer' }, context, registry);
 
     expect(result.status).toBe('success');
     expect(events).toEqual([
@@ -204,10 +212,7 @@ Review code carefully.
     });
     await registry.initialize();
 
-    const { result, events } = await executeSkill(
-      { skill: 'inline-review' },
-      { skillRegistry: registry },
-    );
+    const { result, events } = await executeSkill({ skill: 'inline-review' }, {}, registry);
 
     expect(result.status).toBe('success');
     expect(String(result.model)).toContain('Review the supplied code for correctness.');

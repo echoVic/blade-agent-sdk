@@ -75,8 +75,8 @@ const agent = await createAgent({
 });
 ```
 
-`defineTool()` wraps regular async returns as internal generators. See
-[Tools](./tools) for advanced progress, effects, cancellation, and result
+`defineTool()` wraps async JSON data returns as internal successful results.
+See [Tools](./tools) for validation, capabilities, cancellation, and result
 contracts.
 
 ## Agent facade and Session core

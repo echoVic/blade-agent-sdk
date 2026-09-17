@@ -1,23 +1,19 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Type from 'typebox';
-import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { SessionId } from '../../../types/identifiers.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext } from '../../types/execution.js';
-import { ToolKind } from '../../types/kind.js';
-import type { BashBackgroundMetadata, BashForegroundMetadata } from '../../types/metadata.js';
+import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
+import type { BashBackgroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
-import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
-import { buildShellEnvironment } from './environment.js';
-import { OutputTruncator } from './OutputTruncator.js';
-import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js';
+import { BashClassifier } from './BashClassifier.js';
+import { executeForegroundShell } from './ForegroundShellRunner.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -30,32 +26,33 @@ import { shellProcessSpawnOptions, terminateProcessTree } from './processTree.js
  */
 export const bashTool = createTool({
   name: 'Bash',
+  group: 'shell',
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
   sideEffect: 'non_idempotent',
+  services: ['backgroundAgentManager'],
+  requiresRuntime: true,
   interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
 
   // TypeBox schema definition
-  schema: lazySchema(() =>
-    Type.Object({
-      command: ToolSchemas.command({
-        description: 'Bash command to execute',
-      }),
-      timeout: ToolSchemas.timeout(1000, 300000, 30000),
-      cwd: Type.Optional(
-        Type.String({
-          description:
-            'Working directory (optional; applies only to this command). To persist, use cd',
-        }),
-      ),
-      env: ToolSchemas.environment(),
-      run_in_background: ToolSchemas.flag({
-        defaultValue: false,
-        description: 'Run in background (suitable for long-running commands)',
-      }),
+  schema: Type.Object({
+    command: ToolSchemas.command({
+      description: 'Bash command to execute',
     }),
-  ),
+    timeout: ToolSchemas.timeout(1000, 300000, 30000),
+    cwd: Type.Optional(
+      Type.String({
+        description:
+          'Working directory (optional; applies only to this command). To persist, use cd',
+      }),
+    ),
+    env: ToolSchemas.environment(),
+    run_in_background: ToolSchemas.flag({
+      defaultValue: false,
+      description: 'Run in background (suitable for long-running commands)',
+    }),
+  }),
 
   // 工具描述
   description: {
@@ -179,7 +176,11 @@ Before executing commands:
     };
   },
 
-  resolveBehavior: ({ command, run_in_background = false }) => {
+  resolveBehavior: (params) => {
+    if (!params) {
+      return {};
+    }
+    const { command, run_in_background = false } = params;
     const classification = BashClassifier.classify(command.trim());
 
     if (run_in_background) {
@@ -252,9 +253,10 @@ Before executing commands:
   },
 
   // 执行函数
-  async *execute(params, context: ExecutionContext) {
+  async *execute(params, context) {
     const { command, timeout = 30000, cwd, env, run_in_background = false } = params;
     const signal = context.signal ?? new AbortController().signal;
+    const runtime = getRuntimeAccess(context);
 
     try {
       const sandboxService = getSandboxService();
@@ -281,23 +283,23 @@ Before executing commands:
         return executeInBackground(
           effectiveCommand,
           workDir,
-          context.backgroundAgentManager?.getOwnerSessionId?.() ??
+          context.backgroundAgentManager.getOwnerSessionId?.() ??
             context.sessionId ??
             SessionId(randomUUID()),
           env,
           context.contextSnapshot?.environment,
-          context.executionFence,
+          runtime.executionFence,
         );
       }
 
-      return await executeWithTimeout(
-        effectiveCommand,
-        workDir,
+      return await executeForegroundShell({
+        command: effectiveCommand,
+        cwd: workDir,
         env,
-        context.contextSnapshot?.environment,
+        runtimeEnvironment: context.contextSnapshot?.environment,
         timeout,
         signal,
-      );
+      });
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
@@ -321,10 +323,6 @@ Before executing commands:
       };
     }
   },
-
-  version: '2.0.0',
-  category: '命令工具',
-  tags: ['bash', 'shell', 'non-interactive', 'event-driven'],
 
   preparePermissionMatcher: (params) => {
     const command = params.command.trim();
@@ -376,7 +374,7 @@ function executeInBackground(
   sessionId: SessionId,
   env?: Record<string, string>,
   runtimeEnvironment?: Readonly<Record<string, string>>,
-  executionFence?: ExecutionContext['executionFence'],
+  executionFence?: RuntimeAccess['executionFence'],
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({
@@ -412,176 +410,4 @@ function executeInBackground(
     }),
     metadata,
   };
-}
-
-/**
- * 带超时的命令执行 - 使用进程事件监听
- */
-async function executeWithTimeout(
-  command: string,
-  cwd: string,
-  env: Record<string, string> | undefined,
-  runtimeEnvironment: Readonly<Record<string, string>> | undefined,
-  timeout: number,
-  signal: AbortSignal,
-): Promise<ToolResult> {
-  signal.throwIfAborted();
-  return new Promise((resolve) => {
-    const startTime = Date.now();
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-
-    // 创建进程
-    const bashProcess = spawn('bash', ['-c', command], {
-      cwd,
-      env: buildShellEnvironment(runtimeEnvironment, env),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      ...shellProcessSpawnOptions(),
-    });
-
-    // 收集 stdout
-    bashProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    // 收集 stderr
-    bashProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    let terminationPromise: Promise<void> | undefined;
-    const terminateTree = (): Promise<void> => {
-      terminationPromise ??= terminateProcessTree(bashProcess.pid, bashProcess, 1_000).catch(
-        (error) => {
-          stderr += `\nFailed to terminate command process tree: ${getErrorMessage(error)}`;
-        },
-      );
-      return terminationPromise;
-    };
-
-    // 设置超时
-    const timeoutHandle = setTimeout(() => {
-      if (bashProcess.exitCode !== null || bashProcess.signalCode !== null) {
-        return;
-      }
-      timedOut = true;
-      void terminateTree();
-    }, timeout);
-
-    // 处理中止信号
-    const abortHandler = () => {
-      clearTimeout(timeoutHandle);
-      void terminateTree();
-    };
-
-    signal.addEventListener('abort', abortHandler);
-    if (signal.aborted) {
-      abortHandler();
-    }
-
-    // 监听进程完成事件 - 业界标准做法
-    bashProcess.on('close', async (code, sig) => {
-      clearTimeout(timeoutHandle);
-      // 移除中止监听器
-      signal.removeEventListener('abort', abortHandler);
-      await terminationPromise;
-
-      const executionTime = Date.now() - startTime;
-
-      // 如果超时
-      if (timedOut) {
-        resolve({
-          status: 'error',
-          model: `Command execution timed out (${timeout}ms)`,
-          error: {
-            type: ToolErrorType.TIMEOUT_ERROR,
-            message: '命令执行超时',
-          },
-          metadata: {
-            command,
-            timeout: true,
-            stdout,
-            stderr,
-            execution_time: executionTime,
-          },
-        });
-        return;
-      }
-
-      // 如果被中止
-      if (signal.aborted) {
-        resolve({
-          status: 'error',
-          model: 'Command execution aborted by user',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: '操作被中止',
-          },
-          metadata: {
-            command,
-            aborted: true,
-            stdout,
-            stderr,
-            execution_time: executionTime,
-          },
-        });
-        return;
-      }
-
-      // 正常完成
-      // 生成 summary 用于流式显示
-      const cmdPreview = command.length > 30 ? `${command.substring(0, 30)}...` : command;
-      const summary =
-        code === 0
-          ? `执行命令成功 (${executionTime}ms): ${cmdPreview}`
-          : `执行命令完成 (退出码 ${code}, ${executionTime}ms): ${cmdPreview}`;
-
-      const metadata: BashForegroundMetadata = {
-        command,
-        execution_time: executionTime,
-        exit_code: code,
-        signal: sig,
-        stdout_length: stdout.length,
-        stderr_length: stderr.length,
-        has_stderr: stderr.length > 0,
-        summary,
-      };
-
-      const truncated = OutputTruncator.truncateForLLM(stdout.trim(), stderr.trim(), command);
-
-      resolve({
-        status: 'success',
-        model: toJsonValue({
-          stdout: truncated.stdout,
-          stderr: truncated.stderr,
-          execution_time: executionTime,
-          exit_code: code,
-          signal: sig,
-          ...(truncated.truncationInfo && {
-            truncation_info: truncated.truncationInfo,
-          }),
-        }),
-        metadata,
-      });
-    });
-
-    // 监听进程错误
-    bashProcess.on('error', async (error) => {
-      clearTimeout(timeoutHandle);
-      // 移除中止监听器
-      signal.removeEventListener('abort', abortHandler);
-      await terminationPromise;
-
-      resolve({
-        status: 'error',
-        model: `Command execution failed: ${error.message}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: error.message,
-          details: error,
-        },
-      });
-    });
-  });
 }

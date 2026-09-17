@@ -1,23 +1,27 @@
 import type { JSONSchema7 } from 'json-schema';
 import type Type from 'typebox';
-import type { JsonValue } from '../../types/json.js';
-import type { ExecutionContext } from '../types/execution.js';
-import type { ToolBehavior } from '../types/kind.js';
-import { createToolBehavior, isReadOnlyKind, isToolSideEffect, ToolKind } from '../types/kind.js';
-import type { ToolExecution, ToolResult, ToolValidationError } from '../types/result.js';
+import type { JsonObject, JsonValue } from '../../types/json.js';
+import { isToolSideEffect, resolveBehavior, type ToolBehavior, ToolKind } from '../behavior.js';
+import { selectToolServices, type ToolServiceName, type ToolServices } from '../services.js';
+import { type ExecutionContext, getRuntimeAccess } from '../types/execution.js';
+import {
+  type ToolExecution,
+  type ToolValidationError,
+  validationErrorToToolResult,
+} from '../types/result.js';
 import type {
   ErasedToolDefinition,
   Tool,
   ToolConfig,
   ToolDefinition,
+  ToolDefinitionContext,
   ToolDefinitionInput,
   ToolDescription,
   ToolExposureMode,
-  ToolInvocation,
+  ToolValidationOutcome,
 } from '../types/tool.js';
-import { resolveToolSchema } from '../validation/lazySchema.js';
 import { type CompiledToolInput, compileToolInput } from '../validation/toolInput.js';
-import { UnifiedToolInvocation } from './ToolInvocation.js';
+import { createToolInvocation, type ToolInvocation } from './ToolInvocation.js';
 
 /**
  * A tool that does not declare how a repeated execution behaves is treated as
@@ -33,151 +37,149 @@ const DEFAULT_TOOL_SIDE_EFFECT = 'non_idempotent' as const;
  */
 interface ToolAssembly<TParams> {
   readonly name: string;
-  readonly aliases?: string[];
-  readonly displayName: string;
-  readonly kind: ToolKind;
+  readonly aliases?: readonly string[];
+  readonly title: string;
   readonly staticBehavior: ToolBehavior;
-  readonly behaviorHint: ToolBehavior;
-  readonly strict: boolean;
+  readonly declaration: {
+    readonly name: string;
+    readonly description: string;
+    readonly parameters: JSONSchema7;
+    readonly strict?: boolean;
+  };
   readonly maxResultSizeChars: number;
+  readonly services: readonly ToolServiceName[];
+  readonly requiresRuntime: boolean;
+  readonly group?: Tool['group'];
   readonly description: ToolDescription;
   readonly exposure: { mode: ToolExposureMode; alwaysLoad: boolean; discoveryHint: string };
-  readonly version: string;
-  readonly category?: string;
-  readonly tags: string[];
-  /** Description for model-facing declarations, already formatted. */
-  readonly declarationDescription: () => string;
-  /** JSON Schema sent to the model. */
-  readonly functionSchema: () => JSONSchema7;
-  /** TypeBox schema used to validate params. */
-  readonly metadataSchema: () => unknown;
-  readonly resolveDescription: (params?: unknown) => ToolDescription;
-  readonly invocationParams: (params: unknown) => TParams;
-  /** Validation the invocation runs before the tool body, with the schema parsed. */
-  readonly invocationValidation?: (
+  readonly parse: (raw: unknown) => TParams;
+  readonly resolveBehavior: (params: TParams) => ToolBehavior;
+  readonly resolveDescription: (params: TParams) => string;
+  readonly validateInput?: (
     params: TParams,
     context: ExecutionContext,
   ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
-  /** Short description of a concrete invocation, used in confirmations. */
-  readonly invocationDescription?: (params: TParams) => string;
   readonly execute: (params: TParams, context: ExecutionContext) => ToolExecution;
-  readonly validateInput?: Tool['validateInput'];
-  readonly checkPermissions?: Tool['checkPermissions'];
-  readonly resolveBehavior?: (params: unknown) => ToolBehavior;
-  readonly preparePermissionMatcher?: Tool['preparePermissionMatcher'];
-  /** Optional hint used by callers that plan without validated parameters. */
-  readonly getBehaviorHint?: () => ToolBehavior;
+  readonly checkPermissions?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => ReturnType<NonNullable<Tool['checkPermissions']>>;
+  readonly preparePermissionMatcher?: (params: TParams) => {
+    signatureContent?: string;
+  };
 }
 
-function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool<TParams> {
-  return {
-    name: assembly.name,
-    aliases: assembly.aliases,
-    displayName: assembly.displayName,
-    kind: assembly.kind,
-    sideEffect: assembly.staticBehavior.sideEffect,
-    isReadOnly: assembly.behaviorHint.isReadOnly,
-    isConcurrencySafe: assembly.behaviorHint.isConcurrencySafe,
-    isDestructive: assembly.behaviorHint.isDestructive,
-    strict: assembly.strict,
-    maxResultSizeChars: assembly.maxResultSizeChars,
-    interruptBehavior: assembly.staticBehavior.interruptBehavior,
-    description: assembly.description,
-    exposure: assembly.exposure,
-    version: assembly.version,
-    category: assembly.category,
-    tags: assembly.tags,
+const preparedExecutors = new WeakMap<
+  Tool,
+  (params: JsonObject, context: ExecutionContext) => ToolExecution
+>();
 
-    describe(params?: unknown) {
-      return assembly.resolveDescription(params);
-    },
-
-    getFunctionDeclaration() {
-      return {
-        name: assembly.name,
-        description: assembly.declarationDescription(),
-        parameters: assembly.functionSchema(),
-      };
-    },
-
-    getMetadata() {
-      return {
-        name: assembly.name,
-        displayName: assembly.displayName,
-        kind: assembly.kind,
-        sideEffect: assembly.staticBehavior.sideEffect,
-        version: assembly.version,
-        category: assembly.category,
-        tags: assembly.tags,
-        description: assembly.description,
-        schema: assembly.metadataSchema(),
-      };
-    },
-
-    build(params: unknown): ToolInvocation<TParams> {
-      return new UnifiedToolInvocation<TParams>(
-        assembly.name,
-        assembly.invocationParams(params),
-        (resolvedParams, context) => assembly.execute(resolvedParams, context),
-        assembly.invocationValidation,
-        assembly.invocationDescription,
-        inferAffectedPaths,
-      );
-    },
-
-    execute(params: unknown, context: ExecutionContext = {}) {
-      const invocation = this.build(params);
-      return invocation.execute(context.signal ?? new AbortController().signal, context);
-    },
-
-    ...(assembly.validateInput ? { validateInput: assembly.validateInput } : {}),
-    ...(assembly.checkPermissions ? { checkPermissions: assembly.checkPermissions } : {}),
-    ...(assembly.resolveBehavior ? { resolveBehavior: assembly.resolveBehavior } : {}),
-    ...(assembly.preparePermissionMatcher
-      ? { preparePermissionMatcher: assembly.preparePermissionMatcher }
-      : {}),
-    ...(assembly.getBehaviorHint ? { getBehaviorHint: assembly.getBehaviorHint } : {}),
+function assembleTool<TParams>(assembly: ToolAssembly<TParams>): Tool {
+  const prepare = (raw: unknown): ToolInvocation => {
+    const typedParams = assembly.parse(raw);
+    const params = requireJsonObject(typedParams, assembly.name);
+    const signatureContent = assembly.preparePermissionMatcher?.(typedParams).signatureContent;
+    return createToolInvocation({
+      params,
+      behavior: assembly.resolveBehavior(typedParams),
+      affectedPaths: inferAffectedPaths(params),
+      permissionSignature: signatureContent
+        ? `${assembly.name}:${signatureContent}`
+        : assembly.name,
+      description: assembly.resolveDescription(typedParams),
+    });
   };
+
+  const executePrepared = (params: JsonObject, context: ExecutionContext): ToolExecution => {
+    return assembly.execute(assembly.parse(params), context);
+  };
+  const tool: Tool = {
+    name: assembly.name,
+    aliases: assembly.aliases ?? [],
+    title: assembly.title,
+    description: assembly.description,
+    staticBehavior: assembly.staticBehavior,
+    declaration: assembly.declaration,
+    maxResultSizeChars: assembly.maxResultSizeChars,
+    services: assembly.services,
+    requiresRuntime: assembly.requiresRuntime,
+    group: assembly.group,
+    exposure: assembly.exposure,
+    prepare,
+    execute(params, context = {}) {
+      return executeWithValidation(tool, params, context);
+    },
+    ...(assembly.validateInput
+      ? {
+          validate: async (
+            params: JsonObject,
+            context: ExecutionContext,
+          ): Promise<ToolValidationOutcome> => {
+            const typedParams = assembly.parse(params);
+            const error = await assembly.validateInput?.(typedParams, context);
+            return {
+              params: requireJsonObject(typedParams, assembly.name),
+              ...(error ? { error } : {}),
+            };
+          },
+        }
+      : {}),
+    ...(assembly.checkPermissions
+      ? {
+          checkPermissions: (params: JsonObject, context: ExecutionContext) =>
+            assembly.checkPermissions?.(assembly.parse(params), context),
+        }
+      : {}),
+  };
+  preparedExecutors.set(tool, executePrepared);
+  return tool;
+}
+
+export function executePreparedTool(
+  tool: Tool,
+  params: JsonObject,
+  context: ExecutionContext,
+): ToolExecution {
+  return preparedExecutors.get(tool)?.(params, context) ?? tool.execute(params, context);
+}
+
+function executeWithValidation(
+  tool: Tool,
+  raw: JsonObject,
+  context: ExecutionContext,
+): ToolExecution {
+  return (async function* () {
+    let invocation = tool.prepare(raw);
+    if (tool.validate) {
+      const outcome = await tool.validate(invocation.params, context);
+      if (outcome.error) {
+        return validationErrorToToolResult(outcome.error);
+      }
+      invocation = tool.prepare(outcome.params);
+    }
+    return yield* executePreparedTool(tool, invocation.params, context);
+  })();
 }
 
 /**
  * 创建工具的工厂函数
  */
-export function createTool<TSchema extends Type.TSchema>(
-  config: ToolConfig<TSchema>,
-): Tool<Type.Static<TSchema>> {
+export function createTool<
+  TSchema extends Type.TSchema,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(config: ToolConfig<TSchema, TServices, TRequiresRuntime>): Tool {
   type TParams = Type.Static<TSchema>;
-  let cachedSchema: TSchema | undefined;
-  let cachedInput: CompiledToolInput<TSchema> | undefined;
-  let cachedStaticDescriptionText: string | undefined;
-
-  const getSchema = (): TSchema => {
-    if (!cachedSchema) {
-      cachedSchema = resolveToolSchema(config.schema);
-    }
-    return cachedSchema;
-  };
-  const getInput = (): CompiledToolInput<TSchema> => {
-    if (!cachedInput) {
-      cachedInput = compileToolInput(getSchema());
-    }
-    return cachedInput;
-  };
-
+  const input: CompiledToolInput<TSchema> = compileToolInput<TSchema>(config.schema);
   const resolveDescription = (params?: TParams) => config.describe?.(params) ?? config.description;
 
-  const staticBehavior = createToolBehavior(config.kind, config.sideEffect, {
-    isReadOnly: config.isReadOnly,
-    isConcurrencySafe: config.isConcurrencySafe,
-    isDestructive: config.isDestructive,
-    interruptBehavior: config.interruptBehavior,
-  });
-  const behaviorHint = config.resolveBehaviorHint
-    ? {
-        ...staticBehavior,
-        ...config.resolveBehaviorHint(),
-      }
-    : staticBehavior;
+  if (!isToolSideEffect(config.sideEffect)) {
+    throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
+  }
+  const staticBehavior = resolveBehavior(config);
+  if (!staticBehavior) {
+    throw new TypeError('Tool behavior could not be resolved');
+  }
   const exposure = {
     mode: config.exposure?.mode ?? 'eager',
     alwaysLoad: config.exposure?.alwaysLoad ?? false,
@@ -192,65 +194,48 @@ export function createTool<TSchema extends Type.TSchema>(
   return assembleTool<TParams>({
     name: config.name,
     aliases: config.aliases,
-    displayName: config.displayName,
-    kind: config.kind,
+    title: config.displayName,
     staticBehavior,
-    behaviorHint,
-    strict: config.strict ?? false,
+    declaration: Object.freeze({
+      name: config.name,
+      description: formatToolDescription(config.description),
+      parameters: toFunctionSchema(config.schema),
+      ...(config.strict ? { strict: true } : {}),
+    }),
     maxResultSizeChars: config.maxResultSizeChars ?? Number.POSITIVE_INFINITY,
+    services: config.services ?? [],
+    requiresRuntime: config.requiresRuntime ?? false,
+    group: config.group,
     description: config.description,
     exposure,
-    version: config.version || '1.0.0',
-    category: config.category,
-    tags: config.tags || [],
-    declarationDescription: () => {
-      if (!cachedStaticDescriptionText) {
-        cachedStaticDescriptionText = formatToolDescription(resolveDescription());
-      }
-      return cachedStaticDescriptionText;
-    },
-    functionSchema: () => toFunctionSchema(getSchema()),
-    metadataSchema: () => getSchema(),
-    resolveDescription: (params?: unknown) =>
-      resolveDescription(params === undefined ? undefined : getInput().parse(params)),
-    invocationParams: (params) => getInput().parse(params),
+    parse: (params) => input.parse(params),
+    resolveBehavior: (params) => resolveBehavior(config, params) ?? staticBehavior,
+    resolveDescription: (params) => resolveDescription(params).short,
     ...(validateInputFn
       ? {
-          invocationValidation: (params: TParams, context: ExecutionContext) =>
+          validateInput: (params: TParams, context: ExecutionContext) =>
             validateInputFn(params, context),
         }
       : {}),
-    invocationDescription: (params: TParams) => resolveDescription(params).short,
-    execute: (params, context) => config.execute(params, context),
-    ...(validateInputFn
-      ? {
-          validateInput: (params: unknown, context: ExecutionContext) =>
-            validateInputFn(getInput().parse(params), context),
-        }
-      : {}),
+    execute: (params, context) =>
+      config.execute(
+        params,
+        createConfiguredToolContext<TServices, TRequiresRuntime>(
+          context,
+          config.requiresRuntime ?? false,
+        ),
+      ),
     ...(checkPermissionsFn
       ? {
-          checkPermissions: (params: unknown, context: ExecutionContext) =>
-            checkPermissionsFn(getInput().parse(params), context),
+          checkPermissions: (params: TParams, context: ExecutionContext) =>
+            checkPermissionsFn(params, context),
         }
       : {}),
-    resolveBehavior: (params: unknown) => {
-      const validatedParams = getInput().parse(params);
-      if (!config.resolveBehavior) {
-        return staticBehavior;
-      }
-      return {
-        ...staticBehavior,
-        ...config.resolveBehavior(validatedParams),
-      };
-    },
     ...(preparePermissionMatcherFn
       ? {
-          preparePermissionMatcher: (params: unknown) =>
-            preparePermissionMatcherFn(getInput().parse(params)),
+          preparePermissionMatcher: (params: TParams) => preparePermissionMatcherFn(params),
         }
       : {}),
-    getBehaviorHint: () => behaviorHint,
   });
 }
 
@@ -282,11 +267,20 @@ function formatToolDescription(description: {
  *
  * 用于将用户定义的简化工具转换为内部 Tool 对象
  */
-export function toolFromDefinition<TSchema extends Type.TSchema>(
-  definition: ToolDefinition<TSchema>,
-): Tool<Type.Static<TSchema>>;
-export function toolFromDefinition(definition: ErasedToolDefinition): Tool;
-export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
+export function toolFromDefinition<
+  TSchema extends Type.TSchema,
+  TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(
+  definition: ToolDefinition<TSchema, TData, TServices, TRequiresRuntime>,
+  services?: ToolServices,
+): Tool;
+export function toolFromDefinition(definition: ErasedToolDefinition, services?: ToolServices): Tool;
+export function toolFromDefinition(
+  definition: ErasedToolDefinition,
+  services: ToolServices = {},
+): Tool {
   const description =
     typeof definition.description === 'string'
       ? { short: definition.description }
@@ -297,36 +291,51 @@ export function toolFromDefinition(definition: ErasedToolDefinition): Tool {
   }
   const input = compileToolInput(definition.parameters);
   const kind = definition.kind || ToolKind.Execute;
-  const staticBehavior = createToolBehavior(kind, sideEffect, {
-    isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
+  const staticBehavior = resolveBehavior({
+    kind,
+    sideEffect,
+    isReadOnly: definition.kind ? definition.kind === ToolKind.ReadOnly : false,
   });
+  if (!staticBehavior) {
+    throw new TypeError('Tool behavior could not be resolved');
+  }
+  const serviceSelection = selectToolServices(services, definition.services);
+  if (serviceSelection.missing.length > 0) {
+    throw new TypeError(
+      `Tool '${definition.name}' requires unavailable services: ${serviceSelection.missing.join(', ')}`,
+    );
+  }
+  const requiresRuntime = definition.requiresRuntime ?? false;
 
   return assembleTool<unknown>({
     name: definition.name,
     aliases: definition.aliases,
-    displayName: definition.displayName || definition.name,
-    kind,
+    title: definition.displayName || definition.name,
     staticBehavior,
-    behaviorHint: staticBehavior,
-    strict: false,
+    declaration: Object.freeze({
+      name: definition.name,
+      description: formatToolDescription(description),
+      parameters: toFunctionSchema(definition.parameters),
+    }),
     maxResultSizeChars: Number.POSITIVE_INFINITY,
+    services: definition.services ?? [],
+    requiresRuntime,
+    group: definition.group,
     description,
     exposure: {
       mode: definition.exposure?.mode ?? 'eager',
       alwaysLoad: definition.exposure?.alwaysLoad ?? false,
       discoveryHint: definition.exposure?.discoveryHint ?? '',
     },
-    version: '1.0.0',
-    category: definition.category,
-    tags: definition.tags || [],
-    declarationDescription: () => formatToolDescription(description),
-    functionSchema: () => toFunctionSchema(definition.parameters),
-    metadataSchema: () => definition.parameters,
-    resolveDescription: () => description,
-    invocationParams: (params) => input.parse(params),
-    execute: (params, context) => executeErasedDefinition(definition, params, context),
-    getBehaviorHint: () => staticBehavior,
+    parse: (params) => input.parse(params),
     resolveBehavior: () => staticBehavior,
+    resolveDescription: () => description.short,
+    execute: (params, context) =>
+      executeErasedDefinition(
+        definition,
+        params,
+        createDefinitionContext(context, serviceSelection.selected, requiresRuntime),
+      ),
   });
 }
 
@@ -373,7 +382,43 @@ function executeErasedDefinition(
   context: ExecutionContext,
 ): ToolExecution {
   // Session erases heterogeneous parameter types only after schema validation.
-  return definition.execute(params as never, context);
+  return definition.execute.apply(undefined, [params, context] as never);
+}
+
+function createConfiguredToolContext<
+  TServices extends ToolServiceName,
+  TRequiresRuntime extends boolean,
+>(
+  context: ExecutionContext,
+  requiresRuntime: boolean,
+): ToolDefinitionContext<TServices, TRequiresRuntime> {
+  const { runtime: _runtime, ...base } = context;
+  return Object.freeze({
+    ...base,
+    ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
+  }) as ToolDefinitionContext<TServices, TRequiresRuntime>;
+}
+
+function createDefinitionContext(
+  context: ExecutionContext,
+  services: ToolServices,
+  requiresRuntime: boolean,
+): ExecutionContext & ToolServices {
+  const executionServices =
+    services.discoverableCatalog && context.discoverableCatalog
+      ? { ...services, discoverableCatalog: context.discoverableCatalog }
+      : services;
+  return Object.freeze({
+    signal: context.signal,
+    sessionId: context.sessionId,
+    messageId: context.messageId,
+    contextSnapshot: context.contextSnapshot,
+    permissionMode: context.permissionMode,
+    confirmationHandler: context.confirmationHandler,
+    bladeConfig: context.bladeConfig,
+    ...executionServices,
+    ...(requiresRuntime ? { runtime: Object.freeze(getRuntimeAccess(context)) } : {}),
+  });
 }
 
 /**
@@ -391,9 +436,14 @@ function executeErasedDefinition(
  * });
  * ```
  */
-export function defineTool<TSchema extends Type.TSchema, TData extends JsonValue = JsonValue>(
-  definition: ToolDefinitionInput<TSchema, TData>,
-): ToolDefinition<TSchema, TData> {
+export function defineTool<
+  TSchema extends Type.TSchema,
+  TData extends JsonValue = JsonValue,
+  TServices extends ToolServiceName = never,
+  TRequiresRuntime extends boolean = false,
+>(
+  definition: ToolDefinitionInput<TSchema, TData, TServices, TRequiresRuntime>,
+): ToolDefinition<TSchema, TData, TServices, TRequiresRuntime> {
   if (definition.sideEffect !== undefined && !isToolSideEffect(definition.sideEffect)) {
     throw new TypeError('Tool sideEffect must be pure, idempotent, or non_idempotent');
   }
@@ -404,45 +454,28 @@ export function defineTool<TSchema extends Type.TSchema, TData extends JsonValue
 }
 
 function normalizeToolExecution<TData extends JsonValue>(
-  execution: ToolExecution<TData> | Promise<TData | ToolResult<TData>>,
+  execution: Promise<TData>,
 ): ToolExecution<TData> {
+  // biome-ignore lint/correctness/useYield: adapts one terminal Promise to the runtime stream.
   return (async function* () {
-    if (isAsyncGenerator(execution)) {
-      return yield* execution;
-    }
-    const result = await execution;
-    if (isToolResult(result)) {
-      return result;
-    }
+    const data = await execution;
     return {
       status: 'success',
-      model: result,
-      data: result,
+      model: data,
+      data,
     };
   })();
 }
 
-function isToolResult<TData extends JsonValue>(
-  value: TData | ToolResult<TData>,
-): value is ToolResult<TData> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    'status' in value &&
-    'model' in value &&
-    (value.status === 'success' || value.status === 'error')
-  );
+function requireJsonObject(value: unknown, toolName: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new TypeError(`Tool '${toolName}' parameters must be a JSON object`);
+  }
+  return value;
 }
 
-function isAsyncGenerator<TData extends JsonValue>(value: unknown): value is ToolExecution<TData> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  return (
-    typeof Reflect.get(value, 'next') === 'function' &&
-    typeof Reflect.get(value, Symbol.asyncIterator) === 'function'
-  );
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** TypeBox schemas are JSON Schema values; this is their single model boundary. */

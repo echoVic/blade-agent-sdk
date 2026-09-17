@@ -1,10 +1,32 @@
 export {
+  type DurableEventOperationOptions,
+  DurableEventSequenceConflictError,
+  type DurableEventStore,
+  DurableEventStoreError,
+  type DurableEventStoreErrorCode,
+  type DurableEventStoreOperation,
+  DurableEventStoreTimeoutError,
+} from './DurableEventStore.js';
+export {
+  DURABLE_EVENT_CURSOR_VERSION,
+  type DurableEventCursor,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionErrorCode,
+  type DurableEventSubscriptionMessage,
+  type DurableEventSubscriptionOptions,
+  durableEventCursor,
+  parseDurableEventCursor,
+} from './DurableEventSubscription.js';
+export {
   DEFAULT_EXECUTION_LEASE_HEARTBEAT_INTERVAL_MS,
   DEFAULT_EXECUTION_LEASE_TTL_MS,
   DurableExecutionLease,
   type DurableExecutionLeaseOptions,
 } from './DurableExecutionLease.js';
 export {
+  DURABLE_EXECUTION_LEASE_FORMAT,
+  DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
   type DurableExecutionFence,
   type DurableExecutionLease as DurableExecutionLeaseSnapshot,
   type DurableExecutionLeaseAcquireOptions,
@@ -13,37 +35,10 @@ export {
   type DurableExecutionLeaseOperation,
   type DurableExecutionLeaseStore,
   DurableExecutionLeaseTimeoutError,
-  DURABLE_EXECUTION_LEASE_FORMAT,
-  DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
   executionFence,
-  isDurableExecutionLeaseStore,
   type PersistedDurableExecutionLeaseState,
   parsePersistedDurableExecutionLeaseState,
 } from './DurableExecutionLeaseStore.js';
-export {
-  DurableEventSequenceConflictError,
-  type DurableEventOperationOptions,
-  type DurableEventStore,
-  DurableEventStoreError,
-  type DurableEventStoreErrorCode,
-  type DurableEventStoreOperation,
-  DurableEventStoreTimeoutError,
-} from './DurableEventStore.js';
-export {
-  DEFAULT_DURABLE_STORE_TIMEOUT_MS,
-  MAX_DURABLE_STORE_TIMEOUT_MS,
-} from './DurableStoreOperation.js';
-export {
-  DURABLE_EVENT_CURSOR_VERSION,
-  durableEventCursor,
-  DurableEventSubscription,
-  DurableEventSubscriptionError,
-  type DurableEventSubscriptionErrorCode,
-  type DurableEventSubscriptionMessage,
-  type DurableEventSubscriptionOptions,
-  type DurableEventCursor,
-  parseDurableEventCursor,
-} from './DurableEventSubscription.js';
 export {
   type DurableCommandCommitOptions,
   type DurableCommandCommitResult,
@@ -57,26 +52,6 @@ export {
   type DurableSessionJournalErrorCode,
   type DurableSessionJournalOptions,
 } from './DurableSessionJournal.js';
-export {
-  type DurableAcceptedRequestRecovery,
-  type DurableModelOutcomeReconciliation,
-  type DurableModelOutcomeReconciliationCommand,
-  type DurablePermissionResolutionCommand,
-  type DurableRecoveryCommitResult,
-  type DurableRequestOutcomeReconciliation,
-  type DurableRequestOutcomeReconciliationCommand,
-  type DurableRequestRolloverCommand,
-  type DurableRequestRolloverResult,
-  DurableSessionRecoveryCoordinator,
-  DurableSessionRecoveryError,
-  type DurableSessionRecoveryErrorCode,
-  type DurableSessionResumeDecision,
-  type DurableToolOutcomeReconciliation,
-  type DurableToolOutcomeReconciliationCommand,
-  type DurableToolStartCommand,
-  type DurableTurnRecoveryCommand,
-  type DurableTurnRecoveryResult,
-} from './DurableSessionRecoveryCoordinator.js';
 export {
   DurableEventProjectionError,
   type DurableModelAttemptProjection,
@@ -99,6 +74,30 @@ export {
   planDurableSessionRecovery,
   projectDurableSession,
 } from './DurableSessionProjector.js';
+export {
+  type DurableAcceptedRequestRecovery,
+  type DurableModelOutcomeReconciliation,
+  type DurableModelOutcomeReconciliationCommand,
+  type DurablePermissionResolutionCommand,
+  type DurableRecoveryCommitResult,
+  type DurableRequestOutcomeReconciliation,
+  type DurableRequestOutcomeReconciliationCommand,
+  type DurableRequestRolloverCommand,
+  type DurableRequestRolloverResult,
+  DurableSessionRecoveryCoordinator,
+  DurableSessionRecoveryError,
+  type DurableSessionRecoveryErrorCode,
+  type DurableSessionResumeDecision,
+  type DurableToolOutcomeReconciliation,
+  type DurableToolOutcomeReconciliationCommand,
+  type DurableToolStartCommand,
+  type DurableTurnRecoveryCommand,
+  type DurableTurnRecoveryResult,
+} from './DurableSessionRecoveryCoordinator.js';
+export {
+  DEFAULT_DURABLE_STORE_TIMEOUT_MS,
+  MAX_DURABLE_STORE_TIMEOUT_MS,
+} from './DurableStoreOperation.js';
 export {
   DurableSessionRecoveryRequiredError,
   SessionDurableRecorderError,

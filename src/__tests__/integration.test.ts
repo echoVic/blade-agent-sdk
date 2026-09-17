@@ -22,6 +22,7 @@ import {
   defineTool,
   forkSession,
   type ISession,
+  type PermissionHandlerRequest,
   PermissionMode,
   type PromptResult,
   type ProviderType,
@@ -279,12 +280,8 @@ describeIntegration('4. 自定义工具调用', () => {
         parameters: Type.Object({
           city: Type.String({ description: 'City name' }),
         }),
-        // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params) {
-          return {
-            status: 'success' as const,
-            model: JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' }),
-          };
+        async execute(params) {
+          return JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' });
         },
       });
 
@@ -339,7 +336,7 @@ describeIntegration('4. 自定义工具调用', () => {
           a: Type.Number(),
           b: Type.Number(),
         }),
-        async *execute(params) {
+        async execute(params) {
           const ops: Record<string, (a: number, b: number) => number> = {
             add: (a, b) => a + b,
             subtract: (a, b) => a - b,
@@ -347,10 +344,7 @@ describeIntegration('4. 自定义工具调用', () => {
             divide: (a, b) => a / b,
           };
           const result = ops[params.operation]?.(params.a, params.b) ?? 0;
-          return {
-            status: 'success' as const,
-            model: JSON.stringify({ result }),
-          };
+          return JSON.stringify({ result });
         },
       });
 
@@ -587,12 +581,8 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         parameters: Type.Object({
           value: Type.String({ description: 'Value to echo' }),
         }),
-        // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute(params) {
-          return {
-            status: 'success',
-            model: `server:${params.value}`,
-          };
+        async execute(params) {
+          return `server:${params.value}`;
         },
       });
 
@@ -640,7 +630,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
   );
 
   it(
-    'canUseTool deny 应阻止工具执行并返回受控错误结果',
+    'permissionHandler deny 应阻止工具执行并返回受控错误结果',
     async () => {
       const restrictedTool = defineTool({
         name: 'restricted_action',
@@ -649,12 +639,8 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         parameters: Type.Object({
           reason: Type.String(),
         }),
-        // biome-ignore lint/correctness/useYield: terminal-only tool execution
-        async *execute() {
-          return {
-            status: 'success',
-            model: 'should-not-run',
-          };
+        async execute() {
+          return 'should-not-run';
         },
       });
 
@@ -665,7 +651,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
           maxTurns: 4,
           systemPrompt:
             'You must call restricted_action exactly once when asked. If it fails, explain the failure briefly.',
-          canUseTool: async (toolName: string) => {
+          permissionHandler: async ({ toolName }: PermissionHandlerRequest) => {
             if (toolName === 'restricted_action') {
               return {
                 behavior: 'deny',

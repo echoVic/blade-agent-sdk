@@ -15,7 +15,6 @@ import {
   DurableExecutionLeaseError,
   type DurableExecutionLeaseStore,
   DurableExecutionLeaseTimeoutError,
-  isDurableExecutionLeaseStore,
 } from '../DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import { DurableSessionRecoveryCoordinator } from '../DurableSessionRecoveryCoordinator.js';
@@ -640,21 +639,9 @@ describe('DurableExecutionLease', () => {
     await expect(lease.release()).resolves.toBeUndefined();
   });
 
-  it('requires a lease-capable Store and a safe heartbeat interval', async () => {
+  it('requires a safe heartbeat interval', async () => {
     const store = await createStore();
-    const unsupported: DurableEventStore = {
-      append: (...args) => store.append(...args),
-      read: (...args) => store.read(...args),
-      getHeadSequence: (...args) => store.getHeadSequence(...args),
-    };
 
-    await expect(
-      DurableExecutionLease.acquire(unsupported, SessionId('unsupported-session'), {
-        ownerId: WorkerId('worker-a'),
-      }),
-    ).rejects.toMatchObject({
-      code: 'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
-    });
     await expect(
       DurableExecutionLease.acquire(store, SessionId('invalid-heartbeat-session'), {
         ownerId: WorkerId('worker-a'),
@@ -717,7 +704,9 @@ describe('DurableExecutionLease', () => {
   it('requires a lease when opening a previously fenced Journal or recovery coordinator', async () => {
     const store = await createStore();
     const sessionId = SessionId('sticky-journal-fence-session');
-    await expect(DurableSessionJournal.open(store, sessionId)).resolves.toBeDefined();
+    await expect(
+      DurableSessionJournal.open(store, sessionId, { executionLeaseStore: store }),
+    ).resolves.toBeDefined();
     const firstLease = await DurableExecutionLease.acquire(store, sessionId, {
       ownerId: WorkerId('worker-a'),
       ttlMs: 10_000,
@@ -725,11 +714,17 @@ describe('DurableExecutionLease', () => {
     });
     await firstLease.release();
 
-    await expect(DurableSessionJournal.open(store, sessionId)).rejects.toMatchObject({
+    await expect(
+      DurableSessionJournal.open(store, sessionId, { executionLeaseStore: store }),
+    ).rejects.toMatchObject({
       code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
       sessionId,
     });
-    await expect(DurableSessionRecoveryCoordinator.open(store, sessionId)).rejects.toMatchObject({
+    await expect(
+      DurableSessionRecoveryCoordinator.open(store, sessionId, {
+        executionLeaseStore: store,
+      }),
+    ).rejects.toMatchObject({
       code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
       sessionId,
     });
@@ -775,7 +770,6 @@ describe('DurableExecutionLease', () => {
       ) => store.releaseExecutionLease(...args),
     } satisfies DurableExecutionLeaseStore;
 
-    expect(isDurableExecutionLeaseStore(leaseStore)).toBe(true);
     const lease = await DurableExecutionLease.acquire(leaseStore, SessionId('structural-session'), {
       ownerId: WorkerId('worker-a'),
     });

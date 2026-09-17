@@ -18,7 +18,8 @@ const mockSandboxExecutor = {
   buildExecutionOptions: vi.fn(() => ({ workDir: '/test' })),
   // Mirrors the real contract: a disabled policy means the command is not wrapped.
   wrapCommand: vi.fn((cmd: string, _options: unknown, settings?: { enabled?: boolean }) =>
-    settings?.enabled === false ? cmd : `sandbox:${cmd}`),
+    settings?.enabled === false ? cmd : `sandbox:${cmd}`,
+  ),
   getCapabilities: vi.fn((): SandboxCapabilities => availableCapabilities),
 };
 
@@ -66,12 +67,14 @@ describe('SandboxService', () => {
       const sessionB = { enabled: true, allowUnsandboxedCommands: true };
 
       expect(service.allowsUnsandboxedCommands(sessionA)).toBe(false);
-      expect(service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true }, sessionA))
-        .toMatchObject({ outcome: 'denied' });
+      expect(
+        service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true }, sessionA),
+      ).toMatchObject({ outcome: 'denied' });
       // Reading B's policy must not change what A observes.
       expect(service.allowsUnsandboxedCommands(sessionB)).toBe(true);
-      expect(service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true }, sessionA))
-        .toMatchObject({ outcome: 'denied' });
+      expect(
+        service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true }, sessionA),
+      ).toMatchObject({ outcome: 'denied' });
     });
 
     it('returns copies so a caller cannot mutate the policy it passed in', () => {
@@ -106,16 +109,20 @@ describe('SandboxService', () => {
   describe('shouldAutoAllowBash', () => {
     it('requires an enabled policy, the opt-in flag, and platform support', () => {
       const service = getSandboxService();
-      expect(service.shouldAutoAllowBash({ enabled: false, autoAllowBashIfSandboxed: true }))
-        .toBe(false);
-      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: false }))
-        .toBe(false);
-      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: true }))
-        .toBe(true);
+      expect(service.shouldAutoAllowBash({ enabled: false, autoAllowBashIfSandboxed: true })).toBe(
+        false,
+      );
+      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: false })).toBe(
+        false,
+      );
+      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: true })).toBe(
+        true,
+      );
 
       mockSandboxExecutor.canUseSandbox.mockReturnValue(false);
-      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: true }))
-        .toBe(false);
+      expect(service.shouldAutoAllowBash({ enabled: true, autoAllowBashIfSandboxed: true })).toBe(
+        false,
+      );
     });
   });
 
@@ -133,23 +140,34 @@ describe('SandboxService', () => {
   describe('checkCommand', () => {
     it('reports the policy outcome for each case', () => {
       const service = getSandboxService();
-      expect(service.checkCommand({ command: 'ls' }, { enabled: false }))
-        .toMatchObject({ outcome: 'disabled' });
-      expect(service.checkCommand({ command: 'git status' }, {
-        enabled: true, excludedCommands: ['git'],
-      })).toMatchObject({ outcome: 'excluded' });
-      expect(service.checkCommand({ command: 'ls' }, { enabled: true }))
-        .toMatchObject({ outcome: 'sandboxed' });
+      expect(service.checkCommand({ command: 'ls' }, { enabled: false })).toMatchObject({
+        outcome: 'disabled',
+      });
+      expect(
+        service.checkCommand(
+          { command: 'git status' },
+          {
+            enabled: true,
+            excludedCommands: ['git'],
+          },
+        ),
+      ).toMatchObject({ outcome: 'excluded' });
+      expect(service.checkCommand({ command: 'ls' }, { enabled: true })).toMatchObject({
+        outcome: 'sandboxed',
+      });
 
       const unsandboxed = { command: 'ls', dangerouslyDisableSandbox: true } as const;
-      expect(service.checkCommand(unsandboxed, { enabled: true }))
-        .toMatchObject({ outcome: 'denied' });
-      expect(service.checkCommand(unsandboxed, { enabled: true, allowUnsandboxedCommands: true }))
-        .toMatchObject({ outcome: 'requires_permission' });
+      expect(service.checkCommand(unsandboxed, { enabled: true })).toMatchObject({
+        outcome: 'denied',
+      });
+      expect(
+        service.checkCommand(unsandboxed, { enabled: true, allowUnsandboxedCommands: true }),
+      ).toMatchObject({ outcome: 'requires_permission' });
 
       mockSandboxExecutor.canUseSandbox.mockReturnValue(false);
-      expect(service.checkCommand({ command: 'ls' }, { enabled: true }))
-        .toMatchObject({ outcome: 'unavailable' });
+      expect(service.checkCommand({ command: 'ls' }, { enabled: true })).toMatchObject({
+        outcome: 'unavailable',
+      });
     });
   });
 
@@ -160,15 +178,21 @@ describe('SandboxService', () => {
       expect(service.allowsLocalBinding({ network: { allowLocalBinding: true } })).toBe(true);
       expect(service.allowsLocalBinding({})).toBe(false);
       expect(service.isUnixSocketAllowed('/var/run/docker.sock', {})).toBe(false);
-      expect(service.isUnixSocketAllowed('/var/run/docker.sock', {
-        network: { allowAllUnixSockets: true },
-      })).toBe(true);
-      expect(service.isUnixSocketAllowed('/var/run/docker.sock', {
-        network: { allowUnixSockets: ['/var/run/docker.sock'] },
-      })).toBe(true);
-      expect(service.isUnixSocketAllowed('/var/run/other.sock', {
-        network: { allowUnixSockets: ['/var/run/docker.sock'] },
-      })).toBe(false);
+      expect(
+        service.isUnixSocketAllowed('/var/run/docker.sock', {
+          network: { allowAllUnixSockets: true },
+        }),
+      ).toBe(true);
+      expect(
+        service.isUnixSocketAllowed('/var/run/docker.sock', {
+          network: { allowUnixSockets: ['/var/run/docker.sock'] },
+        }),
+      ).toBe(true);
+      expect(
+        service.isUnixSocketAllowed('/var/run/other.sock', {
+          network: { allowUnixSockets: ['/var/run/docker.sock'] },
+        }),
+      ).toBe(false);
     });
   });
 
@@ -176,9 +200,12 @@ describe('SandboxService', () => {
     it('returns the command unchanged when the policy is disabled or excluded', () => {
       const service = getSandboxService();
       expect(service.wrapCommandForSandbox('ls -la', '/tmp', { enabled: false })).toBe('ls -la');
-      expect(service.wrapCommandForSandbox('git status', '/tmp', {
-        enabled: true, excludedCommands: ['git'],
-      })).toBe('git status');
+      expect(
+        service.wrapCommandForSandbox('git status', '/tmp', {
+          enabled: true,
+          excludedCommands: ['git'],
+        }),
+      ).toBe('git status');
 
       // The executor owns the decision: an excluded command reaches it as a
       // disabled policy rather than being short-circuited here.
@@ -191,8 +218,9 @@ describe('SandboxService', () => {
 
     it('delegates to the executor together with the given policy', () => {
       const service = getSandboxService();
-      expect(service.wrapCommandForSandbox('ls -la', '/tmp', { enabled: true }))
-        .toBe('sandbox:ls -la');
+      expect(service.wrapCommandForSandbox('ls -la', '/tmp', { enabled: true })).toBe(
+        'sandbox:ls -la',
+      );
       // The executor builds the options from the policy's network facet, and the
       // wrapping call carries the same policy.
       expect(mockSandboxExecutor.buildExecutionOptions).toHaveBeenCalledWith('/tmp', undefined);
@@ -258,10 +286,12 @@ describe('SandboxService', () => {
       // The unsandboxed branch is a policy decision, checked on the service.
       const service = getSandboxService();
       const unsandboxed = { command: 'echo hi', dangerouslyDisableSandbox: true };
-      expect(service.checkCommand(unsandboxed, { enabled: true }))
-        .toMatchObject({ outcome: 'denied' });
-      expect(service.checkCommand(unsandboxed, { enabled: true, allowUnsandboxedCommands: true }))
-        .toMatchObject({ outcome: 'requires_permission' });
+      expect(service.checkCommand(unsandboxed, { enabled: true })).toMatchObject({
+        outcome: 'denied',
+      });
+      expect(
+        service.checkCommand(unsandboxed, { enabled: true, allowUnsandboxedCommands: true }),
+      ).toMatchObject({ outcome: 'requires_permission' });
     });
   });
 });

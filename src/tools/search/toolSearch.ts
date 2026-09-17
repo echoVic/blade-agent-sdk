@@ -23,9 +23,7 @@ export function scoreToolSearchMatch(tool: Tool, normalizedQuery: string): numbe
   const fields: [string, number][] = [
     [tool.name, 120],
     ...aliases.map((alias) => [alias, 110] as [string, number]),
-    [tool.displayName, 90],
-    [tool.category ?? '', 60],
-    ...tool.tags.map((tag) => [tag, 50] as [string, number]),
+    [tool.title, 90],
     [tool.exposure.discoveryHint, 45],
     [longDescription, 30],
   ];

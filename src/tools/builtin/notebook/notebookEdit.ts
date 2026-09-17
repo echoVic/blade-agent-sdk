@@ -1,221 +1,125 @@
-import * as fs from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import Type from 'typebox';
-import { getErrorMessage } from '../../../utils/errorUtils.js';
+import { ToolKind } from '../../behavior.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/kind.js';
-import { ToolErrorType } from '../../types/result.js';
-import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
-import { lazySchema } from '../../validation/lazySchema.js';
+import { ToolErrorType, type ToolResult } from '../../types/result.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
+import { filePermission, operationFailure, validateFilePath } from '../file/operationCore.js';
 
-/**
- * NotebookEdit tool
- * Edit Jupyter notebook cells
- */
+interface NotebookCell {
+  id?: string;
+  cell_type: 'code' | 'markdown';
+  source: string[];
+  metadata?: Record<string, unknown>;
+  execution_count?: number | null;
+  outputs?: unknown[];
+}
+
+interface Notebook {
+  cells: NotebookCell[];
+  [key: string]: unknown;
+}
+
 export const notebookEditTool = createTool({
   name: 'NotebookEdit',
+  group: 'filesystem',
   displayName: 'Notebook Edit',
   kind: ToolKind.Write,
   sideEffect: 'non_idempotent',
-
-  schema: lazySchema(() =>
-    Type.Object({
-      notebook_path: ToolSchemas.filePath({
-        description:
-          'The absolute path to the Jupyter notebook file to edit (must be absolute, not relative)',
-      }),
-      cell_id: Type.Optional(
-        Type.String({
-          description:
-            'The ID of the cell to edit. When inserting a new cell, the new cell will be inserted after the cell with this ID, or at the beginning if not specified.',
-        }),
-      ),
-      new_source: Type.String({ description: 'The new source for the cell' }),
-      cell_type: Type.Optional(
-        Type.Enum(['code', 'markdown'], {
-          description:
-            'The type of the cell (code or markdown). If not specified, it defaults to the current cell type. If using edit_mode=insert, this is required.',
-        }),
-      ),
-      edit_mode: Type.Enum(['replace', 'insert', 'delete'], {
-        default: 'replace',
-        description: 'The type of edit to make (replace, insert, delete). Defaults to replace.',
-      }),
+  schema: Type.Object({
+    notebook_path: ToolSchemas.filePath({ description: 'Absolute Jupyter notebook path' }),
+    cell_id: Type.Optional(Type.String({ description: 'Cell ID to edit or insertion anchor' })),
+    new_source: Type.String({ description: 'New cell source' }),
+    cell_type: Type.Optional(Type.Enum(['code', 'markdown'])),
+    edit_mode: Type.Enum(['replace', 'insert', 'delete'], {
+      default: 'replace',
+      description: 'Cell operation',
     }),
-  ),
-
-  resolveBehavior: ({ edit_mode }) => ({
-    kind: ToolKind.Write,
-    sideEffect: edit_mode === 'replace' ? 'idempotent' : 'non_idempotent',
-    isReadOnly: false,
-    isConcurrencySafe: false,
-    isDestructive: edit_mode === 'delete',
   }),
-
-  validateInput: async (params, context) => {
-    try {
-      params.notebook_path = await resolveAuthorizedFilesystemPath(
-        params.notebook_path,
-        context.contextSnapshot,
-      );
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        message,
-        model: message,
-        errorType: ToolErrorType.PERMISSION_DENIED,
-      };
-    }
-    return undefined;
+  resolveBehavior: (params) => {
+    const mode = params?.edit_mode ?? 'replace';
+    return {
+      kind: ToolKind.Write,
+      sideEffect: mode === 'replace' ? 'idempotent' : 'non_idempotent',
+      isReadOnly: false,
+      isConcurrencySafe: false,
+      isDestructive: mode === 'delete',
+    };
   },
-
-  // 工具描述（对齐 Claude Code 官方）
+  validateInput: (params, context) => validateFilePath(params, 'notebook_path', context),
   description: {
-    short: 'Completely replaces the contents of a specific cell in a Jupyter notebook',
-    long: `Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.`,
+    short: 'Replace, insert, or delete a Jupyter notebook cell',
   },
-
-  async *execute(params, _context) {
-    const { notebook_path, cell_id, new_source, cell_type, edit_mode = 'replace' } = params;
-
+  async *execute(params) {
+    const {
+      notebook_path: notebookPath,
+      cell_id: cellId,
+      new_source: newSource,
+      cell_type: cellType,
+      edit_mode: mode,
+    } = params;
     try {
-      // Read notebook file
-      const content = await fs.readFile(notebook_path, 'utf-8');
-      const notebook = JSON.parse(content);
-
-      if (!notebook.cells || !Array.isArray(notebook.cells)) {
-        return {
-          status: 'error',
-          model: 'Invalid notebook format: no cells array found',
-          error: {
-            type: ToolErrorType.VALIDATION_ERROR,
-            message: 'Invalid notebook format',
-          },
-          metadata: {
-            summary: '无效的 Notebook 格式',
-          },
-        };
+      const notebook = parseNotebook(await readFile(notebookPath, 'utf8'));
+      if (!notebook) return invalid('Invalid notebook format: no cells array found');
+      const index = cellId ? notebook.cells.findIndex((cell) => cell.id === cellId) : -1;
+      if (cellId && index < 0 && mode !== 'insert') {
+        return invalid(`Cell with ID "${cellId}" not found`);
       }
 
-      // Find cell by ID or use index
-      let cellIndex = -1;
-      if (cell_id) {
-        cellIndex = notebook.cells.findIndex((cell: { id?: string }) => cell.id === cell_id);
-        if (cellIndex === -1 && edit_mode !== 'insert') {
-          return {
-            status: 'error',
-            model: `Cell with ID "${cell_id}" not found`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: `Cell ID "${cell_id}" not found`,
-            },
-            metadata: {
-              summary: '未找到单元格',
-            },
-          };
-        }
+      if (mode === 'replace') {
+        if (index < 0) return invalid('Cell ID required for replace operation');
+        notebook.cells[index].source = splitSource(newSource);
+        if (cellType) notebook.cells[index].cell_type = cellType;
+      } else if (mode === 'insert') {
+        if (!cellType) return invalid('cell_type is required for insert operation');
+        notebook.cells.splice(index + 1, 0, {
+          cell_type: cellType,
+          source: splitSource(newSource),
+          metadata: {},
+          ...(cellType === 'code' ? { execution_count: null, outputs: [] } : {}),
+        });
+      } else {
+        if (index < 0) return invalid('Cell ID required for delete operation');
+        notebook.cells.splice(index, 1);
       }
 
-      switch (edit_mode) {
-        case 'replace': {
-          if (cellIndex === -1) {
-            return {
-              status: 'error',
-              model: 'Cell ID required for replace operation',
-              error: {
-                type: ToolErrorType.VALIDATION_ERROR,
-                message: 'Cell ID required for replace',
-              },
-              metadata: {
-                summary: '需要 cell_id',
-              },
-            };
-          }
-          const cell = notebook.cells[cellIndex];
-          cell.source = new_source
-            .split('\n')
-            .map((line, i, arr) => (i < arr.length - 1 ? `${line}\n` : line));
-          if (cell_type) {
-            cell.cell_type = cell_type;
-          }
-          break;
-        }
-
-        case 'insert': {
-          if (!cell_type) {
-            return {
-              status: 'error',
-              model: 'cell_type is required for insert operation',
-              error: {
-                type: ToolErrorType.VALIDATION_ERROR,
-                message: 'cell_type required for insert',
-              },
-              metadata: {
-                summary: '需要 cell_type',
-              },
-            };
-          }
-          const newCell = {
-            cell_type,
-            source: new_source
-              .split('\n')
-              .map((line, i, arr) => (i < arr.length - 1 ? `${line}\n` : line)),
-            metadata: {},
-            ...(cell_type === 'code' ? { execution_count: null, outputs: [] } : {}),
-          };
-          const insertIndex = cellIndex === -1 ? 0 : cellIndex + 1;
-          notebook.cells.splice(insertIndex, 0, newCell);
-          break;
-        }
-
-        case 'delete': {
-          if (cellIndex === -1) {
-            return {
-              status: 'error',
-              model: 'Cell ID required for delete operation',
-              error: {
-                type: ToolErrorType.VALIDATION_ERROR,
-                message: 'Cell ID required for delete',
-              },
-              metadata: {
-                summary: '需要 cell_id',
-              },
-            };
-          }
-          notebook.cells.splice(cellIndex, 1);
-          break;
-        }
-      }
-
-      // Write back to file
-      await fs.writeFile(notebook_path, JSON.stringify(notebook, null, 2));
-
-      const actionMsg =
-        edit_mode === 'replace' ? 'replaced' : edit_mode === 'insert' ? 'inserted' : 'deleted';
-
+      await writeFile(notebookPath, JSON.stringify(notebook, null, 2));
+      const action = mode === 'replace' ? 'replaced' : mode === 'insert' ? 'inserted' : 'deleted';
       return {
         status: 'success',
-        model: `Successfully ${actionMsg} cell in ${notebook_path}`,
+        model: `Successfully ${action} cell in ${notebookPath}`,
         metadata: {
-          summary: `编辑 Notebook: ${edit_mode}`,
-          notebook_path,
-          edit_mode,
-          cell_id,
+          summary: `编辑 Notebook: ${mode}`,
+          notebook_path: notebookPath,
+          edit_mode: mode,
+          cell_id: cellId,
         },
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return {
-        status: 'error',
-        model: `Failed to edit notebook: ${message}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message,
-        },
-        metadata: {
-          summary: 'Notebook 编辑失败',
-        },
-      };
+      return operationFailure('Notebook edit', error, 'Notebook edit aborted');
     }
   },
+  preparePermissionMatcher: ({ notebook_path }) => filePermission(notebook_path),
 });
+
+function parseNotebook(text: string): Notebook | undefined {
+  const value: unknown = JSON.parse(text);
+  return value && typeof value === 'object' && Array.isArray((value as Notebook).cells)
+    ? (value as Notebook)
+    : undefined;
+}
+
+function splitSource(source: string): string[] {
+  return source
+    .split('\n')
+    .map((line, index, lines) => (index < lines.length - 1 ? `${line}\n` : line));
+}
+
+function invalid(message: string): ToolResult {
+  return {
+    status: 'error',
+    model: message,
+    error: { type: ToolErrorType.VALIDATION_ERROR, message },
+    metadata: { summary: 'Notebook 编辑失败' },
+  };
+}
