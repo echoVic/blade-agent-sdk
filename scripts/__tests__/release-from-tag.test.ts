@@ -229,6 +229,7 @@ describe('release workflow', () => {
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
+      'sudo apt-get update && sudo apt-get install --yes ripgrep',
       'node scripts/release-from-tag.mjs --stamp-only --tag "${{ inputs.tag || github.ref_name }}"',
       [
         'docker pull alpine:3.22',
