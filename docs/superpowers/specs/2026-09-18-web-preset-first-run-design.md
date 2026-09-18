@@ -45,7 +45,7 @@
 - 脚手架：`src/cli/createBladeAgent.ts` 的 web preset（依赖、模板文件、README、自动启动）。
 - 验证：`server.mjs --smoke` 覆盖 9 步；`scripts/verify-create-blade-agent.mjs` 的 web 期望同步。
 - 文档：`docs/server-runtime.md` 与 `docs/en/server-runtime.md`（新 store）、`docs/golden-paths.md` 与 `docs/en/golden-paths.md`、`examples/README.md`、`README.md` 与 `README.zh-CN.md` 里 web preset 的段落。
-- changelog fragment：两条 feature，一条是新 store，一条是 web preset 首跑体验。
+- changelog fragment：feature 三条（新 store、`SessionOptions.permissions`、web preset 首跑体验），fix 一条（macOS seatbelt profile）。
 
 不做：
 
@@ -145,7 +145,31 @@ export class JsonlAgentServerStore implements AgentServerStore {
 - `healthCheck()`：`{ ready, details: { directory } }`，`ready` 为内部 store 的 ready 且句柄打开。
 - 定位：单进程单机。多实例部署继续使用 PostgreSQL store。文档明确说明这一点，不做文件锁。
 
-### 4.3 对外与文档
+### 4.3 `SessionOptions.permissions`（实现阶段核实后新增）
+
+核实发现：Session 路径的权限规则在 `SessionState.buildBladeConfig()` 里写死为空数组，规则处理器对空规则一律返回 `ask`，且模式处理器的 `allow` 不会清除规则留下的确认原因。结果是 `AgentServer` 承载的 Session 在任何权限模式下、对任何工具都会弹审批，示例里的 Read、Glob、Grep 也不例外。`sandbox.autoAllowBashIfSandboxed` 在 SDK 里没有任何消费者，是死配置。
+
+因此新增一个透传字段：
+
+```ts
+// SessionOptions
+permissions?: PermissionsConfig; // { allow?: string[]; ask?: string[]; deny?: string[] }
+```
+
+`buildBladeConfig()` 合并为 `{ allow: [], deny: [], ...options.permissions }`。规则按 `permissionSignature` 匹配：签名形如 `Read:<path>`、`Bash:<command>`，规则支持精确匹配和以 `*` 结尾的前缀匹配，所以放行一个工具要同时写 `'Read'` 和 `'Read:*'`。
+
+web preset 的用法：
+
+- 沙箱探测通过：`permissionMode: 'yolo'`，`permissions.allow` 包含 Read、Glob、Grep、Bash 四个工具的精确与前缀规则，`sandbox: { enabled: true }`。破坏性命令（`rm -rf`、`git push` 等）仍由模式处理器要求确认，路径安全检查仍然生效。
+- 沙箱探测失败：`permissionMode: 'default'`，`permissions.allow` 只含 Read、Glob、Grep；Bash 走规则和模式两层的 `ask`，以审批卡片形式到达浏览器。
+
+### 4.4 macOS seatbelt profile 修复（实现阶段核实后新增）
+
+当前 macOS 上 SDK 生成的 seatbelt profile 会让 `sandbox-exec` 以 SIGABRT 退出，任何沙箱内命令都跑不起来。二分定位到缺少根目录读取权限，在 `generateSeatbeltProfile` 里于 `(allow file-read-metadata)` 之后加一行 `(allow file-read* (literal "/"))` 即可。作为 fix 类型 changelog fragment 交付。
+
+`server.mjs` 仍在启动时做一次真实探测：用 `getSandboxExecutor().wrapCommand()` 包一条 `echo` 跑一遍，成功才启用沙箱。这样即使某个平台的沙箱仍有问题，demo 也会退到审批路径而不是报错。
+
+### 4.5 对外与文档
 
 - `src/server/runtime.ts` 导出 `JsonlAgentServerStore`、`JsonlAgentServerStoreOptions`、`AgentServerStoreJournal`、`AgentServerStoreJournalEntry`、`CommandLeaseSnapshot`；`src/browser/server-only-stub.ts` 同步加 `JsonlAgentServerStore` 的 stub，保持 `verify:entrypoints` 通过。
 - `RuntimeStoreErrorCode` 新增 `RUNTIME_STORE_CORRUPT_JOURNAL`。
@@ -171,7 +195,7 @@ export class JsonlAgentServerStore implements AgentServerStore {
    - provider、model、providerRegistry（脚本化时）；
    - `allowedTools: ['Read', 'Glob', 'Grep', 'Bash']`；
    - `defaultContext.capabilities.filesystem = { roots: [root], cwd: root }`；
-   - `sandbox`：启用，`autoAllowBashIfSandboxed: true`，网络白名单只含 `registry.npmjs.org`，让 `npm audit` 可用；沙箱不可用时不改任何配置，SDK 现有逻辑会让 Bash 走审批，审批以 `permission.requested` 事件到达浏览器；
+   - 沙箱与权限按 4.3 节的两个分支配置：启动时探测沙箱，探测通过则 `sandbox: { enabled: true }`、`permissionMode: 'yolo'`、四个工具全部放行；否则 `sandbox: { enabled: false }`、`permissionMode: 'default'`、只放行三个只读工具，Bash 的审批以 `permission.requested` 事件到达浏览器。沙箱内网络默认放行，`npm audit` 可用；文件写入限定在工作区和 `/tmp`。系统提示要求 npm 命令带 `--cache /tmp/blade-npm-cache`，避免向主目录写缓存；
    - `sessionRepository` 与 `sessionEventStore`；
    - `systemPrompt`：仓库分析助手。说明工作区根目录、可用工具、只读原则（不修改文件）、报告要带证据（文件路径、版本、执行过的命令）。
 6. 静态资源与 esbuild 打包 `client.js` 保持现状。
@@ -251,7 +275,7 @@ SDK（vitest，`src/server/__tests__/`）：
 
 1. 用两个临时目录分别作为 `--data-dir` 与 `--root`，分析根里放一个含未锁定范围依赖且缺锁文件的 `package.json`。
 2. 创建会话，提交任务，断言依次出现 Glob、Read、Bash 的 `tool_use`。
-3. 收到首个 `tool_use` 后提交 `Focus on security issues` 带 `priority: 'now'`，断言返回 `steered`，断言最终报告含 `Focus adjusted: security`。
+3. 收到 Bash 的 `tool_use` 后提交 `Focus on security issues` 带 `priority: 'now'`，断言返回 `steered`，断言随后出现 Grep 的 `tool_use`，断言最终报告含 `Focus adjusted: security`。在 Bash 之后再插入指令，是为了让三个基础工具都先出现，再验证转向。
 4. 若出现 `permission.requested`（无沙箱环境），smoke 客户端自动批准，范围为整个会话。
 5. 关闭 `AgentServer` 与 store；同一目录新建 store 与 server；`resumeSession` 加 `readSession`，断言历史消息数与关闭前一致且包含报告文本。
 6. 提交 `Continue the analysis`，断言结果含 `Continuing from the saved analysis`。
@@ -270,6 +294,8 @@ SDK（vitest，`src/server/__tests__/`）：
 
 SDK：
 
+- `src/session/types.ts`、`src/session/SessionState.ts`：`permissions` 选项透传，测试在 `src/session/__tests__/`
+- `src/sandbox/SandboxExecutor.ts`：seatbelt profile 增加根目录读取规则，测试在 `src/sandbox/__tests__/`
 - `src/server/AgentServerStore.ts`：日志钩子、`restore`、`snapshot`、failed 状态
 - `src/server/JsonlAgentServerStore.ts`：新增
 - `src/server/RuntimeStore.ts`：新增错误码
