@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add JsonlAgentServerStore, a single-process file-backed AgentServer store that replays its journal on restart, plus journal, snapshot and restore support on InMemoryAgentServerStore.",
+  "zh-CN": "新增 JsonlAgentServerStore：单进程文件持久化的 AgentServer store，重启时回放日志；InMemoryAgentServerStore 同时获得日志、快照与恢复能力。"
+}

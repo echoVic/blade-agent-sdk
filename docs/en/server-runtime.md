@@ -326,6 +326,34 @@ The included `InMemoryAgentServerStore` is for one process and tests only. It
 does not provide cross-process idempotency, global quotas, or highly available
 event replay.
 
+### Single-process file store
+
+`JsonlAgentServerStore` appends session records, the event log, idempotency
+keys and command leases to `<directory>/server-store.jsonl`, replaying and
+compacting it on start. It keeps every semantic of the in-memory store and adds
+one thing: Sessions survive a restart of the same process on the same machine.
+Use it for local development, demos and single-instance deployments; multiple
+instances still need the PostgreSQL store.
+
+```ts
+import { AgentServer, JsonlAgentServerStore } from '@blade-ai/agent-sdk/server/infra';
+
+const store = new JsonlAgentServerStore({ directory: '.blade/server' });
+await store.initialize();
+const server = new AgentServer({ store, resolveSessionOptions });
+// on exit
+await server.close();
+await store.close();
+```
+
+Writes reach the operating system before the mutating call resolves, so a
+process crash keeps every acknowledged write; there is no fsync per write. A
+truncated last line is skipped with a warning; any other damage fails
+`initialize()` with `RUNTIME_STORE_CORRUPT_JOURNAL` and a line number. Delete
+the directory to start from an empty store; Session transcripts kept by
+`JsonlSessionRepository` live elsewhere and are not affected. Transcripts still
+need `sessionRepository` / `sessionEventStore` configured separately.
+
 ## Admission, approvals, and telemetry
 
 Defaults per tenant:

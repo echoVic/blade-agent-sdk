@@ -110,6 +110,12 @@ export class JsonlSessionRepository {
   }
 }
 
+export class JsonlAgentServerStore {
+  constructor(..._args: unknown[]) {
+    serverOnly('JsonlAgentServerStore');
+  }
+}
+
 export class AgentServer {
   constructor(..._args: unknown[]) {
     serverOnly('AgentServer');

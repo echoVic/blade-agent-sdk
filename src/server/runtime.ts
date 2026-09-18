@@ -6,6 +6,9 @@ export {
   type AgentCommandClaim,
   type AgentServerSessionRecord,
   type AgentServerStore,
+  type AgentServerStoreJournal,
+  type AgentServerStoreJournalEntry,
+  type CommandLeaseSnapshot,
   InMemoryAgentServerStore,
   type InMemoryAgentServerStoreOptions,
 } from './AgentServerStore.js';
@@ -27,6 +30,10 @@ export type {
   AgentWorkerErrorMetric,
   AgentWorkerTelemetry,
 } from './AgentWorkerTelemetry.js';
+export {
+  JsonlAgentServerStore,
+  type JsonlAgentServerStoreOptions,
+} from './JsonlAgentServerStore.js';
 export {
   RUNTIME_STORE_SCHEMA_VERSION,
   type RuntimeStore,

@@ -290,6 +290,30 @@ SSE 使用 pull-based `ReadableStream`，每次 pull 最多写一个 frame，
 SDK 附带的 `InMemoryAgentServerStore` 只用于单进程和测试。它不提供跨进程幂等、
 全局配额或高可用 event replay。
 
+### 单进程文件 store
+
+`JsonlAgentServerStore` 把会话记录、事件日志、幂等键和命令租约追加写入
+`<directory>/server-store.jsonl`，启动时回放并压缩。它保留内存 store 的全部
+语义，只多了“同一台机器上重启后会话还在”。适合本地开发、demo 和单实例部署；
+多实例仍然需要 PostgreSQL store。
+
+```ts
+import { AgentServer, JsonlAgentServerStore } from '@blade-ai/agent-sdk/server/infra';
+
+const store = new JsonlAgentServerStore({ directory: '.blade/server' });
+await store.initialize();
+const server = new AgentServer({ store, resolveSessionOptions });
+// 退出前
+await server.close();
+await store.close();
+```
+
+写入在方法 resolve 之前交给操作系统，进程崩溃不丢已确认的写入；每次写不做 fsync。
+日志最后一行若被截断会被跳过并告警，其他损坏会让 `initialize()` 以
+`RUNTIME_STORE_CORRUPT_JOURNAL` 失败，错误信息带行号；删除该目录即可从空 store 开始，
+会话转录（`JsonlSessionRepository`）不受影响。Session 自身的转录仍需通过
+`sessionRepository` / `sessionEventStore` 配置持久化，两者放在不同目录。
+
 ## 准入、审批和遥测
 
 默认每 tenant：
