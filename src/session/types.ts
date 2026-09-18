@@ -45,7 +45,11 @@ import type {
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentLogger } from '../types/logging.js';
-import type { PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type {
+  PermissionHandler,
+  PermissionsConfig,
+  PermissionUpdate,
+} from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type {
@@ -226,6 +230,14 @@ export interface SessionOptions {
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;
+  /**
+   * Static permission rules matched against each tool invocation's permission
+   * signature (`<Tool>` or `<Tool>:<detail>`, for example `Bash:npm ls`). A rule is
+   * either an exact signature or a prefix ending in `*`. Invocations that match an
+   * `allow` rule skip the confirmation prompt; everything else keeps the default
+   * behaviour of asking.
+   */
+  permissions?: PermissionsConfig;
   confirmationHandler?: ConfirmationHandler;
   confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;
 
