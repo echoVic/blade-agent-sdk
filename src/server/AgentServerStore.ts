@@ -235,6 +235,15 @@ export interface InMemoryAgentServerStoreOptions {
    * mutations reject with `RUNTIME_STORE_JOURNAL_FAILED` and `healthCheck()`
    * reports not ready, so memory can never run ahead of the journal by more than
    * the one write that was reported as failed.
+   *
+   * That one write is already visible to this process, not merely pending: its
+   * event sequence can already have been returned by `readEvents` or observed
+   * through `waitForEvents`, and a session or lease change is applied to the
+   * in-memory maps before the journal is awaited. None of that is durable. If the
+   * process restarts and replays the journal, this write will not reappear and
+   * its sequence number will be reused by whatever is appended next. A process
+   * that sees `healthCheck().ready === false` must therefore be restarted rather
+   * than kept serving.
    */
   journal?: AgentServerStoreJournal;
 }
@@ -670,7 +679,9 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     if (this.journalFailure !== undefined) {
       throw new RuntimeStoreError(
         'RUNTIME_STORE_JOURNAL_FAILED',
-        'The store journal failed earlier; restart the process to replay the journal',
+        'The store journal failed earlier; restart the process to replay the journal; ' +
+          'the last rejected write is visible in memory only and its sequence will be ' +
+          'reused after restart',
         { cause: this.journalFailure },
       );
     }

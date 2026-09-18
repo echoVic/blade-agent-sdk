@@ -98,6 +98,24 @@ describe('InMemoryAgentServerStore journal', () => {
     const claim = await source.claimCommand(tenantId, CommandId('sealed'), 'fp', 100);
     if (claim.status !== 'claimed') throw new Error('expected a claim');
     await source.sealCommand(tenantId, CommandId('sealed'), claim.leaseId);
+    const completedResult = {
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      commandId: CommandId('completed'),
+      ok: true as const,
+      data: { done: true },
+    };
+    const completedClaim = await source.claimCommand(tenantId, CommandId('completed'), 'fp', 100);
+    if (completedClaim.status !== 'claimed') throw new Error('expected a claim');
+    await source.completeCommand(
+      tenantId,
+      CommandId('completed'),
+      completedClaim.leaseId,
+      completedResult,
+    );
+    const abandonedClaim = await source.claimCommand(tenantId, CommandId('abandoned'), 'fp', 100);
+    if (abandonedClaim.status !== 'claimed') throw new Error('expected a claim');
+    await source.sealCommand(tenantId, CommandId('abandoned'), abandonedClaim.leaseId);
+    await source.abandonCommand(tenantId, CommandId('abandoned'), 'worker died');
     const keyed = await source.appendEvent(tenantId, sessionId, event('one'), {
       idempotencyKey: 'terminal',
     });
@@ -106,7 +124,7 @@ describe('InMemoryAgentServerStore journal', () => {
 
     const snapshot = source.snapshot();
     expect(snapshot.map((entry) => entry.kind).sort()).toEqual(
-      ['event', 'event', 'event_key', 'lease', 'session'].sort(),
+      ['event', 'event', 'event_key', 'lease', 'lease', 'lease', 'session'].sort(),
     );
 
     const restored = new InMemoryAgentServerStore({ maxEventsPerSession: 2, now: () => now });
@@ -130,6 +148,12 @@ describe('InMemoryAgentServerStore journal', () => {
       status: 'in_progress',
       retryAfterMs: 1000,
     });
+    await expect(
+      restored.claimCommand(tenantId, CommandId('completed'), 'fp', 100),
+    ).resolves.toEqual({ status: 'completed', result: completedResult });
+    await expect(
+      restored.claimCommand(tenantId, CommandId('abandoned'), 'fp', 100),
+    ).resolves.toEqual({ status: 'abandoned', reason: 'worker died' });
     const next = await restored.appendEvent(tenantId, sessionId, event('four'));
     expect(next.sequence).toBe(4);
   });
