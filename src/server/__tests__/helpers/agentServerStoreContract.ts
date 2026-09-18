@@ -144,6 +144,7 @@ export function describeAgentServerStoreContract(createStore: ContractStoreFacto
       idempotencyKey: 'terminal-2',
     });
     expect(repeat.eventId).toBe(first.eventId);
+    expect(repeat.sequence).toBe(first.sequence);
     expect((await store.readEvents('tenant-a', sessionId)).events).toHaveLength(0);
     await expect(
       store.getEventByIdempotencyKey?.('tenant-a', sessionId, 'terminal-2'),
