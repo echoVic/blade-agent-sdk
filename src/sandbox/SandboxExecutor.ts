@@ -290,6 +290,9 @@ export class SandboxExecutor {
 
     lines.push('(allow file-read-metadata)');
 
+    // Newer macOS releases abort the sandboxed process unless "/" itself is readable.
+    lines.push('(allow file-read* (literal "/"))');
+
     lines.push('(allow file-read* (subpath "/usr"))');
     lines.push('(allow file-read* (subpath "/bin"))');
     lines.push('(allow file-read* (subpath "/sbin"))');

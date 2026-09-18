@@ -1,3 +1,5 @@
+import { readFileSync, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSandboxExecutor, SandboxExecutor } from '../SandboxExecutor.js';
 
@@ -112,6 +114,28 @@ describe('SandboxExecutor', () => {
       expect(() =>
         executor.wrapCommand('echo unsafe', { workDir: '/home/test' }, { enabled: true }),
       ).toThrow('Sandbox is enabled, but no supported sandbox executor is available');
+    });
+
+    it('lets sandboxed processes read the filesystem root on macOS', () => {
+      const executor = getSandboxExecutor();
+      vi.spyOn(executor, 'getCapabilities').mockReturnValue({
+        available: true,
+        type: 'seatbelt',
+        version: 'macOS built-in',
+        features: {
+          fileSystemIsolation: true,
+          networkIsolation: true,
+          processIsolation: true,
+        },
+      });
+
+      const wrapped = executor.wrapCommand('echo ok', { workDir: '/home/test' }, { enabled: true });
+      const profilePath = /-f '([^']+)'/.exec(wrapped)?.[1];
+      expect(profilePath).toBeDefined();
+      const profile = readFileSync(profilePath as string, 'utf8');
+      rmSync(dirname(profilePath as string), { recursive: true, force: true });
+
+      expect(profile).toContain('(allow file-read* (literal "/"))');
     });
   });
 
