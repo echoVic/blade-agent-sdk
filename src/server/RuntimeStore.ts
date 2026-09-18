@@ -19,7 +19,9 @@ export interface RuntimeTenantStore
 
 export type RuntimeStoreErrorCode =
   | 'RUNTIME_STORE_QUOTA_EXCEEDED'
-  | 'RUNTIME_STORE_INVALID_TRANSACTION';
+  | 'RUNTIME_STORE_INVALID_TRANSACTION'
+  | 'RUNTIME_STORE_JOURNAL_FAILED'
+  | 'RUNTIME_STORE_CORRUPT_JOURNAL';
 
 export class RuntimeStoreError extends SdkError {
   // biome-ignore lint/complexity/noUselessConstructor: narrows the public error-code contract
