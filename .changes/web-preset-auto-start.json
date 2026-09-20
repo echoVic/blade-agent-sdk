@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "`create-blade-agent --preset web` now starts the generated server for you after installing: it prompts for an API key on the terminal (press Enter to run the built-in scripted demo instead), saves a key you provide to `.env`, and opens the app in your browser. Pass `--no-start` to skip this and start the server yourself later.",
-  "zh-CN": "`create-blade-agent --preset web` 现在会在安装完成后自动启动生成的服务器：在终端提示输入 API key（直接回车则运行内置的脚本化 demo），把填写的 key 保存到 `.env`，并在浏览器中打开应用。加上 `--no-start` 可以跳过自动启动，之后自己手动启动服务器。"
-}

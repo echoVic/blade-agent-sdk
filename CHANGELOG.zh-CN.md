@@ -2,6 +2,22 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.14] - 2026-09-20
+
+### 新功能
+
+- 新增 JsonlAgentServerStore：单进程文件持久化的 AgentServer store，重启时回放日志；InMemoryAgentServerStore 同时获得日志、快照与恢复能力。如果第二个进程指向同一个目录启动，现在会报出新的 `RUNTIME_STORE_LOCKED` 错误并拒绝启动，而不再悄悄破坏日志文件；如果确认没有其他进程在使用该目录，删除其中残留的 `server-store.lock` 文件即可重试。
+- 服务端 Session 现在可以通过 `builtinTools: true` 启用 SDK 的内置工具。若不设置 `allowedTools`，这会注册全部内置工具——包括能写文件、能访问网络的工具，因此建议同时配置 `allowedTools`，并用文件系统能力、权限规则和沙箱进一步限定范围。
+- SessionOptions 新增 `permissions` 放行/询问/拒绝规则，Session 承载的 Agent 可以为可信工具跳过确认。
+- `create-blade-agent --preset web` 现在会在安装完成后自动启动生成的服务器：在终端提示输入 API key（直接回车则运行内置的脚本化 demo），把填写的 key 保存到 `.env`，并在浏览器中打开应用。加上 `--no-start` 可以跳过自动启动，之后自己手动启动服务器。
+- create-blade-agent --preset web 现在生成完整的首跑体验：真实的 Read/Glob/Grep/Bash 工具、带运行中插入指令与审批卡片的时间线界面、重启后仍在的会话、无 key 的脚本化 demo，以及 9 步 smoke。
+
+### 修复
+
+- 沙箱内的 shell 命令现在允许读取文件系统根目录，macOS seatbelt 沙箱在新版 macOS 上不再直接崩溃。
+- 工作目录路径经过符号链接时，沙箱内的命令现在可以正常执行：沙箱策略同时覆盖传入路径和解析后的真实路径。
+- 工具执行失败时，抛出值不是 Error 也会给出可读原因，不再显示 `[object Object]`。运行中被新指令打断的工具，现在会提示“Interrupted by a new instruction”（被新指令打断），而不是原始的中断错误。
+
 ## [7.4.13] - 2026-09-17
 
 ### 破坏性变更

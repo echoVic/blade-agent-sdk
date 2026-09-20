@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Server-hosted Sessions can opt into the SDK's built-in tools with `builtinTools: true`. With no `allowedTools`, this registers every built-in tool -- including ones that write files and reach the network -- so operators should pair it with `allowedTools`, and scope further with filesystem capabilities, permission rules and the sandbox.",
-  "zh-CN": "服务端 Session 现在可以通过 `builtinTools: true` 启用 SDK 的内置工具。若不设置 `allowedTools`，这会注册全部内置工具——包括能写文件、能访问网络的工具，因此建议同时配置 `allowedTools`，并用文件系统能力、权限规则和沙箱进一步限定范围。"
-}

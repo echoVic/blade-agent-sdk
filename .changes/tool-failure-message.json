@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "A failed tool now reports what failed instead of `[object Object]` when the thrown value is not an Error. A tool interrupted by a new instruction while it was still running now reports \"Interrupted by a new instruction\" instead of a raw abort error.",
-  "zh-CN": "工具执行失败时，抛出值不是 Error 也会给出可读原因，不再显示 `[object Object]`。运行中被新指令打断的工具，现在会提示“Interrupted by a new instruction”（被新指令打断），而不是原始的中断错误。"
-}

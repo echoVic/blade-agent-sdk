@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add JsonlAgentServerStore, a single-process file-backed AgentServer store that replays its journal on restart, plus journal, snapshot and restore support on InMemoryAgentServerStore. A second process pointed at the same directory now refuses to start with a new `RUNTIME_STORE_LOCKED` error instead of silently corrupting the journal; delete the directory's stale `server-store.lock` file if you're sure no other process is using it.",
-  "zh-CN": "新增 JsonlAgentServerStore：单进程文件持久化的 AgentServer store，重启时回放日志；InMemoryAgentServerStore 同时获得日志、快照与恢复能力。如果第二个进程指向同一个目录启动，现在会报出新的 `RUNTIME_STORE_LOCKED` 错误并拒绝启动，而不再悄悄破坏日志文件；如果确认没有其他进程在使用该目录，删除其中残留的 `server-store.lock` 文件即可重试。"
-}

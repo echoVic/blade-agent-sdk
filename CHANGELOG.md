@@ -2,6 +2,22 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.14] - 2026-09-20
+
+### Features
+
+- Add JsonlAgentServerStore, a single-process file-backed AgentServer store that replays its journal on restart, plus journal, snapshot and restore support on InMemoryAgentServerStore. A second process pointed at the same directory now refuses to start with a new `RUNTIME_STORE_LOCKED` error instead of silently corrupting the journal; delete the directory's stale `server-store.lock` file if you're sure no other process is using it.
+- Server-hosted Sessions can opt into the SDK's built-in tools with `builtinTools: true`. With no `allowedTools`, this registers every built-in tool -- including ones that write files and reach the network -- so operators should pair it with `allowedTools`, and scope further with filesystem capabilities, permission rules and the sandbox.
+- Add `permissions` allow/ask/deny rules to SessionOptions so Session-hosted Agents can skip confirmation for trusted tools.
+- `create-blade-agent --preset web` now starts the generated server for you after installing: it prompts for an API key on the terminal (press Enter to run the built-in scripted demo instead), saves a key you provide to `.env`, and opens the app in your browser. Pass `--no-start` to skip this and start the server yourself later.
+- create-blade-agent --preset web now scaffolds a first-run experience: real Read/Glob/Grep/Bash tools, a timeline UI with mid-run steering and approval cards, sessions that survive a server restart, a scripted no-key demo, and a nine-step smoke.
+
+### Fixes
+
+- Allow sandboxed shell commands to read the filesystem root so the macOS seatbelt sandbox no longer aborts on current macOS releases.
+- Sandboxed commands now work in a workspace whose path crosses a symlink: the sandbox policy covers both the given path and its resolved real path.
+- A failed tool now reports what failed instead of `[object Object]` when the thrown value is not an Error. A tool interrupted by a new instruction while it was still running now reports "Interrupted by a new instruction" instead of a raw abort error.
+
 ## [7.4.13] - 2026-09-17
 
 ### Breaking Changes

@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add `permissions` allow/ask/deny rules to SessionOptions so Session-hosted Agents can skip confirmation for trusted tools.",
-  "zh-CN": "SessionOptions 新增 `permissions` 放行/询问/拒绝规则，Session 承载的 Agent 可以为可信工具跳过确认。"
-}
