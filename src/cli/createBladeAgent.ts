@@ -211,17 +211,14 @@ async function copyWebTemplate(sourceRoot: string, directory: string): Promise<v
     await copyFile(sourceRoot, directory, file[0], file[1]);
   }
   const serverSource = await readFile(join(sourceRoot, 'web-agent-server/server.mjs'), 'utf8');
-  for (const marker of ['const webRoot = root;', "const generated = join(root, '.generated');"]) {
+  for (const marker of ['const webRoot = root;', 'const projectRoot = root;']) {
     if (!serverSource.includes(marker)) {
       throw new Error(`Web template marker is missing: ${marker}`);
     }
   }
   const server = serverSource
     .replace('const webRoot = root;', "const webRoot = join(root, '../web');")
-    .replace(
-      "const generated = join(root, '.generated');",
-      "const generated = join(root, '../.generated');",
-    );
+    .replace('const projectRoot = root;', "const projectRoot = join(root, '..');");
   await mkdir(join(directory, 'src'), { recursive: true });
   await writeFile(join(directory, 'src/server.mjs'), server);
 }

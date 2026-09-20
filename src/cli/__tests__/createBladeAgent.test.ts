@@ -149,7 +149,7 @@ describe('createBladeAgent', () => {
     });
     const server = await readFile(join(result.directory, 'src/server.mjs'), 'utf8');
     expect(server).toContain("const webRoot = join(root, '../web');");
-    expect(server).toContain("const generated = join(root, '../.generated');");
+    expect(server).toContain("const projectRoot = join(root, '..');");
     expect(server).toContain('AgentServer');
     expect(await readFile(join(result.directory, 'web/client.js'), 'utf8')).toContain(
       '@blade-ai/agent-sdk/browser',
