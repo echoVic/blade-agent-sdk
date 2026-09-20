@@ -694,6 +694,57 @@ describe('ExecutionPipeline', () => {
     expect(finalized).toBe(true);
   });
 
+  it('reports a mid-execution steering interrupt as a readable sentence, not the raw signal reason', async () => {
+    const registry = new ToolRegistry();
+    const started = deferred();
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'InterruptibleStream',
+        displayName: 'Interruptible Stream',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Tool that is interrupted mid-execution by steering' },
+        schema: Type.Object({}),
+        async *execute(_params, context) {
+          started.resolve();
+          await new Promise<void>((_resolve, reject) => {
+            context.signal?.addEventListener('abort', () => reject(context.signal?.reason), {
+              once: true,
+            });
+          });
+          return { status: 'success', model: 'unexpected' };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const controller = new AbortController();
+    const resultPromise = executePipeline(
+      pipeline,
+      'InterruptibleStream',
+      {},
+      { permissionMode: PermissionMode.YOLO, signal: controller.signal },
+    );
+
+    await started.promise;
+    // A plain, non-Error reason: the same shape ActiveRequestController.interruptStep uses.
+    controller.abort({ kind: 'steering', inputId: InputId('mid-execution-steering') });
+
+    const result = await resultPromise;
+    expect(result).toMatchObject({
+      status: 'error',
+      model: 'Tool execution failed: Tool execution was interrupted by a new instruction',
+      error: {
+        type: ToolErrorType.INTERRUPTED,
+        message: 'Tool execution was interrupted by a new instruction',
+      },
+    });
+  });
+
   it('preserves timeout precedence when a tool returns success after abort', async () => {
     vi.useFakeTimers();
     const registry = new ToolRegistry();

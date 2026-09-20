@@ -1,5 +1,6 @@
-import { readFileSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSandboxExecutor, SandboxExecutor } from '../SandboxExecutor.js';
 
@@ -136,6 +137,80 @@ describe('SandboxExecutor', () => {
       rmSync(dirname(profilePath as string), { recursive: true, force: true });
 
       expect(profile).toContain('(allow file-read* (literal "/"))');
+    });
+
+    it('covers both a symlinked workDir and its real path, so a sandboxed process is not denied by its own resolved cwd', () => {
+      const executor = getSandboxExecutor();
+      vi.spyOn(executor, 'getCapabilities').mockReturnValue({
+        available: true,
+        type: 'seatbelt',
+        version: 'macOS built-in',
+        features: {
+          fileSystemIsolation: true,
+          networkIsolation: true,
+          processIsolation: true,
+        },
+      });
+
+      const base = mkdtempSync(join(tmpdir(), 'sandbox-symlink-'));
+      const realDir = join(base, 'real');
+      mkdirSync(realDir);
+      const symlinkedWorkDir = join(base, 'link');
+      symlinkSync(realDir, symlinkedWorkDir);
+
+      try {
+        const realWorkDir = realpathSync(symlinkedWorkDir);
+        const wrapped = executor.wrapCommand(
+          'echo ok',
+          { workDir: symlinkedWorkDir },
+          { enabled: true },
+        );
+        const profilePath = /-f '([^']+)'/.exec(wrapped)?.[1];
+        expect(profilePath).toBeDefined();
+        const profile = readFileSync(profilePath as string, 'utf8');
+        rmSync(dirname(profilePath as string), { recursive: true, force: true });
+
+        expect(profile).toContain(`(allow file-read* (subpath "${symlinkedWorkDir}"))`);
+        expect(profile).toContain(`(allow file-write* (subpath "${symlinkedWorkDir}"))`);
+        expect(profile).toContain(`(allow file-read* (subpath "${realWorkDir}"))`);
+        expect(profile).toContain(`(allow file-write* (subpath "${realWorkDir}"))`);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it('does not throw for a workDir that does not exist, and still covers it', () => {
+      const executor = getSandboxExecutor();
+      vi.spyOn(executor, 'getCapabilities').mockReturnValue({
+        available: true,
+        type: 'seatbelt',
+        version: 'macOS built-in',
+        features: {
+          fileSystemIsolation: true,
+          networkIsolation: true,
+          processIsolation: true,
+        },
+      });
+
+      const base = mkdtempSync(join(tmpdir(), 'sandbox-missing-'));
+      const missingWorkDir = join(base, 'does-not-exist');
+
+      try {
+        let wrapped: string | undefined;
+        expect(() => {
+          wrapped = executor.wrapCommand('echo ok', { workDir: missingWorkDir }, { enabled: true });
+        }).not.toThrow();
+
+        const profilePath = /-f '([^']+)'/.exec(wrapped as string)?.[1];
+        expect(profilePath).toBeDefined();
+        const profile = readFileSync(profilePath as string, 'utf8');
+        rmSync(dirname(profilePath as string), { recursive: true, force: true });
+
+        expect(profile).toContain(`(allow file-read* (subpath "${missingWorkDir}"))`);
+        expect(profile).toContain(`(allow file-write* (subpath "${missingWorkDir}"))`);
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
     });
   });
 

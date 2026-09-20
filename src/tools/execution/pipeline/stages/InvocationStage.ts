@@ -103,7 +103,11 @@ export class InvocationStage {
       timedOut = timeoutController.signal.aborted || getErrorName(error) === 'TimeoutError';
       state.interrupted = !timedOut && isSteeringInterruptSignal(executionSignal);
       state.result = createExecutionFailureResult(
-        timedOut ? `Tool execution timeout after ${this.toolTimeoutMs}ms` : getErrorMessage(error),
+        timedOut
+          ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
+          : state.interrupted
+            ? 'Tool execution was interrupted by a new instruction'
+            : getErrorMessage(error),
         timedOut
           ? ToolErrorType.TIMEOUT_ERROR
           : state.interrupted

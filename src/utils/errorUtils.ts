@@ -1,6 +1,28 @@
+/**
+ * Not every thrown value is an Error: AbortController.abort(reason) and similar
+ * control-flow signals in this codebase deliberately carry plain, structurally
+ * typed objects (for example `{ kind: 'steering', inputId }`). `String(error)`
+ * renders those as the useless `[object Object]`, so a non-Error, non-string
+ * value falls back to its own `message` when that is a string, then a compact
+ * JSON form, so a caller building a user-facing message always gets something
+ * they can act on.
+ */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { message?: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message;
+  }
+  try {
+    const json = JSON.stringify(error);
+    if (json !== undefined) return json;
+  } catch {
+    // Circular or otherwise non-serializable value: fall through below.
+  }
   return String(error);
 }
 

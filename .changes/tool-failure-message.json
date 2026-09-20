@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "A failed tool now reports what failed instead of `[object Object]` when the thrown value is not an Error.",
+  "zh-CN": "工具执行失败时，抛出值不是 Error 也会给出可读原因，不再显示 `[object Object]`。"
+}

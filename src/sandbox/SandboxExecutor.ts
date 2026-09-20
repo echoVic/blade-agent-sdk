@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
@@ -177,6 +177,21 @@ export class SandboxExecutor {
     throw createSandboxUnavailableError();
   }
 
+  /**
+   * A workspace path may cross a symlink (macOS's mkdtemp(tmpdir()) always does:
+   * /var/folders/... resolves to /private/var/folders/...). The sandboxed process's
+   * kernel-reported cwd is the resolved path, so a policy naming only the given
+   * path denies it. Resolution fails open: callers legitimately pass paths that do
+   * not exist yet, and existing tests rely on that not throwing.
+   */
+  private resolveRealPath(path: string): string {
+    try {
+      return realpathSync(path);
+    } catch {
+      return path;
+    }
+  }
+
   private wrapWithBubblewrap(command: string, options: SandboxExecutionOptions): string {
     const args: string[] = [];
 
@@ -206,13 +221,26 @@ export class SandboxExecutor {
     args.push('--dev /dev');
     args.push('--tmpfs /tmp');
 
+    const realWorkDir = this.resolveRealPath(options.workDir);
     args.push(`--bind ${options.workDir} ${options.workDir}`);
     args.push(`--chdir ${options.workDir}`);
+    if (realWorkDir !== options.workDir) {
+      args.push(`--bind ${realWorkDir} ${realWorkDir}`);
+    }
 
     if (options.allowedWritePaths) {
       for (const path of options.allowedWritePaths) {
-        if (existsSync(path) && path !== options.workDir) {
+        if (existsSync(path) && path !== options.workDir && path !== realWorkDir) {
           args.push(`--bind ${path} ${path}`);
+        }
+        const realPath = this.resolveRealPath(path);
+        if (
+          realPath !== path &&
+          existsSync(realPath) &&
+          realPath !== options.workDir &&
+          realPath !== realWorkDir
+        ) {
+          args.push(`--bind ${realPath} ${realPath}`);
         }
       }
     }
@@ -221,6 +249,10 @@ export class SandboxExecutor {
       for (const path of options.allowedReadPaths) {
         if (existsSync(path)) {
           args.push(`--ro-bind ${path} ${path}`);
+        }
+        const realPath = this.resolveRealPath(path);
+        if (realPath !== path && existsSync(realPath)) {
+          args.push(`--ro-bind ${realPath} ${realPath}`);
         }
       }
     }
@@ -316,18 +348,31 @@ export class SandboxExecutor {
       lines.push(`(allow file-write* (subpath "${homeDir}/.pnpm"))`);
     }
 
+    const realWorkDir = this.resolveRealPath(options.workDir);
     lines.push(`(allow file-read* (subpath "${options.workDir}"))`);
     lines.push(`(allow file-write* (subpath "${options.workDir}"))`);
+    if (realWorkDir !== options.workDir) {
+      lines.push(`(allow file-read* (subpath "${realWorkDir}"))`);
+      lines.push(`(allow file-write* (subpath "${realWorkDir}"))`);
+    }
 
     if (options.allowedReadPaths) {
       for (const path of options.allowedReadPaths) {
         lines.push(`(allow file-read* (subpath "${path}"))`);
+        const realPath = this.resolveRealPath(path);
+        if (realPath !== path) {
+          lines.push(`(allow file-read* (subpath "${realPath}"))`);
+        }
       }
     }
 
     if (options.allowedWritePaths) {
       for (const path of options.allowedWritePaths) {
         lines.push(`(allow file-write* (subpath "${path}"))`);
+        const realPath = this.resolveRealPath(path);
+        if (realPath !== path) {
+          lines.push(`(allow file-write* (subpath "${realPath}"))`);
+        }
       }
     }
 

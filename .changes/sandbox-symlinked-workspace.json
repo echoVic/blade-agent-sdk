@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Sandboxed commands now work in a workspace whose path crosses a symlink: the sandbox policy covers both the given path and its resolved real path.",
+  "zh-CN": "工作目录路径经过符号链接时，沙箱内的命令现在可以正常执行：沙箱策略同时覆盖传入路径和解析后的真实路径。"
+}

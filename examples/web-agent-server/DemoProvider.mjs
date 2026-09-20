@@ -105,6 +105,12 @@ function latest(results, name) {
   return results.findLast((result) => result.name === name);
 }
 
+/** A Bash result is a completed tool call (any exit code) only if its text is the tool's JSON model output. */
+function bashCompleted(result) {
+  const parsed = result && parseJson(result.text);
+  return Boolean(parsed) && typeof parsed === 'object';
+}
+
 function globFiles(globText) {
   return (globText ?? '')
     .split('\n')
@@ -145,6 +151,15 @@ function buildReport(results, root, steeringText = '') {
   const runtimeDeps = Object.keys(manifest?.dependencies ?? {});
   const devDeps = Object.keys(manifest?.devDependencies ?? {});
   const ranges = unpinnedRanges(manifest);
+  // A steered task may have retried Bash once after an interrupted first attempt
+  // (see nextStep); the retry, if any, is always the more recent result.
+  const bashAttempts = results.filter((result) => result.name === 'Bash');
+  const lastBash = bashAttempts.at(-1);
+  const bashRetried = bashAttempts.length > 1;
+  const npmLine =
+    bashRetried && !bashCompleted(lastBash)
+      ? 'npm ls could not complete: interrupted twice by new instructions'
+      : npmLsSummary(lastBash?.text);
   const lines = [
     `${REPORT_TITLE} for ${basename(root)}`,
     '',
@@ -152,7 +167,7 @@ function buildReport(results, root, steeringText = '') {
     `- Unpinned version ranges: ${ranges.length}${ranges.length ? ` (${ranges.slice(0, 6).join(', ')}${ranges.length > 6 ? ', ...' : ''})` : ''}`,
     `- Lockfile: ${lockfile ? `present (${lockfile})` : 'missing, installs are not reproducible'}`,
     `- engines.node: ${manifest?.engines?.node ?? 'not declared'}`,
-    `- ${npmLsSummary(latest(results, 'Bash')?.text)}`,
+    `- ${npmLine}`,
   ];
   if (steeringText) {
     const grepText = latest(results, 'Grep')?.text ?? '';
@@ -161,6 +176,9 @@ function buildReport(results, root, steeringText = '') {
       '',
       SECURITY_SECTION,
       `- Requested mid-run: "${steeringText}"`,
+      ...(bashRetried
+        ? ['- The dependency check (npm ls) was interrupted by this instruction and retried.']
+        : []),
       `- Install hooks or dynamic execution matches: ${matches.length}`,
       ...matches.slice(0, 5).map((line) => `  ${line.trim()}`),
     );
@@ -197,6 +215,19 @@ export function nextStep(messages, root) {
   }
   const { results } = state;
   if (state.phase === 'steered') {
+    // Steering can interrupt an in-flight Bash call (that is what a priority-now
+    // steer means). A real model, seeing an interrupted tool result, retries it
+    // once before moving on; retry again and it could loop forever, so a second
+    // interrupted attempt is left as-is and the script falls through to Grep.
+    const bashAttempts = results.filter((result) => result.name === 'Bash');
+    const lastBash = bashAttempts.at(-1);
+    if (lastBash && !bashCompleted(lastBash) && bashAttempts.length < 2) {
+      return call(
+        'Bash',
+        { command: `npm ls --depth=0 --json ${NPM_CACHE_FLAG}` },
+        'The dependency check was interrupted by the new instruction; retrying once before scanning for security issues',
+      );
+    }
     if (!latest(results, 'Grep')) {
       return call(
         'Grep',

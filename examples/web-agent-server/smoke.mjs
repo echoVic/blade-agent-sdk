@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AgentClient } from '@blade-ai/agent-sdk/browser';
@@ -10,7 +10,10 @@ const CONTINUE = 'Continue the analysis';
 
 /** A throwaway Node project with two unpinned ranges, no lockfile and a postinstall hook. */
 export async function createSmokeFixture() {
-  const base = await mkdtemp(join(tmpdir(), 'blade-web-smoke-'));
+  // mkdtemp(tmpdir()) crosses a symlink on macOS (/var/folders -> /private/var/folders).
+  // Resolving it here keeps the fixture's own path real, independent of the sandbox's
+  // own handling of a symlinked workDir.
+  const base = await realpath(await mkdtemp(join(tmpdir(), 'blade-web-smoke-')));
   const root = join(base, 'workspace');
   const dataDir = join(base, 'data');
   await mkdir(root, { recursive: true });
@@ -122,6 +125,9 @@ export async function runSmoke({ baseUrl, startedAt, budgetMs, restart }) {
       }
     }
     if (!steer) throw new Error('The script never reached Bash, so steering was not exercised');
+    if (report.includes('Tool execution failed') || report.includes('did not return JSON')) {
+      throw new Error(`Report's npm line shows a failed tool instead of a real npm result:\n${report}`);
+    }
     if (!report.includes(REPORT_TITLE) || !report.includes(SECURITY_SECTION)) {
       throw new Error(`Report did not reflect steering:\n${report}`);
     }
