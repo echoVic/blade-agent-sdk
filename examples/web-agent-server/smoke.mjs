@@ -75,13 +75,24 @@ export async function runSmoke({ baseUrl, startedAt, budgetMs, restart }) {
       if (event.type === 'session.closed') throw new Error('Session closed before producing a result');
       if (event.type === 'permission.requested') {
         // Without an OS sandbox, Bash needs approval. The smoke approves for the session.
+        try {
+          await client.resolvePermission(
+            session.sessionId,
+            event.data.permissionRequestId,
+            { approved: true, scope: 'session' },
+            { signal },
+          );
+        } catch (error) {
+          // A steer can cancel the tool call between the request being issued and this
+          // resolving it, which cancels the permission request first: the same race
+          // client.js tolerates (see isDefiniteRejection/PERMISSION_NOT_FOUND) by
+          // treating it as already settled rather than a bug. Follow that same
+          // reasoning instead of failing the smoke over an approval nobody needed
+          // anymore. Anything else is a real failure.
+          if (error?.protocolCode !== 'PERMISSION_NOT_FOUND') throw error;
+          continue;
+        }
         approvals.push(event.data.toolName);
-        await client.resolvePermission(
-          session.sessionId,
-          event.data.permissionRequestId,
-          { approved: true, scope: 'session' },
-          { signal },
-        );
         continue;
       }
       if (event.type !== 'session.stream' || event.requestId !== requestId) continue;
