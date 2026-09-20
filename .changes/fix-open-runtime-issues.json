@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Harden authorized working directories, durable JSONL lifecycle recovery, CLI process handling, and web demo steering behavior.",
+  "zh-CN": "修复工作目录授权、JSONL 持久化生命周期恢复、CLI 子进程处理及 Web 示例转向行为。"
+}
