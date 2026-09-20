@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBladeAgent } from '../createBladeAgent.js';
+import { createBladeAgent, shouldAutoStartWebServer } from '../createBladeAgent.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +21,22 @@ afterEach(async () => {
 });
 
 describe('createBladeAgent', () => {
+  it.each([
+    ['starts an installed unverified web project interactively', true, false, {}, true, true, true],
+    ['does not start with stdout-only TTY', true, false, {}, false, true, false],
+    ['does not start in CI', true, false, { CI: '1' }, true, true, false],
+  ])('%s', (_name, installed, verified, environment, stdinIsTTY, stdoutIsTTY, expected) => {
+    expect(
+      shouldAutoStartWebServer(
+        true,
+        { preset: 'web', installed, verified },
+        environment,
+        stdinIsTTY,
+        stdoutIsTTY,
+      ),
+    ).toBe(expected);
+  });
+
   it('defaults to the local preset so a first run needs no Docker or PostgreSQL', async () => {
     const cwd = await temporaryDirectory();
     const result = await createBladeAgent({

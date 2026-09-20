@@ -35,12 +35,12 @@ function serialize(entry: AgentServerStoreJournalEntry): string {
   return `${JSON.stringify({ v: JOURNAL_VERSION, ...entry })}\n`;
 }
 
-function isJournalLine(value: unknown): value is JournalLine {
+function hasJournalShape(value: unknown): value is JournalLine {
   return (
     typeof value === 'object' &&
     value !== null &&
-    (value as { v?: unknown }).v === JOURNAL_VERSION &&
-    ENTRY_KINDS.has(String((value as { kind?: unknown }).kind))
+    typeof (value as { v?: unknown }).v === 'number' &&
+    typeof (value as { kind?: unknown }).kind === 'string'
   );
 }
 
@@ -60,7 +60,9 @@ export class JsonlAgentServerStore implements AgentServerStore {
   private handle: FileHandle | undefined;
   private lockHandle: FileHandle | undefined;
   private queue: Promise<void> = Promise.resolve();
-  private state: 'new' | 'ready' | 'closed' = 'new';
+  private state: 'new' | 'initializing' | 'ready' | 'closed' = 'new';
+  private initializePromise: Promise<void> | undefined;
+  private closeRequested = false;
 
   constructor(options: JsonlAgentServerStoreOptions) {
     this.directory = options.directory;
@@ -82,32 +84,30 @@ export class JsonlAgentServerStore implements AgentServerStore {
    * lifetime: it guards against a second process starting on the same
    * `directory` and silently truncating this one's journal out from under it.
    */
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     if (this.state === 'ready') {
-      return;
+      return Promise.resolve();
     }
     if (this.state === 'closed') {
-      throw new Error('JsonlAgentServerStore is closed');
+      return Promise.reject(new Error('JsonlAgentServerStore is closed'));
     }
-    await mkdir(this.directory, { recursive: true });
-    this.lockHandle = await this.acquireLock();
-    try {
-      if (existsSync(this.filePath)) {
-        this.inner.restore(this.parse(await readFile(this.filePath, 'utf8')));
+    if (this.initializePromise) {
+      return this.initializePromise;
+    }
+
+    this.state = 'initializing';
+    const operation = this.initializeInternal();
+    this.initializePromise = operation;
+    return operation.finally(() => {
+      if (this.initializePromise === operation) {
+        this.initializePromise = undefined;
       }
-      await writeFileAtomic(this.filePath, this.inner.snapshot().map(serialize).join(''));
-      this.handle = await open(this.filePath, 'a');
-      this.state = 'ready';
-    } catch (error) {
-      // The lock was ours to hold only for a successful initialize(). Leaving
-      // it behind on failure (e.g. a corrupt journal) would make every retry
-      // report a busy directory instead of the real, actionable error.
-      await this.releaseLock();
-      throw error;
-    }
+    });
   }
 
   async close(): Promise<void> {
+    this.closeRequested = true;
+    await this.initializePromise;
     if (this.state !== 'ready') {
       this.state = 'closed';
       await this.releaseLock();
@@ -119,6 +119,34 @@ export class JsonlAgentServerStore implements AgentServerStore {
     this.handle = undefined;
     await handle?.close();
     await this.releaseLock();
+  }
+
+  private async initializeInternal(): Promise<void> {
+    await mkdir(this.directory, { recursive: true });
+    this.lockHandle = await this.acquireLock();
+    try {
+      if (existsSync(this.filePath)) {
+        this.inner.restore(this.parse(await readFile(this.filePath, 'utf8')));
+      }
+      await writeFileAtomic(this.filePath, this.inner.snapshot().map(serialize).join(''));
+      this.handle = await open(this.filePath, 'a');
+      if (this.closeRequested) {
+        const handle = this.handle;
+        this.handle = undefined;
+        await handle.close();
+        await this.releaseLock();
+        this.state = 'closed';
+        return;
+      }
+      this.state = 'ready';
+    } catch (error) {
+      // The lock was ours to hold only for a successful initialize(). Leaving
+      // it behind on failure (e.g. a corrupt journal) would make every retry
+      // report a busy directory instead of the real, actionable error.
+      await this.releaseLock();
+      this.state = this.closeRequested ? 'closed' : 'new';
+      throw error;
+    }
   }
 
   /**
@@ -283,11 +311,11 @@ export class JsonlAgentServerStore implements AgentServerStore {
   }
 
   private assertReady(): void {
-    if (this.state === 'new') {
-      throw new Error('JsonlAgentServerStore.initialize() must be awaited before use');
-    }
     if (this.state === 'closed') {
       throw new Error('JsonlAgentServerStore is closed');
+    }
+    if (this.state !== 'ready') {
+      throw new Error('JsonlAgentServerStore.initialize() must be awaited before use');
     }
   }
 
@@ -331,8 +359,17 @@ export class JsonlAgentServerStore implements AgentServerStore {
         }
         throw this.corrupt(index + 1, 'is not valid JSON', error);
       }
-      if (!isJournalLine(parsed)) {
+      if (!hasJournalShape(parsed)) {
         throw this.corrupt(index + 1, 'is not a known journal entry');
+      }
+      if (parsed.v !== JOURNAL_VERSION) {
+        throw this.corrupt(
+          index + 1,
+          `uses unsupported journal version ${parsed.v}; expected ${JOURNAL_VERSION}`,
+        );
+      }
+      if (!ENTRY_KINDS.has(parsed.kind)) {
+        throw this.corrupt(index + 1, `is not a known journal entry kind: ${parsed.kind}`);
       }
       // `v` stays on the object; restore() only reads `kind` and the payload fields.
       entries.push(parsed as AgentServerStoreJournalEntry);

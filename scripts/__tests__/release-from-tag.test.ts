@@ -2,8 +2,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -99,10 +99,11 @@ describe('published source identity', () => {
 
   it('checks out the tag a manual run names', () => {
     const checkout = workflow().jobs.release.steps.find((step: { uses?: string }) =>
-      step.uses?.startsWith('actions/checkout@'));
+      step.uses?.startsWith('actions/checkout@'),
+    );
 
     expect(checkout.with).toMatchObject({
-      ref: '${{ inputs.tag || github.ref }}',
+      ref: '$' + '{{ inputs.tag || github.ref }}',
       'fetch-depth': 0,
     });
   });
@@ -120,10 +121,7 @@ describe('published source identity', () => {
 });
 
 describe('built artifact identity', () => {
-  function withDist(
-    layout: Record<string, string>,
-    run: (directory: string) => void,
-  ): void {
+  function withDist(layout: Record<string, string>, run: (directory: string) => void): void {
     const directory = mkdtempSync(join(tmpdir(), 'blade-dist-'));
     try {
       for (const [file, content] of Object.entries(layout)) {
@@ -137,18 +135,24 @@ describe('built artifact identity', () => {
   }
 
   it('accepts a build whose bundle inlines the released version', () => {
-    withDist({ 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.4"}' }, (directory) => {
-      expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).not.toThrow();
-    });
+    withDist(
+      { 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.4"}' },
+      (directory) => {
+        expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).not.toThrow();
+      },
+    );
   });
 
   it('rejects a build that carries the previous version', () => {
     // The exact failure this guards: build first, stamp second.
-    withDist({ 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.3"}' }, (directory) => {
-      expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).toThrow(
-        'does not carry version 7.4.4',
-      );
-    });
+    withDist(
+      { 'dist/chunk-abc.js': '{name:"@blade-ai/agent-sdk",version:"7.4.3"}' },
+      (directory) => {
+        expect(() => assertBuiltArtifactsCarryVersion(directory, '7.4.4')).toThrow(
+          'does not carry version 7.4.4',
+        );
+      },
+    );
   });
 
   it('rejects a missing build instead of publishing an unverified artifact', () => {
@@ -223,14 +227,16 @@ describe('release workflow', () => {
     const steps = workflow().jobs.release.steps;
     const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
     const setupNode = steps.find((step: { uses?: string }) =>
-      step.uses?.startsWith('actions/setup-node@'));
+      step.uses?.startsWith('actions/setup-node@'),
+    );
     const releaseStep = steps.at(-1);
 
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
       'sudo apt-get update && sudo apt-get install --yes ripgrep',
-      'node scripts/release-from-tag.mjs --stamp-only --tag "${{ inputs.tag || github.ref_name }}"',
+      'node scripts/release-from-tag.mjs --stamp-only --tag "$' +
+        '{{ inputs.tag || github.ref_name }}"',
       [
         'docker pull alpine:3.22',
         `echo "TEST_DOCKER_IMAGE=$(docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.22)" >> "$GITHUB_ENV"`,
@@ -240,23 +246,21 @@ describe('release workflow', () => {
       'pnpm run lint',
       'pnpm run type-check',
       'pnpm run build',
-      [
-        'node scripts/verify-entrypoints.mjs',
-        'node scripts/verify-minimal-install.mjs',
-        '',
-      ].join('\n'),
+      ['node scripts/verify-entrypoints.mjs', 'node scripts/verify-minimal-install.mjs', ''].join(
+        '\n',
+      ),
       'pnpm run verify:create-agent',
       'pnpm run verify:production-example',
       'pnpm run verify:runtime-regression',
       'pnpm run docs:build',
       'pnpm run test',
-      'node scripts/release-from-tag.mjs --tag "${{ inputs.tag || github.ref_name }}"',
+      'node scripts/release-from-tag.mjs --tag "$' + '{{ inputs.tag || github.ref_name }}"',
     ]);
     expect(setupNode.with).toMatchObject({ 'node-version': '22.14' });
     expect(releaseStep.name).toBe('Release');
     expect(releaseStep.env).toMatchObject({
-      GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
-      GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
+      GITHUB_TOKEN: '$' + '{{ secrets.GITHUB_TOKEN }}',
+      GH_TOKEN: '$' + '{{ secrets.GITHUB_TOKEN }}',
     });
   });
 });

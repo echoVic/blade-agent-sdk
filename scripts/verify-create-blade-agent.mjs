@@ -1,11 +1,5 @@
 import { execFile } from 'node:child_process';
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -80,24 +74,24 @@ async function run(command, args, cwd, timeout = 5 * 60 * 1_000) {
         typeof error === 'object' && error !== null && 'stderr' in error
           ? String(error.stderr).trim()
           : '',
-      ].filter(Boolean).join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
     );
   }
 }
 
 async function verifyProject(directory, preset, tarball) {
   const contract = presetContracts[preset];
-  const manifest = JSON.parse(
-    await readFile(join(directory, 'package.json'), 'utf8'),
-  );
+  const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
   if (manifest.dependencies?.['@blade-ai/agent-sdk'] !== `file:${tarball}`) {
     throw new Error(`${preset} project did not use the requested SDK package`);
   }
   const dependencyNames = Object.keys(manifest.dependencies ?? {}).sort();
   if (JSON.stringify(dependencyNames) !== JSON.stringify(contract.dependencies)) {
     throw new Error(
-      `${preset} dependencies were ${JSON.stringify(dependencyNames)}; `
-      + `expected ${JSON.stringify(contract.dependencies)}`,
+      `${preset} dependencies were ${JSON.stringify(dependencyNames)}; ` +
+        `expected ${JSON.stringify(contract.dependencies)}`,
     );
   }
   for (const path of contract.files) {
@@ -129,22 +123,16 @@ async function verifyPreset(preset, tarball) {
   );
   const elapsedMs = Math.round((performance.now() - startedAt) * 100) / 100;
   if (elapsedMs > contract.budgetMs) {
-    throw new Error(
-      `${preset} first result took ${elapsedMs}ms; budget is ${contract.budgetMs}ms`,
-    );
+    throw new Error(`${preset} first result took ${elapsedMs}ms; budget is ${contract.budgetMs}ms`);
   }
   if (
-    !result.stdout.includes(contract.expectedOutput)
-    || !result.stdout.includes(`Verified ${preset} first result`)
+    !result.stdout.includes(contract.expectedOutput) ||
+    !result.stdout.includes(`Verified ${preset} first result`)
   ) {
     throw new Error(`${preset} smoke output was incomplete:\n${result.stdout}`);
   }
   await verifyProject(directory, preset, tarball);
-  await run(
-    'npm',
-    ['audit', '--omit=dev', '--audit-level', 'low'],
-    directory,
-  );
+  await run('npm', ['audit', '--omit=dev', '--audit-level', 'low'], directory);
   return {
     preset,
     elapsedMs,
@@ -154,29 +142,14 @@ async function verifyPreset(preset, tarball) {
 
 try {
   const packed = JSON.parse(
-    (
-      await run(
-        'npm',
-        ['pack', '--json', '--pack-destination', temporaryRoot],
-        repoRoot,
-      )
-    ).stdout,
+    (await run('npm', ['pack', '--json', '--pack-destination', temporaryRoot], repoRoot)).stdout,
   );
   const tarball = join(temporaryRoot, packed[0].filename);
   await mkdir(launcherDirectory);
-  await writeFile(
-    join(launcherDirectory, 'package.json'),
-    '{"private":true,"type":"module"}\n',
-  );
+  await writeFile(join(launcherDirectory, 'package.json'), '{"private":true,"type":"module"}\n');
   await run(
     'npm',
-    [
-      'install',
-      '--ignore-scripts',
-      '--no-audit',
-      '--no-fund',
-      tarball,
-    ],
+    ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball],
     launcherDirectory,
   );
 
@@ -184,24 +157,15 @@ try {
     await readFile(join(repoRoot, 'package.json'), 'utf8'),
   ).version;
   const installedVersion = (
-    await run(
-      'npm',
-      ['exec', '--', 'create-blade-agent', '--version'],
-      launcherDirectory,
-    )
+    await run('npm', ['exec', '--', 'create-blade-agent', '--version'], launcherDirectory)
   ).stdout.trim();
   if (installedVersion !== expectedVersion) {
     throw new Error(
       `Installed create-blade-agent reported ${installedVersion}; expected ${expectedVersion}`,
     );
   }
-  const help = (
-    await run(
-      'npm',
-      ['exec', '--', 'create-blade-agent', '--help'],
-      launcherDirectory,
-    )
-  ).stdout;
+  const help = (await run('npm', ['exec', '--', 'create-blade-agent', '--help'], launcherDirectory))
+    .stdout;
   if (!help.includes('--preset <local|web|production>')) {
     throw new Error(`Installed CLI help did not document presets:\n${help}`);
   }
@@ -209,22 +173,15 @@ try {
   try {
     await run(
       'npm',
-      [
-        'exec',
-        '--',
-        'create-blade-agent',
-        '--preset',
-        'edge',
-        '--skip-install',
-      ],
+      ['exec', '--', 'create-blade-agent', '--preset', 'edge', '--skip-install'],
       launcherDirectory,
     );
   } catch (error) {
     unsupportedPresetError = error;
   }
   if (
-    !(unsupportedPresetError instanceof Error)
-    || !unsupportedPresetError.message.includes('Unsupported starter preset: edge')
+    !(unsupportedPresetError instanceof Error) ||
+    !unsupportedPresetError.message.includes('Unsupported starter preset: edge')
   ) {
     throw new Error('Installed CLI accepted an unsupported starter preset');
   }
@@ -245,10 +202,7 @@ try {
     ],
     launcherDirectory,
   );
-  if (
-    !filesOnly.stdout.includes('npm install')
-    || !filesOnly.stdout.includes('npm run start')
-  ) {
+  if (!filesOnly.stdout.includes('npm install') || !filesOnly.stdout.includes('npm run start')) {
     throw new Error(`Files-only next steps were incomplete:\n${filesOnly.stdout}`);
   }
   await verifyProject(filesOnlyDirectory, 'local', tarball);

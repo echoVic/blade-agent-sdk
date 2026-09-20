@@ -10,9 +10,10 @@ export const SECURITY_SECTION = 'Focus adjusted: security';
 export const CONTINUATION_PREFIX = 'Continuing from the saved analysis';
 export const NPM_CACHE_FLAG = '--cache /tmp/blade-npm-cache';
 
-const UNPINNED_RANGE = /^(\^|~|\*$|latest$|>|<|x$)/;
+const UNPINNED_RANGE = /^(\^|~|\*|latest$|>|<|(?:\d+\.)?(?:\d+\.)?x(?:\.x)?$)/i;
 const SECURITY_PATTERN = 'postinstall|preinstall|eval\\(|child_process';
-const CONTINUATION_REQUEST = /继续|接着|continue|carry on|keep going|go on|resume|follow[- ]?up/i;
+const SECURITY_INTENT = /\bsecurity\b|安全/i;
+const CONTINUATION_REQUEST = /继续|接着|\bcontinue\b|\bcarry on\b|\bkeep going\b|\bgo on\b|\bresume\b|\bfollow[- ]?up\b/i;
 
 export function textOf(content) {
   if (typeof content === 'string') return content;
@@ -46,7 +47,13 @@ function toolResults(messages, startIndex) {
     }
     if (message.role === 'tool') {
       const call = calls.get(message.tool_call_id);
-      if (call) results.push({ ...call, text: textOf(message.content) });
+      if (call) {
+        results.push({
+          ...call,
+          text: textOf(message.content),
+          errorType: message.extensions?.toolErrorType,
+        });
+      }
     }
   }
   return results;
@@ -76,7 +83,10 @@ export function analyzeConversation(messages) {
   const steered = users.length >= 2;
   return {
     phase: steered ? 'steered' : 'script',
-    steeringText: steered ? textOf(users.at(-1).message.content) : '',
+    steeringText:
+      steered || (users.length === 1 && SECURITY_INTENT.test(lastUserText))
+        ? textOf(users.at(-1).message.content)
+        : '',
     results: toolResults(messages, taskStart),
   };
 }
@@ -109,6 +119,10 @@ function latest(results, name) {
 function bashCompleted(result) {
   const parsed = result && parseJson(result.text);
   return Boolean(parsed) && typeof parsed === 'object';
+}
+
+function bashInterrupted(result) {
+  return result?.errorType === 'interrupted';
 }
 
 function globFiles(globText) {
@@ -221,7 +235,7 @@ export function nextStep(messages, root) {
     // interrupted attempt is left as-is and the script falls through to Grep.
     const bashAttempts = results.filter((result) => result.name === 'Bash');
     const lastBash = bashAttempts.at(-1);
-    if (lastBash && !bashCompleted(lastBash) && bashAttempts.length < 2) {
+    if (lastBash && bashInterrupted(lastBash) && bashAttempts.length < 2) {
       return call(
         'Bash',
         { command: `npm ls --depth=0 --json ${NPM_CACHE_FLAG}` },
@@ -261,7 +275,17 @@ export function nextStep(messages, root) {
       'Checking the installed dependency tree offline',
     );
   }
-  return text(buildReport(results, root), 'Evidence collected; writing the report');
+  if (state.steeringText && !latest(results, 'Grep')) {
+    return call(
+      'Grep',
+      { pattern: SECURITY_PATTERN, path: root, output_mode: 'content' },
+      `Focus changed: "${state.steeringText}". Scanning for install hooks and dynamic execution`,
+    );
+  }
+  return text(
+    buildReport(results, root, state.steeringText),
+    'Evidence collected; writing the report',
+  );
 }
 
 export function createDemoProviderRegistry({ root, smoke = false }) {

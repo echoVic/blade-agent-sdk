@@ -1,12 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,11 +21,9 @@ function run(command, args, options = {}) {
   });
   if (result.status !== 0) {
     throw new Error(
-      [
-        `Command failed: ${command} ${args.join(' ')}`,
-        result.stdout.trim(),
-        result.stderr.trim(),
-      ].filter(Boolean).join('\n'),
+      [`Command failed: ${command} ${args.join(' ')}`, result.stdout.trim(), result.stderr.trim()]
+        .filter(Boolean)
+        .join('\n'),
     );
   }
   return result.stdout.trim();
@@ -212,7 +203,7 @@ try {
     entry,
     [
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
-      "console.log(PermissionMode.DEFAULT, typeof createSession);",
+      'console.log(PermissionMode.DEFAULT, typeof createSession);',
     ].join('\n'),
     'utf8',
   );
@@ -257,13 +248,15 @@ if (builtFiles.length === 0) {
 }
 const carriesVersion = builtFiles.some((file) => {
   const source = readFileSync(file, 'utf8');
-  return source.includes(`version:"${manifest.version}"`)
-    || source.includes(`"version":"${manifest.version}"`);
+  return (
+    source.includes(`version:"${manifest.version}"`) ||
+    source.includes(`"version":"${manifest.version}"`)
+  );
 });
 if (!carriesVersion) {
   throw new Error(
-    `Built bundles do not carry the manifest version ${manifest.version}; `
-    + 'rebuild after changing the version',
+    `Built bundles do not carry the manifest version ${manifest.version}; ` +
+      'rebuild after changing the version',
   );
 }
 

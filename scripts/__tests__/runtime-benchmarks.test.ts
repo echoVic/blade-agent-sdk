@@ -20,19 +20,13 @@ interface RuntimeBenchmark {
 interface RuntimeRegressionPolicy {
   schemaVersion: number;
   minimumSampleSize: Record<string, number>;
-  thresholds: Record<
-    string,
-    { minimum?: number; maximum?: number }
-  >;
+  thresholds: Record<string, { minimum?: number; maximum?: number }>;
 }
 
 describe('runtime benchmark publication', () => {
   it('publishes a complete machine-readable baseline', () => {
     const baseline = JSON.parse(
-      readFileSync(
-        resolve('benchmarks/baselines/2026-08-26-darwin-arm64.json'),
-        'utf8',
-      ),
+      readFileSync(resolve('benchmarks/baselines/2026-08-26-darwin-arm64.json'), 'utf8'),
     ) as RuntimeBenchmark;
 
     expect(baseline.sampleSize).toEqual({
@@ -63,10 +57,7 @@ describe('runtime benchmark publication', () => {
 
   it('gates the complete steady-state and failure metric set', () => {
     const policy = JSON.parse(
-      readFileSync(
-        resolve('benchmarks/runtime-regression-policy.json'),
-        'utf8',
-      ),
+      readFileSync(resolve('benchmarks/runtime-regression-policy.json'), 'utf8'),
     ) as RuntimeRegressionPolicy;
 
     expect(policy.schemaVersion).toBe(1);

@@ -253,4 +253,39 @@ describe('Session with a server-hosted opt-in', () => {
     // a non-error result against an empty directory.
     expect(String(globResult?.output)).toContain('notes.txt');
   });
+
+  it('returns an execution error when a server-hosted Session opts out of built-in tools', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'session-builtin-tools-opt-out-'));
+    const session = await createSession({
+      provider: { type: 'glob-once' },
+      providerRegistry: new ProviderRegistry([
+        { type: 'glob-once', create: (config) => globOnceService({ ...config }) },
+      ]),
+      model: 'glob-once',
+      builtinTools: false,
+      allowedTools: ['Glob'],
+      persistSession: false,
+      defaultContext: {
+        capabilities: { filesystem: { roots: [workspaceRoot], cwd: workspaceRoot } },
+      },
+    });
+
+    const toolResults: Array<{ name: string; isError?: boolean; output?: unknown }> = [];
+    try {
+      await session.send('find files');
+      for await (const event of session.stream()) {
+        if (event.type === 'tool_result') {
+          toolResults.push({ name: event.name, isError: event.isError, output: event.output });
+        }
+        if (event.type === 'result' || event.type === 'error') break;
+      }
+    } finally {
+      await session.close();
+    }
+
+    expect(toolResults).toContainEqual(expect.objectContaining({ name: 'Glob', isError: true }));
+    expect(String(toolResults.find((result) => result.name === 'Glob')?.output)).toMatch(
+      /not found|unavailable/i,
+    );
+  });
 });

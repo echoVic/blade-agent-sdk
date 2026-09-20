@@ -185,12 +185,29 @@ export class PersistentStore extends ProjectedSessionRepository {
 
   private lock<T>(sessionId: SessionId, callback: () => Promise<T>): Promise<T> {
     const filePath = this.path(sessionId);
-    const lockError = (action: string, cause: unknown) =>
-      new SessionFileError(
+    const lockError = (action: string, cause: unknown) => {
+      const message = `Failed to ${action} Session projection lock ${filePath}`;
+      let current: unknown = cause;
+      let missingNativeLock = false;
+      for (let depth = 0; depth < 4 && current; depth += 1) {
+        const causeMessage = current instanceof Error ? current.message : String(current);
+        if (causeMessage.includes('fs-native-extensions')) {
+          missingNativeLock = true;
+          break;
+        }
+        current =
+          typeof current === 'object' && current !== null && 'cause' in current
+            ? current.cause
+            : undefined;
+      }
+      return new SessionFileError(
         'SESSION_JSONL_LOCK_FAILED',
-        `Failed to ${action} Session projection lock ${filePath}`,
+        missingNativeLock
+          ? `${message}. Install the required peer dependency fs-native-extensions@1.5.0`
+          : message,
         { cause },
       );
+    };
     return withAdvisoryFileLock(
       filePath,
       {

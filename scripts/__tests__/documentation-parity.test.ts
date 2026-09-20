@@ -44,9 +44,9 @@ function publicRootExports(): string[] {
   );
   const exports = source.statements.flatMap((statement) => {
     if (
-      !ts.isExportDeclaration(statement)
-      || !statement.exportClause
-      || !ts.isNamedExports(statement.exportClause)
+      !ts.isExportDeclaration(statement) ||
+      !statement.exportClause ||
+      !ts.isNamedExports(statement.exportClause)
     ) {
       return [];
     }
@@ -64,9 +64,9 @@ describe('documentation locale parity', () => {
   it('configures Chinese root and English /en/ locales', () => {
     const config = readFileSync(resolve('docs/.vitepress/config.ts'), 'utf8');
 
-    expect(config).toContain("root: {");
+    expect(config).toContain('root: {');
     expect(config).toContain("lang: 'zh-CN'");
-    expect(config).toContain("en: {");
+    expect(config).toContain('en: {');
     expect(config).toContain("lang: 'en-US'");
     expect(config).toContain("link: '/en/'");
   });
@@ -83,10 +83,8 @@ describe('documentation locale parity', () => {
     const english = readFileSync(resolve('docs/en/api-reference.md'), 'utf8');
     const exports = publicRootExports();
 
-    expect(exports.filter((name) => !chinese.includes(`\`${name}\``)))
-      .toEqual([]);
-    expect(exports.filter((name) => !english.includes(`\`${name}\``)))
-      .toEqual([]);
+    expect(exports.filter((name) => !chinese.includes(`\`${name}\``))).toEqual([]);
+    expect(exports.filter((name) => !english.includes(`\`${name}\``))).toEqual([]);
   });
 });
 
@@ -102,8 +100,9 @@ describe('release documentation parity', () => {
     // changelogs until the release commit lands. Pending fragments make that
     // state legitimate; otherwise the two must match.
     if (englishVersions[0] !== packageJson.version) {
-      const pendingFragments = readdirSync(resolve('.changes'))
-        .filter((name) => name.endsWith('.json')).length;
+      const pendingFragments = readdirSync(resolve('.changes')).filter((name) =>
+        name.endsWith('.json'),
+      ).length;
       expect(
         packageJson.version.localeCompare(englishVersions[0] ?? '', undefined, { numeric: true }),
       ).toBeGreaterThan(0);

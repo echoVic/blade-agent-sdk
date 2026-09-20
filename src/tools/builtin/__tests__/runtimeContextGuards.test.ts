@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -77,6 +77,67 @@ describe('tool runtime context guards', () => {
 
     expect(result.status).toBe('error');
     expect(result.error?.message).toBe('No working directory available');
+  });
+
+  it('should reject Bash cwd outside configured filesystem roots', async () => {
+    const result = await collectToolExecution(
+      bashTool.execute(
+        {
+          command: 'pwd',
+          cwd: outsideRoot,
+          timeout: 1000,
+          run_in_background: false,
+        },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+            capabilities: {
+              filesystem: {
+                roots: [workspaceRoot],
+                cwd: workspaceRoot,
+              },
+            },
+          }),
+        },
+      ),
+    );
+
+    expect(result.status).toBe('error');
+    expect(result.error?.type).toBe('permission_denied');
+    expect(result.error?.message).toContain('outside authorized roots');
+  });
+
+  it('should allow Bash cwd inside configured filesystem roots', async () => {
+    const canonicalWorkspaceRoot = await realpath(workspaceRoot);
+    const result = await collectToolExecution(
+      bashTool.execute(
+        {
+          command: 'pwd',
+          cwd: workspaceRoot,
+          timeout: 1000,
+          run_in_background: false,
+        },
+        {
+          contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
+            capabilities: {
+              filesystem: {
+                roots: [workspaceRoot],
+                cwd: workspaceRoot,
+              },
+            },
+          }),
+        },
+      ),
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      model: { exit_code: 0 },
+    });
+    const stdout =
+      result.model && typeof result.model === 'object' && 'stdout' in result.model
+        ? result.model.stdout
+        : '';
+    expect(String(stdout)).toContain(canonicalWorkspaceRoot);
   });
 
   it.each([

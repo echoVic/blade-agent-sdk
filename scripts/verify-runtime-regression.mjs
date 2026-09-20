@@ -9,22 +9,17 @@ const root = resolve(import.meta.dirname, '..');
 const policyPath = resolve(root, 'benchmarks/runtime-regression-policy.json');
 const reportPath = resolve(
   root,
-  process.env.RUNTIME_REGRESSION_REPORT_PATH
-    || 'artifacts/runtime-regression.json',
+  process.env.RUNTIME_REGRESSION_REPORT_PATH || 'artifacts/runtime-regression.json',
 );
 
 async function runJson(script, timeoutMs = 120_000) {
-  const { stdout, stderr } = await execFileAsync(
-    process.execPath,
-    [resolve(root, script)],
-    {
-      cwd: root,
-      env: process.env,
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: timeoutMs,
-    },
-  );
+  const { stdout, stderr } = await execFileAsync(process.execPath, [resolve(root, script)], {
+    cwd: root,
+    env: process.env,
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: timeoutMs,
+  });
   try {
     return JSON.parse(stdout);
   } catch (error) {
@@ -38,9 +33,7 @@ async function runJson(script, timeoutMs = 120_000) {
 
 const policy = JSON.parse(await readFile(policyPath, 'utf8'));
 const stable = await runJson('benchmarks/runtime.mjs');
-const recovery = await runJson(
-  'examples/postgres-worker-recovery/run.mjs',
-);
+const recovery = await runJson('examples/postgres-worker-recovery/run.mjs');
 const evaluation = evaluateRuntimeRegression(policy, {
   stable,
   recovery,
@@ -65,15 +58,19 @@ const report = {
 
 await mkdir(dirname(reportPath), { recursive: true });
 await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-process.stdout.write(`${JSON.stringify({
-  passed: report.passed,
-  reportPath,
-  sampleSize: report.sampleSize,
-  metrics: report.metrics,
-}, null, 2)}\n`);
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      passed: report.passed,
+      reportPath,
+      sampleSize: report.sampleSize,
+      metrics: report.metrics,
+    },
+    null,
+    2,
+  )}\n`,
+);
 
 if (!evaluation.passed) {
-  throw new Error(
-    `Runtime regression gate failed:\n- ${evaluation.failures.join('\n- ')}`,
-  );
+  throw new Error(`Runtime regression gate failed:\n- ${evaluation.failures.join('\n- ')}`);
 }

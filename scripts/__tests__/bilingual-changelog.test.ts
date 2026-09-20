@@ -1,12 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,10 +49,7 @@ function writeFragment(
   fragment: Record<string, string>,
 ): void {
   mkdirSync(join(directory, '.changes'), { recursive: true });
-  writeFileSync(
-    join(directory, '.changes', filename),
-    `${JSON.stringify(fragment, null, 2)}\n`,
-  );
+  writeFileSync(join(directory, '.changes', filename), `${JSON.stringify(fragment, null, 2)}\n`);
 }
 
 afterEach(() => {
@@ -96,9 +87,7 @@ describe('bilingual changelog fragments', () => {
         '- Fix session recovery.',
       ].join('\n'),
     );
-    expect(renderRelease('3.1.0', '2026-08-22', 'zh-CN', fragments)).toContain(
-      '- 新增会话转向。',
-    );
+    expect(renderRelease('3.1.0', '2026-08-22', 'zh-CN', fragments)).toContain('- 新增会话转向。');
   });
 
   it('renders both languages into the release notes', () => {
@@ -132,17 +121,13 @@ describe('bilingual changelog fragments', () => {
       en: 'Add a feature.',
     });
 
-    expect(() => readFragments(directory)).toThrow(
-      'zh-CN must be a non-empty string',
-    );
+    expect(() => readFragments(directory)).toThrow('zh-CN must be a non-empty string');
   });
 
   it('requires at least one fragment before a release can render notes', () => {
     const directory = createTemporaryDirectory();
 
-    expect(() => readReleaseFragments(directory)).toThrow(
-      'requires at least one bilingual',
-    );
+    expect(() => readReleaseFragments(directory)).toThrow('requires at least one bilingual');
   });
 
   it('prepends the release to both changelogs and removes the consumed fragments', () => {
@@ -182,8 +167,9 @@ describe('bilingual changelog fragments', () => {
       '# Changelog\n\nAll notable changes.\n\n## [3.1.0] - 2026-08-23\n',
     );
 
-    expect(() => prependRelease(directory, 'en', '## [3.1.0] - 2026-08-23'))
-      .toThrow('already contains ## [3.1.0]');
+    expect(() => prependRelease(directory, 'en', '## [3.1.0] - 2026-08-23')).toThrow(
+      'already contains ## [3.1.0]',
+    );
     expect(changelogHasVersion(directory, '3.1.0')).toBe(true);
   });
 });
@@ -285,25 +271,26 @@ describe('pull request fragment requirement', () => {
     expect(() => verifyRange(directory, base)).not.toThrow();
   });
 
-  it.each(['docs: update guide', 'refactor: split a module', 'perf: bound a queue'])(
-    'requires a fragment for %s, which still ships a release',
-    (message) => {
-      const directory = createTemporaryDirectory();
-      initializeRepository(directory);
-      writeFileSync(join(directory, 'README.md'), '# Test\n');
-      commitAll(directory, 'chore: initialize');
-      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: directory,
-        encoding: 'utf8',
-      }).trim();
+  it.each([
+    'docs: update guide',
+    'refactor: split a module',
+    'perf: bound a queue',
+  ])('requires a fragment for %s, which still ships a release', (message) => {
+    const directory = createTemporaryDirectory();
+    initializeRepository(directory);
+    writeFileSync(join(directory, 'README.md'), '# Test\n');
+    commitAll(directory, 'chore: initialize');
+    const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: directory,
+      encoding: 'utf8',
+    }).trim();
 
-      writeFileSync(join(directory, 'README.md'), `# ${message}\n`);
-      commitAll(directory, message);
+    writeFileSync(join(directory, 'README.md'), `# ${message}\n`);
+    commitAll(directory, message);
 
-      expect(hasReleasableCommit(directory, base)).toBe(true);
-      expect(() => verifyRange(directory, base)).toThrow(
-        'require a bilingual .changes/*.json fragment',
-      );
-    },
-  );
+    expect(hasReleasableCommit(directory, base)).toBe(true);
+    expect(() => verifyRange(directory, base)).toThrow(
+      'require a bilingual .changes/*.json fragment',
+    );
+  });
 });

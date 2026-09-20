@@ -35,6 +35,23 @@ export interface CreateBladeAgentResult {
   readonly elapsedMs: number;
 }
 
+export function shouldAutoStartWebServer(
+  start: boolean,
+  project: Pick<CreateBladeAgentResult, 'preset' | 'installed' | 'verified'>,
+  environment: NodeJS.ProcessEnv = process.env,
+  stdinIsTTY: boolean | undefined = process.stdin.isTTY,
+  stdoutIsTTY: boolean | undefined = process.stdout.isTTY,
+): boolean {
+  return (
+    start &&
+    project.preset === 'web' &&
+    project.installed &&
+    !project.verified &&
+    !environment.CI &&
+    Boolean(stdinIsTTY && stdoutIsTTY)
+  );
+}
+
 interface PackageManifest {
   readonly version: string;
   readonly dependencies?: Readonly<Record<string, string>>;
@@ -100,7 +117,7 @@ function commandFor(
   return [packageManager, ['run', script]];
 }
 
-async function runProcess(
+export async function runProcess(
   command: string,
   args: readonly string[],
   options: ProcessOptions,
@@ -115,8 +132,25 @@ async function runProcess(
       stdio: 'inherit',
       ...(signal ? { signal } : {}),
     });
-    child.once('error', rejectProcess);
+    const forwardSignal = (signalName: NodeJS.Signals) => {
+      if (!child.killed) {
+        child.kill(signalName);
+      }
+    };
+    const cleanupSignals = () => {
+      process.removeListener('SIGINT', forwardSigint);
+      process.removeListener('SIGTERM', forwardSigterm);
+    };
+    const forwardSigint = () => forwardSignal('SIGINT');
+    const forwardSigterm = () => forwardSignal('SIGTERM');
+    process.once('SIGINT', forwardSigint);
+    process.once('SIGTERM', forwardSigterm);
+    child.once('error', (error) => {
+      cleanupSignals();
+      rejectProcess(error);
+    });
     child.once('exit', (code, childSignal) => {
+      cleanupSignals();
       if (code === 0) {
         resolveProcess();
         return;

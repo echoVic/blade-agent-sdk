@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -11,8 +11,10 @@ const cwd = resolve(import.meta.dirname, '..');
 const RELEASE_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/;
 const RELEASE_COMMIT_PREFIX = 'chore(release): ';
 /** Registry used for the "already published?" check (npm's own override wins). */
-const REGISTRY_URL = (process.env.npm_config_registry ?? 'https://registry.npmjs.org')
-  .replace(/\/+$/, '');
+const REGISTRY_URL = (process.env.npm_config_registry ?? 'https://registry.npmjs.org').replace(
+  /\/+$/,
+  '',
+);
 const COMMIT_IDENTITY = [
   '-c',
   'user.name=github-actions[bot]',
@@ -27,9 +29,7 @@ const COMMIT_IDENTITY = [
 export function parseReleaseTag(tag) {
   const match = RELEASE_TAG_PATTERN.exec(String(tag ?? '').trim());
   if (!match) {
-    throw new Error(
-      `Release tag must look like v<major>.<minor>.<patch>; received "${tag}"`,
-    );
+    throw new Error(`Release tag must look like v<major>.<minor>.<patch>; received "${tag}"`);
   }
   const parts = match.slice(1).map((value) => Number(value));
   return { version: parts.join('.'), parts };
@@ -115,17 +115,16 @@ export function assertBuiltArtifactsCarryVersion(distDirectory, version) {
   });
   if (!found) {
     throw new Error(
-      `The build in ${distDirectory} does not carry version ${version}; `
-      + 'stamp the version before building',
+      `The build in ${distDirectory} does not carry version ${version}; ` +
+        'stamp the version before building',
     );
   }
 }
 
 async function isPublished(name, version) {
-  const response = await fetch(
-    `${REGISTRY_URL}/${encodeURIComponent(name)}/${version}`,
-    { headers: { accept: 'application/json' } },
-  );
+  const response = await fetch(`${REGISTRY_URL}/${encodeURIComponent(name)}/${version}`, {
+    headers: { accept: 'application/json' },
+  });
   if (response.status === 404) {
     return false;
   }
@@ -191,8 +190,8 @@ async function publishPackage({ name, version, dryRun }) {
   const manifest = readPackageJson();
   if (manifest.version !== version) {
     throw new Error(
-      `package.json says ${manifest.version} but ${version} is being published; `
-      + 'run the release workflow, which stamps the version before the build',
+      `package.json says ${manifest.version} but ${version} is being published; ` +
+        'run the release workflow, which stamps the version before the build',
     );
   }
   assertBuiltArtifactsCarryVersion(join(cwd, 'dist'), version);
@@ -211,8 +210,8 @@ function writeReleaseMetadata({ version, date, fragments, dryRun }) {
   fetchMain();
   if (dryRun) {
     log(
-      `would record ${version} on main (package.json, both changelogs, `
-      + `${fragments.length} fragment(s) removed, one commit)`,
+      `would record ${version} on main (package.json, both changelogs, ` +
+        `${fragments.length} fragment(s) removed, one commit)`,
     );
     return false;
   }
@@ -226,7 +225,11 @@ function writeReleaseMetadata({ version, date, fragments, dryRun }) {
 
   writePackageVersion(version);
   for (const locale of Object.keys(changelog.CHANGELOGS)) {
-    changelog.prependRelease(cwd, locale, changelog.renderRelease(version, date, locale, fragments));
+    changelog.prependRelease(
+      cwd,
+      locale,
+      changelog.renderRelease(version, date, locale, fragments),
+    );
   }
   changelog.removeConsumedFragments(cwd, fragments);
   log(`recorded ${version} in both changelogs and removed ${fragments.length} fragment(s)`);
@@ -256,7 +259,16 @@ function writeGithubRelease({ tag, version, notes, dryRun }) {
   const directory = mkdtempSync(join(tmpdir(), 'blade-release-'));
   const notesFile = join(directory, 'notes.md');
   writeFileSync(notesFile, notes);
-  run('gh', ['release', 'create', tag, '--title', `v${version}`, '--notes-file', notesFile, '--verify-tag']);
+  run('gh', [
+    'release',
+    'create',
+    tag,
+    '--title',
+    `v${version}`,
+    '--notes-file',
+    notesFile,
+    '--verify-tag',
+  ]);
 }
 
 /** Notes for a re-run, where the consumed fragments may already be gone. */

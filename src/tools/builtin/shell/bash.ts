@@ -10,6 +10,7 @@ import { getRuntimeAccess, type RuntimeAccess } from '../../types/execution.js';
 import type { BashBackgroundMetadata } from '../../types/metadata.js';
 import type { ToolResult } from '../../types/result.js';
 import { ToolErrorType } from '../../types/result.js';
+import { resolveAuthorizedFilesystemPath } from '../../validation/filesystemPath.js';
 import { ToolSchemas } from '../../validation/toolSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { BashClassifier } from './BashClassifier.js';
@@ -215,16 +216,29 @@ Before executing commands:
     };
   },
 
-  validateInput: ({ cwd }, context) => {
+  validateInput: async (params, context) => {
+    const { cwd } = params;
     const workDir = cwd || context.contextSnapshot?.cwd;
-    if (workDir) {
-      return undefined;
+    if (!workDir) {
+      return {
+        message: 'No working directory available',
+        model: 'No working directory provided and no filesystem working directory is available.',
+      };
     }
 
-    return {
-      message: 'No working directory available',
-      model: 'No working directory provided and no filesystem working directory is available.',
-    };
+    try {
+      params.cwd = await resolveAuthorizedFilesystemPath(workDir, context.contextSnapshot, {
+        cwd: context.contextSnapshot?.cwd,
+      });
+      return undefined;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        message,
+        model: message,
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
   },
 
   checkPermissions: ({ command }, context) => {

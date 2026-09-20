@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SessionId } from '../../../types/identifiers.js';
 
 vi.mock('fs-native-extensions', () => {
-  throw new Error('native lock addon unavailable');
+  throw new Error('Cannot find package fs-native-extensions');
 });
 
 import { PersistentStore } from '../../../context/storage/PersistentStore.js';
@@ -33,7 +33,9 @@ describe('native file lock availability', () => {
 
       await expect(store.loadState(SessionId('session'))).rejects.toMatchObject({
         code: 'SESSION_JSONL_LOCK_FAILED',
-        message: expect.stringContaining('Failed to initialize'),
+        message: expect.stringContaining(
+          'Install the required peer dependency fs-native-extensions@1.5.0',
+        ),
       });
     } finally {
       await rm(storageRoot, { recursive: true, force: true });

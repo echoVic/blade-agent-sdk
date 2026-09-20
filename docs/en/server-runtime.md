@@ -26,6 +26,8 @@ import {
 } from '@blade-ai/agent-sdk/server/infra';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
+// JsonlSessionRepository's cross-process file lock requires this optional peer:
+// pnpm add fs-native-extensions@1.5.0
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
 
 const server = new AgentServer({

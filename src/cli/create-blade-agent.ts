@@ -6,6 +6,7 @@ import {
   type CreateBladeAgentPreset,
   createBladeAgent,
   getBladeAgentSdkVersion,
+  shouldAutoStartWebServer,
   startBladeAgent,
 } from './createBladeAgent.js';
 
@@ -163,12 +164,7 @@ export async function runCreateBladeAgentCli(args = process.argv.slice(2)): Prom
     ].join('\n'),
   );
 
-  const shouldStart =
-    parsed.start &&
-    result.preset === 'web' &&
-    result.installed &&
-    !result.verified &&
-    Boolean(process.stdout.isTTY);
+  const shouldStart = shouldAutoStartWebServer(parsed.start, result);
   if (shouldStart) {
     process.stdout.write('Starting the web server (Ctrl+C to stop)…\n');
     await startBladeAgent(result);

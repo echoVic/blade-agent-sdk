@@ -32,10 +32,7 @@ export function evaluateRuntimeRegression(policy, sourceReports) {
       stable.metrics?.storeInitializationMs,
       'storeInitializationMs',
     ),
-    firstClaimLatencyMs: requireNumber(
-      stable.metrics?.firstClaimLatencyMs,
-      'firstClaimLatencyMs',
-    ),
+    firstClaimLatencyMs: requireNumber(stable.metrics?.firstClaimLatencyMs, 'firstClaimLatencyMs'),
     sessionThroughputPerSecond: requireNumber(
       stable.metrics?.sessionThroughputPerSecond,
       'sessionThroughputPerSecond',
@@ -44,30 +41,15 @@ export function evaluateRuntimeRegression(policy, sourceReports) {
       stable.metrics?.sessionCompletionDurationMs,
       'sessionCompletionDurationMs',
     ),
-    recoveryDurationMs: requireNumber(
-      stable.metrics?.recoveryDurationMs,
-      'recoveryDurationMs',
-    ),
-    eventLossRate: requireNumber(
-      stable.metrics?.eventLossRate,
-      'eventLossRate',
-    ),
+    recoveryDurationMs: requireNumber(stable.metrics?.recoveryDurationMs, 'recoveryDurationMs'),
+    eventLossRate: requireNumber(stable.metrics?.eventLossRate, 'eventLossRate'),
     processTerminationMs: requireNumber(
       recovery.metrics?.processTerminationMs,
       'processTerminationMs',
     ),
-    leaseExpiryWaitMs: requireNumber(
-      recovery.metrics?.leaseExpiryWaitMs,
-      'leaseExpiryWaitMs',
-    ),
-    failureDetectionMs: requireNumber(
-      recovery.metrics?.failureDetectionMs,
-      'failureDetectionMs',
-    ),
-    recoveryScanMs: requireNumber(
-      recovery.metrics?.recoveryScanMs,
-      'recoveryScanMs',
-    ),
+    leaseExpiryWaitMs: requireNumber(recovery.metrics?.leaseExpiryWaitMs, 'leaseExpiryWaitMs'),
+    failureDetectionMs: requireNumber(recovery.metrics?.failureDetectionMs, 'failureDetectionMs'),
+    recoveryScanMs: requireNumber(recovery.metrics?.recoveryScanMs, 'recoveryScanMs'),
     reclaimAndRestoreMs: requireNumber(
       recovery.metrics?.reclaimAndRestoreMs,
       'reclaimAndRestoreMs',
@@ -76,30 +58,24 @@ export function evaluateRuntimeRegression(policy, sourceReports) {
       recovery.metrics?.checkpointRestoreMs,
       'checkpointRestoreMs',
     ),
-    fullRecoveryRtoMs: requireNumber(
-      recovery.metrics?.fullRecoveryRtoMs,
-      'fullRecoveryRtoMs',
-    ),
+    fullRecoveryRtoMs: requireNumber(recovery.metrics?.fullRecoveryRtoMs, 'fullRecoveryRtoMs'),
   };
   const sampleSize = {
     sessions: requireNumber(stable.sampleSize?.sessions, 'sampleSize.sessions'),
     events: requireNumber(stable.sampleSize?.events, 'sampleSize.events'),
   };
-  const sampleChecks = Object.entries(policy.minimumSampleSize).map(
-    ([name, minimum]) => ({
-      name: `sampleSize.${name}`,
-      value: sampleSize[name],
-      minimum,
-      passed: sampleSize[name] >= minimum,
-      failures:
-        sampleSize[name] >= minimum
-          ? []
-          : [`sampleSize.${name}=${sampleSize[name]} is below minimum ${minimum}`],
-    }),
-  );
-  const metricChecks = Object.entries(policy.thresholds).map(
-    ([name, threshold]) =>
-      evaluateMetric(name, metrics[name], threshold),
+  const sampleChecks = Object.entries(policy.minimumSampleSize).map(([name, minimum]) => ({
+    name: `sampleSize.${name}`,
+    value: sampleSize[name],
+    minimum,
+    passed: sampleSize[name] >= minimum,
+    failures:
+      sampleSize[name] >= minimum
+        ? []
+        : [`sampleSize.${name}=${sampleSize[name]} is below minimum ${minimum}`],
+  }));
+  const metricChecks = Object.entries(policy.thresholds).map(([name, threshold]) =>
+    evaluateMetric(name, metrics[name], threshold),
   );
   const checks = [...sampleChecks, ...metricChecks];
   const failures = checks.flatMap((check) => check.failures);

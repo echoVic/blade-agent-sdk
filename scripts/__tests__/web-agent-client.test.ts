@@ -111,7 +111,9 @@ class EventStream {
     try {
       while (!signal?.aborted) {
         if (this.pending.length === 0) {
-          await new Promise<void>((resolve) => { this.wake = resolve; });
+          await new Promise<void>((resolve) => {
+            this.wake = resolve;
+          });
           this.wake = undefined;
           continue;
         }
@@ -187,7 +189,12 @@ class Backend {
         input: string,
         options: { commandId?: string; priority?: 'now' | 'next' | 'later' } = {},
       ) => {
-        this.sendCalls.push({ sessionId, input, commandId: options.commandId, priority: options.priority });
+        this.sendCalls.push({
+          sessionId,
+          input,
+          commandId: options.commandId,
+          priority: options.priority,
+        });
         if (this.sendError) throw this.sendError;
         if (this.loseNextSendResponse) {
           this.loseNextSendResponse = false;
@@ -232,7 +239,9 @@ class Backend {
         await this.abortGate;
         if (error) throw error;
       },
-      close: async () => { this.closeCalls.push(sessionId); },
+      close: async () => {
+        this.closeCalls.push(sessionId);
+      },
       read: async () => ({
         session: { sessionId, status: this.sessionStatus },
         messages: this.historyMessages,
@@ -267,7 +276,12 @@ class Backend {
         response: { approved: boolean; scope: string },
         options: { commandId?: string } = {},
       ) {
-        backend.permissionCalls.push({ sessionId, permissionRequestId, response, commandId: options.commandId });
+        backend.permissionCalls.push({
+          sessionId,
+          permissionRequestId,
+          response,
+          commandId: options.commandId,
+        });
         const error = backend.permissionError;
         await backend.permissionGate;
         if (error) throw error;
@@ -342,10 +356,21 @@ function cursor(sequence: number) {
 // emptyState() actually produces.
 function validSnapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 2, sessionId: 'session-1', createCommandId: null, cursor: null, nodes: [],
-    activeRequestId: null, pendingSubmission: null, cancelCommandId: null, pendingTerminal: null,
-    pendingQueuedInputId: null, permissions: [], handledPermissionIds: [], retiredPermissionIds: [],
-    lastStatus: 'Idle', ...overrides,
+    version: 2,
+    sessionId: 'session-1',
+    createCommandId: null,
+    cursor: null,
+    nodes: [],
+    activeRequestId: null,
+    pendingSubmission: null,
+    cancelCommandId: null,
+    pendingTerminal: null,
+    pendingQueuedInputId: null,
+    permissions: [],
+    handledPermissionIds: [],
+    retiredPermissionIds: [],
+    lastStatus: 'Idle',
+    ...overrides,
   };
 }
 
@@ -356,7 +381,12 @@ function storageWith(snapshot: Record<string, unknown>): Map<string, string> {
 }
 
 function protocolError(
-  code: 'SESSION_NOT_FOUND' | 'STALE_CURSOR' | 'SESSION_CONFLICT' | 'INVALID_COMMAND' | 'PERMISSION_NOT_FOUND',
+  code:
+    | 'SESSION_NOT_FOUND'
+    | 'STALE_CURSOR'
+    | 'SESSION_CONFLICT'
+    | 'INVALID_COMMAND'
+    | 'PERMISSION_NOT_FOUND',
   retryable = false,
 ): Error {
   return new AgentProtocolError(code, code, code === 'SESSION_NOT_FOUND' ? 404 : 409, retryable);
@@ -371,26 +401,43 @@ async function flush(): Promise<void> {
 function openPage(backend: Backend, storage = new Map<string, string>()) {
   const elements = new Map<string, Element>();
   for (const id of [
-    'prompt-form', 'prompt', 'timeline', 'status', 'notice', 'announcer', 'hint', 'session-id',
-    'submit', 'cancel', 'reconnect', 'new-session',
-  ]) elements.set(id, new Element());
+    'prompt-form',
+    'prompt',
+    'timeline',
+    'status',
+    'notice',
+    'announcer',
+    'hint',
+    'session-id',
+    'submit',
+    'cancel',
+    'reconnect',
+    'new-session',
+  ])
+    elements.set(id, new Element());
   const element = (id: string): Element => {
     const found = elements.get(id);
     if (!found) throw new Error(`Unknown element: ${id}`);
     return found;
   };
-  const descendants = (parent: Element): Element[] => parent.children.flatMap((child) => [child, ...descendants(child)]);
+  const descendants = (parent: Element): Element[] =>
+    parent.children.flatMap((child) => [child, ...descendants(child)]);
   // The timeline renders one flat list of typed nodes instead of separate
   // message/tool-activity lists; every article or <details> carries a fixed
   // 'node <kind>' class, which is how these helpers tell nodes apart.
-  const nodesOfClass = (className: string) => element('timeline').children.filter((child) => child.className === className);
+  const nodesOfClass = (className: string) =>
+    element('timeline').children.filter((child) => child.className === className);
   const approvalCards = () => nodesOfClass('node approval');
   const toolCards = () => nodesOfClass('node tool');
   // localStorage replaces the old sessionStorage, under the :v2 key for the node model.
   const localStorage = {
     getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => { storage.set(key, String(value)); },
-    removeItem: (key: string) => { storage.delete(key); },
+    setItem: (key: string, value: string) => {
+      storage.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
   };
   const windowEvents = new Element();
   const window = {
@@ -398,28 +445,34 @@ function openPage(backend: Backend, storage = new Map<string, string>()) {
     localStorage,
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
   };
-  const source = readFileSync(resolve('examples/web-agent-server/client.js'), 'utf8')
-    .replace(/^import\s+\{\s*AgentClient\s*\}\s+from\s+['"][^'"]+['"];?\s*/m, '');
-  runInNewContext(source, {
-    AgentClient: backend.clientClass(),
-    document: {
-      querySelector: (selector: string) => elements.get(selector.slice(1)) ?? null,
-      createElement: (tag: string) => new Element(tag),
+  const source = readFileSync(resolve('examples/web-agent-server/client.js'), 'utf8').replace(
+    /^import\s+\{\s*AgentClient\s*\}\s+from\s+['"][^'"]+['"];?\s*/m,
+    '',
+  );
+  runInNewContext(
+    source,
+    {
+      AgentClient: backend.clientClass(),
+      document: {
+        querySelector: (selector: string) => elements.get(selector.slice(1)) ?? null,
+        createElement: (tag: string) => new Element(tag),
+      },
+      window,
+      navigator: { onLine: true },
+      localStorage,
+      crypto: webcrypto,
+      Error,
+      TypeError,
+      AbortController,
+      AbortSignal,
+      DOMException,
+      console,
+      setTimeout,
+      clearTimeout,
+      queueMicrotask,
     },
-    window,
-    navigator: { onLine: true },
-    localStorage,
-    crypto: webcrypto,
-    Error,
-    TypeError,
-    AbortController,
-    AbortSignal,
-    DOMException,
-    console,
-    setTimeout,
-    clearTimeout,
-    queueMicrotask,
-  }, { filename: 'web-agent-client.js' });
+    { filename: 'web-agent-client.js' },
+  );
 
   return {
     storage,
@@ -430,12 +483,15 @@ function openPage(backend: Backend, storage = new Map<string, string>()) {
     systemNotes: () => nodesOfClass('node system').map((node) => node.textContent),
     thinkingBlocks: () => nodesOfClass('node thinking'),
     announced: () => element('announcer').textContent,
-    messages: () => element('timeline').children
-      .filter((node) => node.className === 'node user' || node.className === 'node assistant')
-      .map((node) => ({
-        role: node.className === 'node user' ? 'user' : 'assistant',
-        content: node.textContent,
-      })),
+    messages: () =>
+      element('timeline')
+        .children.filter(
+          (node) => node.className === 'node user' || node.className === 'node assistant',
+        )
+        .map((node) => ({
+          role: node.className === 'node user' ? 'user' : 'assistant',
+          content: node.textContent,
+        })),
     approvalDetailsOpen: (index = 0) => {
       const card = approvalCards()[index];
       const details = card && descendants(card).find((child) => child.tagName === 'details');
@@ -452,7 +508,11 @@ function openPage(backend: Backend, storage = new Map<string, string>()) {
     },
     async decide(label: 'Approve once' | 'Approve for this session' | 'Deny', index = 0) {
       const card = approvalCards()[index];
-      const button = card && descendants(card).find((child) => child.tagName === 'button' && child.textContent === label);
+      const button =
+        card &&
+        descendants(card).find(
+          (child) => child.tagName === 'button' && child.textContent === label,
+        );
       if (!button) throw new Error(`Approval button not found: ${label}`);
       button.dispatch('click');
       await flush();
@@ -480,12 +540,14 @@ describe('Web Agent page behavior', () => {
 
     await page.submit('Second question');
     expect(backend.eventCalls.at(-1)?.options.after).toEqual(cursor(2));
-    backend.latestStream().push(
-      content(3, 'different-request', 'Do not display this'),
-      result(4, 'different-request'),
-      content(5, 'request-2', 'Second answer'),
-      result(6, 'request-2'),
-    );
+    backend
+      .latestStream()
+      .push(
+        content(3, 'different-request', 'Do not display this'),
+        result(4, 'different-request'),
+        content(5, 'request-2', 'Second answer'),
+        result(6, 'request-2'),
+      );
     await flush();
 
     expect(page.messages()).toEqual([
@@ -577,7 +639,9 @@ describe('Web Agent page behavior', () => {
     await page.click('new-session');
     expect(page.element('session-id').textContent).toBe('session-1');
     let acknowledgeAbort!: () => void;
-    backend.abortGate = new Promise<void>((resolve) => { acknowledgeAbort = resolve; });
+    backend.abortGate = new Promise<void>((resolve) => {
+      acknowledgeAbort = resolve;
+    });
     await page.click('cancel');
     expect(backend.abortCalls).toEqual(['session-1']);
     expect(page.element('status').textContent).toMatch(/cancelling/i);
@@ -652,7 +716,9 @@ describe('Web Agent page behavior', () => {
     const backend = new Backend();
     backend.abortError = protocolError('SESSION_CONFLICT', true);
     let releaseAbort!: () => void;
-    backend.abortGate = new Promise<void>((resolve) => { releaseAbort = resolve; });
+    backend.abortGate = new Promise<void>((resolve) => {
+      releaseAbort = resolve;
+    });
     const page = openPage(backend);
     await flush();
     await page.submit('Almost done');
@@ -763,7 +829,9 @@ describe('Web Agent page behavior', () => {
     await page.restoreFromCache();
     expect(backend.eventCalls).toHaveLength(2);
     expect(backend.eventCalls.at(-1)?.options.after).toEqual(cursor(1));
-    backend.latestStream().push(content(2, 'request-1', 'After returning.'), result(3, 'request-1'));
+    backend
+      .latestStream()
+      .push(content(2, 'request-1', 'After returning.'), result(3, 'request-1'));
     await flush();
     expect(page.messages().at(-1)?.content).toBe('Before navigation. After returning.');
     expect(backend.sendCalls).toHaveLength(1);
@@ -794,44 +862,50 @@ describe('Web Agent page behavior', () => {
     expect(backend.sendCalls.at(-1)).toMatchObject({ sessionId: 'session-2', input: 'New task' });
   });
 
-  it.each(['SESSION_NOT_FOUND', 'STALE_CURSOR'] as const)(
-    'preserves readable history and offers a new Session when recovery returns %s',
-    async (code) => {
-      const backend = new Backend();
-      const first = openPage(backend);
-      await flush();
-      await first.submit('Saved question');
-      backend.latestStream().push(content(1, 'request-1', 'Saved partial answer'));
-      await flush();
-      const saved = new Map(first.storage);
-      await first.unload();
-      if (code === 'SESSION_NOT_FOUND') backend.resumeError = protocolError(code);
+  it.each([
+    'SESSION_NOT_FOUND',
+    'STALE_CURSOR',
+  ] as const)('preserves readable history and offers a new Session when recovery returns %s', async (code) => {
+    const backend = new Backend();
+    const first = openPage(backend);
+    await flush();
+    await first.submit('Saved question');
+    backend.latestStream().push(content(1, 'request-1', 'Saved partial answer'));
+    await flush();
+    const saved = new Map(first.storage);
+    await first.unload();
+    if (code === 'SESSION_NOT_FOUND') backend.resumeError = protocolError(code);
 
-      const reloaded = openPage(backend, saved);
+    const reloaded = openPage(backend, saved);
+    await flush();
+    if (code === 'STALE_CURSOR') {
+      backend.latestStream().fail(protocolError(code));
       await flush();
-      if (code === 'STALE_CURSOR') {
-        backend.latestStream().fail(protocolError(code));
-        await flush();
-      }
+    }
 
-      expect(reloaded.messages().at(-1)?.content).toBe('Saved partial answer');
-      expect(reloaded.element('new-session').hidden).toBe(false);
-      expect(reloaded.element('new-session').disabled).toBe(false);
-      expect(reloaded.element('status').textContent).not.toBe('Idle');
-      backend.resumeError = undefined;
-      await reloaded.click('new-session');
-      await reloaded.submit('Start again');
-      expect(backend.sendCalls.at(-1)).toMatchObject({ sessionId: 'session-2', input: 'Start again' });
-    },
-  );
+    expect(reloaded.messages().at(-1)?.content).toBe('Saved partial answer');
+    expect(reloaded.element('new-session').hidden).toBe(false);
+    expect(reloaded.element('new-session').disabled).toBe(false);
+    expect(reloaded.element('status').textContent).not.toBe('Idle');
+    backend.resumeError = undefined;
+    await reloaded.click('new-session');
+    await reloaded.submit('Start again');
+    expect(backend.sendCalls.at(-1)).toMatchObject({
+      sessionId: 'session-2',
+      input: 'Start again',
+    });
+  });
 
   it('renders a restored-from-disk note and rebuilds history when reopened with no local nodes', async () => {
     const backend = new Backend();
     backend.historyMessages = [
       { role: 'user', content: 'Analyze dependency risks' },
       {
-        role: 'assistant', content: '',
-        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'Glob', arguments: '{}' } }],
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call-1', type: 'function', function: { name: 'Glob', arguments: '{}' } },
+        ],
       },
       { role: 'tool', tool_call_id: 'call-1', content: 'package.json' },
       { role: 'assistant', content: 'Dependency risk report' },
@@ -858,12 +932,25 @@ describe('Web Agent page behavior', () => {
     // A tool node whose output is a number: real reproduction from the review
     // (renderTool did `node.output.split('\n')`, throwing inside the bootstrap
     // render with nothing shown and the same value repeating on every reload).
-    const storage = storageWith(validSnapshot({
-      nodes: [{
-        id: 'n1', kind: 'tool', toolId: 't1', name: 'Bash', args: '', status: 'Running',
-        summary: '', output: 5, startedAt: null, endedAt: null, open: false,
-      }],
-    }));
+    const storage = storageWith(
+      validSnapshot({
+        nodes: [
+          {
+            id: 'n1',
+            kind: 'tool',
+            toolId: 't1',
+            name: 'Bash',
+            args: '',
+            status: 'Running',
+            summary: '',
+            output: 5,
+            startedAt: null,
+            endedAt: null,
+            open: false,
+          },
+        ],
+      }),
+    );
     const page = openPage(new Backend(), storage);
     await flush();
     expect(page.element('notice').textContent).toMatch(/could not be restored/i);
@@ -920,9 +1007,18 @@ describe('Web Agent steering', () => {
     // The steer folds into the same turn: no new user bubble, no new Session.
     expect(page.messages()).toEqual([{ role: 'user', content: 'Start the task' }]);
 
-    backend.latestStream().push(toolEvent(1, { type: 'turn_interrupted', inputId: 'unused', requestId: 'request-1', turn: 2 }));
+    backend.latestStream().push(
+      toolEvent(1, {
+        type: 'turn_interrupted',
+        inputId: 'unused',
+        requestId: 'request-1',
+        turn: 2,
+      }),
+    );
     await flush();
-    expect(page.systemNotes()).toContainEqual('Interrupting the current step to apply your instruction');
+    expect(page.systemNotes()).toContainEqual(
+      'Interrupting the current step to apply your instruction',
+    );
   });
 
   it('renders a queued submission differently from a steered one', async () => {
@@ -961,9 +1057,15 @@ describe('Web Agent steering', () => {
 
     // The queued turn starts under a request id this page was never told
     // about ahead of time; its own input_applied is what identifies it.
-    backend.latestStream().push(toolEvent(2, {
-      type: 'input_applied', inputId: 'input-queued-1', requestId: 'request-2', priority: 'now', turn: 2,
-    }));
+    backend.latestStream().push(
+      toolEvent(2, {
+        type: 'input_applied',
+        inputId: 'input-queued-1',
+        requestId: 'request-2',
+        priority: 'now',
+        turn: 2,
+      }),
+    );
     await flush();
     expect(page.steerEntries()).toEqual(['Steering applied: Also check this']);
 
@@ -984,9 +1086,15 @@ describe('Web Agent steering', () => {
     expect(page.steerEntries()).toEqual(['Steered: Focus on security']);
 
     const steerResult = backend.sendResults.at(-1);
-    backend.latestStream().push(toolEvent(1, {
-      type: 'input_applied', inputId: steerResult?.inputId, requestId: 'request-1', priority: 'now', turn: 2,
-    }));
+    backend.latestStream().push(
+      toolEvent(1, {
+        type: 'input_applied',
+        inputId: steerResult?.inputId,
+        requestId: 'request-1',
+        priority: 'now',
+        turn: 2,
+      }),
+    );
     await flush();
     expect(page.steerEntries()).toEqual(['Steering applied: Focus on security']);
   });
@@ -998,10 +1106,12 @@ describe('Web Agent approvals and tool feedback', () => {
     const page = openPage(backend);
     await flush();
     await page.submit('Resume the interrupted write');
-    backend.latestStream().push(
-      toolEvent(1, { type: 'tool_use', id: 'old-write', name: 'RepoWrite', input: {} }),
-      result(2, 'request-1'),
-    );
+    backend
+      .latestStream()
+      .push(
+        toolEvent(1, { type: 'tool_use', id: 'old-write', name: 'RepoWrite', input: {} }),
+        result(2, 'request-1'),
+      );
     await flush();
     expect(page.toolCards()[0]?.textContent).toContain('RepoWrite');
     expect(page.toolCards()[0]?.textContent).toContain('Ended');
@@ -1014,12 +1124,14 @@ describe('Web Agent approvals and tool feedback', () => {
     const page = openPage(backend);
     await flush();
     await page.submit('Write a report');
-    backend.latestStream().push(
-      { ...permission(99, 'other-session'), sessionId: 'session-other' },
-      permission(1, 'other-request', 'request-other'),
-      permission(2),
-      permission(3),
-    );
+    backend
+      .latestStream()
+      .push(
+        { ...permission(99, 'other-session'), sessionId: 'session-other' },
+        permission(1, 'other-request', 'request-other'),
+        permission(2),
+        permission(3),
+      );
     await flush();
     expect(page.approvalCards()).toHaveLength(1);
     expect(page.approvalCards()[0]?.textContent).toContain('Write the report?');
@@ -1051,7 +1163,9 @@ describe('Web Agent approvals and tool feedback', () => {
     backend.latestStream().push(permission(1));
     await flush();
     await page.decide('Approve for this session');
-    expect(backend.permissionCalls[0]).toMatchObject({ response: { approved: true, scope: 'session' } });
+    expect(backend.permissionCalls[0]).toMatchObject({
+      response: { approved: true, scope: 'session' },
+    });
     expect(page.approvalCards()).toHaveLength(0);
   });
 
@@ -1100,7 +1214,9 @@ describe('Web Agent approvals and tool feedback', () => {
     expect(backend.permissionCalls).toHaveLength(2);
     expect(backend.permissionCalls[1]).toEqual(backend.permissionCalls[0]);
     expect(restored.approvalCards()).toHaveLength(0);
-    backend.latestStream().push(permission(2), content(3, 'request-1', 'Write completed'), result(4, 'request-1'));
+    backend
+      .latestStream()
+      .push(permission(2), content(3, 'request-1', 'Write completed'), result(4, 'request-1'));
     await flush();
     expect(restored.approvalCards()).toHaveLength(0);
     expect(restored.messages().at(-1)?.content).toBe('Write completed');
@@ -1124,7 +1240,9 @@ describe('Web Agent approvals and tool feedback', () => {
     expect(page.approvalCards()).toHaveLength(1);
     await page.decide('Deny');
     expect(backend.permissionCalls[1]?.commandId).not.toBe(backend.permissionCalls[0]?.commandId);
-    backend.latestStream().push(content(3, 'request-1', 'Action was skipped'), result(4, 'request-1'));
+    backend
+      .latestStream()
+      .push(content(3, 'request-1', 'Action was skipped'), result(4, 'request-1'));
     await flush();
     expect(page.messages().at(-1)?.content).toBe('Action was skipped');
     expect(page.element('submit').disabled).toBe(false);
@@ -1149,7 +1267,10 @@ describe('Web Agent approvals and tool feedback', () => {
     expect(page.approvalCards()).toHaveLength(0);
   });
 
-  it.each(['complete', 'cancel'] as const)('clears approvals when the request ends by %s and ignores them in later requests', async (ending) => {
+  it.each([
+    'complete',
+    'cancel',
+  ] as const)('clears approvals when the request ends by %s and ignores them in later requests', async (ending) => {
     const backend = new Backend();
     const page = openPage(backend);
     await flush();
@@ -1158,7 +1279,9 @@ describe('Web Agent approvals and tool feedback', () => {
     await flush();
     if (ending === 'cancel') {
       let acknowledgeAbort!: () => void;
-      backend.abortGate = new Promise<void>((resolve) => { acknowledgeAbort = resolve; });
+      backend.abortGate = new Promise<void>((resolve) => {
+        acknowledgeAbort = resolve;
+      });
       await page.click('cancel');
       expect(page.approvalCards()).toHaveLength(1);
       await page.decide('Approve once');
@@ -1181,7 +1304,9 @@ describe('Web Agent approvals and tool feedback', () => {
   it('does not reopen an ended request when an in-flight approval is acknowledged late', async () => {
     const backend = new Backend();
     let acknowledgePermission!: () => void;
-    backend.permissionGate = new Promise<void>((resolve) => { acknowledgePermission = resolve; });
+    backend.permissionGate = new Promise<void>((resolve) => {
+      acknowledgePermission = resolve;
+    });
     const page = openPage(backend);
     await flush();
     await page.submit('Finish before approval response');
@@ -1203,11 +1328,13 @@ describe('Web Agent approvals and tool feedback', () => {
     const page = openPage(backend);
     await flush();
     await page.submit('Fix the greeting script');
-    backend.latestStream().push(permission(1, 'permission-1', undefined, {
-      path: 'src/greeting.sh',
-      expected_content: 'echo Hello, World!',
-      content: 'echo Hello, Blade!',
-    }));
+    backend.latestStream().push(
+      permission(1, 'permission-1', undefined, {
+        path: 'src/greeting.sh',
+        expected_content: 'echo Hello, World!',
+        content: 'echo Hello, Blade!',
+      }),
+    );
     await flush();
     const card = page.approvalCards()[0];
     expect(card?.textContent).toContain('Proposed file change');
@@ -1226,12 +1353,23 @@ describe('Web Agent approvals and tool feedback', () => {
     await flush();
     await page.submit('Run a tool');
     backend.latestStream().push(
-      toolEvent(1, { type: 'tool_use', id: 'tool-1', name: 'WriteFile', input: { path: 'report.md' } }),
+      toolEvent(1, {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'WriteFile',
+        input: { path: 'report.md' },
+      }),
       toolEvent(2, {
-        type: 'tool_progress', id: 'tool-1', name: 'WriteFile',
+        type: 'tool_progress',
+        id: 'tool-1',
+        name: 'WriteFile',
         progress: {
-          kind: 'progress', message: 'Writing report', completed: 1, total: 2,
-          resumeToken: 'private-resume-token', data: { lease: 'private-lease' },
+          kind: 'progress',
+          message: 'Writing report',
+          completed: 1,
+          total: 2,
+          resumeToken: 'private-resume-token',
+          data: { lease: 'private-lease' },
         },
       }),
     );
@@ -1241,12 +1379,23 @@ describe('Web Agent approvals and tool feedback', () => {
     expect(page.toolCards()[0]?.textContent).toContain('Writing report · 1/2');
     expect(page.element('timeline').textContent).not.toMatch(/private-resume-token|private-lease/);
 
-    backend.latestStream().push(toolEvent(3, {
-      type: 'tool_result', id: 'tool-1', name: 'WriteFile',
-      output: 'Saved 42 bytes', display: { summary: 'Saved report.md', detail: { internal: 'private-detail-marker' } },
-    }), toolEvent(4, { type: 'tool_use', id: 'tool-2', name: 'ListFiles', input: {} }), toolEvent(5, {
-      type: 'tool_result', id: 'tool-2', name: 'ListFiles', output: { files: ['report.md'] },
-    }), result(6, 'request-1'));
+    backend.latestStream().push(
+      toolEvent(3, {
+        type: 'tool_result',
+        id: 'tool-1',
+        name: 'WriteFile',
+        output: 'Saved 42 bytes',
+        display: { summary: 'Saved report.md', detail: { internal: 'private-detail-marker' } },
+      }),
+      toolEvent(4, { type: 'tool_use', id: 'tool-2', name: 'ListFiles', input: {} }),
+      toolEvent(5, {
+        type: 'tool_result',
+        id: 'tool-2',
+        name: 'ListFiles',
+        output: { files: ['report.md'] },
+      }),
+      result(6, 'request-1'),
+    );
     await flush();
     expect(page.toolCards()[0]?.textContent).toContain('Completed');
     expect(page.toolCards()[0]?.textContent).toContain('Saved report.md');
@@ -1265,14 +1414,27 @@ describe('Web Agent approvals and tool feedback', () => {
     const page = openPage(backend);
     await flush();
     await page.submit('Run the test suite');
-    backend.latestStream().push(toolEvent(1, { type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'npm test' } }));
+    backend.latestStream().push(
+      toolEvent(1, {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'Bash',
+        input: { command: 'npm test' },
+      }),
+    );
     await flush();
     expect(page.toolCards()[0]?.dataset.status).toBe('Running');
 
-    backend.latestStream().push(toolEvent(2, {
-      type: 'tool_result', id: 'tool-1', name: 'Bash', isError: true,
-      output: 'exit 1', display: { summary: 'npm test failed' },
-    }));
+    backend.latestStream().push(
+      toolEvent(2, {
+        type: 'tool_result',
+        id: 'tool-1',
+        name: 'Bash',
+        isError: true,
+        output: 'exit 1',
+        display: { summary: 'npm test failed' },
+      }),
+    );
     await flush();
     expect(page.toolCards()[0]?.dataset.status).toBe('Failed');
     expect(page.toolCards()[0]?.textContent).toContain('npm test failed');
@@ -1284,10 +1446,12 @@ describe('Web Agent approvals and tool feedback', () => {
     const page = openPage(backend);
     await flush();
     await page.submit('Explain your plan');
-    backend.latestStream().push(
-      toolEvent(1, { type: 'thinking', delta: 'First, check ' }),
-      toolEvent(2, { type: 'thinking', delta: 'the manifest.' }),
-    );
+    backend
+      .latestStream()
+      .push(
+        toolEvent(1, { type: 'thinking', delta: 'First, check ' }),
+        toolEvent(2, { type: 'thinking', delta: 'the manifest.' }),
+      );
     await flush();
     expect(page.thinkingBlocks()).toHaveLength(1);
     expect(page.thinkingBlocks()[0]?.open).toBe(false);
@@ -1313,9 +1477,14 @@ describe('Web Agent approvals and tool feedback', () => {
     await flush();
     await page.submit('Run a tool with a large input');
     const large = 'x'.repeat(500);
-    backend.latestStream().push(toolEvent(1, {
-      type: 'tool_use', id: 'tool-1', name: 'WriteFile', input: { path: 'report.md', body: large },
-    }));
+    backend.latestStream().push(
+      toolEvent(1, {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'WriteFile',
+        input: { path: 'report.md', body: large },
+      }),
+    );
     await flush();
     const serialized = JSON.stringify({ path: 'report.md', body: large });
     const expectedArgs = `${serialized.slice(0, 157)}…`;
@@ -1355,7 +1524,9 @@ describe('Web Agent approvals and tool feedback', () => {
     await flush();
     // Still the same answer streaming in: nothing new to announce.
     expect(page.announced()).toBe('The agent is answering.');
-    backend.latestStream().push(toolEvent(3, { type: 'tool_use', id: 'tool-1', name: 'Bash', input: {} }));
+    backend
+      .latestStream()
+      .push(toolEvent(3, { type: 'tool_use', id: 'tool-1', name: 'Bash', input: {} }));
     await flush();
     expect(page.announced()).toBe('Bash running.');
   });

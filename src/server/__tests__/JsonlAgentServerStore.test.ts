@@ -121,6 +121,14 @@ describe('JsonlAgentServerStore persistence', () => {
       'event',
       'event',
     ]);
+
+    const third = new JsonlAgentServerStore({ directory: dir, maxEventsPerSession: 2 });
+    await third.initialize();
+    await expect(third.getSession(tenantId, sessionId)).resolves.toMatchObject({ sessionId });
+    await expect(third.readEvents(tenantId, sessionId, { after: 2 })).resolves.toMatchObject({
+      events: [{ sequence: 3 }, { sequence: 4 }],
+    });
+    await third.close();
   });
 
   it('tolerates a truncated last line and drops it on compaction', async () => {
@@ -138,12 +146,14 @@ describe('JsonlAgentServerStore persistence', () => {
 
   it('rejects a corrupt line with its line number', async () => {
     const dir = await directory();
-    await writeFile(join(dir, 'server-store.jsonl'), `${sessionLine}not json\n${sessionLine}`);
+    const contents = `${sessionLine}not json\n${sessionLine}`;
+    await writeFile(join(dir, 'server-store.jsonl'), contents);
     const store = new JsonlAgentServerStore({ directory: dir });
     const failure = await store.initialize().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(RuntimeStoreError);
     expect(failure).toMatchObject({ code: 'RUNTIME_STORE_CORRUPT_JOURNAL' });
     expect((failure as Error).message).toContain('server-store.jsonl:2');
+    await expect(readFile(join(dir, 'server-store.jsonl'), 'utf8')).resolves.toBe(contents);
   });
 
   it('rejects an unknown journal version', async () => {
@@ -156,6 +166,28 @@ describe('JsonlAgentServerStore persistence', () => {
     await expect(store.initialize()).rejects.toMatchObject({
       code: 'RUNTIME_STORE_CORRUPT_JOURNAL',
     });
+    await expect(store.initialize()).rejects.toThrow(/unsupported journal version 2/);
+  });
+
+  it('rejects an unknown journal entry kind separately from its version', async () => {
+    const dir = await directory();
+    await writeFile(
+      join(dir, 'server-store.jsonl'),
+      `${JSON.stringify({ v: 1, kind: 'future-entry' })}\n`,
+    );
+    const store = new JsonlAgentServerStore({ directory: dir });
+    await expect(store.initialize()).rejects.toThrow(/known journal entry kind: future-entry/);
+  });
+
+  it('closes cleanly when close() races with initialize()', async () => {
+    const dir = await directory();
+    const store = new JsonlAgentServerStore({ directory: dir });
+    const initializing = store.initialize();
+    const closing = store.close();
+    await expect(initializing).resolves.toBeUndefined();
+    await expect(closing).resolves.toBeUndefined();
+    await expect(store.healthCheck()).resolves.toMatchObject({ ready: false });
+    expect(existsSync(join(dir, 'server-store.lock'))).toBe(false);
   });
 
   it('requires initialize() and rejects writes after close()', async () => {

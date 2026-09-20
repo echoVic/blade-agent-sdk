@@ -1,19 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const repoRoot = resolve(import.meta.dirname, '..');
-const temporaryRoot = mkdtempSync(
-  join(tmpdir(), 'blade-minimal-install-'),
-);
+const temporaryRoot = mkdtempSync(join(tmpdir(), 'blade-minimal-install-'));
 
 function run(command, args, cwd = repoRoot) {
   const result = spawnSync(command, args, {
@@ -23,38 +14,21 @@ function run(command, args, cwd = repoRoot) {
   });
   if (result.status !== 0) {
     throw new Error(
-      [
-        `Command failed: ${command} ${args.join(' ')}`,
-        result.stdout.trim(),
-        result.stderr.trim(),
-      ].filter(Boolean).join('\n'),
+      [`Command failed: ${command} ${args.join(' ')}`, result.stdout.trim(), result.stderr.trim()]
+        .filter(Boolean)
+        .join('\n'),
     );
   }
   return result.stdout.trim();
 }
 
 try {
-  const packed = JSON.parse(
-    run('npm', ['pack', '--json', '--pack-destination', temporaryRoot]),
-  );
+  const packed = JSON.parse(run('npm', ['pack', '--json', '--pack-destination', temporaryRoot]));
   const tarball = join(temporaryRoot, packed[0].filename);
   const consumer = join(temporaryRoot, 'consumer');
   mkdirSync(consumer);
-  writeFileSync(
-    join(consumer, 'package.json'),
-    JSON.stringify({ private: true, type: 'module' }),
-  );
-  run(
-    'npm',
-    [
-      'install',
-      '--ignore-scripts',
-      '--no-audit',
-      '--no-fund',
-      tarball,
-    ],
-    consumer,
-  );
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
+  run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball], consumer);
 
   const output = run(
     process.execPath,
@@ -65,15 +39,15 @@ try {
         "const root = await import('@blade-ai/agent-sdk');",
         "const server = await import('@blade-ai/agent-sdk/server/infra');",
         "const node = await import('@blade-ai/agent-sdk/advanced');",
-        "console.log(typeof root.createSession, typeof server.AgentWorker, typeof node.ExecutionHostError);",
+        'console.log(typeof root.createSession, typeof server.AgentWorker, typeof node.ExecutionHostError);',
         "try { await root.createSession({ provider: { type: 'anthropic', apiKey: 'test' }, model: 'test', persistSession: false }); } catch (error) { console.log(error.message); }",
       ].join(' '),
     ],
     consumer,
   );
   if (
-    !output.startsWith('function function function\n')
-    || !output.includes(
+    !output.startsWith('function function function\n') ||
+    !output.includes(
       'Built-in provider "anthropic" requires the optional package "@ai-sdk/anthropic"',
     )
   ) {
@@ -97,10 +71,7 @@ try {
   }
 
   const manifest = JSON.parse(
-    readFileSync(
-      join(consumer, 'node_modules/@blade-ai/agent-sdk/package.json'),
-      'utf8',
-    ),
+    readFileSync(join(consumer, 'node_modules/@blade-ai/agent-sdk/package.json'), 'utf8'),
   );
   for (const packageName of [
     'pg',
@@ -112,24 +83,24 @@ try {
     '@ai-sdk/google',
   ]) {
     if (
-      manifest.dependencies?.[packageName]
-      || manifest.optionalDependencies?.[packageName]
-      || !manifest.peerDependenciesMeta?.[packageName]?.optional
+      manifest.dependencies?.[packageName] ||
+      manifest.optionalDependencies?.[packageName] ||
+      !manifest.peerDependenciesMeta?.[packageName]?.optional
     ) {
       throw new Error(`${packageName} must remain an optional peer`);
     }
   }
   if (
-    manifest.dependencies?.esbuild
-    || manifest.optionalDependencies?.esbuild
-    || manifest.peerDependencies?.esbuild
+    manifest.dependencies?.esbuild ||
+    manifest.optionalDependencies?.esbuild ||
+    manifest.peerDependencies?.esbuild
   ) {
     throw new Error('esbuild must remain a development-only dependency');
   }
   if (
-    manifest.dependencies?.['node-pty']
-    || manifest.optionalDependencies?.['node-pty']
-    || manifest.peerDependencies?.['node-pty']
+    manifest.dependencies?.['node-pty'] ||
+    manifest.optionalDependencies?.['node-pty'] ||
+    manifest.peerDependencies?.['node-pty']
   ) {
     throw new Error('node-pty must not be part of the published dependency graph');
   }

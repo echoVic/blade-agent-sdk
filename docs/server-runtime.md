@@ -25,6 +25,8 @@ import {
 } from '@blade-ai/agent-sdk/server/infra';
 import { JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
 
+// JsonlSessionRepository 的跨进程文件锁需要这个可选 peer：
+// pnpm add fs-native-extensions@1.5.0
 const repository = new JsonlSessionRepository('/var/lib/my-agent');
 
 const server = new AgentServer({

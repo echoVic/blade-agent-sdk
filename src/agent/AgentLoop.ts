@@ -413,6 +413,7 @@ class AgentLoopExecution {
       tool_call_id: toolCall.id,
       name: toolCall.function.name,
       content,
+      ...(result.status === 'error' ? { extensions: { toolErrorType: result.error.type } } : {}),
     });
   }
 

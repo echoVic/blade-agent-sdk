@@ -1,12 +1,11 @@
-import { execFile } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { collectToolExecution } from '../../src/tools/types/result.js';
-import { createSession } from '../../src/session/Session.js';
+import { createRepositorySessionOptions } from '../../examples/production-stack/RepositoryDemoProvider.mjs';
 import {
   CORRECTED_GREETING,
   createRepositoryTools,
@@ -15,15 +14,19 @@ import {
   ORIGINAL_GREETING,
   TEST_PATH,
 } from '../../examples/production-stack/RepositoryTools.mjs';
-import { createRepositorySessionOptions } from '../../examples/production-stack/RepositoryDemoProvider.mjs';
+import { createSession } from '../../src/session/Session.js';
+import { collectToolExecution } from '../../src/tools/types/result.js';
 
 const execFileAsync = promisify(execFile);
+type ExecutionFailure = Error & { code?: unknown; stdout?: string; stderr?: string };
 const fixture = resolve('examples/production-stack/fixture');
 const directories: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllEnvs();
-  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
 });
 
 /**
@@ -31,10 +34,7 @@ afterEach(async () => {
  * input closes the pipe first, so the write must not surface as an unhandled
  * stream error while the caller asserts the resulting exit code.
  */
-function feedStdin(
-  pending: Promise<unknown> & { child: ChildProcess },
-  stdin: string,
-): void {
+function feedStdin(pending: Promise<unknown> & { child: ChildProcess }, stdin: string): void {
   const stream = pending.child.stdin;
   if (stream === null) {
     return;
@@ -66,20 +66,27 @@ async function setup() {
         const result = await child;
         return { ...result, exitCode: 0 };
       } catch (error) {
-        if (typeof error.code !== 'number') throw error;
-        return { stdout: error.stdout, stderr: error.stderr, exitCode: error.code };
+        const failure = error as ExecutionFailure;
+        if (typeof failure.code !== 'number') throw error;
+        return { stdout: failure.stdout, stderr: failure.stderr, exitCode: failure.code };
       }
     }),
   };
-  const getHandle = vi.fn(async (signal) => {
+  const getHandle = vi.fn(async (signal: AbortSignal | undefined) => {
     signal?.throwIfAborted();
     return { executionId: 'fixture-execution' };
   });
   const tools = createRepositoryTools({ host, getHandle, checkpoint });
-  const invoke = async (name, input, context = {}) => {
+  const invoke = async (
+    name: string,
+    input: Record<string, unknown>,
+    context: { signal?: AbortSignal } = {},
+  ) => {
     const tool = tools.find((candidate) => candidate.name === name);
     if (!tool) throw new Error(`Unknown test tool ${name}`);
-    return collectToolExecution(tool.execute(input, context));
+    return collectToolExecution(
+      tool.execute(input, context) as unknown as Parameters<typeof collectToolExecution>[0],
+    );
   };
   return { directory, host, getHandle, checkpoint, tools, invoke };
 }
@@ -96,18 +103,21 @@ describe('repository fixture tools', () => {
     expect(await readFile(join(directory, GREETING_PATH), 'utf8')).toBe(ORIGINAL_GREETING);
     expect(await readFile(join(directory, TEST_PATH), 'utf8')).toBe(GREETING_TEST);
     expect((await invoke('RepoRunTests', {})).model).toMatchObject({ passed: false, exitCode: 1 });
-    const alternative = '#!/bin/sh\nset -eu\nname=${1:-World}\nprintf "Hello, %s!\\n" "$name"\n';
+    const alternative =
+      '#!/bin/sh\nset -eu\nname=$' + '{1:-World}\nprintf "Hello, %s!\\n" "$name"\n';
     const written = await invoke('RepoWrite', { ...writeInput, content: alternative });
     expect(written.model).toMatchObject({ changed: true, after: alternative });
     expect(checkpoint).toHaveBeenCalledWith({
-      executionId: 'fixture-execution', path: GREETING_PATH, signal: undefined,
+      executionId: 'fixture-execution',
+      path: GREETING_PATH,
+      signal: undefined,
     });
     expect((await invoke('RepoRunTests', {})).model).toMatchObject({
       passed: true,
       exitCode: 0,
       stdout: 'PASS greeting: Hello, Blade!\nPASS default greeting: Hello, World!\n',
     });
-    expect(tools.find((tool) => tool.name === 'RepoRunTests').sideEffect).toBe('non_idempotent');
+    expect(tools.find((tool) => tool.name === 'RepoRunTests')?.sideEffect).toBe('non_idempotent');
   });
 
   it('rejects paths, commands, and oversized or binary writes before reaching the host', async () => {
@@ -177,14 +187,18 @@ describe('repository fixture tools', () => {
     await cp(join(fixture, 'src'), join(directory, 'src'), { recursive: true });
     await writeFile(join(directory, TEST_PATH), 'touch test-should-not-run\n');
     await expect(invoke('RepoRunTests', {})).rejects.toThrow();
-    await expect(readFile(join(directory, 'test-should-not-run'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(directory, 'test-should-not-run'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it('honors an already aborted tool signal before provisioning or executing', async () => {
     const { invoke, getHandle, host } = await setup();
     const controller = new AbortController();
     controller.abort(new Error('cancelled'));
-    await expect(invoke('RepoRead', { file_path: GREETING_PATH }, { signal: controller.signal })).rejects.toThrow('cancelled');
+    await expect(
+      invoke('RepoRead', { file_path: GREETING_PATH }, { signal: controller.signal }),
+    ).rejects.toThrow('cancelled');
     expect(getHandle).not.toHaveBeenCalled();
     expect(host.exec).not.toHaveBeenCalled();
   });
@@ -198,21 +212,31 @@ describe('repository demo provider through the actual SDK loop', () => {
       expect(checkpoint).not.toHaveBeenCalled();
       return { approved, reason: approved ? 'Approved for test' : 'Denied for test' };
     });
-    const session = await createSession(createRepositorySessionOptions({
-      smoke: true,
-      tools,
-      confirmationHandler: { requestConfirmation: confirmations },
-    }));
+    const session = await createSession(
+      createRepositorySessionOptions({
+        smoke: true,
+        tools,
+        confirmationHandler: { requestConfirmation: confirmations },
+      } as never) as Parameters<typeof createSession>[0],
+    );
     try {
       await session.send('Fix the greeting and run its tests.');
       const events = [];
       for await (const event of session.stream()) events.push(event);
-      const toolNames = events.filter((event) => event.type === 'tool_use').map((event) => event.name);
+      const toolNames = events
+        .filter((event) => event.type === 'tool_use')
+        .map((event) => event.name);
       const result = events.findLast((event) => event.type === 'result');
       expect(confirmations).toHaveBeenCalledTimes(1);
-      expect(toolNames).toEqual(approved ? ['RepoRead', 'RepoWrite', 'RepoRunTests'] : ['RepoRead', 'RepoWrite']);
-      expect(result?.content).toContain(approved ? 'Tests passed (exit 0)' : 'No file changes were applied');
-      expect(await readFile(join(directory, GREETING_PATH), 'utf8')).toBe(approved ? CORRECTED_GREETING : ORIGINAL_GREETING);
+      expect(toolNames).toEqual(
+        approved ? ['RepoRead', 'RepoWrite', 'RepoRunTests'] : ['RepoRead', 'RepoWrite'],
+      );
+      expect(result?.content).toContain(
+        approved ? 'Tests passed (exit 0)' : 'No file changes were applied',
+      );
+      expect(await readFile(join(directory, GREETING_PATH), 'utf8')).toBe(
+        approved ? CORRECTED_GREETING : ORIGINAL_GREETING,
+      );
       expect(checkpoint).toHaveBeenCalledTimes(approved ? 1 : 0);
     } finally {
       await session.close();
@@ -223,15 +247,23 @@ describe('repository demo provider through the actual SDK loop', () => {
     const { tools, directory, checkpoint } = await setup();
     await writeFile(join(directory, GREETING_PATH), CORRECTED_GREETING);
     const requestConfirmation = vi.fn(async () => ({ approved: false }));
-    const session = await createSession(createRepositorySessionOptions({
-      smoke: true, tools, confirmationHandler: { requestConfirmation },
-    }));
+    const session = await createSession(
+      createRepositorySessionOptions({
+        smoke: true,
+        tools,
+        confirmationHandler: { requestConfirmation },
+      } as never) as Parameters<typeof createSession>[0],
+    );
     try {
       await session.send('Continue the greeting task after recovering the workspace.');
       const events = [];
       for await (const event of session.stream()) events.push(event);
-      expect(events.filter((event) => event.type === 'tool_use').map((event) => event.name)).toEqual(['RepoRead', 'RepoRunTests']);
-      expect(events.findLast((event) => event.type === 'result')?.content).toContain('Tests passed (exit 0)');
+      expect(
+        events.filter((event) => event.type === 'tool_use').map((event) => event.name),
+      ).toEqual(['RepoRead', 'RepoRunTests']);
+      expect(events.findLast((event) => event.type === 'result')?.content).toContain(
+        'Tests passed (exit 0)',
+      );
       expect(requestConfirmation).not.toHaveBeenCalled();
       expect(checkpoint).not.toHaveBeenCalled();
     } finally {

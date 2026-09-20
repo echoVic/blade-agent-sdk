@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -12,17 +12,13 @@ function collectActionReferences(value: unknown): string[] {
     return [];
   }
   return Object.entries(value).flatMap(([key, nested]) =>
-    key === 'uses' && typeof nested === 'string'
-      ? [nested]
-      : collectActionReferences(nested),
+    key === 'uses' && typeof nested === 'string' ? [nested] : collectActionReferences(nested),
   );
 }
 
 describe('Node.js version policy', () => {
   it('runs CI verification only on the supported Node.js release line', () => {
-    const workflow = parse(
-      readFileSync(resolve('.github/workflows/ci.yml'), 'utf8'),
-    );
+    const workflow = parse(readFileSync(resolve('.github/workflows/ci.yml'), 'utf8'));
 
     expect(workflow.jobs.verify.strategy.matrix['node-version']).toEqual(['22']);
   });
@@ -38,9 +34,7 @@ describe('Node.js version policy', () => {
     const actionReferences = readdirSync(workflowDirectory)
       .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
       .flatMap((name) =>
-        collectActionReferences(
-          parse(readFileSync(resolve(workflowDirectory, name), 'utf8')),
-        ),
+        collectActionReferences(parse(readFileSync(resolve(workflowDirectory, name), 'utf8'))),
       );
 
     expect([...new Set(actionReferences)].sort()).toEqual([

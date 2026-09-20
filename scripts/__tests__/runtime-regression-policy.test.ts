@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error The policy evaluator is an executable JavaScript module.
 import { evaluateRuntimeRegression } from '../runtime-regression-policy.mjs';
 
-const policy = JSON.parse(
-  readFileSync('benchmarks/runtime-regression-policy.json', 'utf8'),
-);
+const policy = JSON.parse(readFileSync('benchmarks/runtime-regression-policy.json', 'utf8'));
 
 interface SourceReports {
   stable: {
@@ -56,9 +53,7 @@ describe('runtime regression policy', () => {
 
     expect(result.passed).toBe(true);
     expect(result.failures).toEqual([]);
-    expect(
-      result.checks.every((check: { passed: boolean }) => check.passed),
-    ).toBe(true);
+    expect(result.checks.every((check: { passed: boolean }) => check.passed)).toBe(true);
   });
 
   it('rejects reduced samples and metric regressions', () => {

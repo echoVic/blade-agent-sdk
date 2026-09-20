@@ -5,11 +5,18 @@
  * 使用: node scripts/download-ripgrep.js [版本号]
  */
 
-import { createWriteStream, existsSync, mkdirSync, chmodSync, readdirSync, statSync } from 'fs';
-import { join, dirname } from 'path';
-import { pipeline } from 'stream/promises';
-import { fileURLToPath } from 'url';
-import { get } from 'https';
+import {
+  chmodSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+} from 'node:fs';
+import { get } from 'node:https';
+import { dirname, join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -100,8 +107,8 @@ async function downloadFile(url, dest) {
  * 解压 tar.gz 文件
  */
 async function extractTarGz(archivePath, targetDir, fileName) {
-  const { promisify } = await import('util');
-  const { exec } = await import('child_process');
+  const { promisify } = await import('node:util');
+  const { exec } = await import('node:child_process');
   const execAsync = promisify(exec);
 
   const archiveBaseName = `ripgrep-${VERSION}-${fileName}`;
@@ -118,8 +125,8 @@ async function extractTarGz(archivePath, targetDir, fileName) {
  * 解压 zip 文件
  */
 async function extractZip(archivePath, targetDir, fileName) {
-  const { promisify } = await import('util');
-  const { exec } = await import('child_process');
+  const { promisify } = await import('node:util');
+  const { exec } = await import('node:child_process');
   const execAsync = promisify(exec);
 
   const archiveBaseName = `ripgrep-${VERSION}-${fileName}`;
@@ -141,7 +148,7 @@ function getHumanFileSize(filePath) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   if (bytes === 0) return '0 B';
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+  return `${(bytes / 1024 ** i).toFixed(2)} ${sizes[i]}`;
 }
 
 /**

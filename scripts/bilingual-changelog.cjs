@@ -33,27 +33,13 @@ const CHANGELOGS = {
     },
   },
 };
-const TYPE_ORDER = [
-  'breaking',
-  'feature',
-  'fix',
-  'performance',
-  'refactor',
-  'docs',
-];
+const TYPE_ORDER = ['breaking', 'feature', 'fix', 'performance', 'refactor', 'docs'];
 /**
  * Commit types that require a changelog fragment. This decides only whether a
  * pull request owes a fragment; the released version number comes from the tag
  * the maintainer pushes, never from the commit type.
  */
-const RELEASABLE_COMMIT_TYPES = new Set([
-  'feat',
-  'fix',
-  'perf',
-  'refactor',
-  'docs',
-  'build',
-]);
+const RELEASABLE_COMMIT_TYPES = new Set(['feat', 'fix', 'perf', 'refactor', 'docs', 'build']);
 const CONVENTIONAL_HEADER = /^([a-z]+)(?:\([^)]*\))?(!)?:\s+\S/;
 const BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/m;
 
@@ -62,11 +48,11 @@ function getFragmentPaths(cwd) {
   if (!fs.existsSync(directory)) {
     return [];
   }
-  return fs.readdirSync(directory, { withFileTypes: true })
-    .filter((entry) =>
-      entry.isFile()
-      && entry.name !== FRAGMENT_README
-      && entry.name.endsWith('.json'))
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .filter(
+      (entry) => entry.isFile() && entry.name !== FRAGMENT_README && entry.name.endsWith('.json'),
+    )
     .map((entry) => path.join(directory, entry.name))
     .sort();
 }
@@ -76,8 +62,7 @@ function readFragments(cwd) {
     const filename = path.basename(file);
     if (!FRAGMENT_FILE_PATTERN.test(filename)) {
       throw new Error(
-        `Invalid changelog fragment ${path.relative(cwd, file)}: `
-        + 'filename must use kebab-case',
+        `Invalid changelog fragment ${path.relative(cwd, file)}: filename must use kebab-case`,
       );
     }
 
@@ -90,21 +75,21 @@ function readFragments(cwd) {
 
     if (!fragment || Array.isArray(fragment) || typeof fragment !== 'object') {
       throw new Error(
-        `Invalid changelog fragment ${path.relative(cwd, file)}: `
-        + 'content must be a JSON object',
+        `Invalid changelog fragment ${path.relative(cwd, file)}: ` +
+          'content must be a JSON object',
       );
     }
     if (!TYPE_ORDER.includes(fragment.type)) {
       throw new Error(
-        `Invalid changelog fragment ${path.relative(cwd, file)}: `
-        + `type must be one of ${TYPE_ORDER.join(', ')}`,
+        `Invalid changelog fragment ${path.relative(cwd, file)}: ` +
+          `type must be one of ${TYPE_ORDER.join(', ')}`,
       );
     }
     for (const locale of Object.keys(CHANGELOGS)) {
       if (typeof fragment[locale] !== 'string' || fragment[locale].trim() === '') {
         throw new Error(
-          `Invalid changelog fragment ${path.relative(cwd, file)}: `
-          + `${locale} must be a non-empty string`,
+          `Invalid changelog fragment ${path.relative(cwd, file)}: ` +
+            `${locale} must be a non-empty string`,
         );
       }
     }
@@ -123,9 +108,7 @@ function readFragments(cwd) {
 function readReleaseFragments(cwd) {
   const fragments = readFragments(cwd);
   if (fragments.length === 0) {
-    throw new Error(
-      'A release requires at least one bilingual .changes/*.json fragment',
-    );
+    throw new Error('A release requires at least one bilingual .changes/*.json fragment');
   }
   return fragments;
 }
@@ -174,13 +157,10 @@ function prependRelease(cwd, locale, release) {
   }
 
   const firstRelease = existing.search(/^## \[/m);
-  const prefix = firstRelease === -1 ? existing.trimEnd() : existing.slice(0, firstRelease).trimEnd();
+  const prefix =
+    firstRelease === -1 ? existing.trimEnd() : existing.slice(0, firstRelease).trimEnd();
   const history = firstRelease === -1 ? '' : existing.slice(firstRelease).trimStart();
-  const content = [
-    prefix,
-    release,
-    history,
-  ].filter(Boolean).join('\n\n');
+  const content = [prefix, release, history].filter(Boolean).join('\n\n');
   fs.writeFileSync(file, `${content.trimEnd()}\n`);
 }
 
@@ -214,11 +194,10 @@ function getChangedFragmentPaths(cwd, base) {
 }
 
 function getCommitMessages(cwd, base) {
-  const messages = execFileSync(
-    'git',
-    ['log', '--format=%B%x00', `${base}..HEAD`],
-    { cwd, encoding: 'utf8' },
-  );
+  const messages = execFileSync('git', ['log', '--format=%B%x00', `${base}..HEAD`], {
+    cwd,
+    encoding: 'utf8',
+  });
   return messages
     .split('\0')
     .map((message) => message.trim())
@@ -269,9 +248,7 @@ function runCli(cwd, args) {
     }
     verifyRange(cwd, base);
   }
-  process.stdout.write(
-    `Validated ${fragments.length} bilingual changelog fragment(s)\n`,
-  );
+  process.stdout.write(`Validated ${fragments.length} bilingual changelog fragment(s)\n`);
 }
 
 if (require.main === module) {
