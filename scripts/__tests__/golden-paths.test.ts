@@ -116,11 +116,16 @@ describe('golden paths', () => {
       'docs/en/golden-paths.md',
     ]) {
       const source = readFileSync(resolve(file), 'utf8');
-      for (const preset of ['local', 'web', 'production']) {
+      // The web preset now starts itself on an interactive terminal, so its
+      // primary example no longer appends --verify; --verify still works and
+      // is documented separately (it runs the smoke instead of starting).
+      for (const preset of ['local', 'production']) {
         expect(source, file).toContain(
           `create-blade-agent my-agent --preset ${preset} --verify`,
         );
       }
+      expect(source, file).toContain('create-blade-agent my-agent --preset web');
+      expect(source, file).toMatch(/--verify/);
       expect(source, file).toMatch(/five minutes|five-minute|五分钟/);
     }
   });

@@ -75,6 +75,54 @@ the authenticated `tenantId`. There is no trusted client-supplied tenant field.
 
 See [Runtime Store](./runtime-store) for the PostgreSQL single-authority setup.
 
+### Built-in tools
+
+`builtinTools: true` registers every built-in tool the SDK ships — not only
+filesystem, search and shell, but also `Write`, `Edit`, `NotebookEdit`,
+`WebFetch`, `WebSearch`, the `Task` subagent family, `TodoWrite`, memory, plan
+mode and skills. `allowedTools` is the only thing that narrows that set.
+Server-hosted Sessions do not register any of it by default: the server
+process is shared by every tenant, so an operator must opt in explicitly —
+and, in the same call, set `allowedTools`, or the opt-in hands that tenant
+file writes and outbound network access from the server process. Scope the
+result further with `defaultContext.capabilities.filesystem` for visible
+directories and `permissions` and `sandbox` for each call:
+
+```ts
+resolveSessionOptions() {
+  return {
+    provider,
+    model,
+    builtinTools: true,
+    // Required: without allowedTools, builtinTools: true registers every
+    // built-in tool, including Write, Edit, WebFetch and WebSearch.
+    allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+    permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
+    sandbox: { enabled: true },
+    defaultContext: { capabilities: { filesystem: { roots: [workspace], cwd: workspace } } },
+  };
+}
+```
+
+The `defaultContext.capabilities.filesystem` roots only bound the tools that
+take a path argument — `Read`, `Glob`, and `Grep`. `Bash` is not one of them:
+it only requires a working directory to exist and never checks the command or
+the working directory against the roots, so `Bash`'s reach is bounded by
+`sandbox` and `permissions` instead. Setting `sandbox: { enabled: true }` on a
+host with no platform sandbox makes Session initialization fail outright,
+rather than falling back to running unsandboxed. The capability check a
+caller would use to predict that failure ahead of time (`canUseSandbox()`)
+reports whether the platform has a supported sandbox, not whether a sandboxed
+command will actually run — the underlying seatbelt or Bubblewrap profile can
+still be rejected at run time. A caller that must not fail closed should not
+trust the capability check alone; probe by running one trivial command
+through the sandbox wrapper first, the way the starter does before it enables
+its own sandbox.
+
+Local Sessions still register the built-in tools by default; set
+`builtinTools: false` to turn them off. Skill and subagent disk discovery only
+ever runs on the local host — a server never scans the host's disk.
+
 ## SessionExecutor
 
 `AgentServer` owns authentication, authorization, command idempotency, HTTP,
@@ -325,6 +373,34 @@ worker.
 The included `InMemoryAgentServerStore` is for one process and tests only. It
 does not provide cross-process idempotency, global quotas, or highly available
 event replay.
+
+### Single-process file store
+
+`JsonlAgentServerStore` appends session records, the event log, idempotency
+keys and command leases to `<directory>/server-store.jsonl`, replaying and
+compacting it on start. It keeps every semantic of the in-memory store and adds
+one thing: Sessions survive a restart of the same process on the same machine.
+Use it for local development, demos and single-instance deployments; multiple
+instances still need the PostgreSQL store.
+
+```ts
+import { AgentServer, JsonlAgentServerStore } from '@blade-ai/agent-sdk/server/infra';
+
+const store = new JsonlAgentServerStore({ directory: '.blade/server' });
+await store.initialize();
+const server = new AgentServer({ store, resolveSessionOptions });
+// on exit
+await server.close();
+await store.close();
+```
+
+Writes reach the operating system before the mutating call resolves, so a
+process crash keeps every acknowledged write; there is no fsync per write. A
+truncated last line is skipped with a warning; any other damage fails
+`initialize()` with `RUNTIME_STORE_CORRUPT_JOURNAL` and a line number. Delete
+the directory to start from an empty store; Session transcripts kept by
+`JsonlSessionRepository` live elsewhere and are not affected. Transcripts still
+need `sessionRepository` / `sessionEventStore` configured separately.
 
 ## Admission, approvals, and telemetry
 

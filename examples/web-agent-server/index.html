@@ -1,361 +1,92 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Blade Agent Console</title>
-<style>
-  :root {
-    color-scheme: light;
-    font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
-    background: #f3f3ef;
-    color: #171a18;
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: #f3f3ef;
-  }
-
-  main {
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-    display: grid;
-    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  }
-
-  aside {
-    min-height: 0;
-    overflow-y: auto;
-    padding: 28px;
-    color: #f7f7f2;
-    background: #1d2823;
-    border-right: 1px solid #0c110e;
-  }
-
-  .workspace {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    margin: 24px 0;
-    border: 1px solid #536158;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 12px;
-    padding: 24px;
-    background: #111814;
-  }
-
-  .workspace-line {
-    display: block;
-    width: 82%;
-    height: 5px;
-    background: #88a594;
-  }
-
-  .workspace-line:nth-child(2) {
-    width: 58%;
-    background: #d7f236;
-  }
-
-  .workspace-line:nth-child(3) {
-    width: 72%;
-  }
-
-  .workspace-line:nth-child(4) {
-    width: 44%;
-    background: #f0f0e8;
-  }
-
-  h1 {
-    margin: 0;
-    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: 0;
-  }
-
-  .eyebrow,
-  .meta-label,
-  .message-role {
-    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0;
-  }
-
-  .eyebrow {
-    color: #a8c7b4;
-    margin-bottom: 8px;
-  }
-
-  .meta {
-    padding-top: 18px;
-    border-top: 1px solid #536158;
-  }
-
-  .meta-label {
-    color: #a8c7b4;
-  }
-
-  #session-id {
-    display: block;
-    margin-top: 7px;
-    overflow-wrap: anywhere;
-    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-    font-size: 12px;
-  }
-
-  .conversation {
-    min-width: 0;
-    min-height: 0;
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 58px;
-    padding: 0 28px;
-    border-bottom: 1px solid #c9cec9;
-    background: rgba(243, 243, 239, 0.94);
-  }
-
-  #status {
-    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-    font-size: 12px;
-    color: #336b4b;
-  }
-
-  #transcript {
-    min-height: 0;
-    overflow-y: auto;
-    padding: 32px clamp(20px, 6vw, 88px);
-  }
-
-  .session-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 18px;
-    flex-wrap: wrap;
-  }
-
-  .session-actions button {
-    min-height: 38px;
-    padding: 8px 12px;
-    min-width: 0;
-  }
-
-  #notice {
-    margin: 0;
-    padding: 8px 28px;
-    color: #8b3524;
-    line-height: 1.5;
-  }
-
-  #notice:empty {
-    padding: 0;
-  }
-
-  .message {
-    max-width: 760px;
-    margin: 0 0 26px;
-  }
-
-  .message-user {
-    margin-left: auto;
-    padding-left: 15%;
-  }
-
-  .message-role {
-    color: #68716b;
-  }
-
-  .message p {
-    margin: 7px 0 0;
-    white-space: pre-wrap;
-    line-height: 1.65;
-  }
-
-  .tool-card,
-  .approval-card {
-    max-width: 760px;
-    margin: 0 0 20px;
-    padding: 18px 20px;
-    border: 1px solid #bcc8bd;
-    border-radius: 6px;
-    background: #eaf0e8;
-    overflow-wrap: anywhere;
-  }
-
-  .approval-card {
-    border-color: #99ad46;
-    background: #f4f8df;
-  }
-
-  .approval-card h3 {
-    margin: 0 0 10px;
-    font-size: 17px;
-  }
-
-  .tool-card p,
-  .approval-card p {
-    margin: 8px 0;
-    white-space: pre-wrap;
-    line-height: 1.5;
-  }
-
-  .approval-card summary {
-    cursor: pointer;
-    margin: 12px 0;
-  }
-
-  .approval-card pre {
-    max-height: 220px;
-    overflow: auto;
-    white-space: pre-wrap;
-    padding: 12px;
-    background: #fff;
-    font-size: 12px;
-  }
-
-  .approval-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 16px;
-  }
-
-  .approval-actions button {
-    min-height: 40px;
-    padding: 10px 16px;
-  }
-
-  .approval-actions button:last-child {
-    background: #e2e6df;
-  }
-
-  form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 12px;
-    padding: 18px clamp(20px, 6vw, 88px) 26px;
-    border-top: 1px solid #c9cec9;
-    background: #f3f3ef;
-  }
-
-  textarea {
-    min-height: 52px;
-    max-height: 180px;
-    resize: vertical;
-    border: 1px solid #8d9690;
-    border-radius: 4px;
-    padding: 14px;
-    background: #fff;
-    color: inherit;
-    font: inherit;
-  }
-
-  textarea:focus {
-    outline: 2px solid #2e7650;
-    outline-offset: 1px;
-  }
-
-  button {
-    min-width: 96px;
-    border: 0;
-    border-radius: 4px;
-    padding: 0 20px;
-    background: #d7f236;
-    color: #172014;
-    font: 700 14px "IBM Plex Mono", "SFMono-Regular", monospace;
-    cursor: pointer;
-  }
-
-  button:disabled {
-    cursor: wait;
-    opacity: 0.5;
-  }
-
-  #cancel {
-    background: #e2e6df;
-  }
-
-  @media (max-width: 720px) {
-    main {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto minmax(0, 1fr);
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blade Agent</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9; --panel: #ffffff; --ink: #1c1f26; --muted: #66707f; --line: #e2e6ec;
+      --accent: #2f6df6; --accent-ink: #ffffff; --ok: #1f9d55; --warn: #d97706; --bad: #dc2626; --chip: #eef2ff;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
-
-    aside {
-      min-height: auto;
-      padding: 20px;
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #8b95a5; --line: #2a313b; --accent: #6b9dff; --accent-ink: #0b1220; --chip: #1e2740; }
     }
-
-    .workspace {
-      display: none;
-    }
-
-    form {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    textarea {
-      grid-column: 1 / -1;
-    }
-
-    button {
-      min-height: 48px;
-    }
-  }
-</style>
-<main>
-  <aside>
-    <div class="eyebrow">Runtime console</div>
-    <h1>Blade Agent</h1>
-    <div
-      class="workspace"
-      role="img"
-      aria-label="Active runtime console"
-    >
-      <span class="workspace-line"></span>
-      <span class="workspace-line"></span>
-      <span class="workspace-line"></span>
-      <span class="workspace-line"></span>
-    </div>
-    <div class="meta">
-      <span class="meta-label">Session</span>
-      <strong id="session-id">Not started</strong>
-      <div class="session-actions">
-        <button id="reconnect" type="button" hidden>Reconnect</button>
-        <button id="new-session" type="button">New session</button>
-      </div>
-    </div>
-  </aside>
-  <section class="conversation">
-    <header>
-      <span>Conversation</span>
-      <strong id="status" role="status">Starting</strong>
-    </header>
-    <p id="notice" role="alert"></p>
-    <section id="transcript" aria-live="polite"></section>
-    <form id="prompt-form">
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 var(--sans); color: var(--ink); background: var(--bg); height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    header.bar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    header .brand { font-weight: 650; }
+    header .session { font: 12px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+    header .spacer { flex: 1; }
+    .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+    .pill[data-tone="work"] { border-color: var(--accent); color: var(--accent); }
+    .pill[data-tone="wait"] { border-color: var(--warn); color: var(--warn); }
+    .pill[data-tone="bad"] { border-color: var(--bad); color: var(--bad); }
+    .pill[data-tone="ok"] { border-color: var(--ok); color: var(--ok); }
+    button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 12px; cursor: pointer; }
+    button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: default; }
+    #notice { margin: 0; padding: 4px 20px; color: var(--warn); font-size: 13px; min-height: 24px; }
+    #timeline { flex: 1; overflow-y: auto; padding: 8px 20px 24px; display: flex; flex-direction: column; gap: 10px; max-width: 920px; width: 100%; margin: 0 auto; }
+    .node { border-radius: 12px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); }
+    .node.user { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); align-self: flex-end; max-width: 80%; white-space: pre-wrap; }
+    .node.assistant { white-space: pre-wrap; }
+    .node.system, .node.steer { align-self: center; font-size: 13px; color: var(--muted); background: transparent; border-style: dashed; }
+    .node.steer { color: var(--accent); border-color: var(--accent); background: var(--chip); border-style: solid; }
+    .node.error { border-color: var(--bad); color: var(--bad); white-space: pre-wrap; }
+    details.node > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+    .node pre { margin: 8px 0 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; color: var(--muted); }
+    .node.tool .head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .node.tool .name { font: 600 13px var(--mono); }
+    .node.tool .args { font: 12px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .node.tool .meta { font-size: 12px; color: var(--muted); }
+    .node.tool[data-status="Running"] .name::before { content: "●"; color: var(--accent); margin-right: 6px; animation: pulse 1s infinite; }
+    .node.tool[data-status="Completed"] .name::before { content: "✓"; color: var(--ok); margin-right: 6px; }
+    .node.tool[data-status="Failed"] .name::before, .node.tool[data-status="Ended"] .name::before, .node.tool[data-status="Cancelled"] .name::before { content: "✕"; color: var(--bad); margin-right: 6px; }
+    .node.tool details summary { font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 6px; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    .approval { border-color: var(--warn); }
+    .approval h3 { margin: 0 0 4px; font-size: 15px; }
+    .approval p { margin: 4px 0; }
+    .approval .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    form { display: flex; gap: 10px; padding: 12px 20px 6px; border-top: 1px solid var(--line); background: var(--panel); }
+    form .inner { display: flex; gap: 10px; max-width: 920px; width: 100%; margin: 0 auto; }
+    textarea { flex: 1; min-height: 44px; max-height: 160px; resize: vertical; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+    textarea[data-steering="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--chip); }
+    .hint { margin: 0; padding: 0 20px 12px; font-size: 12px; color: var(--muted); background: var(--panel); text-align: center; }
+    @media (max-width: 640px) { header .session { display: none; } .node.user { max-width: 100%; } }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">Blade Agent</span>
+    <span class="session" id="session-id" title="Session id">Not started</span>
+    <span class="spacer"></span>
+    <span class="pill" id="status" role="status" data-tone="">Starting</span>
+    <button id="reconnect" type="button" hidden>Reconnect</button>
+    <button id="new-session" type="button">New session</button>
+  </header>
+  <p id="notice" role="alert"></p>
+  <p id="announcer" class="sr-only" aria-live="polite"></p>
+  <section id="timeline"></section>
+  <form id="prompt-form">
+    <div class="inner">
       <textarea
         id="prompt"
         name="prompt"
-        required
-        placeholder="Ask the agent"
+        rows="2"
+        placeholder="Ask the agent to analyze this project's dependency risks"
         aria-label="Prompt"
       ></textarea>
-      <button id="submit" type="submit">Send</button>
+      <button id="submit" type="submit" class="primary">Send</button>
       <button id="cancel" type="button" disabled>Cancel</button>
-    </form>
-  </section>
-</main>
-<script type="module" src="/client.js"></script>
+    </div>
+  </form>
+  <p class="hint" id="hint">Enter sends, Shift+Enter adds a line.</p>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>

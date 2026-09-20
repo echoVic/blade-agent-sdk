@@ -203,6 +203,7 @@ export class SessionState {
       permissions: {
         allow: [],
         deny: [],
+        ...this.options.permissions,
       },
     };
   }

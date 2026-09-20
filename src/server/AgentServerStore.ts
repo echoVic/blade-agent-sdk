@@ -7,13 +7,14 @@ import type {
 } from '../protocol/index.js';
 import { AGENT_PROTOCOL_VERSION } from '../protocol/index.js';
 import {
-  type CommandId,
+  CommandId,
   EventId,
   EventSequence,
   ExecutionLeaseId,
-  type SessionId,
+  SessionId,
 } from '../types/identifiers.js';
 import type { JsonObject } from '../types/json.js';
+import { RuntimeStoreError } from './RuntimeStore.js';
 
 export interface AgentServerSessionRecord extends AgentSessionDescriptor {
   readonly tenantId: string;
@@ -136,6 +137,48 @@ export interface AgentServerStore {
   ): Promise<void>;
 }
 
+export interface CommandLeaseSnapshot {
+  readonly leaseId: ExecutionLeaseId;
+  readonly commandFingerprint: string;
+  /** Milliseconds since the epoch, or null for a lease that never expires. */
+  readonly expiresAt: number | null;
+  readonly sealed: boolean;
+  readonly result?: AgentCommandResult;
+  readonly abandonReason?: string;
+}
+
+/**
+ * One durable state change. A journal receives these in commit order and a
+ * restore replays them in the same order; `event_key` only appears in snapshots,
+ * for idempotency records whose event has already left the retained log.
+ */
+export type AgentServerStoreJournalEntry =
+  | { readonly kind: 'session'; readonly record: AgentServerSessionRecord }
+  | {
+      readonly kind: 'event';
+      readonly tenantId: string;
+      readonly sessionId: SessionId;
+      readonly event: AgentServerEvent;
+      readonly idempotencyKey?: string;
+    }
+  | {
+      readonly kind: 'event_key';
+      readonly tenantId: string;
+      readonly sessionId: SessionId;
+      readonly idempotencyKey: string;
+      readonly event: AgentServerEvent;
+    }
+  | {
+      readonly kind: 'lease';
+      readonly tenantId: string;
+      readonly commandId: CommandId;
+      readonly lease: CommandLeaseSnapshot | null;
+    };
+
+export interface AgentServerStoreJournal {
+  append(entry: AgentServerStoreJournalEntry): Promise<void>;
+}
+
 interface CommandLease {
   leaseId: ExecutionLeaseId;
   commandFingerprint: string;
@@ -156,9 +199,53 @@ function scopedKey(tenantId: string, id: string): string {
   return JSON.stringify([tenantId, id]);
 }
 
+function parseScopedKey(key: string): { tenantId: string; id: string } {
+  const [tenantId, id] = JSON.parse(key) as [string, string];
+  return { tenantId, id };
+}
+
+function toLeaseSnapshot(lease: CommandLease): CommandLeaseSnapshot {
+  return {
+    leaseId: lease.leaseId,
+    commandFingerprint: lease.commandFingerprint,
+    expiresAt: Number.isFinite(lease.expiresAt) ? lease.expiresAt : null,
+    sealed: lease.sealed,
+    ...(lease.result ? { result: structuredClone(lease.result) } : {}),
+    ...(lease.abandonReason ? { abandonReason: lease.abandonReason } : {}),
+  };
+}
+
+function fromLeaseSnapshot(snapshot: CommandLeaseSnapshot): CommandLease {
+  return {
+    leaseId: snapshot.leaseId,
+    commandFingerprint: snapshot.commandFingerprint,
+    expiresAt: snapshot.expiresAt ?? Number.POSITIVE_INFINITY,
+    sealed: snapshot.sealed,
+    ...(snapshot.result ? { result: structuredClone(snapshot.result) } : {}),
+    ...(snapshot.abandonReason ? { abandonReason: snapshot.abandonReason } : {}),
+  };
+}
+
 export interface InMemoryAgentServerStoreOptions {
   maxEventsPerSession?: number;
   now?: () => number;
+  /**
+   * Receives every committed change after it is applied in memory and before the
+   * mutating call resolves. A rejected append marks the store failed: further
+   * mutations reject with `RUNTIME_STORE_JOURNAL_FAILED` and `healthCheck()`
+   * reports not ready, so memory can never run ahead of the journal by more than
+   * the one write that was reported as failed.
+   *
+   * That one write is already visible to this process, not merely pending: its
+   * event sequence can already have been returned by `readEvents` or observed
+   * through `waitForEvents`, and a session or lease change is applied to the
+   * in-memory maps before the journal is awaited. None of that is durable. If the
+   * process restarts and replays the journal, this write will not reappear and
+   * its sequence number will be reused by whatever is appended next. A process
+   * that sees `healthCheck().ready === false` must therefore be restarted rather
+   * than kept serving.
+   */
+  journal?: AgentServerStoreJournal;
 }
 
 /**
@@ -176,17 +263,116 @@ export class InMemoryAgentServerStore implements AgentServerStore {
    */
   private readonly eventKeys = new Map<string, Map<string, AgentServerEvent>>();
   private readonly now: () => number;
+  private readonly journal: AgentServerStoreJournal | undefined;
+  private journalFailure: unknown;
 
   constructor(options: InMemoryAgentServerStoreOptions = {}) {
     this.maxEventsPerSession = options.maxEventsPerSession ?? 1000;
     this.now = options.now ?? Date.now;
+    this.journal = options.journal;
     if (!Number.isSafeInteger(this.maxEventsPerSession) || this.maxEventsPerSession < 1) {
       throw new RangeError('maxEventsPerSession must be a positive safe integer');
     }
   }
 
-  async healthCheck(): Promise<{ ready: boolean }> {
-    return { ready: true };
+  async healthCheck(): Promise<{ ready: boolean; details?: JsonObject }> {
+    return this.journalFailure === undefined
+      ? { ready: true }
+      : { ready: false, details: { reason: 'journal write failed' } };
+  }
+
+  /**
+   * Load previously journaled entries. Only valid on a store without state, so a
+   * restart can never mix a replay with live writes.
+   */
+  restore(entries: Iterable<AgentServerStoreJournalEntry>): void {
+    if (
+      this.sessions.size > 0 ||
+      this.eventLogs.size > 0 ||
+      this.commandLeases.size > 0 ||
+      this.eventKeys.size > 0
+    ) {
+      throw new Error('restore() requires an empty store');
+    }
+    for (const entry of entries) {
+      switch (entry.kind) {
+        case 'session':
+          this.sessions.set(
+            scopedKey(entry.record.tenantId, entry.record.sessionId),
+            structuredClone(entry.record),
+          );
+          break;
+        case 'event':
+          this.restoreEvent(entry.tenantId, entry.sessionId, entry.event, entry.idempotencyKey);
+          break;
+        case 'event_key':
+          this.rememberEventKey(
+            scopedKey(entry.tenantId, entry.sessionId),
+            entry.idempotencyKey,
+            entry.event,
+          );
+          break;
+        case 'lease': {
+          const key = scopedKey(entry.tenantId, entry.commandId);
+          if (entry.lease) {
+            this.commandLeases.set(key, fromLeaseSnapshot(entry.lease));
+          } else {
+            this.commandLeases.delete(key);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  /** Every entry needed to rebuild the current state with `restore()`. */
+  snapshot(): AgentServerStoreJournalEntry[] {
+    const entries: AgentServerStoreJournalEntry[] = [];
+    for (const record of this.sessions.values()) {
+      entries.push({ kind: 'session', record: structuredClone(record) });
+    }
+    const scopes = new Set([...this.eventLogs.keys(), ...this.eventKeys.keys()]);
+    for (const key of scopes) {
+      const { tenantId, id } = parseScopedKey(key);
+      const sessionId = SessionId(id);
+      const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
+      const keyByEventId = new Map(
+        [...keys].map(([idempotencyKey, event]) => [event.eventId, idempotencyKey] as const),
+      );
+      const retained = new Set<string>();
+      for (const event of this.eventLogs.get(key)?.events ?? []) {
+        retained.add(event.eventId);
+        const idempotencyKey = keyByEventId.get(event.eventId);
+        entries.push({
+          kind: 'event',
+          tenantId,
+          sessionId,
+          event: structuredClone(event),
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        });
+      }
+      for (const [idempotencyKey, event] of keys) {
+        if (!retained.has(event.eventId)) {
+          entries.push({
+            kind: 'event_key',
+            tenantId,
+            sessionId,
+            idempotencyKey,
+            event: structuredClone(event),
+          });
+        }
+      }
+    }
+    for (const [key, lease] of this.commandLeases) {
+      const { tenantId, id } = parseScopedKey(key);
+      entries.push({
+        kind: 'lease',
+        tenantId,
+        commandId: CommandId(id),
+        lease: toLeaseSnapshot(lease),
+      });
+    }
+    return entries;
   }
 
   async claimCommand(
@@ -195,6 +381,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     commandFingerprint: string,
     ttlMs: number,
   ): Promise<AgentCommandClaim> {
+    this.assertWritable();
     const key = scopedKey(tenantId, commandId);
     const existing = this.commandLeases.get(key);
     const now = this.now();
@@ -223,6 +410,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       expiresAt: now + ttlMs,
       sealed: false,
     });
+    await this.recordLease(tenantId, commandId);
     return { status: 'claimed', leaseId };
   }
 
@@ -232,6 +420,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     leaseId: ExecutionLeaseId,
     result: AgentCommandResult,
   ): Promise<void> {
+    this.assertWritable();
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
     if (!current || current.leaseId !== leaseId) {
@@ -243,6 +432,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       sealed: true,
       result: structuredClone(result),
     });
+    await this.recordLease(tenantId, commandId);
   }
 
   async sealCommand(
@@ -250,6 +440,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     commandId: CommandId,
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
+    this.assertWritable();
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
     if (!current || current.leaseId !== leaseId || current.result) {
@@ -257,6 +448,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     }
     current.expiresAt = Number.POSITIVE_INFINITY;
     current.sealed = true;
+    await this.recordLease(tenantId, commandId);
   }
 
   async releaseCommand(
@@ -264,10 +456,12 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     commandId: CommandId,
     leaseId: ExecutionLeaseId,
   ): Promise<void> {
+    this.assertWritable();
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
     if (current?.leaseId === leaseId && !current.sealed && !current.result) {
       this.commandLeases.delete(key);
+      await this.recordLease(tenantId, commandId);
     }
   }
 
@@ -275,6 +469,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     if (!reason.trim()) {
       throw new RangeError('An abandoned command requires a reason');
     }
+    this.assertWritable();
     const key = scopedKey(tenantId, commandId);
     const current = this.commandLeases.get(key);
     // Already abandoned: report "nothing changed" so repeated sweeps are no-ops and
@@ -283,11 +478,14 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       return false;
     }
     this.commandLeases.set(key, { ...current, abandonReason: reason });
+    await this.recordLease(tenantId, commandId);
     return true;
   }
 
   async putSession(record: AgentServerSessionRecord): Promise<void> {
+    this.assertWritable();
     this.sessions.set(scopedKey(record.tenantId, record.sessionId), structuredClone(record));
+    await this.record({ kind: 'session', record: structuredClone(record) });
   }
 
   async getSession(
@@ -327,6 +525,7 @@ export class InMemoryAgentServerStore implements AgentServerStore {
     if (event.sessionId !== sessionId) {
       throw new RangeError('Event Session does not match the target event log');
     }
+    this.assertWritable();
     const key = scopedKey(tenantId, sessionId);
     const log = this.getOrCreateEventLog(key);
     if (options.idempotencyKey !== undefined) {
@@ -345,23 +544,26 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       sequence: EventSequence(log.nextSequence++),
     } as AgentServerEvent;
     if (options.idempotencyKey !== undefined) {
-      const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
       // Deep copy at the write boundary: the log stores a clone, and the key record
       // must be isolated from the caller's object in the same way, or a later
       // mutation of `event.data` would change one and not the other.
-      keys.set(options.idempotencyKey, structuredClone(stored));
-      this.eventKeys.set(key, keys);
+      this.rememberEventKey(key, options.idempotencyKey, stored);
     }
-    log.events.push(structuredClone(stored));
-    if (log.events.length > this.maxEventsPerSession) {
-      const removeCount = log.events.length - this.maxEventsPerSession;
-      log.events.splice(0, removeCount);
-      log.firstSequence += removeCount;
+    this.appendToLog(log, stored);
+    try {
+      await this.record({
+        kind: 'event',
+        tenantId,
+        sessionId,
+        event: structuredClone(stored),
+        ...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {}),
+      });
+    } finally {
+      for (const wake of log.waiters) {
+        wake();
+      }
+      log.waiters.clear();
     }
-    for (const wake of log.waiters) {
-      wake();
-    }
-    log.waiters.clear();
     return structuredClone(stored);
   }
 
@@ -471,6 +673,76 @@ export class InMemoryAgentServerStore implements AgentServerStore {
       log.waiters.add(wake);
       signal?.addEventListener('abort', wake, { once: true });
     });
+  }
+
+  private assertWritable(): void {
+    if (this.journalFailure !== undefined) {
+      throw new RuntimeStoreError(
+        'RUNTIME_STORE_JOURNAL_FAILED',
+        'The store journal failed earlier; restart the process to replay the journal; ' +
+          'the last rejected write is visible in memory only and its sequence will be ' +
+          'reused after restart',
+        { cause: this.journalFailure },
+      );
+    }
+  }
+
+  private async record(entry: AgentServerStoreJournalEntry): Promise<void> {
+    if (!this.journal) {
+      return;
+    }
+    try {
+      await this.journal.append(entry);
+    } catch (error) {
+      this.journalFailure = error;
+      throw error;
+    }
+  }
+
+  private recordLease(tenantId: string, commandId: CommandId): Promise<void> {
+    const lease = this.commandLeases.get(scopedKey(tenantId, commandId));
+    return this.record({
+      kind: 'lease',
+      tenantId,
+      commandId,
+      lease: lease ? toLeaseSnapshot(lease) : null,
+    });
+  }
+
+  private rememberEventKey(key: string, idempotencyKey: string, event: AgentServerEvent): void {
+    const keys = this.eventKeys.get(key) ?? new Map<string, AgentServerEvent>();
+    keys.set(idempotencyKey, structuredClone(event));
+    this.eventKeys.set(key, keys);
+  }
+
+  private restoreEvent(
+    tenantId: string,
+    sessionId: SessionId,
+    event: AgentServerEvent,
+    idempotencyKey?: string,
+  ): void {
+    const key = scopedKey(tenantId, sessionId);
+    const log = this.getOrCreateEventLog(key);
+    if (event.sequence < log.nextSequence) {
+      throw new RangeError(`Journal event ${event.eventId} is out of order for ${sessionId}`);
+    }
+    if (log.events.length === 0) {
+      log.firstSequence = event.sequence;
+    }
+    log.nextSequence = event.sequence + 1;
+    if (idempotencyKey !== undefined) {
+      this.rememberEventKey(key, idempotencyKey, event);
+    }
+    this.appendToLog(log, event);
+  }
+
+  private appendToLog(log: EventLog, event: AgentServerEvent): void {
+    log.events.push(structuredClone(event));
+    if (log.events.length > this.maxEventsPerSession) {
+      const removeCount = log.events.length - this.maxEventsPerSession;
+      log.events.splice(0, removeCount);
+      log.firstSequence += removeCount;
+    }
   }
 
   private getOrCreateEventLog(key: string): EventLog {

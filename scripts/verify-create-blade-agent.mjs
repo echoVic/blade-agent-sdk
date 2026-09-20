@@ -23,9 +23,17 @@ const presetContracts = {
   },
   web: {
     budgetMs: 2 * 60 * 1_000,
-    expectedOutput: 'AgentServer received: minimal web starter smoke',
-    files: ['README.md', 'src/server.mjs', 'web/index.html', 'web/client.js'],
-    dependencies: ['@blade-ai/agent-sdk', 'esbuild'],
+    expectedOutput: '"continuationRestored": true',
+    files: [
+      'README.md',
+      '.env.example',
+      'src/server.mjs',
+      'src/DemoProvider.mjs',
+      'src/smoke.mjs',
+      'web/index.html',
+      'web/client.js',
+    ],
+    dependencies: ['@blade-ai/agent-sdk', 'esbuild', 'fs-native-extensions', 'open'],
   },
   production: {
     budgetMs: 5 * 60 * 1_000,

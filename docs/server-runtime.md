@@ -74,6 +74,45 @@ body 中不存在可信 tenant 字段。
 
 PostgreSQL 单一事实源配置见 [Runtime Store](./runtime-store)。
 
+### 内置工具
+
+`builtinTools: true` 会注册 SDK 提供的**全部**内置工具——不仅是文件、搜索和 Shell，
+还包括 `Write`、`Edit`、`NotebookEdit`、`WebFetch`、`WebSearch`、`Task` 系列子代理工具、
+`TodoWrite`、memory、plan mode 和 skills。只有 `allowedTools` 能收窄这个集合。服务端
+Session 默认不会注册其中任何一个：服务端进程被所有租户共享，所以要由运维显式开启——并且
+必须在同一次调用里设置 `allowedTools`，否则这次开启就会把文件写入和服务端进程的对外网络
+访问一起交给该租户。再用 `defaultContext.capabilities.filesystem` 限定可见目录、用
+`permissions` 和 `sandbox` 限定每次调用：
+
+```ts
+resolveSessionOptions() {
+  return {
+    provider,
+    model,
+    builtinTools: true,
+    // 必须设置：不设置 allowedTools 时，builtinTools: true 会注册全部内置工具，
+    // 包括 Write、Edit、WebFetch 和 WebSearch。
+    allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+    permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
+    sandbox: { enabled: true },
+    defaultContext: { capabilities: { filesystem: { roots: [workspace], cwd: workspace } } },
+  };
+}
+```
+
+`defaultContext.capabilities.filesystem` 的 roots 只限定接受路径参数的工具——`Read`、
+`Glob`、`Grep`。`Bash` 不在其中：它只要求工作目录存在，并不会校验命令或工作目录是否落在
+roots 内，所以 `Bash` 的执行范围要靠 `sandbox` 和 `permissions` 来限定，而不是靠 roots。
+在没有平台级 sandbox 的宿主上设置 `sandbox: { enabled: true }` 会让 Session 初始化直接
+失败，而不会退化为不启用沙箱运行。调用方若想提前判断会不会走到这个失败分支，通常会用
+`canUseSandbox()` 这个能力检测——但它只说明平台是否具备受支持的沙箱，并不保证被沙箱化的
+命令真的能跑起来：底层的 seatbelt 或 Bubblewrap profile 仍可能在运行时被拒绝。如果调用方
+不能接受初始化失败关闭，就不应该只信任这个能力检测，而应该先用沙箱包装器实际跑一条简单
+命令来探测，就像 starter 在启用自己的沙箱之前所做的那样。
+
+本地 Session 仍然默认注册内置工具，设置 `builtinTools: false` 可以关掉。技能与子代理
+的磁盘发现始终只在本地宿主进行，服务端不会扫描宿主磁盘。
+
 ## SessionExecutor
 
 `AgentServer` 只处理认证、授权、command 幂等、HTTP 和 SSE。Session 的创建、
@@ -289,6 +328,30 @@ SSE 使用 pull-based `ReadableStream`，每次 pull 最多写一个 frame，
 
 SDK 附带的 `InMemoryAgentServerStore` 只用于单进程和测试。它不提供跨进程幂等、
 全局配额或高可用 event replay。
+
+### 单进程文件 store
+
+`JsonlAgentServerStore` 把会话记录、事件日志、幂等键和命令租约追加写入
+`<directory>/server-store.jsonl`，启动时回放并压缩。它保留内存 store 的全部
+语义，只多了“同一台机器上重启后会话还在”。适合本地开发、demo 和单实例部署；
+多实例仍然需要 PostgreSQL store。
+
+```ts
+import { AgentServer, JsonlAgentServerStore } from '@blade-ai/agent-sdk/server/infra';
+
+const store = new JsonlAgentServerStore({ directory: '.blade/server' });
+await store.initialize();
+const server = new AgentServer({ store, resolveSessionOptions });
+// 退出前
+await server.close();
+await store.close();
+```
+
+写入在方法 resolve 之前交给操作系统，进程崩溃不丢已确认的写入；每次写不做 fsync。
+日志最后一行若被截断会被跳过并告警，其他损坏会让 `initialize()` 以
+`RUNTIME_STORE_CORRUPT_JOURNAL` 失败，错误信息带行号；删除该目录即可从空 store 开始，
+会话转录（`JsonlSessionRepository`）不受影响。Session 自身的转录仍需通过
+`sessionRepository` / `sessionEventStore` 配置持久化，两者放在不同目录。
 
 ## 准入、审批和遥测
 

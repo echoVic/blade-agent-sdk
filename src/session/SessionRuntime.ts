@@ -86,6 +86,7 @@ export class SessionRuntime {
   private readonly pluginHost: PluginHost;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
+  private readonly usesBuiltinTools: boolean;
   private initialized = false;
 
   constructor(
@@ -101,6 +102,7 @@ export class SessionRuntime {
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
+    this.usesBuiltinTools = options.builtinTools ?? hostProfile === NODE_SESSION_HOST;
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
@@ -193,8 +195,7 @@ export class SessionRuntime {
     activeShellIds: readonly string[];
   } {
     const activeSubagentIds = this.backgroundAgentManager.getActiveAgentIds();
-    const shellManager =
-      this.hostProfile === NODE_SESSION_HOST ? BackgroundShellManager.getInstance() : undefined;
+    const shellManager = this.usesBuiltinTools ? BackgroundShellManager.getInstance() : undefined;
     const activeShellIds = shellManager?.getActiveProcessIds(this.sessionId, executionFence) ?? [];
     if (activeSubagentIds.length === 0 && activeShellIds.length === 0) {
       this.backgroundAgentManager.sealForHandoff();
@@ -209,7 +210,7 @@ export class SessionRuntime {
 
   stopBackgroundWorkAfterLeaseLoss(executionFence: DurableExecutionFence): void {
     this.backgroundAgentManager.sealAndCancelAll();
-    if (this.hostProfile === NODE_SESSION_HOST) {
+    if (this.usesBuiltinTools) {
       BackgroundShellManager.getInstance().killExecutionFence(this.sessionId, executionFence);
     }
   }
@@ -221,7 +222,7 @@ export class SessionRuntime {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    if (this.hostProfile === NODE_SESSION_HOST) {
+    if (this.usesBuiltinTools) {
       BackgroundShellManager.getInstance().openSession(this.sessionId);
       if (this.options.sandbox) {
         getSandboxExecutor(this.rootLogger).setLogger(this.rootLogger);
@@ -240,7 +241,7 @@ export class SessionRuntime {
       this.logger.warn(`⚠️  Skill loading error at ${error.path}: ${error.error}`);
     }
     await this.contextManager.initialize();
-    if (this.hostProfile === NODE_SESSION_HOST) {
+    if (this.usesBuiltinTools) {
       await this.registerBuiltinTools();
     } else {
       this.registerBuiltinToolSet([
@@ -307,7 +308,7 @@ export class SessionRuntime {
     const shutdownOperations: Promise<unknown>[] = [
       this.backgroundAgentManager.sealCancelAndWait(),
     ];
-    if (this.hostProfile === NODE_SESSION_HOST) {
+    if (this.usesBuiltinTools) {
       const shellManager = BackgroundShellManager.getInstance();
       shutdownOperations.push(
         executionFence

@@ -110,21 +110,22 @@ OPENAI_API_KEY=... pnpm example:local -- "检查当前仓库"
 pnpm example:web
 ```
 
-打开 <http://127.0.0.1:8787>。浏览器代码使用 `AgentClient`，服务端使用
-`AgentServer` 和 Fetch-compatible handler。未设置 `OPENAI_API_KEY` 时使用
-确定性本地 provider，设置后调用真实 OpenAI。
+打开 <http://127.0.0.1:8787>。浏览器使用 `AgentClient`，服务端使用 `AgentServer`，
+状态落在 `.blade/` 下：`JsonlAgentServerStore` 保存会话记录、事件日志和审批，
+`JsonlSessionRepository` 保存转录。未设置 `OPENAI_API_KEY` 时由脚本化 provider
+驱动同一套真实工具；设置后调用真实模型，`OPENAI_BASE_URL` 可指向任何兼容端点。
 
-页面支持连续多轮、取消和断线续读。当前标签页通过 `sessionStorage` 同时保存
-已显示的对话、活动请求和 event cursor，刷新后可继续接收进行中的回答。
-`Cancel` 等待服务端确认取消；连接重试耗尽后，点击 `Reconnect` 继续同一个请求。
-当前请求结束后，可用 `New session` 开始新对话。
+页面是一条时间线：思考、带状态和输出的工具卡、审批卡、插入指令的标记和流式回答。
+输入 **Analyze this project's dependency risks**，运行中再输入 **Focus on security
+issues** 回车，指令以 `now` 优先级插入当前任务。停掉服务再启动、刷新页面后输入
+**Continue the analysis**，会话记录、事件游标和转录都从磁盘恢复。`--root <dir>`
+分析别的仓库，`--no-open` 不打开浏览器。
 
-此 Web preset 的服务端 Session 保存在内存中，刷新恢复要求原服务进程仍在运行。
-服务重启导致会话丢失、或事件 cursor 过期时，页面保留已保存的文字并提供新建入口；
-关闭标签页会结束浏览器侧的保存。它不提供跨服务重启的持久化保证。
+工具是 Read、Glob、Grep 和 Bash。OS 沙箱可用时（macOS seatbelt、Linux bubblewrap）
+Bash 在沙箱内运行并自动放行；否则每条命令都是一张审批卡。破坏性命令始终询问。
 
-构建后执行 `node examples/web-agent-server/server.mjs --smoke`，可验证多轮、
-cursor 续读、历史恢复和取消。该验收始终使用确定性 provider，不消耗模型 API。
+`node examples/web-agent-server/server.mjs --smoke` 用脚本化 provider 走完 9 步：
+工具、steering、在同一数据目录上重建 store 与 server 的模拟重启、续写会话。
 
 ## PostgreSQL + 两个 Worker + Docker 恢复
 

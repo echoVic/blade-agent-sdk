@@ -102,8 +102,20 @@ export class InvocationStage {
       }
       timedOut = timeoutController.signal.aborted || getErrorName(error) === 'TimeoutError';
       state.interrupted = !timedOut && isSteeringInterruptSignal(executionSignal);
+      // A steering-aborted signal does not guarantee the caught error IS the
+      // interruption: nextExecutionStep can also surface a genuine error the
+      // tool threw in the same tick, before the abort rejection wins the race.
+      // Only the abort reason itself gets the generic sentence; any other
+      // error keeps its own message even though the result is still
+      // classified as interrupted, since the signal really was aborted for
+      // that reason.
+      const isTheAbortReason = state.interrupted && error === executionSignal.reason;
       state.result = createExecutionFailureResult(
-        timedOut ? `Tool execution timeout after ${this.toolTimeoutMs}ms` : getErrorMessage(error),
+        timedOut
+          ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
+          : isTheAbortReason
+            ? 'Interrupted by a new instruction'
+            : getErrorMessage(error),
         timedOut
           ? ToolErrorType.TIMEOUT_ERROR
           : state.interrupted

@@ -133,6 +133,7 @@ const browserInfraOutput = run(process.execPath, [
     'try { new m.InProcessSessionExecutor({}); } catch (error) { console.log(error.message); }',
     'try { new m.AgentWorker({}); } catch (error) { console.log(error.message); }',
     'try { new m.WorkerRuntimeError(); } catch (error) { console.log(error.message); }',
+    'try { new m.JsonlAgentServerStore({}); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(
@@ -145,6 +146,11 @@ assertIncludes(
   browserInfraOutput,
   'server-only for WorkerRuntimeError',
   'browser worker runtime error stub',
+);
+assertIncludes(
+  browserInfraOutput,
+  'server-only for JsonlAgentServerStore',
+  'browser JsonlAgentServerStore stub',
 );
 
 const subpathOutput = run(process.execPath, [

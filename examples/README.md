@@ -87,27 +87,26 @@ BLADE_DEMO_MODE=mock pnpm example:local -- "Hello"
 pnpm example:web
 ```
 
-Open <http://127.0.0.1:8787>. The browser uses `AgentClient`; the Node process
-hosts `AgentServer`. The example uses a deterministic local provider when
-`OPENAI_API_KEY` is absent and a real OpenAI model when it is present.
+The browser uses `AgentClient`; the Node process hosts `AgentServer` with
+`JsonlAgentServerStore` and `JsonlSessionRepository` under `.blade/`. Without
+`OPENAI_API_KEY` a scripted provider drives the same real tools; with a key the
+model does. `OPENAI_BASE_URL` selects any OpenAI-compatible endpoint.
 
-The page supports consecutive turns, cancellation, and reconnecting without
-duplicating streamed text. It saves the displayed conversation, active request,
-and event cursor in this tab's `sessionStorage`, so refreshing the page also
-resumes an in-progress response. `Cancel` waits for the server to acknowledge
-cancellation; `Reconnect` continues the same request after connection retries
-are exhausted. `New session` starts a fresh conversation once the current
-request settles.
+The page is a timeline: thinking, tool cards with status and output, approval
+cards, steering chips and the streamed answer. Ask **Analyze this project's
+dependency risks**, then type **Focus on security issues** while it runs; the
+input is inserted with priority `now`. Stop and restart the server, refresh, and
+ask **Continue the analysis**: the session record, event log and transcript come
+back from disk. Pass `--root <dir>` to analyze another repository and
+`--no-open` to keep the browser closed.
 
-This Web preset keeps server Sessions in memory. Page refresh recovery lasts
-only while the same server process still has the Session; restarting the server
-shows an unavailable-session message and lets you start again. Closing the tab
-also ends its saved browser view. An expired event cursor preserves the saved
-text and offers a new session instead of silently dropping missing output.
+Tools are Read, Glob, Grep and Bash. When an OS sandbox works (macOS seatbelt,
+Linux bubblewrap) Bash runs inside it and is auto-approved; otherwise each
+command is an approval card. Destructive commands always ask.
 
-After building, run `node examples/web-agent-server/server.mjs --smoke` to verify
-multiple turns, cursor reconnect, history recovery, and cancellation. Smoke
-always uses the deterministic provider, even if an API key is configured.
+`node examples/web-agent-server/server.mjs --smoke` runs the nine steps with the
+scripted provider: tools, steering, a simulated restart with a fresh store and
+server on the same data directory, and a continued session.
 
 ## PostgreSQL + Two Workers + Docker Recovery
 

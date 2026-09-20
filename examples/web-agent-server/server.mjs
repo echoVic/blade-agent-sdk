@@ -1,63 +1,211 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { mkdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { AgentClient } from '@blade-ai/agent-sdk/browser';
-import { ProviderRegistry } from '@blade-ai/agent-sdk';
-import { AgentServer } from '@blade-ai/agent-sdk/server/infra';
-
-const smoke = process.argv.includes('--smoke');
-const apiKey = smoke ? undefined : process.env.OPENAI_API_KEY;
-const startedAt = performance.now();
-const FIRST_RESULT_BUDGET_MS = 2 * 60 * 1_000;
-const demoProvider = new ProviderRegistry([{
-  type: 'golden-path-demo',
-  create(config) {
-    return {
-      async chat(_messages, _tools, signal) {
-        signal?.throwIfAborted();
-        return { content: 'Golden Path is ready.' };
-      },
-      async sideQuery(_messages, signal) {
-        signal?.throwIfAborted();
-        return { content: 'Golden Path is ready.' };
-      },
-      async *streamChat(messages, _tools, signal) {
-        const last = messages.at(-1);
-        const input = typeof last?.content === 'string'
-          ? last.content
-          : 'your request';
-        const output = `AgentServer received: ${input}`;
-        // Keep the demo visibly streaming so disconnects and cancellation can be tried locally.
-        for (let offset = 0; offset < output.length; offset += 8) {
-          await delay(smoke ? 20 : 120, undefined, { signal });
-          signal?.throwIfAborted();
-          yield { content: output.slice(offset, offset + 8) };
-        }
-        yield {
-          finishReason: 'stop',
-          usage: {
-            promptTokens: 1,
-            completionTokens: 4,
-            totalTokens: 5,
-          },
-        };
-      },
-      getConfig() {
-        return config;
-      },
-      updateConfig() {},
-    };
-  },
-}]);
+import open from 'open';
+import { getSandboxExecutor, JsonlSessionRepository } from '@blade-ai/agent-sdk/advanced';
+import { AgentServer, JsonlAgentServerStore } from '@blade-ai/agent-sdk/server/infra';
+import {
+  createDemoProviderRegistry,
+  DEMO_MODEL,
+  DEMO_PROVIDER_TYPE,
+  NPM_CACHE_FLAG,
+} from './DemoProvider.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const webRoot = root;
-const generated = join(root, '.generated');
+const projectRoot = root;
+const generated = join(projectRoot, '.generated');
+const startedAt = performance.now();
+const SMOKE_BUDGET_MS = 2 * 60 * 1_000;
+const READ_ONLY_RULES = ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'];
+// AgentServer's default basePath (never overridden below). Requests outside it
+// -- the browser's automatic /favicon.ico among them -- are answered here
+// instead of reaching the Agent handler, which requires auth before it can
+// even report "route not found".
+const AGENT_API_PREFIX = '/v1/agent/';
+
+function parseArgs(argv) {
+  const options = {
+    smoke: false,
+    open: true,
+    port: Number(process.env.PORT || 8787),
+    root: process.cwd(),
+    dataDir: join(projectRoot, '.blade'),
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    const value = () => {
+      const next = argv[index + 1];
+      if (!next || next.startsWith('--')) throw new Error(`${argument} requires a value`);
+      index += 1;
+      return next;
+    };
+    if (argument === '--smoke') options.smoke = true;
+    else if (argument === '--no-open') options.open = false;
+    else if (argument === '--port') options.port = Number(value());
+    else if (argument === '--root') options.root = resolve(value());
+    else if (argument === '--data-dir') options.dataDir = resolve(value());
+    else throw new Error(`Unknown option: ${argument}`);
+  }
+  return options;
+}
+
+function loadEnvFile() {
+  const envPath = join(projectRoot, '.env');
+  if (existsSync(envPath)) process.loadEnvFile(envPath);
+  return envPath;
+}
+
+async function askForApiKey() {
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await readline.question(
+      'Paste an OpenAI-compatible API key to use a real model, or press Enter to run the built-in scripted demo: ',
+    );
+    return answer.trim();
+  } finally {
+    readline.close();
+  }
+}
+
+async function saveApiKey(envPath, apiKey) {
+  const existing = existsSync(envPath) ? await readFile(envPath, 'utf8') : '';
+  const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+  await writeFile(envPath, `${existing}${separator}OPENAI_API_KEY=${apiKey}\n`);
+}
+
+async function resolveModel({ smoke, analysisRoot, envPath }) {
+  const scripted = () => ({
+    provider: { type: DEMO_PROVIDER_TYPE },
+    providerRegistry: createDemoProviderRegistry({ root: analysisRoot, smoke }),
+    model: DEMO_MODEL,
+    label: 'built-in scripted demo (no API key)',
+  });
+  if (smoke) return scripted();
+  let apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey && process.stdin.isTTY && process.stdout.isTTY) {
+    apiKey = await askForApiKey();
+    if (apiKey) {
+      await saveApiKey(envPath, apiKey);
+      process.stdout.write(`Saved OPENAI_API_KEY to ${envPath}\n`);
+    }
+  }
+  if (!apiKey) {
+    process.stdout.write(
+      'No API key configured: running the built-in scripted demo. Set OPENAI_API_KEY, and optionally OPENAI_BASE_URL and OPENAI_MODEL, to use a real model.\n',
+    );
+    return scripted();
+  }
+  const baseUrl = process.env.OPENAI_BASE_URL;
+  const model = process.env.OPENAI_MODEL || 'gpt-5-mini';
+  return {
+    provider: baseUrl ? { type: 'openai-compatible', apiKey, baseUrl } : { type: 'openai', apiKey },
+    providerRegistry: undefined,
+    model,
+    label: `${model} via ${baseUrl || 'OpenAI'}`,
+  };
+}
+
+/** Run one command through the SDK's own sandbox wrapper; only a passing probe enables it. */
+function probeSandbox(workDir) {
+  const executor = getSandboxExecutor();
+  const settings = { enabled: true };
+  if (!executor.canUseSandbox(settings)) {
+    return { enabled: false, reason: 'no supported sandbox runtime on this platform' };
+  }
+  try {
+    const wrapped = executor.wrapCommand(
+      'echo blade-sandbox-ok',
+      executor.buildExecutionOptions(workDir),
+      settings,
+    );
+    const run = spawnSync('bash', ['-c', wrapped], { encoding: 'utf8', timeout: 15_000 });
+    if (run.status === 0 && run.stdout.includes('blade-sandbox-ok')) {
+      return { enabled: true, reason: 'probe passed' };
+    }
+    const firstLine = (run.stderr || `probe exited ${run.status ?? run.signal}`).trim().split('\n')[0];
+    return { enabled: false, reason: firstLine };
+  } catch (error) {
+    return { enabled: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function systemPrompt(analysisRoot, sandbox) {
+  return [
+    'You are a repository analysis assistant running inside the Blade web starter.',
+    `The workspace root is ${analysisRoot}. Use Glob, Grep and Read to inspect files, and Bash for read-only commands such as npm ls, npm audit and cat.`,
+    `Always add ${NPM_CACHE_FLAG} to npm commands so caches stay out of the home directory.`,
+    sandbox.enabled
+      ? 'Shell commands run inside an OS sandbox that confines writes to the workspace.'
+      : 'Shell commands are not sandboxed here; each one is shown to the user for approval before it runs.',
+    'Never modify files. Report risks with evidence: file paths, versions and the exact commands you ran.',
+    'When the user changes focus mid-task, acknowledge it and adjust the remaining steps.',
+  ].join(' ');
+}
+
+async function createRuntime({ analysisRoot, dataDir, model, sandbox }) {
+  await mkdir(join(dataDir, 'sessions'), { recursive: true });
+  const store = new JsonlAgentServerStore({ directory: join(dataDir, 'server') });
+  await store.initialize();
+  const repository = new JsonlSessionRepository(join(dataDir, 'sessions'), 100, analysisRoot);
+  await repository.initialize();
+  const agent = new AgentServer({
+    store,
+    authenticate(request) {
+      if (request.headers.get('authorization') !== 'Bearer local-demo') return null;
+      return { tenantId: 'local-demo', subject: 'browser-user', scopes: ['session:admin'] };
+    },
+    resolveSessionOptions() {
+      return {
+        provider: model.provider,
+        providerRegistry: model.providerRegistry,
+        model: model.model,
+        builtinTools: true,
+        allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+        permissionMode: sandbox.enabled ? 'yolo' : 'default',
+        permissions: { allow: sandbox.enabled ? [...READ_ONLY_RULES, 'Bash', 'Bash:*'] : READ_ONLY_RULES },
+        sandbox: { enabled: sandbox.enabled },
+        defaultContext: { capabilities: { filesystem: { roots: [analysisRoot], cwd: analysisRoot } } },
+        sessionRepository: repository,
+        sessionEventStore: repository,
+        systemPrompt: systemPrompt(analysisRoot, sandbox),
+        maxTurns: 24,
+      };
+    },
+  });
+  return {
+    agent,
+    async close() {
+      await agent.close();
+      await store.close();
+    },
+  };
+}
+
+async function requestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return chunks.length === 0 ? undefined : Buffer.concat(chunks);
+}
+
+const options = parseArgs(process.argv.slice(2));
+const envPath = loadEnvFile();
+let fixture;
+if (options.smoke) {
+  const { createSmokeFixture } = await import('./smoke.mjs');
+  fixture = await createSmokeFixture();
+  options.root = fixture.root;
+  options.dataDir = fixture.dataDir;
+  options.open = false;
+}
+
 await mkdir(generated, { recursive: true });
 await build({
   entryPoints: [join(webRoot, 'client.js')],
@@ -68,65 +216,45 @@ await build({
   conditions: ['browser'],
 });
 
-const agent = new AgentServer({
-  authenticate(request) {
-    if (request.headers.get('authorization') !== 'Bearer local-demo') {
-      return null;
-    }
-    return {
-      tenantId: 'local-demo',
-      subject: 'browser-user',
-      scopes: ['session:admin'],
-    };
-  },
-  resolveSessionOptions() {
-    return {
-      provider: apiKey
-        ? { type: 'openai', apiKey }
-        : { type: 'golden-path-demo' },
-      providerRegistry: apiKey ? undefined : demoProvider,
-      model: apiKey ? process.env.OPENAI_MODEL || 'gpt-5-mini' : 'demo',
-      allowedTools: [],
-    };
-  },
-});
-
-async function requestBody(request) {
-  const chunks = [];
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-  return chunks.length === 0 ? undefined : Buffer.concat(chunks);
-}
+const model = await resolveModel({ smoke: options.smoke, analysisRoot: options.root, envPath });
+const sandbox = probeSandbox(options.root);
+const runtimeOptions = { analysisRoot: options.root, dataDir: options.dataDir, model, sandbox };
+let runtime = await createRuntime(runtimeOptions);
 
 const server = createServer(async (request, response) => {
   const connectionController = new AbortController();
   const onDisconnect = () => {
-    if (!response.writableFinished) {
-      connectionController.abort(new Error('HTTP client disconnected'));
-    }
+    if (!response.writableFinished) connectionController.abort(new Error('HTTP client disconnected'));
   };
   request.once('aborted', onDisconnect);
   response.once('close', onDisconnect);
   try {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     if (request.method === 'GET' && url.pathname === '/') {
-      const html = await readFile(join(webRoot, 'index.html'));
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(html);
+      response.end(await readFile(join(webRoot, 'index.html')));
       return;
     }
     if (request.method === 'GET' && url.pathname === '/client.js') {
-      const client = await readFile(join(generated, 'client.js'));
       response.writeHead(200, {
         'content-type': 'text/javascript; charset=utf-8',
         'cache-control': 'no-store',
       });
-      response.end(client);
+      response.end(await readFile(join(generated, 'client.js')));
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/favicon.ico') {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (!url.pathname.startsWith(AGENT_API_PREFIX)) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Not found');
       return;
     }
     const body = await requestBody(request);
-    const upstream = await agent.handle(
+    const upstream = await runtime.agent.handle(
       new Request(`http://127.0.0.1${request.url || '/'}`, {
         method: request.method,
         headers: request.headers,
@@ -142,17 +270,13 @@ const server = createServer(async (request, response) => {
     // pipeline destroys the source when the browser closes the SSE connection.
     await pipeline(Readable.fromWeb(upstream.body), response);
   } catch (error) {
-    if (connectionController.signal.aborted || response.destroyed) {
-      return;
-    }
+    if (connectionController.signal.aborted || response.destroyed) return;
     if (response.headersSent) {
       response.destroy(error instanceof Error ? error : new Error(String(error)));
       return;
     }
     response.writeHead(500, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
   } finally {
     request.removeListener('aborted', onDisconnect);
     response.removeListener('close', onDisconnect);
@@ -160,183 +284,36 @@ const server = createServer(async (request, response) => {
 });
 
 function listen(port) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
     server.listen(port, '127.0.0.1', () => {
       server.removeListener('error', reject);
-      resolve();
+      resolvePromise();
     });
   });
 }
 
 function closeServer() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     if (!server.listening) {
-      resolve();
+      resolvePromise();
       return;
     }
-    server.close((error) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
+    server.close((error) => (error ? reject(error) : resolvePromise()));
     server.closeAllConnections();
   });
 }
 
-async function runSmoke(baseUrl) {
-  const createClient = () => new AgentClient({
-    baseUrl: `${baseUrl}/v1/agent`,
-    client: {
-      name: 'blade-web-starter-smoke',
-      version: '1.0.0',
-    },
-    headers: {
-      authorization: 'Bearer local-demo',
-    },
-  });
-  const eventController = new AbortController();
-  const { signal } = eventController;
-  const deadline = setTimeout(
-    () => eventController.abort(new Error('Two-minute Web smoke budget exceeded')),
-    Math.max(1, FIRST_RESULT_BUDGET_MS - (performance.now() - startedAt)),
-  );
-  let session;
-  let cursor = null;
-  const requestIds = new Set();
-
-  const send = async (input) => {
-    const submission = await session.send(input, { signal });
-    if (submission.status !== 'started' || !submission.requestId
-      || requestIds.has(submission.requestId)) {
-      throw new Error(`Unexpected Web submission: ${JSON.stringify(submission)}`);
-    }
-    requestIds.add(submission.requestId);
-    return submission.requestId;
-  };
-
-  const collect = async (
-    requestId,
-    { output = '', disconnect = false, allowOtherRequests = false } = {},
-  ) => {
-    for await (const event of session.events({ after: cursor, signal })) {
-      if (cursor && event.sequence <= cursor.sequence) {
-        throw new Error('Web event replay duplicated an already consumed event');
-      }
-      cursor = {
-        protocolVersion: event.protocolVersion,
-        sessionId: event.sessionId,
-        sequence: event.sequence,
-        eventId: event.eventId,
-      };
-      if (event.type === 'session.closed') {
-        throw new Error('Session closed before producing a result');
-      }
-      if (event.type !== 'session.stream') {
-        continue;
-      }
-      if (event.requestId !== requestId) {
-        if (allowOtherRequests) {
-          continue;
-        }
-        throw new Error(`Received events for another request: ${event.requestId}`);
-      }
-      if (event.data.type === 'error') {
-        throw new Error(event.data.message);
-      }
-      if (event.data.type === 'content') {
-        output += event.data.delta;
-        if (disconnect) {
-          return { output };
-        }
-      }
-      if (event.data.type === 'result') {
-        return { output, result: event.data };
-      }
-    }
-    signal.throwIfAborted();
-    throw new Error('Session event stream ended before producing a result');
-  };
-
-  const assertResult = (completed, input) => {
-    const expected = `AgentServer received: ${input}`;
-    if (completed.output !== expected || completed.result?.subtype !== 'success'
-      || completed.result.content !== expected) {
-      throw new Error(`Unexpected Web starter result: ${JSON.stringify(completed)}`);
-    }
-  };
-
-  try {
-    session = await createClient().createSession({ source: 'web-starter-smoke' }, { signal });
-    const firstInput = 'minimal web starter smoke';
-    const first = await collect(await send(firstInput));
-    assertResult(first, firstInput);
-    const firstResultMs = Math.round((performance.now() - startedAt) * 100) / 100;
-    if (firstResultMs > FIRST_RESULT_BUDGET_MS) {
-      throw new Error(`Web first result exceeded ${FIRST_RESULT_BUDGET_MS}ms`);
-    }
-
-    const secondInput = 'second turn after reconnect';
-    const secondRequestId = await send(secondInput);
-    const partial = await collect(secondRequestId, { disconnect: true });
-    // A new client mirrors a page refresh. Resume keeps the request alive; the
-    // saved cursor resumes its output without replaying the first turn or prefix.
-    session = await createClient().resumeSession(session.sessionId, { signal });
-    const second = await collect(secondRequestId, { output: partial.output });
-    assertResult(second, secondInput);
-    const restored = await session.read({ signal });
-    const history = restored.messages
-      ?.filter((message) => message.role === 'user' || message.role === 'assistant')
-      .map((message) => ({ role: message.role, content: message.content }));
-    const expectedHistory = [
-      { role: 'user', content: firstInput },
-      { role: 'assistant', content: first.output },
-      { role: 'user', content: secondInput },
-      { role: 'assistant', content: second.output },
-    ];
-    if (JSON.stringify(history) !== JSON.stringify(expectedHistory)) {
-      throw new Error(`Web session history was not restored: ${JSON.stringify(history)}`);
-    }
-
-    const cancelledRequestId = await send('cancel this request before its complete response');
-    await collect(cancelledRequestId, { disconnect: true });
-    // Cancellation is acknowledged by abort(); it need not emit a result event.
-    await session.abort({ signal });
-    const afterCancelInput = 'a new turn after cancellation';
-    const afterCancel = await collect(await send(afterCancelInput), { allowOtherRequests: true });
-    assertResult(afterCancel, afterCancelInput);
-    await session.close({ signal });
-    session = undefined;
-    return {
-      firstResultMs,
-      output: first.output,
-      secondOutput: second.output,
-      resumedMessages: history.length,
-      reconnected: true,
-      cancelled: true,
-      afterCancelOutput: afterCancel.output,
-    };
-  } finally {
-    clearTimeout(deadline);
-    eventController.abort();
-    await session?.close({ signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
-  }
-}
-
 let shutdownStarted = false;
 async function shutdown() {
-  if (shutdownStarted) {
-    return;
-  }
+  if (shutdownStarted) return;
   shutdownStarted = true;
   await closeServer();
-  await agent.close();
+  await runtime.close();
 }
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.once(signal, () => {
+for (const signalName of ['SIGINT', 'SIGTERM']) {
+  process.once(signalName, () => {
     void shutdown().then(
       () => process.exit(0),
       (error) => {
@@ -347,20 +324,40 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-const requestedPort = smoke ? 0 : Number(process.env.PORT || 8787);
-await listen(requestedPort);
+await listen(options.smoke ? 0 : options.port);
 const address = server.address();
-if (!address || typeof address === 'string') {
-  throw new Error('Web Agent example did not expose a TCP address');
-}
+if (!address || typeof address === 'string') throw new Error('Web Agent example did not expose a TCP address');
 const baseUrl = `http://127.0.0.1:${address.port}`;
 
-if (smoke) {
+if (options.smoke) {
+  const { runSmoke } = await import('./smoke.mjs');
   try {
-    process.stdout.write(`${JSON.stringify(await runSmoke(baseUrl), null, 2)}\n`);
+    const summary = await runSmoke({
+      baseUrl,
+      startedAt,
+      budgetMs: SMOKE_BUDGET_MS,
+      restart: async () => {
+        await runtime.close();
+        runtime = await createRuntime(runtimeOptions);
+      },
+    });
+    process.stdout.write(`${JSON.stringify({ ...summary, sandbox }, null, 2)}\n`);
   } finally {
     await shutdown();
+    await fixture?.cleanup();
   }
 } else {
-  process.stdout.write(`Web Agent example: ${baseUrl}\n`);
+  process.stdout.write(
+    [
+      `Blade web starter: ${baseUrl}`,
+      `  workspace : ${options.root}`,
+      `  data      : ${options.dataDir}`,
+      `  model     : ${model.label}`,
+      `  sandbox   : ${sandbox.enabled ? 'on' : `off (${sandbox.reason}); Bash asks for approval`}`,
+      '',
+    ].join('\n'),
+  );
+  if (options.open && process.stdout.isTTY) {
+    await open(baseUrl).catch(() => undefined);
+  }
 }

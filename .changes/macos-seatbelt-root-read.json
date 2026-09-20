@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Allow sandboxed shell commands to read the filesystem root so the macOS seatbelt sandbox no longer aborts on current macOS releases.",
+  "zh-CN": "沙箱内的 shell 命令现在允许读取文件系统根目录，macOS seatbelt 沙箱在新版 macOS 上不再直接崩溃。"
+}

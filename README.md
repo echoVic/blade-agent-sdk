@@ -94,12 +94,17 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
 
-Generate a Browser + AgentServer application:
+Generate a Browser + AgentServer application (real tools, mid-run steering, and
+sessions that survive a restart under `.blade/`):
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --preset web --verify
+  create-blade-agent my-agent --preset web
 ```
+
+In a terminal the server starts and opens the browser as soon as the install
+finishes; add `--no-start` to skip that, or `--verify` to run the nine-step
+smoke instead.
 
 Generate the complete PostgreSQL, Worker, Docker, approval, and recovery
 topology:
