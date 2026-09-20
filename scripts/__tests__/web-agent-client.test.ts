@@ -9,11 +9,18 @@ type Listener = (event: { preventDefault(): void; persisted?: boolean }) => unkn
 
 // Exercise the shipped page script without a browser dependency. The DOM double
 // deliberately models only the elements and events used by this small example.
+// Task 7's fix round moved rendering from replaceChildren()-every-time to
+// incremental append()/remove(), so this double now tracks a parent per
+// element (the shipped client only ever appends to one fixed parent at a
+// time or detaches-then-reattaches to the same one; it never reparents a
+// node between two different containers).
 class Element {
   children: Element[] = [];
+  parent: Element | null = null;
   className = '';
   disabled = false;
   hidden = false;
+  open = false;
   value = '';
   scrollTop = 0;
   scrollHeight = 0;
@@ -29,16 +36,30 @@ class Element {
 
   set textContent(value: string) {
     this.text = String(value ?? '');
+    for (const child of this.children) child.parent = null;
     this.children = [];
   }
 
   append(...children: Element[]): void {
+    for (const child of children) {
+      child.remove();
+      child.parent = this;
+    }
     this.children.push(...children);
+  }
+
+  remove(): void {
+    if (!this.parent) return;
+    const index = this.parent.children.indexOf(this);
+    if (index !== -1) this.parent.children.splice(index, 1);
+    this.parent = null;
   }
 
   replaceChildren(...children: Element[]): void {
     this.text = '';
+    for (const child of this.children) child.parent = null;
     this.children = children;
+    for (const child of children) child.parent = this;
   }
 
   addEventListener(type: string, listener: Listener): void {
@@ -315,6 +336,25 @@ function cursor(sequence: number) {
   return { protocolVersion: 1, sessionId: 'session-1', sequence, eventId: `event-${sequence}` };
 }
 
+// A hand-built localStorage snapshot that restore() accepts as-is, every
+// field present -- so a test that wants one malformed field can override just
+// that one instead of restating (and risking drifting from) the full shape
+// emptyState() actually produces.
+function validSnapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 2, sessionId: 'session-1', createCommandId: null, cursor: null, nodes: [],
+    activeRequestId: null, pendingSubmission: null, cancelCommandId: null, pendingTerminal: null,
+    pendingQueuedInputId: null, permissions: [], handledPermissionIds: [], retiredPermissionIds: [],
+    lastStatus: 'Idle', ...overrides,
+  };
+}
+
+function storageWith(snapshot: Record<string, unknown>): Map<string, string> {
+  const storage = new Map<string, string>();
+  storage.set('blade-web-session:v2', JSON.stringify(snapshot));
+  return storage;
+}
+
 function protocolError(
   code: 'SESSION_NOT_FOUND' | 'STALE_CURSOR' | 'SESSION_CONFLICT' | 'INVALID_COMMAND' | 'PERMISSION_NOT_FOUND',
   retryable = false,
@@ -331,7 +371,7 @@ async function flush(): Promise<void> {
 function openPage(backend: Backend, storage = new Map<string, string>()) {
   const elements = new Map<string, Element>();
   for (const id of [
-    'prompt-form', 'prompt', 'timeline', 'status', 'notice', 'hint', 'session-id',
+    'prompt-form', 'prompt', 'timeline', 'status', 'notice', 'announcer', 'hint', 'session-id',
     'submit', 'cancel', 'reconnect', 'new-session',
   ]) elements.set(id, new Element());
   const element = (id: string): Element => {
@@ -378,6 +418,7 @@ function openPage(backend: Backend, storage = new Map<string, string>()) {
     console,
     setTimeout,
     clearTimeout,
+    queueMicrotask,
   }, { filename: 'web-agent-client.js' });
 
   return {
@@ -388,6 +429,7 @@ function openPage(backend: Backend, storage = new Map<string, string>()) {
     steerEntries: () => nodesOfClass('node steer').map((node) => node.textContent),
     systemNotes: () => nodesOfClass('node system').map((node) => node.textContent),
     thinkingBlocks: () => nodesOfClass('node thinking'),
+    announced: () => element('announcer').textContent,
     messages: () => element('timeline').children
       .filter((node) => node.className === 'node user' || node.className === 'node assistant')
       .map((node) => ({
@@ -797,14 +839,7 @@ describe('Web Agent page behavior', () => {
     // A fresh browser (or a cleared cache) that only knows the session id: no
     // locally cached timeline, so hydrateFromServer() must rebuild it from
     // SESSION_READ's messages rather than the usual localStorage round trip.
-    const storage = new Map<string, string>();
-    storage.set('blade-web-session:v2', JSON.stringify({
-      version: 2, sessionId: 'session-1', createCommandId: null, cursor: null, nodes: [],
-      activeRequestId: null, pendingSubmission: null, cancelCommandId: null, pendingTerminal: null,
-      permissions: [], handledPermissionIds: [], retiredPermissionIds: [], lastStatus: 'Idle',
-    }));
-
-    const page = openPage(backend, storage);
+    const page = openPage(backend, storageWith(validSnapshot()));
     await flush();
     expect(backend.resumeCalls).toEqual(['session-1']);
     expect(page.systemNotes()).toContainEqual('Restored from disk, 4 messages');
@@ -817,6 +852,52 @@ describe('Web Agent page behavior', () => {
     expect(page.toolCards()[0]?.textContent).toContain('Completed');
     expect(page.toolCards()[0]?.textContent).toContain('package.json');
     expect(page.element('submit').disabled).toBe(false);
+  });
+
+  it('falls back to a clean, persisted state and explains it when a saved node fails validation', async () => {
+    // A tool node whose output is a number: real reproduction from the review
+    // (renderTool did `node.output.split('\n')`, throwing inside the bootstrap
+    // render with nothing shown and the same value repeating on every reload).
+    const storage = storageWith(validSnapshot({
+      nodes: [{
+        id: 'n1', kind: 'tool', toolId: 't1', name: 'Bash', args: '', status: 'Running',
+        summary: '', output: 5, startedAt: null, endedAt: null, open: false,
+      }],
+    }));
+    const page = openPage(new Backend(), storage);
+    await flush();
+    expect(page.element('notice').textContent).toMatch(/could not be restored/i);
+    expect(page.messages()).toEqual([]);
+    expect(page.toolCards()).toHaveLength(0);
+    expect(page.element('status').textContent).toBe('Idle');
+    expect(page.element('session-id').textContent).toBe('Not started');
+    // The bad value must not repeat on the next load.
+    const persisted = JSON.parse(storage.get('blade-web-session:v2') ?? '{}');
+    expect(persisted.nodes).toEqual([]);
+  });
+
+  it('falls back to a clean, persisted state when the saved pending submission is malformed', async () => {
+    // Reproduction from the review: an empty object reaches session.send(undefined, ...)
+    // and the rejection path then writes the literal string "undefined" into the textarea.
+    const storage = storageWith(validSnapshot({ sessionId: null, pendingSubmission: {} }));
+    const page = openPage(new Backend(), storage);
+    await flush();
+    expect(page.element('notice').textContent).toMatch(/could not be restored/i);
+    expect(page.element('prompt').value).toBe('');
+    const persisted = JSON.parse(storage.get('blade-web-session:v2') ?? '{}');
+    expect(persisted.pendingSubmission).toBeNull();
+  });
+
+  it('falls back to a clean, persisted state when the value under the storage key belongs to something else', async () => {
+    const storage = storageWith({ some: 'other app entirely', wrote: 'this key' });
+    const page = openPage(new Backend(), storage);
+    await flush();
+    expect(page.element('notice').textContent).toMatch(/could not be restored/i);
+    expect(page.messages()).toEqual([]);
+    expect(page.element('session-id').textContent).toBe('Not started');
+    const persisted = JSON.parse(storage.get('blade-web-session:v2') ?? '{}');
+    expect(persisted.version).toBe(2);
+    expect(persisted.nodes).toEqual([]);
   });
 });
 
@@ -859,6 +940,39 @@ describe('Web Agent steering', () => {
       'Steered: Focus on X',
       'Queued for next turn: Also check Y later',
     ]);
+  });
+
+  it("recovers a queued instruction's answer when it arrives under a new request id instead of dropping it", async () => {
+    const backend = new Backend();
+    const page = openPage(backend);
+    await flush();
+    await page.submit('Start the task');
+
+    backend.nextSendResult = { status: 'queued', inputId: 'input-queued-1', priority: 'later' };
+    await page.submit('Also check this');
+    expect(page.steerEntries()).toEqual(['Queued for next turn: Also check this']);
+    expect(page.element('submit').disabled).toBe(false);
+
+    // request-1 finishes; the connection must stay open for the queued turn.
+    backend.latestStream().push(result(1, 'request-1'));
+    await flush();
+    expect(backend.sendCalls).toHaveLength(2);
+    expect(page.element('status').textContent).toBe('Working');
+
+    // The queued turn starts under a request id this page was never told
+    // about ahead of time; its own input_applied is what identifies it.
+    backend.latestStream().push(toolEvent(2, {
+      type: 'input_applied', inputId: 'input-queued-1', requestId: 'request-2', priority: 'now', turn: 2,
+    }));
+    await flush();
+    expect(page.steerEntries()).toEqual(['Steering applied: Also check this']);
+
+    // Its answer must still be read and rendered, not lost on the floor.
+    backend.latestStream().push(content(3, 'request-2', 'Queued answer'), result(4, 'request-2'));
+    await flush();
+    expect(page.messages().at(-1)).toEqual({ role: 'assistant', content: 'Queued answer' });
+    expect(page.element('status').textContent).toBe('Idle');
+    expect(page.element('submit').disabled).toBe(false);
   });
 
   it('marks a steering entry as applied when input_applied arrives for its input id', async () => {
@@ -1186,5 +1300,63 @@ describe('Web Agent approvals and tool feedback', () => {
       { role: 'assistant', content: 'Plan ready.' },
     ]);
     expect(page.thinkingBlocks()).toHaveLength(1);
+  });
+
+  it('exposes only the truncated, JSON-serialized tool input in the card header', async () => {
+    // The card header shows a tool's real arguments unredacted -- that is
+    // deliberate (task 7: seeing the actual command is what makes the card
+    // evidence the agent is really working), but it must stay bounded to
+    // summarizeArgs()'s own 160-character cap, not dump an arbitrarily large
+    // input onto the page.
+    const backend = new Backend();
+    const page = openPage(backend);
+    await flush();
+    await page.submit('Run a tool with a large input');
+    const large = 'x'.repeat(500);
+    backend.latestStream().push(toolEvent(1, {
+      type: 'tool_use', id: 'tool-1', name: 'WriteFile', input: { path: 'report.md', body: large },
+    }));
+    await flush();
+    const serialized = JSON.stringify({ path: 'report.md', body: large });
+    const expectedArgs = `${serialized.slice(0, 157)}…`;
+    expect(page.toolCards()[0]?.textContent).toContain(expectedArgs);
+    expect(page.toolCards()[0]?.textContent).not.toContain(large);
+  });
+
+  it('reuses the same element across renders instead of recreating it', async () => {
+    // The scroll-position and focus problems the review raised both trace back
+    // to recreating every element on every render; this pins the fix directly,
+    // rather than only its user-visible symptoms.
+    const backend = new Backend();
+    const page = openPage(backend);
+    await flush();
+    await page.submit('Long streaming answer');
+    backend.latestStream().push(content(1, 'request-1', 'Part one. '));
+    await flush();
+    const assistantElement = page.element('timeline').children.at(-1);
+    backend.latestStream().push(content(2, 'request-1', 'Part two.'));
+    await flush();
+    expect(page.element('timeline').children.at(-1)).toBe(assistantElement);
+    expect(assistantElement?.textContent).toBe('Part one. Part two.');
+  });
+
+  it('announces coarse status changes instead of the full streamed text', async () => {
+    // #timeline is no longer aria-live (a screen reader used to re-announce
+    // the whole conversation on every token); this small #announcer element
+    // is, and it must describe what changed, not repeat the growing answer.
+    const backend = new Backend();
+    const page = openPage(backend);
+    await flush();
+    await page.submit('Explain this');
+    backend.latestStream().push(content(1, 'request-1', 'Hello'));
+    await flush();
+    expect(page.announced()).toBe('The agent is answering.');
+    backend.latestStream().push(content(2, 'request-1', ' world'));
+    await flush();
+    // Still the same answer streaming in: nothing new to announce.
+    expect(page.announced()).toBe('The agent is answering.');
+    backend.latestStream().push(toolEvent(3, { type: 'tool_use', id: 'tool-1', name: 'Bash', input: {} }));
+    await flush();
+    expect(page.announced()).toBe('Bash running.');
   });
 });

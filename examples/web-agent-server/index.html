@@ -16,7 +16,8 @@
       :root { --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #8b95a5; --line: #2a313b; --accent: #6b9dff; --accent-ink: #0b1220; --chip: #1e2740; }
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 15px/1.5 var(--sans); color: var(--ink); background: var(--bg); height: 100vh; display: flex; flex-direction: column; }
+    body { margin: 0; font: 15px/1.5 var(--sans); color: var(--ink); background: var(--bg); height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     header.bar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
     header .brand { font-weight: 650; }
     header .session { font: 12px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
@@ -70,7 +71,8 @@
     <button id="new-session" type="button">New session</button>
   </header>
   <p id="notice" role="alert"></p>
-  <section id="timeline" aria-live="polite"></section>
+  <p id="announcer" class="sr-only" aria-live="polite"></p>
+  <section id="timeline"></section>
   <form id="prompt-form">
     <div class="inner">
       <textarea

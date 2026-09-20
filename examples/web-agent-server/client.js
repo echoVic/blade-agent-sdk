@@ -6,6 +6,7 @@ const promptInput = query('#prompt');
 const timeline = query('#timeline');
 const status = query('#status');
 const notice = query('#notice');
+const announcer = query('#announcer');
 const hint = query('#hint');
 const sessionLabel = query('#session-id');
 const submit = query('#submit');
@@ -13,7 +14,7 @@ const cancel = query('#cancel');
 const reconnect = query('#reconnect');
 const newSession = query('#new-session');
 
-if (!form || !promptInput || !timeline || !status || !notice || !hint || !sessionLabel
+if (!form || !promptInput || !timeline || !status || !notice || !announcer || !hint || !sessionLabel
   || !submit || !cancel || !reconnect || !newSession) {
   throw new Error('Web Agent starter markup is incomplete');
 }
@@ -26,6 +27,7 @@ const client = new AgentClient({
 const STORAGE_KEY = 'blade-web-session:v2';
 const MAX_NODES = 200;
 const OUTPUT_PREVIEW_LINES = 20;
+const MAX_TEXT_LENGTH = 4000;
 const DEFAULT_PLACEHOLDER = "Ask the agent to analyze this project's dependency risks";
 const emptyState = () => ({
   version: 2,
@@ -37,6 +39,10 @@ const emptyState = () => ({
   pendingSubmission: null,
   cancelCommandId: null,
   pendingTerminal: null,
+  // Set only while a steered instruction came back "queued": the previous
+  // request sealed before it could be folded in, so the server will run it as
+  // its own turn once the current one finishes. See readEvents()/steer().
+  pendingQueuedInputId: null,
   permissions: [],
   handledPermissionIds: [],
   retiredPermissionIds: [],
@@ -55,12 +61,83 @@ let storageWarning = '';
 
 // ---------- persistence ----------
 
+// A streamed answer is one event per delta, and save() serializes the whole
+// timeline; without batching, a fast burst (a long answer, or replaying a
+// backlog after a reconnect) turns into one full JSON.stringify per token.
+// Both scheduling helpers below collapse a burst into a single microtask.
+let saveScheduled = false;
+function scheduleSave() {
+  if (saveScheduled) return;
+  saveScheduled = true;
+  queueMicrotask(() => {
+    saveScheduled = false;
+    save();
+  });
+}
+
+let updateScheduled = false;
+let scheduledLabel;
+let scheduledMessage = '';
+function scheduleUpdate(label, message = '') {
+  scheduledLabel = label;
+  scheduledMessage = message;
+  if (updateScheduled) return;
+  updateScheduled = true;
+  queueMicrotask(() => {
+    updateScheduled = false;
+    save();
+    render(scheduledLabel, scheduledMessage);
+  });
+}
+
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    storageWarning = '';
   } catch {
     storageWarning = 'This browser could not save the conversation; refresh recovery is unavailable.';
   }
+}
+
+const STEER_STATUSES = ['pending', 'steered', 'queued', 'applied', 'started', 'failed'];
+const TOOL_STATUSES = ['Running', 'Completed', 'Failed', 'Ended', 'Cancelled'];
+
+// One validator per node kind actually produced by addNode()/renderNode(): a
+// node that fails this can throw inside render() (e.g. a non-string `output`
+// reaching `.split('\n')`), so restore() must reject it before it ever renders.
+function isValidNode(node) {
+  if (!node || typeof node.id !== 'string' || typeof node.kind !== 'string') return false;
+  if (node.requestId !== undefined && typeof node.requestId !== 'string') return false;
+  const str = (value) => typeof value === 'string';
+  const numberOrNull = (value) => value === null || typeof value === 'number';
+  switch (node.kind) {
+    case 'user':
+    case 'assistant':
+    case 'system':
+    case 'error':
+      return str(node.text);
+    case 'steer':
+      return str(node.text) && STEER_STATUSES.includes(node.status)
+        && (node.inputId === null || str(node.inputId));
+    case 'thinking':
+      return str(node.text) && typeof node.open === 'boolean';
+    case 'tool':
+      return str(node.toolId) && str(node.name) && str(node.args) && TOOL_STATUSES.includes(node.status)
+        && str(node.summary) && str(node.output) && typeof node.open === 'boolean'
+        && numberOrNull(node.startedAt) && numberOrNull(node.endedAt);
+    default:
+      return false;
+  }
+}
+
+function isValidPendingSubmission(value) {
+  return value === null
+    || (Boolean(value) && typeof value.commandId === 'string' && typeof value.input === 'string');
+}
+
+function isValidCursor(value, sessionId) {
+  return value === null || (Boolean(value) && value.sessionId === sessionId && value.protocolVersion === 1
+    && Number.isSafeInteger(value.sequence) && value.sequence >= 0 && typeof value.eventId === 'string');
 }
 
 function restore() {
@@ -69,15 +146,22 @@ function restore() {
     if (!saved) return;
     const optional = (value) => value === null || typeof value === 'string';
     if (saved.version !== 2 || !optional(saved.sessionId) || !optional(saved.activeRequestId)
-      || !optional(saved.cancelCommandId) || !Array.isArray(saved.nodes)
-      || !Array.isArray(saved.permissions) || !Array.isArray(saved.handledPermissionIds)
-      || !Array.isArray(saved.retiredPermissionIds)
-      || !saved.nodes.every((node) => node && typeof node.id === 'string' && typeof node.kind === 'string')) {
+      || !optional(saved.cancelCommandId) || !optional(saved.pendingQueuedInputId)
+      || !Array.isArray(saved.nodes) || !Array.isArray(saved.permissions)
+      || !Array.isArray(saved.handledPermissionIds) || !Array.isArray(saved.retiredPermissionIds)
+      || !saved.nodes.every(isValidNode)
+      || !isValidPendingSubmission(saved.pendingSubmission)
+      || !isValidCursor(saved.cursor, saved.sessionId)) {
       throw new Error('Invalid saved conversation');
     }
     state = { ...emptyState(), ...saved };
   } catch {
+    // A value that fails validation would repeat forever if left on disk (it
+    // was never ours to begin with, or a previous version wrote a shape this
+    // one no longer understands) -- reset and persist the clean state so the
+    // next load does not hit the same error.
     state = emptyState();
+    save();
     storageWarning = 'The saved conversation could not be restored. Send a message to start again.';
   }
 }
@@ -100,7 +184,7 @@ function findTool(toolId) {
 }
 
 function hasRequest() {
-  return Boolean(state.activeRequestId || state.pendingSubmission);
+  return Boolean(state.activeRequestId || state.pendingSubmission || state.pendingQueuedInputId);
 }
 
 function textOf(content) {
@@ -120,6 +204,10 @@ function summarizeArgs(input) {
   }
 }
 
+function capText(text) {
+  return text.length > MAX_TEXT_LENGTH ? `${text.slice(0, MAX_TEXT_LENGTH)}\n…` : text;
+}
+
 function previewOutput(output) {
   let text;
   if (output && typeof output === 'object' && !Array.isArray(output) && 'stdout' in output) {
@@ -127,7 +215,7 @@ function previewOutput(output) {
   } else {
     text = typeof output === 'string' ? output : JSON.stringify(output ?? '', null, 2);
   }
-  return text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text;
+  return capText(text);
 }
 
 function applyStreamEvent(data) {
@@ -136,13 +224,13 @@ function applyStreamEvent(data) {
     case 'thinking': {
       let node = lastNode((entry) => entry.requestId === requestId);
       if (!node || node.kind !== 'thinking') node = addNode({ kind: 'thinking', requestId, text: '', open: false });
-      node.text += data.delta;
+      if (node.text.length < MAX_TEXT_LENGTH) node.text = capText(node.text + data.delta);
       return;
     }
     case 'content': {
       let node = lastNode((entry) => entry.requestId === requestId);
       if (!node || node.kind !== 'assistant') node = addNode({ kind: 'assistant', requestId, text: '' });
-      node.text += data.delta;
+      if (node.text.length < MAX_TEXT_LENGTH) node.text = capText(node.text + data.delta);
       return;
     }
     case 'tool_use':
@@ -225,61 +313,128 @@ const STEER_LABELS = {
   failed: 'Steering rejected',
 };
 
+// ---------- incremental rendering ----------
+//
+// #timeline can hold 200 nodes; a streamed answer is one event per delta. The
+// page used to call `timeline.replaceChildren(...)` on every one of those,
+// destroying and recreating every element on every token -- which reset an
+// open tool output's scroll position, dropped focus from an approval button,
+// and (because #timeline carried aria-live="polite") made a screen reader
+// re-announce the entire conversation on every token. This section renders
+// each node/approval element once and patches it in place from then on:
+// unchanged elements are never touched, new ones are appended once, and
+// removed ones (MAX_NODES trimming, a resolved approval) are the only ones
+// actually detached. The live region moved to the small #announcer element
+// (see announce() below) precisely because it no longer needs to watch a
+// subtree that keeps getting rebuilt.
+const nodeElements = new Map(); // node.id -> Element
+const approvalElements = new Map(); // permissionRequestId -> Element
+
+function textFor(node) {
+  return node.kind === 'steer' ? `${STEER_LABELS[node.status] ?? node.status}: ${node.text}` : node.text;
+}
+
 function renderTool(node) {
   const article = el('article', 'node tool');
-  article.dataset.status = node.status;
   const head = el('div', 'head');
-  head.append(
-    el('span', 'name', node.name),
-    el('span', 'args', node.args),
-    el('span', 'meta', [node.status, duration(node)].filter(Boolean).join(' · ')),
-  );
+  const refs = {
+    name: el('span', 'name'),
+    args: el('span', 'args'),
+    meta: el('span', 'meta'),
+    summary: el('div', 'meta'),
+    details: el('details'),
+    detailsSummary: el('summary'),
+    pre: el('pre'),
+  };
+  head.append(refs.name, refs.args, refs.meta);
   article.append(head);
-  if (node.summary) article.append(el('div', 'meta', node.summary));
+  refs.details.append(refs.detailsSummary, refs.pre);
+  refs.details.addEventListener('toggle', () => {
+    // Open/closed controls line truncation (OUTPUT_PREVIEW_LINES), so the
+    // pre's content itself needs recomputing, not just the open attribute.
+    node.open = refs.details.open;
+    patchTool(article, node);
+    scheduleSave();
+  });
+  article._tool = refs;
+  patchTool(article, node);
+  return article;
+}
+
+function patchTool(article, node) {
+  const refs = article._tool;
+  article.dataset.status = node.status;
+  refs.name.textContent = node.name;
+  refs.args.textContent = node.args;
+  refs.meta.textContent = [node.status, duration(node)].filter(Boolean).join(' · ');
+  if (node.summary) {
+    refs.summary.textContent = node.summary;
+    if (!article._summaryAttached) {
+      article.append(refs.summary);
+      article._summaryAttached = true;
+    }
+  } else if (article._summaryAttached) {
+    refs.summary.remove();
+    article._summaryAttached = false;
+  }
   if (node.output) {
     const lines = node.output.split('\n');
-    const details = el('details');
-    details.open = Boolean(node.open);
-    details.append(
-      el('summary', '', `Output (${lines.length} lines)`),
-      el('pre', '', lines.slice(0, node.open ? lines.length : OUTPUT_PREVIEW_LINES).join('\n')),
-    );
-    details.addEventListener('toggle', () => {
-      node.open = details.open;
-      save();
-      render();
-    });
-    article.append(details);
+    refs.detailsSummary.textContent = `Output (${lines.length} lines)`;
+    refs.pre.textContent = lines.slice(0, node.open ? lines.length : OUTPUT_PREVIEW_LINES).join('\n');
+    refs.details.open = Boolean(node.open);
+    if (!article._detailsAttached) {
+      article.append(refs.details);
+      article._detailsAttached = true;
+    }
+  } else if (article._detailsAttached) {
+    refs.details.remove();
+    article._detailsAttached = false;
   }
-  return article;
+}
+
+function patchThinking(details, node) {
+  details.open = Boolean(node.open);
+  details._pre.textContent = node.text;
 }
 
 function renderNode(node) {
   switch (node.kind) {
-    case 'user':
-      return el('article', 'node user', node.text);
-    case 'assistant':
-      return el('article', 'node assistant', node.text);
-    case 'system':
-      return el('article', 'node system', node.text);
-    case 'error':
-      return el('article', 'node error', node.text);
-    case 'steer':
-      return el('article', 'node steer', `${STEER_LABELS[node.status] ?? node.status}: ${node.text}`);
     case 'thinking': {
       const details = el('details', 'node thinking');
-      details.open = Boolean(node.open);
-      details.append(el('summary', '', 'Thinking'), el('pre', '', node.text));
+      const summary = el('summary', '', 'Thinking');
+      const pre = el('pre');
+      details.append(summary, pre);
+      details._pre = pre;
       details.addEventListener('toggle', () => {
         node.open = details.open;
-        save();
+        scheduleSave();
       });
+      patchThinking(details, node);
       return details;
     }
     case 'tool':
       return renderTool(node);
+    case 'user':
+    case 'assistant':
+    case 'system':
+    case 'error':
+    case 'steer':
+      return el('article', `node ${node.kind}`, textFor(node));
     default:
       return el('article', 'node system', node.text ?? '');
+  }
+}
+
+function patchNode(element, node) {
+  switch (node.kind) {
+    case 'thinking':
+      patchThinking(element, node);
+      return;
+    case 'tool':
+      patchTool(element, node);
+      return;
+    default:
+      element.textContent = textFor(node);
   }
 }
 
@@ -308,6 +463,7 @@ function renderApproval(permission) {
     article.append(details);
   }
   const actions = el('div', 'actions');
+  const buttons = [];
   for (const [label, approved, scope] of [
     ['Approve once', true, 'once'],
     ['Approve for this session', true, 'session'],
@@ -316,16 +472,100 @@ function renderApproval(permission) {
     const button = el('button', approved ? 'primary' : '', label);
     button.type = 'button';
     button.setAttribute('aria-label', `${label}: ${permission.toolName}`);
-    button.disabled = Boolean(permission.decision || state.cancelCommandId)
-      || connecting || disconnected || unavailable || !navigator.onLine;
     button.addEventListener('click', () => {
       if (!button.disabled) void decidePermission(permission.permissionRequestId, approved, scope);
     });
     actions.append(button);
+    buttons.push(button);
   }
   article.append(actions);
-  if (permission.decision) article.append(el('p', 'meta', 'Confirming your decision…'));
+  article._approval = { buttons, confirming: el('p', 'meta', 'Confirming your decision…') };
+  patchApproval(article, permission);
   return article;
+}
+
+function patchApproval(article, permission) {
+  const { buttons, confirming } = article._approval;
+  const disabled = Boolean(permission.decision || state.cancelCommandId)
+    || connecting || disconnected || unavailable || !navigator.onLine;
+  for (const button of buttons) button.disabled = disabled;
+  if (permission.decision) {
+    if (!article._confirmingAttached) {
+      article.append(confirming);
+      article._confirmingAttached = true;
+    }
+  } else if (article._confirmingAttached) {
+    confirming.remove();
+    article._confirmingAttached = false;
+  }
+}
+
+// Nodes only ever append at the tail and drop from the head (MAX_NODES); the
+// only elements that need to move on every call are the approvals, which
+// always render last regardless of when they arrived. Detaching them first
+// lets any genuinely new node append before them without disturbing anything
+// already in place.
+function syncTimeline() {
+  const nodeIds = new Set(state.nodes.map((node) => node.id));
+  for (const [id, element] of nodeElements) {
+    if (!nodeIds.has(id)) {
+      element.remove();
+      nodeElements.delete(id);
+    }
+  }
+  const approvalIds = new Set(state.permissions.map((permission) => permission.permissionRequestId));
+  for (const [id, element] of approvalElements) {
+    // Detach every currently-shown approval regardless of whether it survives:
+    // a resolved one is dropped for good, a still-pending one is re-appended
+    // below so it stays last even if a new node just arrived after it.
+    element.remove();
+    if (!approvalIds.has(id)) approvalElements.delete(id);
+  }
+  for (const node of state.nodes) {
+    const existing = nodeElements.get(node.id);
+    if (existing) {
+      patchNode(existing, node);
+    } else {
+      const element = renderNode(node);
+      nodeElements.set(node.id, element);
+      timeline.append(element);
+    }
+  }
+  for (const permission of state.permissions) {
+    let element = approvalElements.get(permission.permissionRequestId);
+    if (element) {
+      patchApproval(element, permission);
+    } else {
+      element = renderApproval(permission);
+      approvalElements.set(permission.permissionRequestId, element);
+    }
+    timeline.append(element);
+  }
+}
+
+let lastAnnounced = '';
+function announce(text) {
+  if (!text || text === lastAnnounced) return;
+  lastAnnounced = text;
+  announcer.textContent = text;
+}
+
+// Coarse on purpose: this drives the aria-live announcer, which should say
+// what just happened, not read back the growing text of a streaming answer
+// (that would be as disruptive as the full-history re-announce this replaces).
+function describeLatestChange() {
+  if (state.permissions.length > 0) return 'Waiting for your approval.';
+  const node = state.nodes.at(-1);
+  if (!node) return '';
+  switch (node.kind) {
+    case 'user': return 'Message sent.';
+    case 'assistant': return 'The agent is answering.';
+    case 'thinking': return 'The agent is thinking.';
+    case 'tool': return `${node.name} ${node.status.toLowerCase()}.`;
+    case 'steer': return `${STEER_LABELS[node.status] ?? node.status}.`;
+    case 'error': return `Error: ${node.text}`;
+    default: return node.text ?? '';
+  }
 }
 
 function toneFor(label, waiting) {
@@ -359,7 +599,8 @@ function render(label = state.lastStatus, message = '') {
   reconnect.disabled = connecting || offline;
   newSession.disabled = connecting || (hasRequest() && !unavailable);
   const stick = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 80;
-  timeline.replaceChildren(...state.nodes.map(renderNode), ...state.permissions.map(renderApproval));
+  syncTimeline();
+  announce(describeLatestChange());
   if (stick) timeline.scrollTop = timeline.scrollHeight;
 }
 
@@ -381,8 +622,10 @@ function stopConnection() {
   connecting = false;
 }
 
-function finishRequest(label, message = '') {
-  streamController?.abort();
+// Shared by a normal finish and by the "a queued instruction is about to run
+// as its own turn" continuation below: both need the same tool/steer cleanup,
+// neither should repeat it independently.
+function settleFinishedRequest(label) {
   state.activeRequestId = null;
   state.pendingSubmission = null;
   state.cancelCommandId = null;
@@ -396,8 +639,13 @@ function finishRequest(label, message = '') {
     }
     if (node.kind === 'steer' && node.status === 'pending') node.status = 'failed';
   }
-  state.lastStatus = label === 'Cancelled' || label === 'Idle' ? 'Idle' : label;
   disconnected = false;
+}
+
+function finishRequest(label, message = '') {
+  streamController?.abort();
+  settleFinishedRequest(label);
+  state.lastStatus = label === 'Cancelled' || label === 'Idle' ? 'Idle' : label;
   save();
   render(label, message);
 }
@@ -459,22 +707,47 @@ async function readEvents(currentGeneration) {
             decision: null,
           });
         }
-        save();
-        render(state.cancelCommandId ? 'Cancelling' : 'Working');
+        scheduleUpdate(state.cancelCommandId ? 'Cancelling' : 'Working');
         continue;
       }
-      if (event.type !== 'session.stream' || event.requestId !== state.activeRequestId) {
-        save();
+      if (event.type !== 'session.stream') {
+        scheduleSave();
         continue;
+      }
+      if (event.requestId !== state.activeRequestId) {
+        // A steer that came back "queued" runs as its own turn once the
+        // request active when it arrived finishes, under a request id this
+        // page never chose. Its own input_applied is the one self-describing
+        // signal for that new id (unlike content/tool_* events, it carries
+        // requestId in the payload itself) -- adopt it there rather than
+        // discarding every event for a turn we were never told the id of.
+        if (state.pendingQueuedInputId && !state.activeRequestId
+          && event.data.type === 'input_applied' && event.data.inputId === state.pendingQueuedInputId) {
+          state.activeRequestId = event.data.requestId;
+          state.pendingQueuedInputId = null;
+        } else {
+          scheduleSave();
+          continue;
+        }
       }
       applyStreamEvent(event.data);
       if (state.pendingTerminal) clearPermissions();
       if (state.pendingTerminal && !state.cancelCommandId) {
-        finishRequest(state.pendingTerminal.status, state.pendingTerminal.message);
+        const { status, message } = state.pendingTerminal;
+        if (state.pendingQueuedInputId) {
+          // Do not tear the connection down: the queued turn is still to
+          // come on this same stream, and its answer would otherwise never
+          // be read (see the adoption branch above).
+          settleFinishedRequest(status);
+          state.lastStatus = 'Working';
+          save();
+          render('Working', message);
+          continue;
+        }
+        finishRequest(status, message);
         return;
       }
-      save();
-      render(state.cancelCommandId ? 'Cancelling' : 'Working');
+      scheduleUpdate(state.cancelCommandId ? 'Cancelling' : 'Working');
     }
     if (!controller.signal.aborted && currentGeneration === generation && hasRequest()) {
       throw new Error('The connection ended before the request completed');
@@ -580,6 +853,20 @@ async function hydrateFromServer(signal) {
         if (node) node.output = previewOutput(text);
       }
     }
+  } else if (state.pendingQueuedInputId) {
+    // A queued instruction's own turn may have already finished with nobody
+    // watching (the tab closed, or reload landed in the gap before its
+    // input_applied was seen). The timeline is not empty, so the rebuild
+    // above did not run; recover just the missing answer from history
+    // instead of leaving the steer chip saying "Queued" forever.
+    const lastAnswer = messages.findLast((message) => message.role === 'assistant' && textOf(message.content));
+    const alreadyShown = lastNode((entry) => entry.kind === 'assistant')?.text;
+    if (lastAnswer && textOf(lastAnswer.content) !== alreadyShown) {
+      addNode({ kind: 'assistant', text: capText(textOf(lastAnswer.content)) });
+    }
+    const steer = lastNode((entry) => entry.kind === 'steer' && entry.inputId === state.pendingQueuedInputId);
+    if (steer) steer.status = 'applied';
+    state.pendingQueuedInputId = null;
   }
   addNode({ kind: 'system', text: `Restored from disk, ${messages.length} messages` });
   state.lastStatus = 'Idle';
@@ -648,7 +935,7 @@ async function connect() {
     if (state.cancelCommandId) {
       render('Cancelling');
       await confirmCancellation(currentGeneration, controller.signal);
-    } else if (state.activeRequestId) {
+    } else if (state.activeRequestId || state.pendingQueuedInputId) {
       render('Working');
       void readEvents(currentGeneration);
       for (const permission of [...state.permissions]) {
@@ -678,6 +965,7 @@ async function steer(input) {
   render('Working');
   const currentGeneration = generation;
   try {
+    if (!session) throw new Error('No session is connected yet');
     const submission = await session.send(input, {
       priority: 'now',
       commandId: crypto.randomUUID(),
@@ -689,6 +977,13 @@ async function steer(input) {
     if (submission.status === 'started' && submission.requestId) {
       // The previous request finished just before this arrived; it became a new turn.
       state.activeRequestId = submission.requestId;
+      if (!streamController || streamController.signal.aborted) void readEvents(currentGeneration);
+    }
+    if (submission.status === 'queued') {
+      // Too late to fold into the active request; the server will run it as
+      // its own turn once that one finishes. Keep watching for it instead of
+      // leaving the chip on "Queued" forever (see readEvents()).
+      state.pendingQueuedInputId = submission.inputId;
       if (!streamController || streamController.signal.aborted) void readEvents(currentGeneration);
     }
   } catch (error) {
@@ -766,5 +1061,16 @@ window.addEventListener('pageshow', (event) => {
 });
 
 restore();
-render();
+try {
+  render();
+} catch {
+  // restore() already rejects every saved shape this file knows how to
+  // produce; this is the backstop for one it does not. Recover to a usable,
+  // empty page rather than leaving the user on a "Starting" pill forever with
+  // event listeners that work but nothing telling them so.
+  state = emptyState();
+  storageWarning = 'The saved conversation could not be displayed and was reset.';
+  save();
+  render();
+}
 if (state.sessionId || state.pendingSubmission) void connect();
