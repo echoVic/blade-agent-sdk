@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "create-blade-agent --preset web now scaffolds a first-run experience: real Read/Glob/Grep/Bash tools, a timeline UI with mid-run steering and approval cards, sessions that survive a server restart, a scripted no-key demo, and a nine-step smoke.",
+  "zh-CN": "create-blade-agent --preset web 现在生成完整的首跑体验：真实的 Read/Glob/Grep/Bash 工具、带运行中插入指令与审批卡片的时间线界面、重启后仍在的会话、无 key 的脚本化 demo，以及 9 步 smoke。"
+}

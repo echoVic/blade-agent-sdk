@@ -90,12 +90,15 @@ npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
   create-blade-agent my-agent --preset local --verify
 ```
 
-生成 Browser + AgentServer 应用：
+生成 Browser + AgentServer 应用（真实工具、运行中插入指令、重启后会话仍在 `.blade/`）：
 
 ```bash
 npm exec --yes --package=@blade-ai/agent-sdk@latest -- \
-  create-blade-agent my-agent --preset web --verify
+  create-blade-agent my-agent --preset web
 ```
+
+在终端里，安装完成后服务会直接启动并打开浏览器；加 `--no-start` 跳过，
+或加 `--verify` 改为运行 9 步 smoke。
 
 生成完整的 PostgreSQL、Worker、Docker、审批和恢复拓扑：
 

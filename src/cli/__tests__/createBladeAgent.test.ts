@@ -140,6 +140,8 @@ describe('createBladeAgent', () => {
       dependencies: {
         '@blade-ai/agent-sdk': 'file:/tmp/blade-agent-sdk.tgz',
         esbuild: '0.28.2',
+        open: '^11.0.0',
+        'fs-native-extensions': '1.5.0',
       },
     });
     expect(manifest.dependencies).not.toHaveProperty('pg');
@@ -150,7 +152,12 @@ describe('createBladeAgent', () => {
     const server = await readFile(join(result.directory, 'src/server.mjs'), 'utf8');
     expect(server).toContain("const webRoot = join(root, '../web');");
     expect(server).toContain("const projectRoot = join(root, '..');");
-    expect(server).toContain('AgentServer');
+    expect(server).not.toContain('const projectRoot = root;');
+    expect(server).toContain('JsonlAgentServerStore');
+    for (const file of ['src/DemoProvider.mjs', 'src/smoke.mjs', '.env.example']) {
+      await readFile(join(result.directory, file));
+    }
+    expect(await readFile(join(result.directory, '.gitignore'), 'utf8')).toContain('.blade/');
     expect(await readFile(join(result.directory, 'web/client.js'), 'utf8')).toContain(
       '@blade-ai/agent-sdk/browser',
     );

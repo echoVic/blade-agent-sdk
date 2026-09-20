@@ -36,3 +36,4 @@ artifacts/
 .cache/
 .data/
 examples/**/.generated/
+examples/**/.blade/

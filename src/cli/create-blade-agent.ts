@@ -6,6 +6,7 @@ import {
   type CreateBladeAgentPreset,
   createBladeAgent,
   getBladeAgentSdkVersion,
+  startBladeAgent,
 } from './createBladeAgent.js';
 
 const HELP = `create-blade-agent [directory] [options]
@@ -18,6 +19,7 @@ Options:
   --sdk-version <version-or-specifier>   SDK dependency (defaults to this CLI version)
   --skip-install                        Generate files without installing dependencies
   --verify                              Run the full smoke test after installation
+  --no-start                            Do not start the web server after installation
   --help                                Show this help
   --version                             Show the installed SDK version
 `;
@@ -25,6 +27,7 @@ Options:
 interface ParsedArguments {
   readonly help: boolean;
   readonly version: boolean;
+  readonly start: boolean;
   readonly options: CreateBladeAgentOptions;
 }
 
@@ -57,6 +60,7 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
   let sdkSpecifier: string | undefined;
   let skipInstall = false;
   let verify = false;
+  let start = true;
   let help = false;
   let version = false;
 
@@ -76,6 +80,10 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
     }
     if (argument === '--verify') {
       verify = true;
+      continue;
+    }
+    if (argument === '--no-start') {
+      start = false;
       continue;
     }
     if (argument === '--package-manager') {
@@ -117,6 +125,7 @@ export function parseCreateBladeAgentArgs(args: readonly string[]): ParsedArgume
   return {
     help,
     version,
+    start,
     options: {
       ...(directory ? { directory } : {}),
       ...(packageManager ? { packageManager } : {}),
@@ -153,6 +162,17 @@ export async function runCreateBladeAgentCli(args = process.argv.slice(2)): Prom
       '',
     ].join('\n'),
   );
+
+  const shouldStart =
+    parsed.start &&
+    result.preset === 'web' &&
+    result.installed &&
+    !result.verified &&
+    Boolean(process.stdout.isTTY);
+  if (shouldStart) {
+    process.stdout.write('Starting the web server (Ctrl+C to stop)…\n');
+    await startBladeAgent(result);
+  }
 }
 
 void runCreateBladeAgentCli().catch((error) => {
