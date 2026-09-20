@@ -200,4 +200,26 @@ describe('JsonlAgentServerStore locking', () => {
     await second.close();
     expect(existsSync(lockPath)).toBe(false);
   });
+
+  it('releases the lock when initialize() fails after acquiring it, so a retry sees the real error', async () => {
+    const dir = await directory();
+    const lockPath = join(dir, 'server-store.lock');
+    // A corrupt journal fails initialize() only after the lock is acquired.
+    await writeFile(join(dir, 'server-store.jsonl'), 'not json\n');
+
+    const first = new JsonlAgentServerStore({ directory: dir });
+    await expect(first.initialize()).rejects.toMatchObject({
+      code: 'RUNTIME_STORE_CORRUPT_JOURNAL',
+    });
+    expect(existsSync(lockPath)).toBe(false);
+
+    // A second attempt -- a retry, or a restart -- must see the same
+    // underlying error rather than RUNTIME_STORE_LOCKED from a lock the
+    // first, failed attempt left behind.
+    const second = new JsonlAgentServerStore({ directory: dir });
+    await expect(second.initialize()).rejects.toMatchObject({
+      code: 'RUNTIME_STORE_CORRUPT_JOURNAL',
+    });
+    expect(existsSync(lockPath)).toBe(false);
+  });
 });

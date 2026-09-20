@@ -91,17 +91,26 @@ export class JsonlAgentServerStore implements AgentServerStore {
     }
     await mkdir(this.directory, { recursive: true });
     this.lockHandle = await this.acquireLock();
-    if (existsSync(this.filePath)) {
-      this.inner.restore(this.parse(await readFile(this.filePath, 'utf8')));
+    try {
+      if (existsSync(this.filePath)) {
+        this.inner.restore(this.parse(await readFile(this.filePath, 'utf8')));
+      }
+      await writeFileAtomic(this.filePath, this.inner.snapshot().map(serialize).join(''));
+      this.handle = await open(this.filePath, 'a');
+      this.state = 'ready';
+    } catch (error) {
+      // The lock was ours to hold only for a successful initialize(). Leaving
+      // it behind on failure (e.g. a corrupt journal) would make every retry
+      // report a busy directory instead of the real, actionable error.
+      await this.releaseLock();
+      throw error;
     }
-    await writeFileAtomic(this.filePath, this.inner.snapshot().map(serialize).join(''));
-    this.handle = await open(this.filePath, 'a');
-    this.state = 'ready';
   }
 
   async close(): Promise<void> {
     if (this.state !== 'ready') {
       this.state = 'closed';
+      await this.releaseLock();
       return;
     }
     this.state = 'closed';
