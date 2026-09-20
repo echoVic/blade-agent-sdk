@@ -207,12 +207,12 @@ describe('Session with a server-hosted opt-in', () => {
       },
     });
 
-    const toolResults: Array<{ name: string; isError?: boolean }> = [];
+    const toolResults: Array<{ name: string; isError?: boolean; output?: unknown }> = [];
     try {
       await session.send('find files');
       for await (const event of session.stream()) {
         if (event.type === 'tool_result') {
-          toolResults.push({ name: event.name, isError: event.isError });
+          toolResults.push({ name: event.name, isError: event.isError, output: event.output });
         }
         if (event.type === 'result' || event.type === 'error') break;
       }
@@ -223,5 +223,8 @@ describe('Session with a server-hosted opt-in', () => {
     const globResult = toolResults.find((result) => result.name === 'Glob');
     expect(globResult).toBeDefined();
     expect(globResult?.isError).toBeFalsy();
+    // Confirms Glob actually searched the workspace rather than merely returning
+    // a non-error result against an empty directory.
+    expect(String(globResult?.output)).toContain('notes.txt');
   });
 });

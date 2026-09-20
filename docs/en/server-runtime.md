@@ -98,6 +98,14 @@ resolveSessionOptions() {
 }
 ```
 
+The `defaultContext.capabilities.filesystem` roots only bound the tools that
+take a path argument — `Read`, `Glob`, and `Grep`. `Bash` is not one of them:
+it only requires a working directory to exist and never checks the command or
+the working directory against the roots, so `Bash`'s reach is bounded by
+`sandbox` and `permissions` instead. Setting `sandbox: { enabled: true }` on a
+host with no platform sandbox makes Session initialization fail outright,
+rather than falling back to running unsandboxed.
+
 Local Sessions still register the built-in tools by default; set
 `builtinTools: false` to turn them off. Skill and subagent disk discovery only
 ever runs on the local host — a server never scans the host's disk.

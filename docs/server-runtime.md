@@ -95,6 +95,12 @@ resolveSessionOptions() {
 }
 ```
 
+`defaultContext.capabilities.filesystem` 的 roots 只限定接受路径参数的工具——`Read`、
+`Glob`、`Grep`。`Bash` 不在其中：它只要求工作目录存在，并不会校验命令或工作目录是否落在
+roots 内，所以 `Bash` 的执行范围要靠 `sandbox` 和 `permissions` 来限定，而不是靠 roots。
+在没有平台级 sandbox 的宿主上设置 `sandbox: { enabled: true }` 会让 Session 初始化直接
+失败，而不会退化为不启用沙箱运行。
+
 本地 Session 仍然默认注册内置工具，设置 `builtinTools: false` 可以关掉。技能与子代理
 的磁盘发现始终只在本地宿主进行，服务端不会扫描宿主磁盘。
 
