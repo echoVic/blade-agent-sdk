@@ -74,6 +74,30 @@ body 中不存在可信 tenant 字段。
 
 PostgreSQL 单一事实源配置见 [Runtime Store](./runtime-store)。
 
+### 内置工具
+
+服务端 Session 默认不注册内置的文件、搜索和 Shell 工具：服务端进程被所有租户共享，
+所以要由运维显式开启。在 `resolveSessionOptions` 返回的选项里设置 `builtinTools: true`，
+再用 `defaultContext.capabilities.filesystem` 限定可见目录、用 `allowedTools` 限定工具、
+用 `permissions` 和 `sandbox` 限定每次调用：
+
+```ts
+resolveSessionOptions() {
+  return {
+    provider,
+    model,
+    builtinTools: true,
+    allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+    permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
+    sandbox: { enabled: true },
+    defaultContext: { capabilities: { filesystem: { roots: [workspace], cwd: workspace } } },
+  };
+}
+```
+
+本地 Session 仍然默认注册内置工具，设置 `builtinTools: false` 可以关掉。技能与子代理
+的磁盘发现始终只在本地宿主进行，服务端不会扫描宿主磁盘。
+
 ## SessionExecutor
 
 `AgentServer` 只处理认证、授权、command 幂等、HTTP 和 SSE。Session 的创建、

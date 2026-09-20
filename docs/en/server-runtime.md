@@ -75,6 +75,33 @@ the authenticated `tenantId`. There is no trusted client-supplied tenant field.
 
 See [Runtime Store](./runtime-store) for the PostgreSQL single-authority setup.
 
+### Built-in tools
+
+Server-hosted Sessions do not register the built-in filesystem, search and shell
+tools by default: the server process is shared by every tenant, so an operator
+must opt in explicitly. Set `builtinTools: true` in the options returned by
+`resolveSessionOptions`, then scope the result with
+`defaultContext.capabilities.filesystem` for visible directories, `allowedTools`
+for the tool set, and `permissions` and `sandbox` for each call:
+
+```ts
+resolveSessionOptions() {
+  return {
+    provider,
+    model,
+    builtinTools: true,
+    allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+    permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
+    sandbox: { enabled: true },
+    defaultContext: { capabilities: { filesystem: { roots: [workspace], cwd: workspace } } },
+  };
+}
+```
+
+Local Sessions still register the built-in tools by default; set
+`builtinTools: false` to turn them off. Skill and subagent disk discovery only
+ever runs on the local host — a server never scans the host's disk.
+
 ## SessionExecutor
 
 `AgentServer` owns authentication, authorization, command idempotency, HTTP,

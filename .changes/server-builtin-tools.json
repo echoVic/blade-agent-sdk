@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Server-hosted Sessions can opt into the built-in filesystem, search and shell tools with `builtinTools: true`, scoped by filesystem capabilities, allowedTools, permission rules and the sandbox.",
+  "zh-CN": "服务端 Session 可以通过 `builtinTools: true` 启用内置的文件、搜索和 Shell 工具，并由文件系统能力、allowedTools、权限规则和沙箱共同限定范围。"
+}

@@ -227,6 +227,15 @@ export interface SessionOptions {
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   memoryManager?: MemoryManager;
   tools?: readonly ToolDefinition<Type.TSchema, JsonValue, ToolServiceName, boolean>[];
+  /**
+   * Whether this Session registers the built-in filesystem, search and shell
+   * tools. Local Sessions register them unless this is `false`. Server-hosted
+   * Sessions do not register them unless this is `true`: a server Session shares
+   * its host process with every other tenant, so the operator opts in per
+   * Session and scopes the result with `defaultContext.capabilities.filesystem`,
+   * `allowedTools`, `permissions` and `sandbox`.
+   */
+  builtinTools?: boolean;
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;
