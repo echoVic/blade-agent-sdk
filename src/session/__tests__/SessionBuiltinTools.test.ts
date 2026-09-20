@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
+import { MemoryManager } from '../../memory/MemoryManager.js';
 import type { ModelServiceConfig } from '../../model/config.js';
 import type { ModelMessage } from '../../model/message.js';
 import type { ModelResponse, ModelService } from '../../model/service.js';
 import type { RuntimeContext } from '../../runtime/index.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
+import { builtinTools as allBuiltinTools } from '../../tools/builtin/index.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import { PermissionMode } from '../../types/constants.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -37,6 +39,18 @@ function createFilesystemContext(workspaceRoot: string): RuntimeContext {
   };
 }
 
+// `memory_read`/`memory_write` additionally require SessionOptions.memoryManager
+// -- unlike every other built-in tool, `builtinTools: true` alone does not
+// register them -- so the full-registration test below provides one.
+function createMemoryManager(): MemoryManager {
+  return new MemoryManager({
+    save: async (memory) => ({ ...memory, updatedAt: 0 }),
+    get: async () => undefined,
+    list: async () => [],
+    delete: async () => undefined,
+  });
+}
+
 describe('SessionOptions.builtinTools', () => {
   let workspaceRoot: string;
 
@@ -46,10 +60,13 @@ describe('SessionOptions.builtinTools', () => {
     FileLockManager.resetInstance();
   });
 
-  it('registers the built-ins for a server host that opts in', async () => {
+  it('registers every built-in tool, not just filesystem/search/shell, for a server host that opts in without allowedTools', async () => {
     const runtime = new SessionRuntime(
       SessionId('server-opt-in'),
-      createOptions({ builtinTools: true }),
+      // memoryManager is provided so this asserts the full built-in set the
+      // option can grant; without it, memory_read/memory_write alone stay
+      // unregistered regardless of builtinTools (see SessionRuntime.test.ts).
+      createOptions({ builtinTools: true, memoryManager: createMemoryManager() }),
       { models: [] },
       PermissionMode.DEFAULT,
       createFilesystemContext(workspaceRoot),
@@ -59,10 +76,19 @@ describe('SessionOptions.builtinTools', () => {
 
     await runtime.initialize();
     try {
-      expect(runtime.getToolRegistry().get('Read')).toBeDefined();
-      expect(runtime.getToolRegistry().get('Glob')).toBeDefined();
-      expect(runtime.getToolRegistry().get('Grep')).toBeDefined();
-      expect(runtime.getToolRegistry().get('Bash')).toBeDefined();
+      const registry = runtime.getToolRegistry();
+      // Derived from the built-in tool list itself, not hand-typed, so a
+      // future addition to that list is covered here automatically instead
+      // of letting the documented contract silently narrow again.
+      for (const tool of allBuiltinTools) {
+        expect(registry.get(tool.name)).toBeDefined();
+      }
+      // Named explicitly: these are exactly what an operator who read only
+      // "filesystem, search and shell" would not expect to get -- file writes
+      // and outbound network access from the shared server process.
+      expect(registry.get('Write')).toBeDefined();
+      expect(registry.get('Edit')).toBeDefined();
+      expect(registry.get('WebFetch')).toBeDefined();
     } finally {
       await runtime.close();
     }

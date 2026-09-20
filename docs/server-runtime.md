@@ -76,10 +76,13 @@ PostgreSQL 单一事实源配置见 [Runtime Store](./runtime-store)。
 
 ### 内置工具
 
-服务端 Session 默认不注册内置的文件、搜索和 Shell 工具：服务端进程被所有租户共享，
-所以要由运维显式开启。在 `resolveSessionOptions` 返回的选项里设置 `builtinTools: true`，
-再用 `defaultContext.capabilities.filesystem` 限定可见目录、用 `allowedTools` 限定工具、
-用 `permissions` 和 `sandbox` 限定每次调用：
+`builtinTools: true` 会注册 SDK 提供的**全部**内置工具——不仅是文件、搜索和 Shell，
+还包括 `Write`、`Edit`、`NotebookEdit`、`WebFetch`、`WebSearch`、`Task` 系列子代理工具、
+`TodoWrite`、memory、plan mode 和 skills。只有 `allowedTools` 能收窄这个集合。服务端
+Session 默认不会注册其中任何一个：服务端进程被所有租户共享，所以要由运维显式开启——并且
+必须在同一次调用里设置 `allowedTools`，否则这次开启就会把文件写入和服务端进程的对外网络
+访问一起交给该租户。再用 `defaultContext.capabilities.filesystem` 限定可见目录、用
+`permissions` 和 `sandbox` 限定每次调用：
 
 ```ts
 resolveSessionOptions() {
@@ -87,6 +90,8 @@ resolveSessionOptions() {
     provider,
     model,
     builtinTools: true,
+    // 必须设置：不设置 allowedTools 时，builtinTools: true 会注册全部内置工具，
+    // 包括 Write、Edit、WebFetch 和 WebSearch。
     allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
     permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
     sandbox: { enabled: true },
@@ -99,7 +104,11 @@ resolveSessionOptions() {
 `Glob`、`Grep`。`Bash` 不在其中：它只要求工作目录存在，并不会校验命令或工作目录是否落在
 roots 内，所以 `Bash` 的执行范围要靠 `sandbox` 和 `permissions` 来限定，而不是靠 roots。
 在没有平台级 sandbox 的宿主上设置 `sandbox: { enabled: true }` 会让 Session 初始化直接
-失败，而不会退化为不启用沙箱运行。
+失败，而不会退化为不启用沙箱运行。调用方若想提前判断会不会走到这个失败分支，通常会用
+`canUseSandbox()` 这个能力检测——但它只说明平台是否具备受支持的沙箱，并不保证被沙箱化的
+命令真的能跑起来：底层的 seatbelt 或 Bubblewrap profile 仍可能在运行时被拒绝。如果调用方
+不能接受初始化失败关闭，就不应该只信任这个能力检测，而应该先用沙箱包装器实际跑一条简单
+命令来探测，就像 starter 在启用自己的沙箱之前所做的那样。
 
 本地 Session 仍然默认注册内置工具，设置 `builtinTools: false` 可以关掉。技能与子代理
 的磁盘发现始终只在本地宿主进行，服务端不会扫描宿主磁盘。

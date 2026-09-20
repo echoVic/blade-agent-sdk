@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -166,5 +167,37 @@ describe('JsonlAgentServerStore persistence', () => {
     await store.close();
     await expect(store.putSession(record())).rejects.toThrow(/closed/i);
     await expect(store.healthCheck()).resolves.toMatchObject({ ready: false });
+  });
+});
+
+describe('JsonlAgentServerStore locking', () => {
+  it('refuses to initialize when a lock file already exists in the directory', async () => {
+    const dir = await directory();
+    const lockPath = join(dir, 'server-store.lock');
+    await writeFile(lockPath, '');
+
+    const store = new JsonlAgentServerStore({ directory: dir });
+    const failure = await store.initialize().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(RuntimeStoreError);
+    expect(failure).toMatchObject({ code: 'RUNTIME_STORE_LOCKED' });
+    expect((failure as Error).message).toContain(lockPath);
+    expect((failure as Error).message).toMatch(/another process/i);
+  });
+
+  it('releases its lock on close so a second store can start on the same directory', async () => {
+    const dir = await directory();
+    const lockPath = join(dir, 'server-store.lock');
+
+    const first = new JsonlAgentServerStore({ directory: dir });
+    await first.initialize();
+    expect(existsSync(lockPath)).toBe(true);
+    await first.close();
+    expect(existsSync(lockPath)).toBe(false);
+
+    const second = new JsonlAgentServerStore({ directory: dir });
+    await expect(second.initialize()).resolves.toBeUndefined();
+    expect(existsSync(lockPath)).toBe(true);
+    await second.close();
+    expect(existsSync(lockPath)).toBe(false);
   });
 });

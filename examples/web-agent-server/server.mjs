@@ -25,6 +25,11 @@ const generated = join(projectRoot, '.generated');
 const startedAt = performance.now();
 const SMOKE_BUDGET_MS = 2 * 60 * 1_000;
 const READ_ONLY_RULES = ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'];
+// AgentServer's default basePath (never overridden below). Requests outside it
+// -- the browser's automatic /favicon.ico among them -- are answered here
+// instead of reaching the Agent handler, which requires auth before it can
+// even report "route not found".
+const AGENT_API_PREFIX = '/v1/agent/';
 
 function parseArgs(argv) {
   const options = {
@@ -236,6 +241,16 @@ const server = createServer(async (request, response) => {
         'cache-control': 'no-store',
       });
       response.end(await readFile(join(generated, 'client.js')));
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/favicon.ico') {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (!url.pathname.startsWith(AGENT_API_PREFIX)) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Not found');
       return;
     }
     const body = await requestBody(request);

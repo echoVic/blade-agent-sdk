@@ -1069,8 +1069,8 @@ try {
   // empty page rather than leaving the user on a "Starting" pill forever with
   // event listeners that work but nothing telling them so.
   state = emptyState();
-  storageWarning = 'The saved conversation could not be displayed and was reset.';
   save();
+  storageWarning = 'The saved conversation could not be displayed and was reset.';
   render();
 }
 if (state.sessionId || state.pendingSubmission) void connect();

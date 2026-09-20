@@ -77,12 +77,16 @@ See [Runtime Store](./runtime-store) for the PostgreSQL single-authority setup.
 
 ### Built-in tools
 
-Server-hosted Sessions do not register the built-in filesystem, search and shell
-tools by default: the server process is shared by every tenant, so an operator
-must opt in explicitly. Set `builtinTools: true` in the options returned by
-`resolveSessionOptions`, then scope the result with
-`defaultContext.capabilities.filesystem` for visible directories, `allowedTools`
-for the tool set, and `permissions` and `sandbox` for each call:
+`builtinTools: true` registers every built-in tool the SDK ships — not only
+filesystem, search and shell, but also `Write`, `Edit`, `NotebookEdit`,
+`WebFetch`, `WebSearch`, the `Task` subagent family, `TodoWrite`, memory, plan
+mode and skills. `allowedTools` is the only thing that narrows that set.
+Server-hosted Sessions do not register any of it by default: the server
+process is shared by every tenant, so an operator must opt in explicitly —
+and, in the same call, set `allowedTools`, or the opt-in hands that tenant
+file writes and outbound network access from the server process. Scope the
+result further with `defaultContext.capabilities.filesystem` for visible
+directories and `permissions` and `sandbox` for each call:
 
 ```ts
 resolveSessionOptions() {
@@ -90,6 +94,8 @@ resolveSessionOptions() {
     provider,
     model,
     builtinTools: true,
+    // Required: without allowedTools, builtinTools: true registers every
+    // built-in tool, including Write, Edit, WebFetch and WebSearch.
     allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
     permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
     sandbox: { enabled: true },
@@ -104,7 +110,14 @@ it only requires a working directory to exist and never checks the command or
 the working directory against the roots, so `Bash`'s reach is bounded by
 `sandbox` and `permissions` instead. Setting `sandbox: { enabled: true }` on a
 host with no platform sandbox makes Session initialization fail outright,
-rather than falling back to running unsandboxed.
+rather than falling back to running unsandboxed. The capability check a
+caller would use to predict that failure ahead of time (`canUseSandbox()`)
+reports whether the platform has a supported sandbox, not whether a sandboxed
+command will actually run — the underlying seatbelt or Bubblewrap profile can
+still be rejected at run time. A caller that must not fail closed should not
+trust the capability check alone; probe by running one trivial command
+through the sandbox wrapper first, the way the starter does before it enables
+its own sandbox.
 
 Local Sessions still register the built-in tools by default; set
 `builtinTools: false` to turn them off. Skill and subagent disk discovery only

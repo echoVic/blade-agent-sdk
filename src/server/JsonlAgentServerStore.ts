@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { type FileHandle, mkdir, open, readFile } from 'node:fs/promises';
+import { type FileHandle, mkdir, open, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import writeFileAtomic from 'write-file-atomic';
 import { createRootLogger, type InternalLogger } from '../logging/Logger.js';
@@ -17,6 +17,7 @@ import {
 import { RuntimeStoreError } from './RuntimeStore.js';
 
 const JOURNAL_FILE = 'server-store.jsonl';
+const LOCK_FILE = 'server-store.lock';
 const JOURNAL_VERSION = 1;
 const ENTRY_KINDS: ReadonlySet<string> = new Set(['session', 'event', 'event_key', 'lease']);
 
@@ -53,15 +54,18 @@ function isJournalLine(value: unknown): value is JournalLine {
 export class JsonlAgentServerStore implements AgentServerStore {
   private readonly directory: string;
   private readonly filePath: string;
+  private readonly lockPath: string;
   private readonly logger: InternalLogger;
   private readonly inner: InMemoryAgentServerStore;
   private handle: FileHandle | undefined;
+  private lockHandle: FileHandle | undefined;
   private queue: Promise<void> = Promise.resolve();
   private state: 'new' | 'ready' | 'closed' = 'new';
 
   constructor(options: JsonlAgentServerStoreOptions) {
     this.directory = options.directory;
     this.filePath = join(options.directory, JOURNAL_FILE);
+    this.lockPath = join(options.directory, LOCK_FILE);
     this.logger = createRootLogger(options.logger ?? null);
     this.inner = new InMemoryAgentServerStore({
       ...(options.maxEventsPerSession !== undefined
@@ -72,7 +76,12 @@ export class JsonlAgentServerStore implements AgentServerStore {
     });
   }
 
-  /** Replays the journal, rewrites it compacted, then opens it for appends. */
+  /**
+   * Claims `server-store.lock`, replays the journal, rewrites it compacted,
+   * then opens it for appends. The lock is exclusive for the store's
+   * lifetime: it guards against a second process starting on the same
+   * `directory` and silently truncating this one's journal out from under it.
+   */
   async initialize(): Promise<void> {
     if (this.state === 'ready') {
       return;
@@ -81,6 +90,7 @@ export class JsonlAgentServerStore implements AgentServerStore {
       throw new Error('JsonlAgentServerStore is closed');
     }
     await mkdir(this.directory, { recursive: true });
+    this.lockHandle = await this.acquireLock();
     if (existsSync(this.filePath)) {
       this.inner.restore(this.parse(await readFile(this.filePath, 'utf8')));
     }
@@ -99,6 +109,39 @@ export class JsonlAgentServerStore implements AgentServerStore {
     const handle = this.handle;
     this.handle = undefined;
     await handle?.close();
+    await this.releaseLock();
+  }
+
+  /**
+   * `wx` fails with `EEXIST` when the lock file already exists, so creation
+   * itself is the exclusive claim -- no separate check-then-create race.
+   */
+  private async acquireLock(): Promise<FileHandle> {
+    try {
+      return await open(this.lockPath, 'wx');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new RuntimeStoreError(
+          'RUNTIME_STORE_LOCKED',
+          `${this.lockPath} already exists. Another process may be using ` +
+            `${this.directory} as a JsonlAgentServerStore directory, and starting a ` +
+            'second one here would corrupt its journal. If no other process is ' +
+            `running, this lock is stale: delete ${this.lockPath} and start again.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async releaseLock(): Promise<void> {
+    const lockHandle = this.lockHandle;
+    this.lockHandle = undefined;
+    if (!lockHandle) {
+      return;
+    }
+    await lockHandle.close();
+    await rm(this.lockPath, { force: true });
   }
 
   async healthCheck(): Promise<{ ready: boolean; details?: JsonObject }> {
@@ -246,7 +289,10 @@ export class JsonlAgentServerStore implements AgentServerStore {
     }
     const line = serialize(entry);
     const next = this.queue.then(async () => {
-      await handle.write(line);
+      // `appendFile` loops until every byte is written; a bare `write()` is one
+      // `write(2)` call and can return fewer `bytesWritten` than given, leaving
+      // a half-line that corrupts the journal for every reader after it.
+      await handle.appendFile(line);
     });
     // Keep the chain alive after a failure so later writes and close() still drain.
     this.queue = next.catch(() => undefined);
