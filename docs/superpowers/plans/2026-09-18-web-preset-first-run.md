@@ -4237,3 +4237,220 @@ cd /tmp && rm -rf demo && npx --yes --package=/Users/bytedance/Documents/GitHub/
 
 - `git status` 干净，所有提交都在 `feat/web-preset-first-run`。
 - 在 PR 描述里列出：四个 changelog fragment、smoke 输出 JSON、macOS 手工验证记录、未在本机执行的步骤。
+
+### Task 5A: 服务端宿主可选注册内置工具
+
+Added mid-execution: Task 6 proved the plan's web-starter design cannot work, because an `AgentServer`-hosted Session never registers the built-in filesystem, search and shell tools. This task adds the opt-in that makes it possible. The user chose this over hand-rolling tools in the example.
+
+**Files:**
+- Modify: `src/session/types.ts` (new `SessionOptions.builtinTools` field)
+- Modify: `src/session/SessionRuntime.ts` (one computed predicate replacing five host checks)
+- Create: `src/session/__tests__/SessionBuiltinTools.test.ts`
+- Modify: `docs/server-runtime.md`, `docs/en/server-runtime.md`
+- Create: `.changes/server-builtin-tools.json`
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces: `SessionOptions.builtinTools?: boolean`. Task 6's `resolveSessionOptions` sets `builtinTools: true`.
+
+#### Background, already verified — do not re-derive
+
+`SessionRuntime` takes a `hostProfile` of `'node' | 'server'`. Five places branch on it for reasons tied to running the built-in tools, and two branch on it for disk discovery. Only the first five change.
+
+Tool prerequisites and cleanup, all five must move to the new predicate so that whoever opens a background-shell session also closes it:
+1. `initialize()` around line 239: `if (this.hostProfile === NODE_SESSION_HOST) { BackgroundShellManager.getInstance().openSession(this.sessionId); if (this.options.sandbox) { ...setLogger...; getSandboxService().assertUsable(this.options.sandbox); } }`
+2. `initialize()` around line 243: `if (this.hostProfile === NODE_SESSION_HOST) { await this.registerBuiltinTools(); } else { this.registerBuiltinToolSet([...skillTool, ...memory tools]); }`
+3. `close()` around line 310: the `BackgroundShellManager` terminate block.
+4. `sealBackgroundWorkForHandoff()` around line 196: `const shellManager = this.hostProfile === NODE_SESSION_HOST ? BackgroundShellManager.getInstance() : undefined;`
+5. `stopBackgroundWorkAfterLeaseLoss()` around line 211: the `killExecutionFence` guard.
+
+Disk discovery, stays node-only and MUST NOT change, because a server must not scan the host's disk for configuration:
+- constructor around line 109: `projectSkillsDir: hostProfile === NODE_SESSION_HOST ? 'skills' : undefined`
+- `initializeSubagents()`: the `loadFromStandardLocations` guard
+
+#### Step 1: Write the failing test
+
+Create `src/session/__tests__/SessionBuiltinTools.test.ts`. Read the top of `src/session/__tests__/SessionRuntime.test.ts` first and reuse its construction pattern verbatim: it builds a `SessionRuntime` directly and inspects `runtime.getToolRegistry().get('Read')`, which is the cheapest accurate probe. Cover exactly these cases:
+
+1. server host with `builtinTools: true` registers the built-ins: `Read`, `Glob`, `Grep` and `Bash` are all defined in the registry.
+2. server host with no `builtinTools` keeps today's behaviour: those four are all undefined.
+3. node host with no `builtinTools` still registers them; node host with `builtinTools: false` does not.
+4. `allowedTools` still filters when opted in: server host, `builtinTools: true`, `allowedTools: ['Read']` leaves `Read` defined and `Bash` undefined.
+
+Then add one behavioural regression test in the same file, because the registry probe alone would not have caught the bug Task 6 hit. Build a server-host Session through `createSession` from `../Session.js` with a `ProviderRegistry`-registered scripted provider that emits one `Glob` tool call and then stops, plus `builtinTools: true`, `allowedTools: ['Glob']`, an in-memory-safe `defaultContext.capabilities.filesystem` pointing at a `mkdtemp` directory holding one file, and `persistSession: false`. Consume `session.stream()` and assert a `tool_result` for `Glob` arrives with `isError` falsy. Follow `src/session/__tests__/SessionProviderRegistry.test.ts` for the provider-adapter shape.
+
+#### Step 2: Run the tests to verify they fail
+
+Run: `pnpm vitest run src/session/__tests__/SessionBuiltinTools.test.ts`
+Expected: cases 1 and 4 and the behavioural test fail (the built-ins are not registered for the server host); cases 2 and 3 pass.
+
+#### Step 3: Add the option
+
+In `src/session/types.ts`, next to the existing tool fields (`allowedTools`, `disallowedTools`, `toolSourcePolicy`, `tools`), add:
+
+```ts
+  /**
+   * Whether this Session registers the built-in filesystem, search and shell
+   * tools. Local Sessions register them unless this is `false`. Server-hosted
+   * Sessions do not register them unless this is `true`: a server Session shares
+   * its host process with every other tenant, so the operator opts in per
+   * Session and scopes the result with `defaultContext.capabilities.filesystem`,
+   * `allowedTools`, `permissions` and `sandbox`.
+   */
+  builtinTools?: boolean;
+```
+
+#### Step 4: Replace the five host checks with one predicate
+
+In `src/session/SessionRuntime.ts`, add a private readonly field and compute it in the constructor beside the other assignments:
+
+```ts
+  private readonly usesBuiltinTools: boolean;
+```
+
+```ts
+    this.usesBuiltinTools = options.builtinTools ?? hostProfile === NODE_SESSION_HOST;
+```
+
+Then change exactly the five sites listed above from `this.hostProfile === NODE_SESSION_HOST` to `this.usesBuiltinTools`. Change nothing else. Leave the two disk-discovery checks alone. If, after this, `NODE_SESSION_HOST` is no longer referenced in the file, keep the import only if something still uses it; otherwise remove the now-unused import so lint stays clean.
+
+#### Step 5: Run the tests to verify they pass
+
+Run: `pnpm vitest run src/session/__tests__/SessionBuiltinTools.test.ts`
+Expected: all cases pass.
+
+Then confirm nothing regressed in the session and server suites:
+Run: `pnpm vitest run src/session src/server`
+Expected: pass. Then `pnpm lint:fix && pnpm lint && pnpm type-check`, and `pnpm test` once.
+
+#### Step 6: Docs
+
+In `docs/server-runtime.md`, inside the `## 创建服务端` section, append:
+
+```markdown
+### 内置工具
+
+服务端 Session 默认不注册内置的文件、搜索和 Shell 工具：服务端进程被所有租户共享，
+所以要由运维显式开启。在 `resolveSessionOptions` 返回的选项里设置 `builtinTools: true`，
+再用 `defaultContext.capabilities.filesystem` 限定可见目录、用 `allowedTools` 限定工具、
+用 `permissions` 和 `sandbox` 限定每次调用：
+
+```ts
+resolveSessionOptions() {
+  return {
+    provider,
+    model,
+    builtinTools: true,
+    allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+    permissions: { allow: ['Read', 'Read:*', 'Glob', 'Glob:*', 'Grep', 'Grep:*'] },
+    sandbox: { enabled: true },
+    defaultContext: { capabilities: { filesystem: { roots: [workspace], cwd: workspace } } },
+  };
+}
+```
+
+本地 Session 仍然默认注册内置工具，设置 `builtinTools: false` 可以关掉。技能与子代理
+的磁盘发现始终只在本地宿主进行，服务端不会扫描宿主磁盘。
+```
+
+In `docs/en/server-runtime.md`, inside `## Create a server`, append the same section in English under the heading `### Built-in tools`, with the same code block and the same two closing sentences.
+
+#### Step 7: Fragment and commit
+
+Create `.changes/server-builtin-tools.json`:
+
+```json
+{
+  "type": "feature",
+  "en": "Server-hosted Sessions can opt into the built-in filesystem, search and shell tools with `builtinTools: true`, scoped by filesystem capabilities, allowedTools, permission rules and the sandbox.",
+  "zh-CN": "服务端 Session 可以通过 `builtinTools: true` 启用内置的文件、搜索和 Shell 工具，并由文件系统能力、allowedTools、权限规则和沙箱共同限定范围。"
+}
+```
+
+```bash
+pnpm lint:fix && pnpm lint && pnpm type-check
+git add src/session/types.ts src/session/SessionRuntime.ts src/session/__tests__/SessionBuiltinTools.test.ts docs/server-runtime.md docs/en/server-runtime.md .changes/server-builtin-tools.json
+git commit -m "feat(session): let server-hosted Sessions opt into the built-in tools"
+```
+
+### Task 6A: 沙箱符号链接与工具失败信息
+
+Added mid-execution. Task 6's review reproduced a real SDK defect: on macOS the sandbox denies a workspace whose path crosses a symlink, so every shell command in it fails, and the failure is then rendered as `Tool execution failed: [object Object]`. The demo's headline moment shows that line today. Both halves are user-facing and neither is specific to the example.
+
+**Files:**
+- Modify: `src/sandbox/SandboxExecutor.ts`
+- Modify: `src/sandbox/__tests__/SandboxExecutor.test.ts`
+- Modify: whichever file throws the non-Error value you identify in part B, plus `src/utils/errorUtils.ts` if you change the renderer
+- Modify: `examples/web-agent-server/smoke.mjs`
+- Create: `.changes/sandbox-symlinked-workspace.json`, `.changes/tool-failure-message.json`
+
+**Interfaces:** no public API change. Task 8 and Task 9 depend only on the smoke continuing to pass.
+
+#### Part A: the sandbox must cover the real path
+
+Reproduction, already confirmed by the reviewer. A workspace under `mkdtemp(tmpdir())` on macOS is `/var/folders/...`, a symlink to `/private/var/folders/...`. The generated seatbelt profile names the symlinked path, the process's real working directory is the resolved one, so `npm ls` dies with `EPERM: operation not permitted, uv_cwd` and exit 7. The same directory addressed through its real path returns the JSON the demo wants.
+
+Fix additively, never by substitution: emit both the given path and its resolved real path whenever they differ.
+- `generateSeatbeltProfile`: the `workDir` read and write rules, currently two `lines.push` calls naming `options.workDir`, and the `allowedReadPaths` and `allowedWritePaths` loops just below them.
+- `wrapWithBubblewrap`: the `--bind` and `--chdir` pair naming `options.workDir`, and the `allowedWritePaths` and `allowedReadPaths` loops in that function.
+
+Resolve with `realpathSync` inside a try/catch that falls back to the original path: callers legitimately pass paths that do not exist, and the existing tests do exactly that. Keep the existing `path !== options.workDir` dedupe behaviour working, and do not remove the hard-coded `/tmp` and `/private/tmp` rules; this change generalises that same workaround.
+
+Do NOT change `buildExecutionOptions`. `wrapCommand` accepts caller-built options, so resolving there would miss callers.
+
+Tests to add in `src/sandbox/__tests__/SandboxExecutor.test.ts`, following the existing `describe('wrapCommand')` pattern that mocks `getCapabilities`:
+- for a real symlinked directory created with `mkdtempSync` plus `symlinkSync`, the generated profile contains read and write rules for BOTH the symlinked path and its real path.
+- for a path that does not exist, the profile still contains its rule and generation does not throw.
+Extract the profile the way the existing root-read test does, by reading the file named in the returned `-f '<path>'` argument, and clean up what you create.
+
+#### Part B: a failed tool must say what failed
+
+`Tool execution failed: [object Object]` reaches the user because something in the Bash execution path throws a value that is not an `Error`, and `getErrorMessage` in `src/utils/errorUtils.ts` ends with `String(error)`, which renders a plain object that way.
+
+Do this in order:
+1. Reproduce it. Point a workspace at a symlinked temp directory, run the Bash tool through the starter, and capture the actual thrown value. The reviewer's repro in part A is the trigger. Note that `npm ls` exiting non-zero is NOT this bug: a non-zero exit is a normal tool result. You are looking for the execution-failure path.
+2. Fix the thrower at its source so it throws an `Error` with a message that names the failure, if that is where the defect is.
+3. Independently, make the renderer honest for any non-Error value: `getErrorMessage` should produce something a user can act on rather than `[object Object]`. Prefer the object's own `message` when it is a string, then a compact JSON form, then `String(error)`. Keep the function's signature and its `Error` and string branches exactly as they are, and add a focused test in the same `__tests__` directory covering a plain object, an object carrying a string `message`, a string, an `Error`, `null` and `undefined`.
+
+If part B's step 1 shows the thrown value is already an `Error` and the `[object Object]` comes from somewhere else entirely, stop and report what you found with the evidence rather than guessing: the renderer fix still stands on its own, but the controller needs to know the real source.
+
+#### Part C: the smoke must not certify a failed tool
+
+In `examples/web-agent-server/smoke.mjs`:
+- resolve the fixture base with `realpath` after `mkdtemp`, so the returned `root` and `dataDir` are real paths.
+- assert the report's npm line reflects a real npm result rather than a tool failure: after the report is collected, fail the smoke if it contains `Tool execution failed` or `did not return JSON`. Put the assertion next to the existing tool-name and `SECURITY_SECTION` checks and give it a message that names what went wrong.
+
+#### Verification
+
+```bash
+pnpm vitest run src/sandbox src/utils
+pnpm lint:fix && pnpm lint && pnpm type-check
+pnpm build && node examples/web-agent-server/server.mjs --smoke
+pnpm test
+```
+
+The smoke must still print the four tool names, `"steered": true` and `"continuationRestored": true`, and its report's npm line must now carry a real npm summary. Paste that line into your report.
+
+#### Fragments and commit
+
+`.changes/sandbox-symlinked-workspace.json`:
+
+```json
+{
+  "type": "fix",
+  "en": "Sandboxed commands now work in a workspace whose path crosses a symlink: the sandbox policy covers both the given path and its resolved real path.",
+  "zh-CN": "工作目录路径经过符号链接时，沙箱内的命令现在可以正常执行：沙箱策略同时覆盖传入路径和解析后的真实路径。"
+}
+```
+
+`.changes/tool-failure-message.json`:
+
+```json
+{
+  "type": "fix",
+  "en": "A failed tool now reports what failed instead of `[object Object]` when the thrown value is not an Error.",
+  "zh-CN": "工具执行失败时，抛出值不是 Error 也会给出可读原因，不再显示 `[object Object]`。"
+}
+```
+
+Stage explicitly, never `git add -A` or `git commit -a`, and keep `docs/superpowers/plans/2026-09-18-web-preset-first-run.md` out of the commit. Commit as `fix(sandbox): cover symlinked workspaces and report tool failures readably`.
