@@ -76,3 +76,25 @@ test('reports a missing manifest instead of reading it', () => {
   assert.equal(step.response.toolCalls, undefined);
   assert.match(step.response.content, /No Node manifest/);
 });
+
+test('an unrelated question after a report re-enters the script instead of continuing', () => {
+  const messages = [
+    user('Analyze this project'),
+    { role: 'assistant', content: `${REPORT_TITLE} for demo\n\n- Direct dependencies: 3 (2 runtime, 1 dev)` },
+    user('check the test coverage'),
+  ];
+  assert.equal(analyzeConversation(messages).phase, 'script');
+  const step = nextStep(messages, root);
+  assert.equal(toolName(step), 'Glob');
+  assert.doesNotMatch(step.response.content, new RegExp(CONTINUATION_PREFIX));
+});
+
+test('a no-manifest response is not mistaken for a saved report', () => {
+  const messages = [user('Analyze'), assistantCall('c1', 'Glob', {}), toolResult('c1', 'No files found')];
+  const noManifest = nextStep(messages, root);
+  messages.push({ role: 'assistant', content: noManifest.response.content }, user('Continue the analysis'));
+  assert.notEqual(analyzeConversation(messages).phase, 'continue');
+  const step = nextStep(messages, root);
+  assert.doesNotMatch(step.response.content, new RegExp(CONTINUATION_PREFIX));
+  assert.doesNotMatch(step.response.content, /\(the dependencies/);
+});

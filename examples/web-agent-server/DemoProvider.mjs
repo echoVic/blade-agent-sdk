@@ -12,6 +12,7 @@ export const NPM_CACHE_FLAG = '--cache /tmp/blade-npm-cache';
 
 const UNPINNED_RANGE = /^(\^|~|\*$|latest$|>|<|x$)/;
 const SECURITY_PATTERN = 'postinstall|preinstall|eval\\(|child_process';
+const CONTINUATION_REQUEST = /继续|接着|continue|carry on|keep going|go on|resume|follow[- ]?up/i;
 
 export function textOf(content) {
   if (typeof content === 'string') return content;
@@ -53,15 +54,19 @@ function toolResults(messages, startIndex) {
 
 /**
  * The provider is stateless: every call reads the conversation and decides the
- * next step. Order matters: a prior report means "continue"; a second user
- * message inside the current task means "steered"; otherwise follow the script.
+ * next step. Order matters: a prior report followed by a message that actually
+ * asks to continue means "continue"; a second user message inside the current
+ * task means "steered"; otherwise follow the script. A new message after a
+ * report that is not a continuation request starts a fresh task instead of
+ * being trapped by the old report.
  */
 export function analyzeConversation(messages) {
   const reportIndex = messages.findLastIndex(
     (message) => message.role === 'assistant' && textOf(message.content).includes(REPORT_TITLE),
   );
   const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
-  if (reportIndex !== -1 && lastUserIndex > reportIndex) {
+  const lastUserText = lastUserIndex === -1 ? '' : textOf(messages[lastUserIndex].content);
+  if (reportIndex !== -1 && lastUserIndex > reportIndex && CONTINUATION_REQUEST.test(lastUserText)) {
     return { phase: 'continue', report: textOf(messages[reportIndex].content) };
   }
   const taskStart = reportIndex === -1 ? 0 : reportIndex + 1;
@@ -174,9 +179,10 @@ function buildReport(results, root, steeringText = '') {
 }
 
 function continuation(report) {
-  const reviewed = /Direct dependencies: (\d+)/.exec(report)?.[1] ?? 'the';
+  const count = /Direct dependencies: (\d+)/.exec(report)?.[1];
+  const reviewed = count ? ` (${count} dependencies reviewed)` : '';
   return [
-    `${CONTINUATION_PREFIX} (${reviewed} dependencies reviewed).`,
+    `${CONTINUATION_PREFIX}${reviewed}.`,
     '',
     'Two follow-ups from that report:',
     '1. Pin any unpinned ranges and commit the lockfile, then re-run this analysis.',
@@ -210,7 +216,7 @@ export function nextStep(messages, root) {
   }
   if (!globFiles(glob.text).includes('package.json')) {
     return text(
-      `${REPORT_TITLE} for ${basename(root)}\n\nNo Node manifest found under ${root}: nothing named package.json matched, so there are no dependencies to assess. Point --root at a Node project to analyze it.`,
+      `No Node manifest found under ${root}: nothing named package.json matched, so there are no dependencies to assess. Point --root at a Node project to analyze it.`,
       'No package.json here; reporting that instead of guessing',
     );
   }
