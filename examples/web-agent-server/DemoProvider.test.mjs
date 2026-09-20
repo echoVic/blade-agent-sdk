@@ -26,7 +26,7 @@ const manifest = JSON.stringify({
 });
 const bashText = JSON.stringify({ stdout: JSON.stringify({ problems: ['missing: left-pad@^1.3.0'] }), stderr: '', exit_code: 1 });
 // What InvocationStage now renders when a priority-now steer interrupts a running Bash call.
-const interruptedBashText = 'Tool execution failed: Tool execution was interrupted by a new instruction';
+const interruptedBashText = 'Tool execution failed: Interrupted by a new instruction';
 
 test('follows the script: Glob, Read, Bash, then a report', () => {
   const messages = [user('Analyze this project')];

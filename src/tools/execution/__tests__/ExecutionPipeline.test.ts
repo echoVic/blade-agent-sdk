@@ -737,10 +737,66 @@ describe('ExecutionPipeline', () => {
     const result = await resultPromise;
     expect(result).toMatchObject({
       status: 'error',
-      model: 'Tool execution failed: Tool execution was interrupted by a new instruction',
+      model: 'Tool execution failed: Interrupted by a new instruction',
       error: {
         type: ToolErrorType.INTERRUPTED,
-        message: 'Tool execution was interrupted by a new instruction',
+        message: 'Interrupted by a new instruction',
+      },
+    });
+  });
+
+  it('keeps a genuine error message when a tool throws its own error while the signal is steering-aborted', async () => {
+    const registry = new ToolRegistry();
+    const started = deferred();
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'ThrowsOwnErrorOnAbort',
+        displayName: 'Throws Own Error On Abort',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: {
+          short: 'Tool that throws its own error after the signal aborts for steering',
+        },
+        schema: Type.Object({}),
+        async *execute(_params, context) {
+          started.resolve();
+          await new Promise<void>((resolve) => {
+            context.signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+          // A genuine failure, distinct from (not `===`) the abort reason
+          // itself — e.g. cleanup work that ran after the abort observed its
+          // own unrelated error.
+          throw new Error('disk write failed');
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const controller = new AbortController();
+    const resultPromise = executePipeline(
+      pipeline,
+      'ThrowsOwnErrorOnAbort',
+      {},
+      { permissionMode: PermissionMode.YOLO, signal: controller.signal },
+    );
+
+    await started.promise;
+    controller.abort({ kind: 'steering', inputId: InputId('distinct-error-during-steering') });
+
+    const result = await resultPromise;
+    // Still classified as interrupted (the signal really was aborted for a
+    // steering reason), but the message is the tool's own, not the generic
+    // interrupt sentence, because the caught error is not the abort reason.
+    expect(result).toMatchObject({
+      status: 'error',
+      model: 'Tool execution failed: disk write failed',
+      error: {
+        type: ToolErrorType.INTERRUPTED,
+        message: 'disk write failed',
       },
     });
   });

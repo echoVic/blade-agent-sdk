@@ -17,13 +17,20 @@ export function getErrorMessage(error: unknown): string {
   ) {
     return (error as { message: string }).message;
   }
-  try {
-    const json = JSON.stringify(error);
-    if (json !== undefined) return json;
-  } catch {
-    // Circular or otherwise non-serializable value: fall through below.
+  // Only reach for the JSON form when the plain string conversion would be
+  // the useless `[object Object]`. A class instance with a meaningful custom
+  // toString() but no enumerable own properties would otherwise lose that
+  // string to a bare, uninformative `{}` from JSON.stringify.
+  const stringForm = String(error);
+  if (stringForm === '[object Object]') {
+    try {
+      const json = JSON.stringify(error);
+      if (json !== undefined) return json;
+    } catch {
+      // Circular or otherwise non-serializable value: fall through below.
+    }
   }
-  return String(error);
+  return stringForm;
 }
 
 export function getErrorName(error: unknown): string {

@@ -125,8 +125,15 @@ export async function runSmoke({ baseUrl, startedAt, budgetMs, restart }) {
       }
     }
     if (!steer) throw new Error('The script never reached Bash, so steering was not exercised');
-    if (report.includes('Tool execution failed') || report.includes('did not return JSON')) {
-      throw new Error(`Report's npm line shows a failed tool instead of a real npm result:\n${report}`);
+    // Assert the positive: the npm line must read like a real npm ls summary
+    // (see DemoProvider's npmLsSummary), not merely avoid a couple of known-bad
+    // substrings. Any other wording - "did not return JSON", "exited N without
+    // JSON output", "could not complete: interrupted twice", "was not run" -
+    // means the command never actually completed, and fails the gate.
+    const npmLine = report.split('\n').find((line) => line.startsWith('- npm ls'));
+    const REAL_NPM_RESULT = /^- npm ls(?: reported \d+ problem\(s\)|: the installed tree matches the manifest)/;
+    if (!npmLine || !REAL_NPM_RESULT.test(npmLine)) {
+      throw new Error(`Report's npm line is not a real npm result: ${npmLine ?? '(no npm ls line found)'}`);
     }
     if (!report.includes(REPORT_TITLE) || !report.includes(SECURITY_SECTION)) {
       throw new Error(`Report did not reflect steering:\n${report}`);

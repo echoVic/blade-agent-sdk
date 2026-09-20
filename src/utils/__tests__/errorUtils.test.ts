@@ -24,6 +24,15 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage({ kind: 'steering', inputId: 'abc' })).not.toBe('[object Object]');
   });
 
+  it('falls through to a custom toString() when there are no enumerable own properties to JSON-encode', () => {
+    class QuietFailure {
+      toString(): string {
+        return 'quiet failure: disk full';
+      }
+    }
+    expect(getErrorMessage(new QuietFailure())).toBe('quiet failure: disk full');
+  });
+
   it('renders null as the string "null"', () => {
     expect(getErrorMessage(null)).toBe('null');
   });

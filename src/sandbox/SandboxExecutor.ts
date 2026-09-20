@@ -192,6 +192,20 @@ export class SandboxExecutor {
     }
   }
 
+  /**
+   * A resolved path of "/" or a single top-level directory (e.g. "/var") is
+   * too broad to grant additively: `realpathSync` performs no containment
+   * check, so a workDir that is itself a symlink to (or through) a top-level
+   * directory would otherwise turn the additive rule into a grant of that
+   * entire root. Refusing it here only ever narrows what the additive rule
+   * would have covered — the literal workDir rule stays in place, so a
+   * workspace that genuinely resolves to a root is still covered by its own
+   * given path, just not widened past it.
+   */
+  private isRootLikePath(path: string): boolean {
+    return path.split('/').filter(Boolean).length <= 1;
+  }
+
   private wrapWithBubblewrap(command: string, options: SandboxExecutionOptions): string {
     const args: string[] = [];
 
@@ -221,38 +235,45 @@ export class SandboxExecutor {
     args.push('--dev /dev');
     args.push('--tmpfs /tmp');
 
+    // Only the work directory is resolved to its real path, never the allowed
+    // read/write lists below — see the comment above those loops for why.
     const realWorkDir = this.resolveRealPath(options.workDir);
     args.push(`--bind ${options.workDir} ${options.workDir}`);
     args.push(`--chdir ${options.workDir}`);
     if (realWorkDir !== options.workDir) {
-      args.push(`--bind ${realWorkDir} ${realWorkDir}`);
+      if (this.isRootLikePath(realWorkDir)) {
+        this.logger.warn(
+          `[SandboxExecutor] workDir "${options.workDir}" resolves to "${realWorkDir}", which is ` +
+            'too broad to grant additively; only the given path is covered.',
+        );
+      } else {
+        args.push(`--bind ${realWorkDir} ${realWorkDir}`);
+      }
     }
 
+    // Allowed paths are matched by their literal value only, never resolved.
+    // A caller-supplied entry that crosses a symlink is dead policy here,
+    // exactly as it was before the workDir fix above existed: resolving these
+    // lists too would let one symlinked leaf (e.g. an allowed path planted to
+    // point at "/") turn a single caller-supplied entry into a bind of its
+    // resolved target's entire tree — a real widening, not a restatement of
+    // what the caller already granted. See generateSeatbeltProfile for the
+    // sandbox-exec experiment that established this. The read and write loops
+    // are kept symmetric: both skip an entry that literally names the work
+    // directory, so neither can emit a bind that shadows the read-write
+    // workspace bind above under last-mount-wins.
     if (options.allowedWritePaths) {
       for (const path of options.allowedWritePaths) {
         if (existsSync(path) && path !== options.workDir && path !== realWorkDir) {
           args.push(`--bind ${path} ${path}`);
-        }
-        const realPath = this.resolveRealPath(path);
-        if (
-          realPath !== path &&
-          existsSync(realPath) &&
-          realPath !== options.workDir &&
-          realPath !== realWorkDir
-        ) {
-          args.push(`--bind ${realPath} ${realPath}`);
         }
       }
     }
 
     if (options.allowedReadPaths) {
       for (const path of options.allowedReadPaths) {
-        if (existsSync(path)) {
+        if (existsSync(path) && path !== options.workDir && path !== realWorkDir) {
           args.push(`--ro-bind ${path} ${path}`);
-        }
-        const realPath = this.resolveRealPath(path);
-        if (realPath !== path && existsSync(realPath)) {
-          args.push(`--ro-bind ${realPath} ${realPath}`);
         }
       }
     }
@@ -348,31 +369,43 @@ export class SandboxExecutor {
       lines.push(`(allow file-write* (subpath "${homeDir}/.pnpm"))`);
     }
 
+    // Only the work directory is resolved to its real path. Experimentation
+    // with sandbox-exec confirmed seatbelt matches a rule's target against the
+    // accessed path's *canonical* form, while the rule text itself is never
+    // canonicalized: naming an unresolved symlink grants nothing for what it
+    // points at, and naming a resolved path grants that path's entire
+    // subtree — including everything below it that the caller never named.
+    // Resolving allowedReadPaths/allowedWritePaths as well would therefore let
+    // one symlinked leaf (e.g. a planted "$HOME/.npm -> /") turn a single
+    // caller-supplied entry into a grant of "/". Leaving those lists
+    // unresolved keeps a symlink-crossing entry there dead policy, exactly as
+    // it was before this file resolved anything — the safe direction, since
+    // refusing to grant more than the caller literally named never takes away
+    // access that existed before.
     const realWorkDir = this.resolveRealPath(options.workDir);
     lines.push(`(allow file-read* (subpath "${options.workDir}"))`);
     lines.push(`(allow file-write* (subpath "${options.workDir}"))`);
     if (realWorkDir !== options.workDir) {
-      lines.push(`(allow file-read* (subpath "${realWorkDir}"))`);
-      lines.push(`(allow file-write* (subpath "${realWorkDir}"))`);
+      if (this.isRootLikePath(realWorkDir)) {
+        this.logger.warn(
+          `[SandboxExecutor] workDir "${options.workDir}" resolves to "${realWorkDir}", which is ` +
+            'too broad to grant additively; only the given path is covered.',
+        );
+      } else {
+        lines.push(`(allow file-read* (subpath "${realWorkDir}"))`);
+        lines.push(`(allow file-write* (subpath "${realWorkDir}"))`);
+      }
     }
 
     if (options.allowedReadPaths) {
       for (const path of options.allowedReadPaths) {
         lines.push(`(allow file-read* (subpath "${path}"))`);
-        const realPath = this.resolveRealPath(path);
-        if (realPath !== path) {
-          lines.push(`(allow file-read* (subpath "${realPath}"))`);
-        }
       }
     }
 
     if (options.allowedWritePaths) {
       for (const path of options.allowedWritePaths) {
         lines.push(`(allow file-write* (subpath "${path}"))`);
-        const realPath = this.resolveRealPath(path);
-        if (realPath !== path) {
-          lines.push(`(allow file-write* (subpath "${realPath}"))`);
-        }
       }
     }
 
