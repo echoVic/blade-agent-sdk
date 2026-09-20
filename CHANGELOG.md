@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.15] - 2026-09-20
+
+### Fixes
+
+- Harden authorized working directories, durable JSONL lifecycle recovery, CLI process handling, and web demo steering behavior.
+
 ## [7.4.14] - 2026-09-20
 
 ### Features
