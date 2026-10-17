@@ -2,6 +2,19 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [7.4.16] - 2026-10-17
+
+### 新功能
+
+- Session 新增图片处理能力。`image_url` part 可以携带 `ImageRef` 元数据（`detail`、`mediaType`、尺寸、`alt`）；`SessionOptions.vision` 与按 provider 的内置表决定模型能否收图；`SessionOptions.images` 用来设置入口限制、可选的 `ImageStore`（`InMemoryImageStore`、`combineImageStores`，图片字节因此不必留在 transcript 里）和单次请求的图片预算。`send()` 遇到不能接收的图片会抛出 `SESSION_INPUT_IMAGE_REJECTED`。每次模型请求都优先保留新图片，旧图片按稳定的步长裁剪，并用确定性的占位文本替代；如果 provider 因图片拒绝某一轮，这一轮会减少图片后重试一次。协议的 `input.submit` 接受相同的图片元数据（`alt` 最长 1,000 个字符），`AgentClient` 现在会忽略未知的 `initialize.features` key，不再因此导致握手失败。`send()` 现在会以 `SESSION_INPUT_IMAGE_REJECTED` 拒绝 7.4 曾接受的图片 part：非 base64、非光栅或 SVG 的 data URL、没有任何已配置 store 认领的引用、超过字节上限的内联图片（默认 10 MiB，模型上限更低时取更低值）、超过 `images.maxImagesPerInput` 的输入（默认 20 张）、内置表判定为纯文本模型时的任何图片（除非 `images.whenUnsupported` 为 `'omit'`）。声明的媒体类型与字节不符时会替换为实际类型。请求投影会复核图片策略与模型上限，包括恢复的历史和工具消息；请求图片数量不会超过模型上限。
+
+### 修复
+
+- 上下文压缩把图片写成 `[image: …]` 描述，不再把 base64 数据发给摘要模型；之前一张截图会被切成很多次摘要请求。
+- 重新清空生产依赖审计：将 `@modelcontextprotocol/sdk` 升至 1.32.1、`undici` 升至 7.30.1，解析到已修补的 `proxy-addr`、`fast-uri` 和 `ip-address` 版本，并用 `tinyglobby` 替换 `fast-glob`、用已有的 `yaml` 解析器替换 `gray-matter`。可见的变化：MCP 连接不再跟随指向其他主机、或从 https 降到 http 的重定向（同一主机从 http 升到 https 仍然可以），重定向到其他主机现在作为配置错误报告，不再重试；Glob 遇到不可读的目录或搜索过程中消失的文件时跳过，不再整体失败，会剪掉匹配忽略规则的目录，并去掉路径开头的 `./`；`include_directories` 不再列出符号链接，`dir/**` 也会列出 `dir` 本身；@ 提及的 glob 按排序后的前 30 个文件附加；记忆文件的 front matter 一律按字符串读取（接受 BOM 和 `---` 行尾空白，未闭合的 front matter 会被拒绝）。
+- token 估算现在按图片尺寸和 provider 公式计算图片，不再对 base64 数据分词；一张截图不会再被估成几十万 tokens，也不会再触发上下文紧急截断。
+- AgentServer 现在用 `INVALID_COMMAND`、`SESSION_CONFLICT` 或 `OVERLOADED` 回应被拒绝的输入，不再返回可重试的 `INTERNAL_ERROR`，客户端不会再重试注定失败的输入。被拒绝的图片会带上 `details.index` 和 `details.reason`。
+
 ## [7.4.15] - 2026-09-20
 
 ### 修复

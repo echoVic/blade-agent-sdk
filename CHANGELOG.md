@@ -2,6 +2,19 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [7.4.16] - 2026-10-17
+
+### Features
+
+- Add image handling to Sessions. `image_url` parts carry `ImageRef` metadata (`detail`, `mediaType`, size, `alt`); `SessionOptions.vision` and a built-in table per provider say what the model accepts; `SessionOptions.images` sets admission limits, an optional `ImageStore` (`InMemoryImageStore`, `combineImageStores`) that keeps image bytes out of the transcript, and a per-request image budget. `send()` refuses images it cannot accept with `SESSION_INPUT_IMAGE_REJECTED`. Every model request keeps new images first, trims older ones in stable steps and leaves deterministic placeholders, and a turn the provider refuses for its images is retried once with fewer of them. The protocol's `input.submit` accepts the same image metadata (`alt` up to 1,000 characters), and `AgentClient` now ignores unknown `initialize.features` keys instead of failing the handshake. `send()` now refuses image parts that 7.4 accepted — non-base64, non-raster or SVG data URLs, references no configured store handles, inline images over the byte cap (10 MiB by default, lower when the model's limit is lower), inputs over `images.maxImagesPerInput` (20 by default), and any image when the built-in table marks the model as text-only unless `images.whenUnsupported` is `'omit'` — with `SESSION_INPUT_IMAGE_REJECTED`. Declared media types that differ from the bytes are replaced by the real type. Request projections recheck image policy and model limits, including resumed history and tool messages; the image count cap never exceeds the model limit.
+
+### Fixes
+
+- Context compaction describes images as `[image: …]` text instead of sending their base64 data to the summary model, which used to split one screenshot into many summary requests.
+- Clear the production dependency audit again: raise `@modelcontextprotocol/sdk` to 1.32.1 and `undici` to 7.30.1, resolve patched `proxy-addr`, `fast-uri` and `ip-address` releases, and replace `fast-glob` with `tinyglobby` and `gray-matter` with the existing `yaml` parser. Visible effects: MCP connections no longer follow a redirect to another host or from https to plain http (an http to https upgrade on the same host still works), and a redirect to another host now fails as a configuration error instead of being retried; Glob skips unreadable directories and files that disappear during the search instead of failing, prunes directories that match an ignore pattern, and drops a leading `./` from paths, while `include_directories` no longer lists symlinks and lists `dir` itself for `dir/**`; @-mentioned globs attach the first 30 files in sorted order; memory files are read as plain-string front matter (a BOM and trailing spaces on `---` lines are accepted, an unterminated front-matter block is rejected).
+- Token estimates now count an image from its pixel size with the provider's formula instead of tokenizing its base64 data, so one screenshot no longer looks like hundreds of thousands of tokens or triggers emergency context truncation.
+- AgentServer now answers refused input with `INVALID_COMMAND`, `SESSION_CONFLICT` or `OVERLOADED` instead of a retryable `INTERNAL_ERROR`, so clients stop retrying input that cannot succeed. Rejected images carry `details.index` and `details.reason`.
+
 ## [7.4.15] - 2026-09-20
 
 ### Fixes
