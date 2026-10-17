@@ -159,7 +159,7 @@ export type VisionResolver = (model: {
 | provider | 模型 | images | toolResultImages | imageTokens | 其他 |
 |---|---|---|---|---|---|
 | anthropic | `claude-2*`、`claude-instant*` 以外 | ✓ | ✓ | anthropic | maxImageBytes 5 MiB，maxImagesPerRequest 100 |
-| openai | `gpt-3.5*`、`gpt-4`、`gpt-4-0314`、`gpt-4-0613`、`gpt-4-32k*`、`o1-mini*`、`o1-preview*`、`o3-mini*` | ✗ | ✗ | — | |
+| openai | `gpt-3.5*`、`gpt-4`、`gpt-4-0314`、`gpt-4-0613`、`gpt-4-32k*`、`gpt-4-0125-preview`、`gpt-4-1106-preview`、`o1-mini*`、`o1-preview*`、`o3-mini*` | ✗ | ✗ | — | |
 | openai | 其他 | ✓ | ✓ | openai | maxImageBytes 20 MiB |
 | azure-openai | 模型名规则与 openai 相同 | 同 openai | ✗ | openai | |
 | gemini | 全部 | ✓ | ✓ | gemini | |
@@ -279,7 +279,7 @@ export function combineImageStores(primary: ImageStore, ...others: ImageStore[])
 
 | 来源 | 位置 | 失败时 |
 |---|---|---|
-| `session.send()`、`prompt()`、插话、`agent.send()` | `SessionRequestCoordinator.send()` 的最开头，在获取 input mutex 之前。所以 durable `recordAccepted` 和 JSONL `saveInputEnqueued` 记录的已经是规范化之后的结果 | 抛 `SessionInputError` |
+| `session.send()`、`prompt()`、插话、`agent.send()` | `SessionRequestCoordinator.send()` 在 `ensureInitialized()` 之后、获取 input mutex 之前。准入按调用顺序串行（每个 coordinator 一条 promise 链），所以未 await 的连续 send 保持顺序，慢的 `ImageStore.put` 也不会占住 mutex、挡住 `abort()` 和 `close()`。durable `recordAccepted` 和 JSONL `saveInputEnqueued` 记录的已经是规范化之后的结果。还在准入中的 send 不会被 `abort()` 取消，准入完成后照常被接受；Session 在此期间关闭时，它以 Session 已关闭的错误拒绝 | 抛 `SessionInputError` |
 | 协议 `input.submit` | 同上（`InProcessSessionExecutor.submit` 调用 `session.send`） | 映射成 `INVALID_COMMAND` 400，不可重试 |
 | `POST {base}/images` | AgentServer 路由（§8.2），规则相同 | 400 或 413 |
 | 工具结果 | `ResultNormalizer.normalize()`。hooks 和历史看到的已经是规范化之后的结果 | 去掉这张图，在 `model` 文本末尾附一行说明；工具状态不变 |
@@ -346,7 +346,7 @@ export type ImageRejectionReason =
    - 保留的张数同时受剩余名额约束，名额不够时同样按 §6.3 步进裁剪。
 7. 工具结果里的图片：`vision.toolResultImages === false` 时按 §6.4 改放。
 8. 解析保留下来的引用（§6.5）。
-9. `detail`：在适配层映射成 `providerOptions.openai.imageDetail`，其他 provider 忽略。
+9. `detail`：在适配层映射成 `providerOptions.openai.imageDetail`，其他 provider 忽略。适配层用与入口相同的解析识别 data URL（scheme 不区分大小写，允许参数段）；`mediaType` 优先取 ref 上记录的类型，也就是入口按文件头判定的类型，其次才取 data URL 声明的类型。
 
 只复制发生了变化的消息，其余消息保持原对象。
 
@@ -357,7 +357,7 @@ export type ImageRejectionReason =
 - 新图片进来时 D 会变大，但在越过下一个 S 的整数倍之前，裁剪点保持不动。prompt 前缀因此不变，provider 的前缀缓存持续命中。
 - 保留下来的历史成本不超过 B。单张成本远小于 B 时，大致落在 [B/2, B] 之间；单张成本接近或超过 S 时，可能更少。
 - 结果只依赖 transcript 和配置，没有内部状态，进程重启或 durable 恢复之后结果相同。
-- 张数约束按同样方式步进，步长为名额的一半，至少为 1。
+- 张数约束按同样方式步进：需要省略的张数为历史张数减去剩余名额，步长固定为 `maxImagesPerRequest` 的一半，向下取整，至少为 1。步长不随 fresh 张数变化，所以裁剪点在相邻请求之间只进不退。代价是 fresh 图片占去大部分名额时，历史图片最多会比恰好需要的多省略一个步长减一张。
 
 ### 6.4 工具结果图片改放
 
@@ -381,8 +381,9 @@ output: {
 - store 引用调用 `get()`：
   - 返回字节时转成 data URL；
   - 返回 `{ url }` 时直接传 url；
-  - 返回 `undefined` 或抛错时替换成"不可用"占位，记一条 warn，本轮继续。
-- 解析结果放进 Session 级的 LRU 缓存，按字节计，默认上限 64 MiB。只解析保留下来的图片。
+  - 返回 `undefined`、抛错，或者没有 store 认领这个引用时，替换成"不可用"占位，本轮继续。同一 Session 内每个 URL 只记一次 warn，之后再遇到记 debug：transcript 保留引用，之后的每次请求都会再遇到它。
+- 解析结果放进 Session 级的 LRU 缓存，按字节计，默认上限 64 MiB。只解析保留下来的图片，而且并发解析；保留哪些图片在解析之前已经决定，并发不影响结果。presigned `{ url }` 不进缓存。
+- `data:` 和 `http(s):` 的判断不区分大小写，与入口一致。
 
 ### 6.6 占位文本
 
@@ -390,7 +391,7 @@ output: {
 
 ```
 [image omitted to fit the image budget: image/png 1280×720 — <alt>]
-[image omitted: the current model does not accept images — <alt>]
+[image omitted: the current model does not accept images — image/png 1280×720 — <alt>]
 [image unavailable: it is no longer in the image store]
 ```
 
@@ -398,7 +399,7 @@ output: {
 
 ### 6.7 可观测性
 
-只要有图片被省略，就记一条 debug 日志，并在当前 turn span 上记录 `images.kept`、`images.omitted.budget`、`images.omitted.unsupported`、`images.omitted.unavailable` 和 `images.estimatedTokens`。不新增流事件类型。
+只要有图片被省略，就记一条 debug 日志。请求里只要有图片，就在当前 turn span 下记录一个 `image_projection` trace 事件，内容是投影报告：`total`、`kept`、`freshKept`、`omitted.budget`、`omitted.unsupported`、`omitted.unavailable` 和 `estimatedTokens`。没有图片被省略时也记录，因为保留张数和估算值本身就有用。不新增流事件类型。
 
 ## 7. 估算、压缩与恢复
 
@@ -429,7 +430,7 @@ output: {
 
 ### 7.4 图片错误恢复
 
-- 新增 `isImageLimitError(error)`：沿 cause 链匹配 provider 的错误文案。具体文案集中维护，并有测试覆盖：
+- 新增 `classifyImageLimitError(error)`：沿 cause 链匹配 provider 的错误文案，返回 `'too_many' | 'too_large' | 'invalid' | 'unsupported'` 或 `undefined`。不支持图片类要单独处理，所以返回种类，而不是布尔值。失败的请求里没有保留任何图片时不重试。图片恢复先于 reactive compact 判断，因为带图请求的字节超限几乎总是图片造成的。具体文案集中维护，并有测试覆盖：
   - 张数超限：`too many images`、vLLM 的 `At most N image(s)`；
   - 单张过大：`exceeds 5 MB`、`image too large`；
   - `invalid image`；
@@ -600,6 +601,8 @@ fetchImage(url: string, options?: { signal?: AbortSignal }): Promise<Blob>;
 
 - 估算值和 provider 的实际计费有偏差。是否触发压缩，仍以 provider 返回的真实 usage 为准。
 - 默认能力表会随 provider 更新而过时。可以手动覆盖；如果把不支持图片的模型猜成支持，运行期降级会纠正；反过来猜错时需要显式覆盖。
-- 未知 openai-compatible 模型的单次图片上限无法探测，vLLM 默认每次只收 1 张。需要配置 `vision.maxImagesPerRequest`，否则第一次超限时由收紧重试兜底。
+- 未知 openai-compatible 模型的单次图片上限无法探测，vLLM 默认每次只收 1 张。需要配置 `vision.maxImagesPerRequest`，否则每一轮都要先失败一次，再由收紧重试兜底。
+- `http(s)` 图片原样交给 AI SDK。不收图片 URL 的路线（openai-compatible、多数 Gemini 模型）由 AI SDK 在进程内下载，不受 `maxImageBytes` 限制，和 7.4 相同。调用方不可信时应把 `images.remoteUrls` 设为 `false`；第 3 期给下载加上限。
+- 还在准入中的 send 不会被 `abort()` 取消。
 - `prune` 按写入时间清理，所以仍在使用的旧图片也会被清掉；被清掉的引用会变成占位。
 - 新版本写入的 store 引用，降级到 7.4 后无法解析。
