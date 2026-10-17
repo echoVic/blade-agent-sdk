@@ -212,6 +212,54 @@ const session = await createSession({
 
 `providerOptions` is a `JsonObject` forwarded to the selected provider adapter.
 
+## Vision capability
+
+The SDK resolves a `VisionCapability` for the active model:
+
+| Field | Meaning |
+|---|---|
+| `images` | The model accepts image input |
+| `toolResultImages` | Images may stay inside tool results; otherwise they are moved into a following user message (used from 7.6) |
+| `mediaTypes` | Accepted media types; png, jpeg, gif and webp by default |
+| `maxImageBytes` / `maxImagesPerRequest` | Provider limits |
+| `imageTokens` | `'openai'`, `'anthropic'` or `'gemini'` formula, or a fixed token count per image |
+
+Built-in defaults:
+
+| Provider | Models | `images` | `toolResultImages` | `imageTokens` |
+|---|---|---|---|---|
+| `anthropic` | all but `claude-2*` and `claude-instant*` | yes | yes | `anthropic` (5 MiB, 100 per request) |
+| `openai` | `gpt-3.5*`, `gpt-4`, `gpt-4-0314`, `gpt-4-0613`, `gpt-4-32k*`, `gpt-4-0125-preview`, `gpt-4-1106-preview`, `o1-mini*`, `o1-preview*`, `o3-mini*` | no | no | — |
+| `openai` | every other model | yes | yes | `openai` (20 MiB) |
+| `azure-openai` | same names as `openai` | as `openai` | no | `openai` |
+| `gemini` | all | yes | yes | `gemini` |
+| `deepseek` | `deepseek-v4-flash` and its aliases | yes | no | 1,600 |
+| `deepseek` | every other model | no | no | — |
+| anything else | names containing `qwq`, `deepseek-r1`, `deepseek-v4-pro`, `o1-mini`, `o3-mini` or `gpt-3.5` | no | no | — |
+| anything else | every other model | yes | no | 1,600 |
+
+Override it for a Session, either for whatever model it uses or per model:
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey, baseUrl },
+  model: 'qwen2.5-vl-72b-instruct',
+  // vLLM serves one image per prompt unless it is started with a higher limit.
+  vision: { maxImagesPerRequest: 1 },
+});
+
+const perModel = await createSession({
+  provider: { type: 'openai-compatible', apiKey, baseUrl },
+  model: 'internal-model',
+  vision: ({ model }) => (model.startsWith('text-') ? { images: false } : undefined),
+});
+```
+
+`ModelConfig.vision` overrides one registered model. Custom provider adapters
+receive the resolved value as `ModelServiceConfig.vision`. When a provider
+answers that a model does not accept images, the Session stops sending images
+to that model.
+
 ## Runtime model changes
 
 ```ts

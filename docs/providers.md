@@ -234,6 +234,51 @@ const messages = optimizeDeepSeekCachePrefix([
 }
 ```
 
+## 视觉能力
+
+SDK 会为当前模型解析一份 `VisionCapability`：
+
+| 字段 | 含义 |
+|---|---|
+| `images` | 模型是否接收图片 |
+| `toolResultImages` | 图片能否留在工具结果里；不能时，会把图片移到紧随其后的 user 消息（7.6 起使用） |
+| `mediaTypes` | 接受的媒体类型，默认 png、jpeg、gif、webp |
+| `maxImageBytes` / `maxImagesPerRequest` | provider 的上限 |
+| `imageTokens` | 估算公式：`'openai'`、`'anthropic'`、`'gemini'`，或每张图固定的 token 数 |
+
+内置默认值：
+
+| Provider | 模型 | `images` | `toolResultImages` | `imageTokens` |
+|---|---|---|---|---|
+| `anthropic` | 除 `claude-2*`、`claude-instant*` 外 | 是 | 是 | `anthropic`（单张 5 MiB，每次请求 100 张） |
+| `openai` | `gpt-3.5*`、`gpt-4`、`gpt-4-0314`、`gpt-4-0613`、`gpt-4-32k*`、`gpt-4-0125-preview`、`gpt-4-1106-preview`、`o1-mini*`、`o1-preview*`、`o3-mini*` | 否 | 否 | — |
+| `openai` | 其余模型 | 是 | 是 | `openai`（单张 20 MiB） |
+| `azure-openai` | 与 `openai` 相同的模型名规则 | 同 `openai` | 否 | `openai` |
+| `gemini` | 全部 | 是 | 是 | `gemini` |
+| `deepseek` | `deepseek-v4-flash` 及其别名 | 是 | 否 | 1,600 |
+| `deepseek` | 其余模型 | 否 | 否 | — |
+| 其他 provider | 名称含 `qwq`、`deepseek-r1`、`deepseek-v4-pro`、`o1-mini`、`o3-mini`、`gpt-3.5` | 否 | 否 | — |
+| 其他 provider | 其余模型 | 是 | 否 | 1,600 |
+
+覆盖方式有两种：对 Session 当前使用的模型统一覆盖，或者按模型分别覆盖。
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey, baseUrl },
+  model: 'qwen2.5-vl-72b-instruct',
+  // vLLM 默认每次请求只接收 1 张图，除非启动时调高了上限。
+  vision: { maxImagesPerRequest: 1 },
+});
+
+const perModel = await createSession({
+  provider: { type: 'openai-compatible', apiKey, baseUrl },
+  model: 'internal-model',
+  vision: ({ model }) => (model.startsWith('text-') ? { images: false } : undefined),
+});
+```
+
+`ModelConfig.vision` 用来覆盖单个已注册的模型。自定义 provider adapter 可以从 `ModelServiceConfig.vision` 读到解析后的结果。如果 provider 回复某个模型不接收图片，Session 之后就不再给这个模型发图片。
+
 ## 运行时切换模型
 
 ```ts

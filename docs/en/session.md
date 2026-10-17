@@ -619,6 +619,77 @@ Context overflow recovery retries internally. There is no public `recovery` stre
 Compaction includes only non-sensitive files within the active
 `filesystem.roots`. Per-file and aggregate byte limits bound file enrichment,
 and summary requests are chunked against the model context budget.
+Images reach the summary model only as `[image: …]` descriptions, never as image data.
+
+## Images
+
+Send images as `image_url` parts. `image_url` is an `ImageRef`: `url` is a
+`data:` URL, an `http(s):` URL, or a reference an image store resolves;
+`detail`, `mediaType`, `width`, `height`, `byteLength` and `alt` are optional.
+
+```ts
+await session.send([
+  { type: 'text', text: 'Why does this page look broken?' },
+  { type: 'image_url', image_url: { url: 'data:image/png;base64,...', alt: 'login page' } },
+]);
+```
+
+`send()` admits every image before the input is recorded:
+
+- Inline images must be base64 png, jpeg, gif or webp. SVG is always rejected.
+  Each image must fit `images.maxImageBytes` (10 MiB by default, and never more
+  than the model allows).
+- One input may carry at most `images.maxImagesPerInput` images (20 by default).
+- `http(s)` images go to the provider unchanged. Set `images.remoteUrls` to
+  `false` to reject them. The SDK never fetches them itself.
+- Any other scheme must be handled by `images.store`.
+
+A refused image makes `send()` throw `SessionInputError` with code
+`SESSION_INPUT_IMAGE_REJECTED` and `details: { index, reason }`. Through
+AgentServer the same refusal is a non-retryable `INVALID_COMMAND` (HTTP 400).
+
+### Image store
+
+Without `images.store`, images stay inline in the transcript, as before. With
+a store, inline bytes are written to it, and the transcript, the durable journal
+and the events keep only the reference:
+
+```ts
+import { createSession, InMemoryImageStore } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider,
+  model: 'gpt-5',
+  images: { store: new InMemoryImageStore() },
+});
+```
+
+`InMemoryImageStore` lasts only as long as the process. To keep images
+elsewhere, or to resolve your own references such as an IM file key,
+implement `ImageStore`, and join several stores with
+`combineImageStores(primary, ...others)`. A Session that can be resumed needs a
+store that every resuming process can read.
+
+### Image budget
+
+Each model request is built from a projection of the conversation. The
+transcript itself is never rewritten.
+
+- Images the model has not seen yet (those after the last assistant message)
+  are kept first, up to `images.maxImagesPerRequest`.
+- Older images share `images.historyTokens`, which defaults to the smaller of
+  16,000 and a quarter of the input window. When they go over it, the oldest
+  are replaced with `[image omitted to fit the image budget: …]`. The cut point
+  moves in steps of half the allowance, so in most turns the prompt prefix,
+  and with it the provider's prompt cache, stays the same.
+- When the model does not accept images, every image becomes
+  `[image omitted: the current model does not accept images …]`. Images in new
+  input are rejected unless `images.whenUnsupported` is `'omit'`.
+- If a provider still refuses a request because of its images, the turn is
+  retried once, without history images and with half of the new ones.
+
+Image token estimates come from the image size and the provider formula
+(`VisionCapability.imageTokens`), never from the base64 text.
 
 ## Tools and permissions
 
@@ -733,6 +804,8 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `providerOptions` | `JsonObject` | Provider-specific options |
 | `thinkingEnabled` / `thinkingBudget` | `boolean` / `number` | Reasoning controls |
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
+| `images` | `ImagePolicy` | Image admission limits, image store and request budget |
+| `vision` | `VisionCapabilityOverride \| VisionResolver` | Override what the model accepts as image input |
 | `tools` | `readonly ToolDefinition[]` | Custom definitions returned by `defineTool()` |
 | `toolTimeoutMs` | `number` | Per-invocation wall-clock timeout; defaults to `600000` |
 | `webFetch` | `WebFetchSecurityPolicy` | WebFetch host allowlist, blocklist, and private-network policy |

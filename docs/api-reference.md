@@ -368,6 +368,20 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 上述 Provider 无关契约可从 `@blade-ai/agent-sdk` 单独导入。类型所有权和
 边界转换规则见[类型架构](./type-architecture)。
 
+### 图片
+
+| 类型 | 说明 |
+|------|------|
+| `ImageRef` / `ImageDetail` | `image_url` part 的载荷：data URL、http(s) URL 或 store 引用，以及可选的元数据 |
+| `VisionCapability` / `VisionCapabilityOverride` / `VisionResolver` | 模型的图片能力，以及按 Session 或按模型的覆盖方式 |
+| `ImagePolicy` | 图片入口限制、store 与请求预算 |
+| `ImageStore` / `TenantImageStore` / `ImageBytes` / `ResolvedImage` | 图片存储端口 |
+| `InMemoryImageStore` / `InMemoryImageStoreOptions` | 进程内、按字节 LRU、按租户隔离的 store |
+| `combineImageStores` | 组合多个 store：写入第一个，读取时交给认领该引用的 store |
+| `ImageRejectionReason` / `SessionInputErrorDetails` | 图片被拒绝时 `SessionInputError.details` 的内容 |
+
+用法见 [Session · 图片](./session#图片) 和 [Provider · 视觉能力](./providers#视觉能力)。
+
 ### MCP
 
 | 类型 | 说明 |

@@ -1011,6 +1011,7 @@ Microcompact 是最轻量的压缩方式，不调用 LLM，只替换旧的大型
 
 压缩只会附加当前 `filesystem.roots` 内的非敏感文件。文件读取具有单文件和总字节
 预算，摘要请求按模型上下文预算分块，不会把无界历史或文件内容塞入单次请求。
+图片只会以 `[image: …]` 描述的形式出现在摘要请求里，不会把图片数据发给摘要模型。
 
 ### 动态更新上下文
 
@@ -1026,6 +1027,60 @@ session.setDefaultContext({
 
 const currentContext = session.getDefaultContext();
 ```
+
+## 图片
+
+图片以 `image_url` part 发送。`image_url` 的类型是 `ImageRef`，其中 `url` 可以是：
+
+- `data:` URL；
+- `http(s):` URL；
+- 由图片 store 解析的引用。
+
+`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。
+
+```ts
+await session.send([
+  { type: 'text', text: '这个页面为什么显示错乱？' },
+  { type: 'image_url', image_url: { url: 'data:image/png;base64,...', alt: '登录页' } },
+]);
+```
+
+`send()` 在记录输入之前逐张校验图片：
+
+- 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝。
+- 单张不超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
+- 每次输入最多 `images.maxImagesPerInput` 张，默认 20 张。
+- `http(s)` 图片原样交给 provider；`images.remoteUrls` 设为 `false` 时会被拒绝。SDK 自己从不抓取这类 URL。
+- 其他 scheme 必须由 `images.store` 认领。
+
+图片不合格时，`send()` 抛出 `SessionInputError`，错误码为 `SESSION_INPUT_IMAGE_REJECTED`，`details` 为 `{ index, reason }`。通过 AgentServer 提交时，同样的拒绝表现为不可重试的 `INVALID_COMMAND`（HTTP 400）。
+
+### 图片 store
+
+不配置 `images.store` 时，图片和以前一样内联在 transcript 里。配置之后，内联图片的字节会写入 store，transcript、durable journal 和事件里只保留引用：
+
+```ts
+import { createSession, InMemoryImageStore } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider,
+  model: 'gpt-5',
+  images: { store: new InMemoryImageStore() },
+});
+```
+
+`InMemoryImageStore` 只在进程存活期间有效。如果要把图片放到别处，或者解析自己的引用（例如 IM 文件 key），就实现 `ImageStore` 接口，再用 `combineImageStores(primary, ...others)` 把多个 store 组合起来。可以被恢复的 Session，需要配置一个所有恢复进程都能读取的 store。
+
+### 图片预算
+
+每次模型请求都基于会话的一份投影视图构建，transcript 本身不会被改写：
+
+- 模型还没看过的图片（最后一条 assistant 消息之后的）优先保留，最多 `images.maxImagesPerRequest` 张。
+- 更早的图片共用 `images.historyTokens` 的预算，默认取 16,000 和输入窗口四分之一中较小的那个。超出预算时，最旧的图片会被换成 `[image omitted to fit the image budget: …]`。裁剪点每次移动半个预算，所以大多数轮次里 prompt 前缀不变，provider 的前缀缓存也能持续命中。
+- 模型不收图时，所有图片都换成 `[image omitted: the current model does not accept images …]`。新输入里的图片会被拒绝，除非把 `images.whenUnsupported` 设为 `'omit'`。
+- 如果 provider 仍然因为图片拒绝请求，本轮会重试一次：不带历史图片，新图片减半。
+
+图片的 token 估算按图片尺寸和 provider 公式（`VisionCapability.imageTokens`）计算，不会对 base64 文本分词。
 
 ## 工具配置
 
@@ -1741,6 +1796,8 @@ async function analyzeCodeManual() {
 | `thinkingEnabled` | `boolean`                                               | —  | —           | 是否为支持 thinking 的模型启用 reasoning 内容                 |
 | `thinkingBudget`  | `number`                                                | —  | —           | thinking/reasoning token 预算，供 provider 适配使用          |
 | `tokenBudget`     | `TokenBudgetConfig`                                     | —  | —           | Agent 级 token 与成本预算配置                              |
+| `images`          | `ImagePolicy`                                           | —  | —           | 图片入口限制、图片 store 与请求预算                         |
+| `vision`          | `VisionCapabilityOverride \| VisionResolver`            | —  | 按内置表     | 覆盖模型能否接收图片及相关上限                                |
 | `systemPrompt`    | `string`                                                | —  | —           | 会话级系统提示词                                          |
 | `maxTurns`        | `number`                                                | —  | `200`       | Agent 最大轮次限制                                      |
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |

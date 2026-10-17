@@ -477,6 +477,31 @@ See [Providers and Logging](./providers) for adapter registration and routing
 semantics, and [Type Architecture](./type-architecture) for ownership and
 boundary rules.
 
+## Images
+
+Runtime:
+
+- `InMemoryImageStore`
+- `combineImageStores`
+
+Types:
+
+- `ImageRef`
+- `ImageDetail`
+- `VisionCapability`
+- `VisionCapabilityOverride`
+- `VisionResolver`
+- `ImagePolicy`
+- `ImageStore`
+- `TenantImageStore`
+- `ImageBytes`
+- `ResolvedImage`
+- `InMemoryImageStoreOptions`
+- `ImageRejectionReason`
+- `SessionInputErrorDetails`
+
+See [Session · Images](./session#images) and [Providers · Vision capability](./providers#vision-capability).
+
 ## Permissions
 
 Helpers:
