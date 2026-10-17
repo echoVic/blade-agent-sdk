@@ -1,3 +1,8 @@
+import { classifyImageLimitError } from '../images/imageErrors.js';
+import type {
+  ImageProjectionReport,
+  ImageRequestLimits,
+} from '../images/prepareImagesForRequest.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelIdentity } from '../model/identity.js';
@@ -72,6 +77,8 @@ export interface AgentLoopHooks {
     reactiveCompact?: (ctx: {
       messages: readonly ConversationMessage[];
     }) => AsyncGenerator<AgentEvent, boolean>;
+    /** The provider said the active model does not accept images. */
+    onImagesUnsupported?: () => void | Promise<void>;
   };
 }
 
@@ -93,7 +100,12 @@ export interface AgentLoopConfig {
 
 type RecoveryState =
   | { phase: 'idle' }
-  | { phase: 'retry_pending' | 'in_retried_turn'; turn: number; attempt: number };
+  | {
+      phase: 'retry_pending' | 'in_retried_turn';
+      turn: number;
+      attempt: number;
+      imageLimits: ImageRequestLimits;
+    };
 
 type TurnStart =
   | { action: 'abort'; result: LoopResult }
@@ -111,6 +123,7 @@ class AgentLoopExecution {
   private totalTokens = 0;
   private lastPromptTokens?: number;
   private recovery: RecoveryState = { phase: 'idle' };
+  private lastImageReport?: ImageProjectionReport;
 
   constructor(private readonly config: AgentLoopConfig) {}
 
@@ -188,6 +201,7 @@ class AgentLoopExecution {
     stepSignal?: AbortSignal,
   ): AsyncGenerator<AgentEvent, ModelStep> {
     try {
+      this.lastImageReport = undefined;
       const outcome = yield* runTurn({
         turnState,
         messages: this.config.conversationState.toArray(),
@@ -195,6 +209,11 @@ class AgentLoopExecution {
         signal: stepSignal,
         modelExecutionLifecycle: this.config.modelExecutionLifecycle,
         logger: this.config.logger,
+        imageLimits:
+          this.recovery.phase === 'in_retried_turn' ? this.recovery.imageLimits : undefined,
+        onImageProjection: (report) => {
+          this.lastImageReport = report;
+        },
       });
       return { action: 'complete', outcome };
     } catch (error) {
@@ -218,6 +237,7 @@ class AgentLoopExecution {
         };
         throw error;
       }
+      if (yield* this.recoverImageLimit(error)) return { action: 'retry' };
       if (yield* this.recoverOverflow(error)) return { action: 'retry' };
       throw error;
     }
@@ -226,7 +246,12 @@ class AgentLoopExecution {
   private async *recoverOverflow(error: unknown): AsyncGenerator<AgentEvent, boolean> {
     const hooks = this.config.hooks?.recovery;
     if (isOverflowRecoverable(error) && hooks?.reactiveCompact && this.recovery.phase === 'idle') {
-      this.recovery = { phase: 'retry_pending', turn: this.turns, attempt: 1 };
+      this.recovery = {
+        phase: 'retry_pending',
+        turn: this.turns,
+        attempt: 1,
+        imageLimits: this.tightenedImageLimits(),
+      };
       yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
       const recovered = yield* hooks.reactiveCompact({
         messages: this.config.conversationState.toArray(),
@@ -243,6 +268,34 @@ class AgentLoopExecution {
       yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
     }
     return false;
+  }
+
+  /** Retry limits after a refused request: no history images and half the fresh ones. */
+  private tightenedImageLimits(): ImageRequestLimits {
+    return {
+      historyTokens: 0,
+      maxFreshImages: Math.max(1, Math.floor((this.lastImageReport?.freshKept ?? 0) / 2)),
+    };
+  }
+
+  private async *recoverImageLimit(error: unknown): AsyncGenerator<AgentEvent, boolean> {
+    const kind = classifyImageLimitError(error);
+    if (!kind || !this.lastImageReport?.kept) return false;
+    if (this.recovery.phase !== 'idle') {
+      yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
+      return false;
+    }
+    if (kind === 'unsupported') await this.config.hooks?.recovery?.onImagesUnsupported?.();
+    this.recovery = {
+      phase: 'retry_pending',
+      turn: this.turns,
+      attempt: 1,
+      imageLimits: this.tightenedImageLimits(),
+    };
+    yield { type: 'recovery', phase: 'started', reason: 'image_limit' };
+    yield { type: 'recovery', phase: 'retrying', reason: 'image_limit' };
+    yield { type: 'turn_retry', turn: this.turns, reason: 'image_limit' };
+    return true;
   }
 
   private resetRecovery(): void {

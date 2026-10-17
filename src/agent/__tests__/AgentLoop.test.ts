@@ -1,7 +1,7 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ONE_PIXEL_PNG_DATA_URL } from '../../images/__tests__/fixtures.js';
 import { ImageRuntime } from '../../images/ImageRuntime.js';
-import type { ModelMessage } from '../../model/message.js';
+import type { ModelContent, ModelMessage } from '../../model/message.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
@@ -133,6 +133,9 @@ type BaseConfigOverrides = Partial<
   onReactiveCompact?: NonNullable<
     NonNullable<AgentLoopConfig['hooks']>['recovery']
   >['reactiveCompact'];
+  onImagesUnsupported?: NonNullable<
+    NonNullable<AgentLoopConfig['hooks']>['recovery']
+  >['onImagesUnsupported'];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -154,6 +157,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     onAssistantMessage,
     onComplete,
     onReactiveCompact,
+    onImagesUnsupported,
     ...rest
   } = overrides;
 
@@ -201,6 +205,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     },
     recovery: {
       reactiveCompact: onReactiveCompact,
+      onImagesUnsupported,
     },
   };
 
@@ -1910,6 +1915,120 @@ describe('agentLoop', () => {
         turn: 1,
         report: expect.objectContaining({ total: 1, kept: 0 }),
       });
+    });
+  });
+
+  describe('image limit recovery', () => {
+    function boundImages() {
+      const images = new ImageRuntime();
+      let accepts = true;
+      images.bindModel({
+        getVision: () => ({ images: accepts, toolResultImages: true, imageTokens: 1600 }),
+        getInputWindowTokens: () => 120_000,
+        markImagesUnsupported: () => {
+          accepts = false;
+        },
+      });
+      return images;
+    }
+
+    const twoImages: ModelMessage = {
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+        { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+      ],
+    };
+
+    function serviceRejecting(error: Error, times = 1) {
+      const chat = vi.fn();
+      for (let attempt = 0; attempt < times; attempt += 1) chat.mockRejectedValueOnce(error);
+      chat.mockResolvedValue({
+        content: 'recovered',
+        toolCalls: [],
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      });
+      const modelService = {
+        chat,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chat>) {
+          yield* [] as never[];
+          return await chat(...args);
+        }),
+        getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
+      } as unknown as TurnState['modelService'];
+      return { chat, modelService };
+    }
+
+    const sentImages = (call: unknown[] | undefined) =>
+      ((call?.[0] as ModelMessage[]).at(-1)?.content as ModelContent[]).filter(
+        (part) => part.type === 'image_url',
+      );
+
+    it('retries once with half the fresh images after a too-many-images error', async () => {
+      const { chat, modelService } = serviceRejecting(
+        new Error('At most 1 image(s) may be provided in one request.'),
+      );
+
+      const { events, result } = await collectEvents(
+        agentLoop(
+          baseConfig({ messages: [twoImages], turnState: { modelService, images: boundImages() } }),
+        ),
+      );
+
+      expect(result.success).toBe(true);
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(sentImages(chat.mock.calls[0])).toHaveLength(2);
+      expect(sentImages(chat.mock.calls[1])).toHaveLength(1);
+      expect(events).toContainEqual({ type: 'turn_retry', turn: 1, reason: 'image_limit' });
+    });
+
+    it('stops sending images once the provider says the model does not accept them', async () => {
+      const images = boundImages();
+      const onImagesUnsupported = vi.fn(() => images.markImagesUnsupported());
+      const { chat, modelService } = serviceRejecting(
+        new Error('Invalid content type. image_url is only supported by certain models.'),
+      );
+
+      const { result } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            messages: [twoImages],
+            turnState: { modelService, images },
+            onImagesUnsupported,
+          }),
+        ),
+      );
+
+      expect(result.success).toBe(true);
+      expect(onImagesUnsupported).toHaveBeenCalledTimes(1);
+      expect(sentImages(chat.mock.calls[1])).toEqual([]);
+    });
+
+    it('does not retry an image error when the request carried no images', async () => {
+      const { chat, modelService } = serviceRejecting(new Error('Too many images in request'));
+
+      await expect(
+        collectEvents(
+          agentLoop(baseConfig({ turnState: { modelService, images: boundImages() } })),
+        ),
+      ).rejects.toThrow('Too many images');
+      expect(chat).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces the error when the retry fails again', async () => {
+      const { chat, modelService } = serviceRejecting(new Error('Too many images in request'), 2);
+
+      await expect(
+        collectEvents(
+          agentLoop(
+            baseConfig({
+              messages: [twoImages],
+              turnState: { modelService, images: boundImages() },
+            }),
+          ),
+        ),
+      ).rejects.toThrow('Too many images');
+      expect(chat).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -139,6 +139,7 @@ class LoopConfigBuilder {
       },
       recovery: {
         reactiveCompact: deps.compactionHandler ? () => this.reactiveCompact() : undefined,
+        onImagesUnsupported: () => deps.modelManager.markImagesUnsupported(),
       },
     };
     const signal = deps.options?.signal ?? deps.context.signal;

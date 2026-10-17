@@ -31,7 +31,7 @@ export type AgentEvent =
   | { type: 'agent_start' | 'agent_end' | 'stream_end' }
   | { type: 'turn_start'; turn: number; maxTurns: number }
   | { type: 'turn_end'; turn: number; hasToolCalls: boolean }
-  | { type: 'turn_retry'; turn: number; reason: 'reactive_compact' }
+  | { type: 'turn_retry'; turn: number; reason: 'reactive_compact' | 'image_limit' }
   | {
       type: 'input_applied';
       inputId: InputId;
@@ -59,5 +59,5 @@ export type AgentEvent =
   | {
       type: 'recovery';
       phase: 'started' | 'retrying' | 'failed';
-      reason: 'context_overflow' | 'reactive_compact' | 'recovery_exhausted';
+      reason: 'context_overflow' | 'reactive_compact' | 'recovery_exhausted' | 'image_limit';
     };
