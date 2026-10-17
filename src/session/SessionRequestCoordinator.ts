@@ -22,6 +22,8 @@ import type { InputSubmission, PendingSessionInput, SendOptions } from './types.
 import { InputPriority } from './types.js';
 
 export class SessionRequestCoordinator {
+  private admission: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly state: SessionState,
     private readonly durability: SessionDurability,
@@ -84,6 +86,15 @@ export class SessionRequestCoordinator {
 
   async send(submitted: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
     await this.ensureInitialized();
+    // Preserve send order without holding the input mutex during slow image store writes.
+    const admitted = this.admission.then(() =>
+      this.state.getRuntime().getImageRuntime().normalizeUserContent(submitted, options?.signal),
+    );
+    this.admission = admitted.then(
+      () => undefined,
+      () => undefined,
+    );
+    const message = await admitted;
 
     return this.state.inputMutex.runExclusive(async () => {
       if (this.state.executionLeaseFailure) {
@@ -96,10 +107,6 @@ export class SessionRequestCoordinator {
         throw new Error('Session is closed');
       }
 
-      const message = await this.state
-        .getRuntime()
-        .getImageRuntime()
-        .normalizeUserContent(submitted, options?.signal);
       const inputId = InputId(nanoid());
       if (this.state.executionState.phase === 'idle') {
         this.durability.assertReadyForNewRequest();
