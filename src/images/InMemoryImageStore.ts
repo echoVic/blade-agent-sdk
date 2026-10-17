@@ -49,7 +49,7 @@ class InMemoryImageBucket implements ImageStore {
     const digest = await sha256Hex(image.bytes);
     const key = this.key(digest);
     if (this.images.get(key) === undefined) {
-      this.images.set(key, { bytes: image.bytes.slice(), mediaType: facts.mediaType });
+      this.images.set(key, { bytes: new Uint8Array(image.bytes), mediaType: facts.mediaType });
     }
     return {
       url: bladeImageUrl(digest),

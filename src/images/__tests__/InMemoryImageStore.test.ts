@@ -21,6 +21,34 @@ describe('InMemoryImageStore', () => {
     expect(await store.put({ bytes: bytes.slice(), mediaType: 'image/png' })).toEqual(ref);
   });
 
+  it('copies Buffer inputs so later source mutations preserve stored bytes and their digest', async () => {
+    const store = new InMemoryImageStore();
+    const expected = pngBytes(2, 2, 600);
+    const source = Buffer.from(expected);
+    const ref = await store.put({ bytes: source, mediaType: 'image/png' });
+
+    source.fill(0);
+    const stored = await store.get(ref.url);
+    if (!stored || !('bytes' in stored)) throw new Error('Expected stored image bytes');
+
+    expect(new Uint8Array(stored.bytes)).toEqual(expected);
+    expect(ref.url).toBe(`blade-image:sha256:${await sha256Hex(stored.bytes)}`);
+  });
+
+  it('copies a Buffer subarray into an ArrayBuffer sized to the stored bytes', async () => {
+    const store = new InMemoryImageStore({ maxBytes: 1_000 });
+    const parent = Buffer.alloc(8 * 1024 * 1024);
+    parent.set(pngBytes(2, 2, 600));
+    const source = parent.subarray(0, 600);
+    const ref = await store.put({ bytes: source, mediaType: 'image/png' });
+    const stored = await store.get(ref.url);
+    if (!stored || !('bytes' in stored)) throw new Error('Expected stored image bytes');
+
+    expect(stored.bytes.byteLength).toBe(600);
+    expect(stored.bytes.buffer.byteLength).toBe(stored.bytes.byteLength);
+    expect(stored.bytes.buffer).not.toBe(parent.buffer);
+  });
+
   it('isolates tenants', async () => {
     const store = new InMemoryImageStore();
     const ref = await store
