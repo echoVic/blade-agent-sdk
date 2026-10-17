@@ -17,6 +17,13 @@ describe('image text', () => {
     expect(describeImage({ url: 'x' })).toBe('');
   });
 
+  it('keeps emoji well formed when bounding alt text by code point', () => {
+    const description = describeImage({ url: 'x', alt: `a${'😀'.repeat(150)}` });
+    expect(description.isWellFormed()).toBe(true);
+    expect(description).toBe(`a${'😀'.repeat(150)}`);
+    expect(describeImage({ url: 'x', alt: `a${'😀'.repeat(250)}` })).toBe(`a${'😀'.repeat(199)}…`);
+  });
+
   it('renders compaction text and request placeholders', () => {
     const ref = { url: 'x', mediaType: 'image/webp', width: 2, height: 3 };
     expect(summaryImageText(ref)).toBe('[image: image/webp 2×3]');

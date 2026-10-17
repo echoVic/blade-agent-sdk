@@ -50,6 +50,7 @@ const imageInputSchema = z
       .object({
         url: z.string().min(1),
         ...imageRefMetadataShape,
+        alt: z.string().max(1000).optional(),
       })
       .strict(),
   })

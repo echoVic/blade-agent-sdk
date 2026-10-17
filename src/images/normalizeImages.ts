@@ -80,7 +80,14 @@ async function admitImage(
     );
   }
   const refusal = imageRefusal(ref, context.policy);
-  if (refusal) throw new ImageRejection(index, refusal, `Image refused: ${refusal}`);
+  if (refusal) {
+    const messages = {
+      remote_url: 'Remote image URLs are not accepted',
+      too_large: `Images must be at most ${context.policy.maxImageBytes} bytes`,
+      media_type: 'Only png, jpeg, gif and webp images are accepted',
+    };
+    throw new ImageRejection(index, refusal, messages[refusal]);
+  }
   if (isRemoteUrl(ref.url)) return ref;
   if (context.policy.store?.handles(ref.url)) return ref;
   throw new ImageRejection(index, 'unresolvable', 'No image store resolves this image reference');

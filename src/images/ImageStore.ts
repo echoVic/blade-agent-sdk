@@ -22,6 +22,7 @@ export interface ImageStore {
   put(image: ImageBytes, signal?: AbortSignal): Promise<ImageRef>;
   /** Resolve a reference this store handles; undefined when the image is gone. */
   get(url: string, signal?: AbortSignal): Promise<ResolvedImage | undefined>;
+  /** Delete stored bytes. Resolved copies may still be served from the per-store resolution cache until evicted. */
   delete?(url: string): Promise<void>;
 }
 

@@ -374,6 +374,7 @@ export class SessionRequestCoordinator {
     submitted: UserMessageContent,
     signal?: AbortSignal,
   ): Promise<UserMessageContent> {
+    if (this.state.executionLeaseFailure) throw this.state.executionLeaseFailure;
     if (this.state.isClosed || !this.state.runtime) throw new Error('Session is closed');
     const images = this.state.runtime.getImageRuntime();
     const admitted = this.admission.then(() => images.normalizeUserContent(submitted, signal));

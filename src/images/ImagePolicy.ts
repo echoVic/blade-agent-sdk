@@ -7,7 +7,7 @@ import { IMAGE_MEDIA_TYPES } from './imageBytes.js';
 export interface ImagePolicy {
   /** Where image bytes live. Without one, images stay inline as data: URLs. */
   store?: ImageStore;
-  /** Largest accepted inline image in bytes. Default 10 MiB, further capped by the model. */
+  /** Largest accepted inline image or reference with known byteLength, in bytes. Default 10 MiB, further capped by the model. */
   maxImageBytes?: number;
   /** Most images in one input. Default 20. */
   maxImagesPerInput?: number;

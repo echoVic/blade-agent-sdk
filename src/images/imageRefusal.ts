@@ -14,10 +14,10 @@ export function imageRefusal(
 ): 'remote_url' | 'too_large' | 'media_type' | undefined {
   if (isRemoteUrl(ref.url) && !policy.remoteUrls) return 'remote_url';
   const inline = parseBase64DataUrl(ref.url);
-  const byteLength = ref.byteLength ?? (inline ? base64DecodedLength(inline.base64) : undefined);
+  const byteLength = inline ? base64DecodedLength(inline.base64) : ref.byteLength;
   if (byteLength !== undefined && byteLength > policy.maxImageBytes) return 'too_large';
   let mediaType = ref.mediaType;
-  if (isDataUrl(ref.url) && !mediaType) {
+  if (isDataUrl(ref.url)) {
     const facts = inline
       ? inspectImageBytes(base64PrefixToBytes(inline.base64, 64 * 1024))
       : undefined;

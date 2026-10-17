@@ -1036,7 +1036,7 @@ const currentContext = session.getDefaultContext();
 - `http(s):` URL；
 - 由图片 store 解析的引用。
 
-`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。通过 `AgentClient` 发送这些元数据字段需要 7.5 或更高版本的 AgentServer，因为旧服务器会在 `input.submit` 中拒绝这些字段；仅含 `{ url }` 的图片适用于任何版本的服务器。
+`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。通过 `AgentClient` 发送这些元数据字段需要 7.5 或更高版本的 AgentServer，因为旧服务器会在 `input.submit` 中拒绝这些字段；仅含 `{ url }` 的图片适用于任何版本的服务器。`input.submit` 会拒绝超过 1,000 个字符的 `alt`。
 
 ```ts
 await session.send([
@@ -1048,7 +1048,7 @@ await session.send([
 `send()` 在记录输入之前逐张校验图片：
 
 - 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝；声明的媒体类型与字节不符时，会替换为实际类型。
-- 单张内联图片不超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
+- 单张内联图片，以及已知 `byteLength` 的引用，都不能超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
 - 每次输入最多 `images.maxImagesPerInput` 张，默认 20 张。
 - `http(s)` URL 原样交给 AI SDK；图片入口校验不会抓取它们来检查内容或测量大小。OpenAI、Anthropic 和 DeepSeek 路径把 URL 传给 provider。对于 OpenAI 兼容端点，AI SDK 会在进程内下载图片；对于 Gemini，URL 无法直接传递时也会下载，包括 `http:` URL、GIF、`gemini-2.0` 模型或没有声明 `mediaType` 的情况。通过 `@ai-sdk/google`，其他 `gemini-*` 模型可以接收声明了 `mediaType` 的 `https:` png/jpeg/webp URL。下载使用你的进程所在网络，因此可能访问到调用方无法访问的地址，且不受 `images.maxImageBytes` 限制。调用方不可信时（例如通过 AgentServer 收到的输入），建议将 `images.remoteUrls` 设为 `false`。
 - 其他 scheme 必须由 `images.store` 认领。
@@ -1076,7 +1076,7 @@ const session = await createSession({
 });
 ```
 
-`InMemoryImageStore` 只在进程存活期间有效，超过 `maxBytes`（默认 256 MiB）时还会淘汰最近最少使用的图片。store 引用对应的字节已丢失时，模型请求中会用 `[image unavailable: it is no longer in the image store]` 替代。如果要把图片放到别处，或者解析自己的引用（例如 IM 文件 key），就实现 `ImageStore` 接口，再用 `combineImageStores(primary, ...others)` 把多个 store 组合起来。可以被恢复的 Session，需要配置一个所有恢复进程都能读取的 store。
+`InMemoryImageStore` 只在进程存活期间有效，超过 `maxBytes`（默认 256 MiB）时还会淘汰最近最少使用的图片。store 引用对应的字节已丢失，且已解析的副本不再被缓存时，模型请求中会用 `[image unavailable: it is no longer in the image store]` 替代。从 store 删除图片不会清除按 store 共享的解析缓存；已解析的副本在被淘汰前仍可能继续用于请求。如果要把图片放到别处，或者解析自己的引用（例如 IM 文件 key），就实现 `ImageStore` 接口，再用 `combineImageStores(primary, ...others)` 把多个 store 组合起来。可以被恢复的 Session，需要配置一个所有恢复进程都能读取的 store。
 
 ### 图片预算
 

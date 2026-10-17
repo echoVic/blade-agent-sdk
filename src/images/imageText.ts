@@ -8,7 +8,8 @@ export function describeImage(ref: ImageRef): string {
   const size = ref.width && ref.height ? `${ref.width}×${ref.height}` : '';
   const meta = [ref.mediaType ?? '', size].filter((value) => value !== '').join(' ');
   const rawAlt = ref.alt?.trim() ?? '';
-  const alt = rawAlt.length > 200 ? `${rawAlt.slice(0, 200)}…` : rawAlt;
+  const codePoints = Array.from(rawAlt);
+  const alt = codePoints.length > 200 ? `${codePoints.slice(0, 200).join('')}…` : rawAlt;
   if (meta && alt) return `${meta} — ${alt}`;
   return meta || alt;
 }

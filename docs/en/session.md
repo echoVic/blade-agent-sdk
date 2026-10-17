@@ -628,7 +628,7 @@ Send images as `image_url` parts. `image_url` is an `ImageRef`: `url` is a
 `detail`, `mediaType`, `width`, `height`, `byteLength` and `alt` are optional.
 Sending these metadata fields through `AgentClient` requires AgentServer 7.5 or
 later, because older servers reject them in `input.submit`; a plain `{ url }`
-works with any server.
+works with any server. `input.submit` rejects an `alt` longer than 1,000 characters.
 
 ```ts
 await session.send([
@@ -641,8 +641,8 @@ await session.send([
 
 - Inline images must be base64 png, jpeg, gif or webp. SVG is always rejected.
   A declared media type that differs from the bytes is replaced by the real type.
-  Each inline image must fit `images.maxImageBytes` (10 MiB by default, and never more
-  than the model allows).
+  Each inline image, and each reference with a known `byteLength`, must fit
+  `images.maxImageBytes` (10 MiB by default, and never more than the model allows).
 - One input may carry at most `images.maxImagesPerInput` images (20 by default).
 - `http(s)` URLs are handed to the AI SDK unchanged. Image admission does not
   fetch them to check or measure them. OpenAI, Anthropic and DeepSeek routes
@@ -689,7 +689,9 @@ const session = await createSession({
 `InMemoryImageStore` lasts only as long as the process and evicts the least
 recently used images beyond `maxBytes` (256 MiB by default). A store reference
 whose bytes are gone becomes `[image unavailable: it is no longer in the image store]`
-in model requests. To keep images
+in model requests once its resolved copy is no longer cached. Deleting from a store
+does not clear the per-store resolution cache: resolved copies can still be served
+until they are evicted. To keep images
 elsewhere, or to resolve your own references such as an IM file key,
 implement `ImageStore`, and join several stores with
 `combineImageStores(primary, ...others)`. A Session that can be resumed needs a

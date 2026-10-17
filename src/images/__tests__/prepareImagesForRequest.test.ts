@@ -8,7 +8,7 @@ import { resolveImagePolicy } from '../ImagePolicy.js';
 import type { ImageStore } from '../ImageStore.js';
 import { InMemoryImageStore } from '../InMemoryImageStore.js';
 import { prepareImagesForRequest } from '../prepareImagesForRequest.js';
-import { ONE_PIXEL_PNG_BASE64, ONE_PIXEL_PNG_DATA_URL } from './fixtures.js';
+import { dataUrl, ONE_PIXEL_PNG_BASE64, ONE_PIXEL_PNG_DATA_URL, pngBytes } from './fixtures.js';
 
 const vision: VisionCapability = { images: true, toolResultImages: true, imageTokens: 1600 };
 const basePolicy = resolveImagePolicy(undefined, { vision, inputWindowTokens: 120_000 });
@@ -363,8 +363,16 @@ describe('prepareImagesForRequest', () => {
   it('does not spend a fresh place on a refused image', async () => {
     const accepted = image({ alt: 'accepted' });
     const prepared = await prepareImagesForRequest(
-      [{ role: 'user', content: [accepted, image({ byteLength: basePolicy.maxImageBytes + 1 })] }],
-      { vision, policy: { ...basePolicy, maxImagesPerRequest: 1 } },
+      [
+        {
+          role: 'user',
+          content: [
+            accepted,
+            image({ url: dataUrl('image/png', pngBytes(1, 1, 71)), byteLength: 1 }),
+          ],
+        },
+      ],
+      { vision, policy: { ...basePolicy, maxImagesPerRequest: 1, maxImageBytes: 70 } },
     );
     expect(prepared.messages[0]?.content).toEqual([
       accepted,

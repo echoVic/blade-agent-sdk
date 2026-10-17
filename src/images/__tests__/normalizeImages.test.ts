@@ -117,6 +117,75 @@ describe('normalizeImageContent', () => {
     expect(await normalizeImageContent(remote, { policy: policy(), vision })).toEqual(remote);
   });
 
+  it.each([
+    [
+      'https://example.test/a.png',
+      { remoteUrls: false },
+      {},
+      'remote_url',
+      'Remote image URLs are not accepted',
+    ],
+    [
+      'https://example.test/a.png',
+      { maxImageBytes: 69 },
+      { byteLength: 70 },
+      'too_large',
+      'Images must be at most 69 bytes',
+    ],
+    [
+      `blade-image:sha256:${'b'.repeat(64)}`,
+      { maxImageBytes: 69 },
+      { byteLength: 70 },
+      'too_large',
+      'Images must be at most 69 bytes',
+    ],
+    [
+      `blade-image:sha256:${'b'.repeat(64)}`,
+      { mediaTypes: ['image/png'] },
+      { mediaType: 'image/svg+xml' },
+      'media_type',
+      'Only png, jpeg, gif and webp images are accepted',
+    ],
+    [
+      'https://example.test/a.png',
+      { mediaTypes: ['image/png'] },
+      { mediaType: 'image/jpeg' },
+      'media_type',
+      'Only png, jpeg, gif and webp images are accepted',
+    ],
+  ] as const)('explains reference refusal for %s: %s', async (url, overrides, metadata, reason, message) => {
+    await expect(
+      normalizeImageContent([{ type: 'image_url', image_url: { url, ...metadata } }], {
+        policy: policy(overrides),
+        vision,
+      }),
+    ).rejects.toMatchObject({ index: 0, reason, message });
+  });
+
+  it.each([
+    ['https://example.test/a.png', { byteLength: 70 }, { maxImageBytes: 69 }, 'too_large'],
+    [
+      `blade-image:sha256:${'b'.repeat(64)}`,
+      { byteLength: 70 },
+      { maxImageBytes: 69 },
+      'too_large',
+    ],
+    [
+      `blade-image:sha256:${'b'.repeat(64)}`,
+      { mediaType: 'image/jpeg' },
+      { mediaTypes: ['image/png'] },
+      'media_type',
+    ],
+  ] as const)('refuses declared reference facts at admission: %s %j', async (url, metadata, overrides, reason) => {
+    const store = new InMemoryImageStore();
+    await expect(
+      normalizeImageContent([{ type: 'image_url', image_url: { url, ...metadata } }], {
+        policy: policy({ ...overrides, store }),
+        vision,
+      }),
+    ).rejects.toMatchObject({ index: 0, reason });
+  });
+
   it('rejects or keeps images for a model without vision according to the policy', async () => {
     const content = [image(ONE_PIXEL_PNG_DATA_URL)];
     await expect(
