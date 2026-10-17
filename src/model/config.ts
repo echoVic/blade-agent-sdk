@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { ModelRetryConfig } from './retry.js';
+import type { VisionCapability, VisionCapabilityOverride } from './vision.js';
 
 export const PROVIDER_TYPES = [
   'anthropic',
@@ -89,6 +90,8 @@ export interface ModelConfig {
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
   supportsThinking?: boolean;
+  /** Overrides the built-in image capability row for this model. */
+  vision?: VisionCapabilityOverride;
 }
 
 export interface ModelServiceConfig
@@ -111,6 +114,8 @@ export interface ModelServiceConfig
   supportsThinking?: boolean;
   outputFormat?: OutputFormat;
   retry?: Partial<ModelRetryConfig>;
+  /** Image capability the SDK resolved for `model`; custom adapters may read it. */
+  vision?: VisionCapability;
 }
 
 export interface ProviderConnectionConfig {

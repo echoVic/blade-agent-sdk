@@ -56,6 +56,13 @@ export {
   SessionInputError,
   ToolExecutionError,
 } from './errors/index.js';
+export type { ImagePolicy } from './images/ImagePolicy.js';
+export type {
+  ImageBytes,
+  ImageStore,
+  ResolvedImage,
+  TenantImageStore,
+} from './images/ImageStore.js';
 export type {
   CleanupFn,
   CleanupHandle,
@@ -86,10 +93,12 @@ export * from './middleware/ToolMiddleware.js';
 export * from './model/config.js';
 export * from './model/conversation.js';
 export * from './model/identity.js';
+export type * from './model/image.js';
 export type * from './model/message.js';
 export type * from './model/retry.js';
 export type * from './model/service.js';
 export * from './model/usage.js';
+export type * from './model/vision.js';
 // --- Observability ---
 export type {
   AgentTrace,

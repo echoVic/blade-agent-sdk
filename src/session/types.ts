@@ -2,6 +2,7 @@ import type Type from 'typebox';
 import type { AgentSessionRepository } from '../agent/subagents/AgentSessionRepository.js';
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
+import type { ImagePolicy } from '../images/ImagePolicy.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { MemoryManager } from '../memory/MemoryManager.js';
@@ -13,6 +14,7 @@ import type {
 } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { TokenUsage } from '../model/usage.js';
+import type { VisionCapabilityOverride, VisionResolver } from '../model/vision.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type {
   ContextSnapshot,
@@ -220,6 +222,13 @@ export interface SessionOptions {
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
   tokenBudget?: TokenBudgetConfig;
+  /** Image admission, storage and request budget. */
+  images?: ImagePolicy;
+  /**
+   * Overrides what the model accepts as image input. An object applies to the
+   * Session's model whatever it is switched to; a function is asked per model.
+   */
+  vision?: VisionCapabilityOverride | VisionResolver;
 
   allowedTools?: string[];
   disallowedTools?: string[];

@@ -2,6 +2,7 @@ import type { MessageRole } from '../types/constants.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
 import type { ModelProviderOptions } from './config.js';
 import type { ModelIdentity } from './identity.js';
+import type { ImageRef } from './image.js';
 
 export interface ModelToolCall {
   id: string;
@@ -30,9 +31,7 @@ export interface ModelTextContent {
 
 export interface ModelImageContent {
   type: 'image_url';
-  image_url: {
-    url: string;
-  };
+  image_url: ImageRef;
 }
 
 export type ModelContent = ModelTextContent | ModelImageContent;
