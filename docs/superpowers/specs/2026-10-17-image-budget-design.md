@@ -267,8 +267,8 @@ export function combineImageStores(primary: ImageStore, ...others: ImageStore[])
    - 解码之前先按 base64 长度估算字节数。超过 `min(policy.maxImageBytes, vision.maxImageBytes)` 就拒绝（`too_large`），不分配内存。
    - 解码之后按文件魔数判定类型：只收 png、jpeg、gif、webp；svg 一律拒绝。声明的 mediaType 和魔数不符时以魔数为准，记录并发送真实类型：7.4 会原样转发这类图片，拒绝它们没有安全收益。
    - 从文件头读取宽高（png 的 IHDR、jpeg 的 SOF、gif 的逻辑屏幕描述符、webp 的 VP8、VP8L、VP8X），并记录 byteLength。不依赖图像库。
-2. `http(s):`：`policy.remoteUrls === false` 时拒绝（`remote_url`）。SDK 不去抓取，元数据保持未知。
-3. 其他 scheme：必须有 store 认领（`store.handles(url)`），否则拒绝（`unresolvable`）。这里不检查引用是否真实存在，缺失的引用在出口会变成占位。
+2. `http(s):`：`policy.remoteUrls === false` 时拒绝（`remote_url`）。SDK 不去抓取；调用方声明的 `byteLength` 超过上限时拒绝（`too_large`），声明的 `mediaType` 不在 `mediaTypes` 里时拒绝（`media_type`），与投影共用同一条判断（§6.2 第 4 步）。其余元数据保持调用方给的值。
+3. 其他 scheme：必须有 store 认领（`store.handles(url)`），否则拒绝（`unresolvable`）。声明的字节数和类型按第 2 步同样检查。这里不检查引用是否真实存在，缺失的引用在出口会变成占位。
 4. 张数：超过 `maxImagesPerInput` 时拒绝（`too_many`）。
 5. 视觉能力：`vision.images === false` 时：
    - `whenUnsupported: 'reject'` 直接拒绝（`unsupported_model`）；
@@ -331,7 +331,7 @@ export type ImageRejectionReason =
 
 投影只用于本次请求，不写回 `ConversationState`、transcript 或存储。
 
-`TurnState` 需要携带这些内容：解析后的 `vision`、解析后的 `ImagePolicy`、store、Session 级的解析缓存，以及本轮是否是恢复重试（§7.4）。
+`TurnState` 需要携带这些内容：解析后的 `vision`、解析后的 `ImagePolicy`、store、按 store 对象共享的解析缓存（§6.5），以及本轮是否是恢复重试（§7.4）。
 
 ### 6.2 算法
 
@@ -401,7 +401,7 @@ output: {
 
 ### 6.7 可观测性
 
-只要有图片被省略，就记一条 debug 日志。请求里只要有图片，就在当前 turn span 下记录一个 `image_projection` trace 事件，内容是投影报告：`total`、`kept`、`freshKept`、`omitted.budget`、`omitted.unsupported`、`omitted.unavailable` 和 `estimatedTokens`。没有图片被省略时也记录，因为保留张数和估算值本身就有用。不新增流事件类型。
+只要有图片被省略，就记一条 debug 日志。请求里只要有图片，就在当前 turn span 下记录一个 `image_projection` trace 事件，内容是投影报告：`total`、`kept`、`freshKept`、`omitted.budget`、`omitted.unsupported`、`omitted.rejected`、`omitted.unavailable` 和 `estimatedTokens`。没有图片被省略时也记录，因为保留张数和估算值本身就有用。不新增流事件类型。
 
 ## 7. 估算、压缩与恢复
 
