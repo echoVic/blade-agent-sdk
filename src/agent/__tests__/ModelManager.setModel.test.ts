@@ -91,4 +91,64 @@ describe('ModelManager.setModel', () => {
     expect(manager.getModelService().getConfig().model).toBe('gpt-4.1');
     expect(config.models[0]?.model).toBe('gpt-4.1');
   });
+
+  it('resolves vision for the active model and passes it to the service config', async () => {
+    const config: BladeConfig = {
+      models: [
+        createModelConfig({
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-5',
+          maxOutputTokens: 8000,
+        }),
+      ],
+      currentModelId: 'default',
+    };
+    const manager = new ModelManager(config);
+    const [model] = config.models;
+    if (!model) throw new Error('Expected a model config');
+
+    await manager.applyModelConfig(model, 'init');
+
+    expect(manager.getVision()).toMatchObject({
+      images: true,
+      toolResultImages: true,
+      imageTokens: 'anthropic',
+    });
+    expect(mockCreateModelServiceAsync.mock.calls.at(-1)?.[0].vision).toEqual(manager.getVision());
+    expect(manager.getInputWindowTokens()).toBe(128000 - 8000);
+  });
+
+  it('applies the session override and remembers a runtime downgrade per model', async () => {
+    const config: BladeConfig = { models: [createModelConfig()], currentModelId: 'default' };
+    const manager = new ModelManager(
+      config,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [],
+      undefined,
+      ({ model }) => (model === 'gpt-4o-mini' ? { maxImagesPerRequest: 2 } : undefined),
+    );
+    const [model] = config.models;
+    if (!model) throw new Error('Expected a model config');
+
+    await manager.applyModelConfig(model, 'init');
+    expect(manager.getVision()).toMatchObject({ images: true, maxImagesPerRequest: 2 });
+
+    manager.markImagesUnsupported();
+    expect(manager.getVision()?.images).toBe(false);
+
+    await manager.setModel('gpt-4.1');
+    expect(manager.getVision()?.images).toBe(true);
+
+    await manager.setModel('gpt-4o-mini');
+    expect(manager.getVision()?.images).toBe(false);
+  });
+
+  it('reports no vision before a model is applied', () => {
+    const manager = new ModelManager({ models: [createModelConfig()] });
+    expect(manager.getVision()).toBeUndefined();
+    expect(manager.getInputWindowTokens()).toBeUndefined();
+  });
 });

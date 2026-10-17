@@ -24,6 +24,7 @@ export interface VisionCapability {
 
 export type VisionCapabilityOverride = Partial<VisionCapability>;
 
+/** Resolves an override; provider is the adapter type (e.g. 'openai-compatible'), not providerId. */
 export type VisionResolver = (model: {
   readonly provider: string;
   readonly model: string;

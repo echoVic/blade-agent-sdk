@@ -1,6 +1,7 @@
 import type { AgentMiddlewareConfig } from '../middleware/AgentPlugin.js';
 import type { OutputFormat } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
+import type { VisionCapabilityOverride, VisionResolver } from '../model/vision.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { SandboxSettings } from '../sandbox/config.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
@@ -99,6 +100,8 @@ export interface AgentRuntimeOptions {
   sandbox?: SandboxSettings;
   tokenBudget?: TokenBudgetConfig;
   localDiscovery?: boolean;
+  /** Override of the resolved image capability; see `SessionOptions.vision`. */
+  vision?: VisionCapabilityOverride | VisionResolver;
 }
 
 export interface LoopOptions {

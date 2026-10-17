@@ -139,6 +139,7 @@ export class Agent {
       this.rootLogger,
       deps.modelMiddleware,
       deps.providerRegistry,
+      runtimeOptions.vision,
     );
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }

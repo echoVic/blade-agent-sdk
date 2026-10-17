@@ -76,6 +76,7 @@ export class SessionLifecycle {
           outputFormat: this.state.options.outputFormat,
           sandbox: this.state.options.sandbox,
           tokenBudget: this.state.options.tokenBudget,
+          vision: this.state.options.vision,
           localDiscovery: this.state.hostProfile === NODE_SESSION_HOST,
         },
         this.state.runtime.getAgentRuntimeDeps(),

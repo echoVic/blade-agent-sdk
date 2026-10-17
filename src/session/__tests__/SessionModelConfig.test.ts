@@ -116,4 +116,18 @@ describe('Session model config', () => {
 
     await session.close();
   });
+
+  it('passes the vision override into agent runtime options', async () => {
+    const vision = { maxImagesPerRequest: 1 };
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'qwen-vl-max',
+      vision,
+    });
+
+    const [, agentOptions] = createAgent.mock.calls.at(-1) ?? [];
+    expect(agentOptions).toEqual(expect.objectContaining({ vision }));
+
+    await session.close();
+  });
 });
