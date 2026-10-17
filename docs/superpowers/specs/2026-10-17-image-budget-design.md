@@ -85,7 +85,7 @@ export interface ImageRef {
   width?: number;
   height?: number;
   byteLength?: number;
-  /** 图片不能发给模型时，用于生成占位文本。协议 schema 限制为 1000 个字符；占位和摘要里最多显示 200 个字符。 */
+  /** 图片不能发给模型时，用于生成占位文本。`input.submit` 的 schema 限制为 1000 个字符；durable 和 stream schema 不限制，因为它们必须能读回 SDK 自己写下的内容。占位和摘要里最多显示 200 个字符（按码点截断）。 */
   alt?: string;
 }
 ```
@@ -267,7 +267,7 @@ export function combineImageStores(primary: ImageStore, ...others: ImageStore[])
    - 解码之前先按 base64 长度估算字节数。超过 `min(policy.maxImageBytes, vision.maxImageBytes)` 就拒绝（`too_large`），不分配内存。
    - 解码之后按文件魔数判定类型：只收 png、jpeg、gif、webp；svg 一律拒绝。声明的 mediaType 和魔数不符时以魔数为准，记录并发送真实类型：7.4 会原样转发这类图片，拒绝它们没有安全收益。
    - 从文件头读取宽高（png 的 IHDR、jpeg 的 SOF、gif 的逻辑屏幕描述符、webp 的 VP8、VP8L、VP8X），并记录 byteLength。不依赖图像库。
-2. `http(s):`：`policy.remoteUrls === false` 时拒绝（`remote_url`）。SDK 不去抓取；调用方声明的 `byteLength` 超过上限时拒绝（`too_large`），声明的 `mediaType` 不在 `mediaTypes` 里时拒绝（`media_type`），与投影共用同一条判断（§6.2 第 4 步）。其余元数据保持调用方给的值。
+2. `http(s):`：`policy.remoteUrls === false` 时拒绝（`remote_url`）。SDK 不去抓取；调用方声明的 `byteLength` 超过上限时拒绝（`too_large`），声明的 `mediaType` 不在 `mediaTypes` 里时拒绝（`media_type`），与投影共用同一条判断（§6.2 第 4 步）。对内联 data URL，这条判断用解码长度和嗅探出的类型，不用声明值。其余元数据保持调用方给的值。
 3. 其他 scheme：必须有 store 认领（`store.handles(url)`），否则拒绝（`unresolvable`）。声明的字节数和类型按第 2 步同样检查。这里不检查引用是否真实存在，缺失的引用在出口会变成占位。
 4. 张数：超过 `maxImagesPerInput` 时拒绝（`too_many`）。
 5. 视觉能力：`vision.images === false` 时：
