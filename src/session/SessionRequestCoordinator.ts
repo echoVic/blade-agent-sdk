@@ -86,15 +86,7 @@ export class SessionRequestCoordinator {
 
   async send(submitted: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
     await this.ensureInitialized();
-    // Preserve send order without holding the input mutex during slow image store writes.
-    const admitted = this.admission.then(() =>
-      this.state.getRuntime().getImageRuntime().normalizeUserContent(submitted, options?.signal),
-    );
-    this.admission = admitted.then(
-      () => undefined,
-      () => undefined,
-    );
-    const message = await admitted;
+    const message = await this.admitInput(submitted, options?.signal);
 
     return this.state.inputMutex.runExclusive(async () => {
       if (this.state.executionLeaseFailure) {
@@ -375,6 +367,20 @@ export class SessionRequestCoordinator {
       return;
     }
     this.state.executionState = this.createPendingState(requestId, input);
+  }
+
+  /** Admit images in call order without holding the input mutex during slow image store writes. */
+  private admitInput(
+    submitted: UserMessageContent,
+    signal?: AbortSignal,
+  ): Promise<UserMessageContent> {
+    const images = this.state.getRuntime().getImageRuntime();
+    const admitted = this.admission.then(() => images.normalizeUserContent(submitted, signal));
+    this.admission = admitted.then(
+      () => undefined,
+      () => undefined,
+    );
+    return admitted;
   }
 
   private restoreDurableAcceptedRequest(request: DurableRequestProjection): void {

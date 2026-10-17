@@ -199,6 +199,39 @@ describe('Session images', () => {
     }
   });
 
+  it('rejects queued image admission with the closed Session error after close', async () => {
+    const requests: ModelMessage[][] = [];
+    const gated = gatedImageStore();
+    const session = await createSession(
+      sessionOptions(requests, { images: { store: gated.store } }),
+    );
+    const sends: Promise<unknown>[] = [];
+
+    try {
+      const first = session.send([
+        { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+      ]);
+      sends.push(first);
+      await gated.entered;
+      const second = session.send([
+        { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+      ]);
+      sends.push(second);
+      const settled = Promise.allSettled(sends);
+      await Promise.resolve();
+
+      await session.close();
+      await expect(session.send('closed')).rejects.toThrow(new Error('Session is closed'));
+      gated.release();
+      await expect(second).rejects.toThrow(new Error('Session is closed'));
+      await settled;
+    } finally {
+      gated.release();
+      await Promise.allSettled(sends);
+      await session.close();
+    }
+  });
+
   it('admits later sends after an image normalization rejection', async () => {
     const requests: ModelMessage[][] = [];
     const session = await createSession(
