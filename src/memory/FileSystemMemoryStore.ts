@@ -2,8 +2,8 @@ import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Mutex } from 'async-mutex';
-import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
+import { parse, stringify } from 'yaml';
 import type { MemoryStore } from './MemoryStore.js';
 import type { Memory, MemoryInput, MemoryType } from './types.js';
 
@@ -42,7 +42,7 @@ export class FileSystemMemoryStore implements MemoryStore {
       await mkdir(this.dir, { recursive: true });
       await writeFileAtomic(
         contentPath,
-        matter.stringify(memory.body, {
+        stringifyMemory(memory.body, {
           name: memory.name,
           description: memory.description,
           type: memory.type,
@@ -138,7 +138,8 @@ export class FileSystemMemoryStore implements MemoryStore {
   }
 
   private parseMemory(raw: string): Omit<Memory, 'updatedAt'> | undefined {
-    const parsed = matter(raw);
+    const parsed = readFrontmatter(raw);
+    if (!parsed) return undefined;
     const frontmatter = parsed.data as {
       name?: unknown;
       description?: unknown;
@@ -227,4 +228,32 @@ export class FileSystemMemoryStore implements MemoryStore {
       );
     }
   }
+}
+
+function readFrontmatter(
+  raw: string,
+): { data: Record<string, unknown>; content: string } | undefined {
+  const opening = /^---\r?\n/.exec(raw);
+  if (!opening) return undefined;
+  const rest = raw.slice(opening[0].length);
+  const closing = /^---(?:\r?\n|$)/m.exec(rest);
+  if (!closing) return undefined;
+  let data: unknown;
+  try {
+    data = parse(rest.slice(0, closing.index), { schema: 'core' });
+  } catch {
+    return undefined;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  return {
+    data: data as Record<string, unknown>,
+    content: rest.slice(closing.index + closing[0].length),
+  };
+}
+
+function stringifyMemory(
+  body: string,
+  metadata: Pick<MemoryInput, 'name' | 'description' | 'type'>,
+): string {
+  return `---\n${stringify(metadata)}---\n${body}${body.endsWith('\n') ? '' : '\n'}`;
 }

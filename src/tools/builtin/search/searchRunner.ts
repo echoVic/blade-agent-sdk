@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process';
 import { accessSync, constants, type Stats } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { lstat, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Entry } from 'fast-glob';
-import fg from 'fast-glob';
+import { glob } from 'tinyglobby';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { DEFAULT_EXCLUDE_DIRS, FileFilter } from '../../../utils/filePatterns.js';
@@ -97,23 +96,26 @@ export async function runGlob(
     customScanIgnore: [],
     cacheTTL: 30_000,
   });
-  const entries = await fg(pattern, {
+  const entries = await glob(pattern, {
     cwd: root,
     dot: true,
     followSymbolicLinks: false,
-    unique: true,
+    expandDirectories: false,
     caseSensitiveMatch: options.caseSensitive,
-    objectMode: true,
-    stats: true,
     onlyFiles: !options.includeDirectories,
     ignore: fileFilter.getIgnorePatterns(),
   });
   options.signal.throwIfAborted();
-  const matches = entries
-    .filter((entry) => !fileFilter.shouldIgnore(entry.path))
-    .filter((entry) => !entry.dirent.isDirectory() || !fileFilter.shouldIgnoreDirectory(entry.path))
-    .map((entry) => toSearchMatch(root, entry))
-    .sort(compareMatches);
+  const matches: SearchMatch[] = [];
+  for (const entry of entries) {
+    options.signal.throwIfAborted();
+    const relativePath = entry.replace(/\/$/, '').replaceAll('\\', '/');
+    if (fileFilter.shouldIgnore(relativePath)) continue;
+    const stats = await lstat(join(root, relativePath));
+    if (stats.isDirectory() && fileFilter.shouldIgnoreDirectory(relativePath)) continue;
+    matches.push(toSearchMatch(root, relativePath, stats));
+  }
+  matches.sort(compareMatches);
   return {
     matches: matches.slice(0, options.maxResults),
     truncated: matches.length > options.maxResults,
@@ -157,16 +159,14 @@ export async function runRipgrep(args: string[], signal: AbortSignal): Promise<C
   return runCommand(resolveRipgrep(), args, signal);
 }
 
-function toSearchMatch(root: string, entry: Entry): SearchMatch {
-  const relativePath = entry.path.replaceAll('\\', '/');
-  const stats = entry.stats;
-  const isDirectory = entry.dirent.isDirectory();
+function toSearchMatch(root: string, relativePath: string, stats: Stats): SearchMatch {
+  const isDirectory = stats.isDirectory();
   return {
     path: join(root, relativePath),
     relative_path: relativePath,
     is_directory: isDirectory,
-    ...(!isDirectory && stats ? { size: stats.size } : {}),
-    ...(stats ? { modified: stats.mtime.toISOString() } : {}),
+    ...(!isDirectory ? { size: stats.size } : {}),
+    modified: stats.mtime.toISOString(),
   };
 }
 

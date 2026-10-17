@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import fg from 'fast-glob';
 import { LRUCache } from 'lru-cache';
 import picomatch from 'picomatch';
+import { glob } from 'tinyglobby';
 import { splitPath } from './pathHelpers.js';
 
 export const DEFAULT_EXCLUDE_DIRS = [
@@ -99,12 +99,12 @@ async function collectGitignoreRulesOrderedAsync(
     return cached;
   }
 
-  const files = await fg('**/.gitignore', {
+  const files = await glob('**/.gitignore', {
     cwd,
     dot: true,
     onlyFiles: true,
     followSymbolicLinks: false,
-    unique: true,
+    expandDirectories: false,
     ignore: scanIgnore,
   });
   // 按路径深度排序（跨平台）
@@ -257,7 +257,7 @@ export class FileFilter {
       this.orderedRules.push({ type: 'ignore', matcher: picomatch(p, { dot: true }) });
     }
 
-    // 保存原始模式，供 fast-glob 使用
+    // 保存原始模式，供 tinyglobby 使用
     this.ignorePatterns = allPatterns;
     this.negatePatterns = allNegatePatterns;
 
@@ -285,7 +285,7 @@ export class FileFilter {
   }
 
   /**
-   * 获取 ignore 模式，供 fast-glob 使用
+   * 获取 ignore 模式，供 tinyglobby 使用
    * @returns ignore 模式数组（不包含 negation 模式）
    */
   getIgnorePatterns(): string[] {

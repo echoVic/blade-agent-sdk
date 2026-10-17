@@ -6,7 +6,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import fg from 'fast-glob';
+import { glob } from 'tinyglobby';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { splitPath } from '../../utils/pathHelpers.js';
 import { PathSecurity } from '../../utils/pathSecurity.js';
@@ -235,12 +235,12 @@ export class AttachmentCollector {
     relativePath: string,
   ): Promise<Attachment> {
     // 递归查找所有文件
-    const files = (await fg('**/*', {
+    const files = (await glob('**/*', {
       cwd: absolutePath,
       dot: false,
       followSymbolicLinks: false,
       onlyFiles: true,
-      unique: true,
+      expandDirectories: false,
       ignore: [
         'node_modules/**',
         '.git/**',
@@ -351,13 +351,13 @@ export class AttachmentCollector {
    * 处理 Glob 模式
    */
   private async processGlob(pattern: string): Promise<Attachment> {
-    // 使用 fast-glob 展开模式
-    const files = (await fg(pattern, {
+    // 使用 tinyglobby 展开模式
+    const files = (await glob(pattern, {
       cwd: this.options.cwd,
       dot: false,
       followSymbolicLinks: false,
       onlyFiles: true,
-      unique: true,
+      expandDirectories: false,
       ignore: [
         'node_modules/**',
         '.git/**',

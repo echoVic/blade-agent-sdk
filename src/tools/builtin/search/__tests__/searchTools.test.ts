@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -7,6 +7,7 @@ import { SessionId } from '../../../../types/identifiers.js';
 import { collectToolExecution } from '../../../types/result.js';
 import { globTool } from '../glob.js';
 import { grepTool } from '../grep.js';
+import { runGlob } from '../searchRunner.js';
 
 describe('search tools', () => {
   let root: string;
@@ -45,6 +46,51 @@ describe('search tools', () => {
     expect(result.metadata?.matches).toEqual([
       expect.objectContaining({ relative_path: 'src/match.ts', is_directory: false }),
     ]);
+  });
+
+  async function search(pattern: string, includeDirectories = false, caseSensitive = true) {
+    return runGlob(root, pattern, {
+      maxResults: 100,
+      includeDirectories,
+      caseSensitive,
+      signal: new AbortController().signal,
+    });
+  }
+
+  test('reports directory matches without a trailing slash or expanding their contents', async () => {
+    expect((await search('src', true)).matches).toEqual([
+      {
+        path: join(root, 'src'),
+        relative_path: 'src',
+        is_directory: true,
+        modified: expect.any(String),
+      },
+    ]);
+    expect((await search('src')).matches).toEqual([]);
+  });
+
+  test('matches case insensitively only when requested', async () => {
+    expect((await search('src/*.TS', false, false)).matches).toEqual([
+      expect.objectContaining({
+        relative_path: 'src/match.ts',
+        size: 23,
+        modified: expect.any(String),
+      }),
+    ]);
+    expect((await search('src/*.TS')).matches).toEqual([]);
+  });
+
+  test('includes dotfiles, respects gitignore, and never traverses symlinked directories', async () => {
+    await writeFile(join(root, '.hidden.ts'), 'hidden');
+    await writeFile(join(root, '.gitignore'), 'src/other.js\n');
+    await symlink(join(root, 'src'), join(root, 'linked'), 'dir');
+    const paths = (await search('**/*')).matches.map((match) => match.relative_path);
+    expect(paths).toContain('.hidden.ts');
+    expect(paths).toContain('src/match.ts');
+    expect(paths).not.toContain('src/other.js');
+    expect(
+      paths.some((path) => path.startsWith('node_modules/') || path.startsWith('linked/')),
+    ).toBe(false);
   });
 
   test('grep returns matching content with line numbers', async () => {

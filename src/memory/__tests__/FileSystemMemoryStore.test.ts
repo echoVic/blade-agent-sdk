@@ -150,3 +150,55 @@ describe('FileSystemMemoryStore', () => {
     await expect(readFile(join(root, 'MEMORY.md'), 'utf8')).rejects.toThrow();
   });
 });
+
+describe('memory front matter compatibility', () => {
+  it.each(['\n', '\r\n'])('reads legacy quoted YAML with %j line endings', async (eol) => {
+    const root = await createTempDir();
+    const raw = [
+      '---',
+      'name: "legacy"',
+      `description: 'A value: "quoted"'`,
+      'type: project',
+      '---',
+      'First line',
+      '',
+      'Second line',
+      '',
+    ].join(eol);
+    await writeFile(join(root, 'legacy.md'), raw);
+    expect(await new FileSystemMemoryStore(root).get('legacy')).toMatchObject({
+      name: 'legacy',
+      description: 'A value: "quoted"',
+      type: 'project',
+      body: `First line${eol}${eol}Second line`,
+    });
+  });
+
+  it('writes compatible delimiters and preserves fields and body on round trip', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+    const memory = {
+      name: 'round-trip',
+      description: 'A value: "quoted"',
+      type: 'feedback' as const,
+      body: 'First line\n\nSecond line',
+    };
+    await store.save(memory);
+    const raw = await readFile(join(root, 'round-trip.md'), 'utf8');
+    expect(raw).toMatch(/^---\n[\s\S]*\n---\nFirst line\n\nSecond line\n$/);
+    expect(raw.endsWith('\n\n')).toBe(false);
+    expect(await store.get(memory.name)).toMatchObject(memory);
+  });
+
+  it.each([
+    'name: invalid\ndescription: missing delimiters\ntype: project\n',
+    '---\nname: invalid\ndescription: unterminated\ntype: project\n',
+    '---\nname: [broken\n---\nbody',
+  ])('rejects missing, unterminated or invalid front matter: %j', async (raw) => {
+    const root = await createTempDir();
+    await writeFile(join(root, 'invalid.md'), raw);
+    await expect(new FileSystemMemoryStore(root).get('invalid')).rejects.toThrow(
+      'has no valid frontmatter',
+    );
+  });
+});

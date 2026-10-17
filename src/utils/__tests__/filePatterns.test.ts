@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_EXCLUDE_DIRS, FileFilter } from '../filePatterns.js';
 
@@ -132,5 +135,32 @@ describe('filePatterns', () => {
         expect(Array.isArray(patterns)).toBe(true);
       });
     });
+  });
+});
+
+describe('recursive gitignore scan', () => {
+  it('reads nested and hidden gitignores but excludes ignored and symlinked directories', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'blade-filter-'));
+    const outside = await mkdtemp(join(tmpdir(), 'blade-filter-outside-'));
+    try {
+      for (const directory of ['nested', '.hidden', 'node_modules']) {
+        await mkdir(join(root, directory));
+        await writeFile(join(root, directory, '.gitignore'), 'secret.txt\n');
+      }
+      await writeFile(join(outside, '.gitignore'), 'external.txt\n');
+      await symlink(outside, join(root, 'linked'), 'dir');
+      const filter = await FileFilter.create({
+        cwd: root,
+        useGitignore: true,
+        useDefaults: false,
+        gitignoreScanMode: 'recursive',
+      });
+      expect(filter.shouldIgnore('nested/secret.txt')).toBe(true);
+      expect(filter.shouldIgnore('.hidden/secret.txt')).toBe(true);
+      expect(filter.shouldIgnore('node_modules/secret.txt')).toBe(false);
+      expect(filter.shouldIgnore('linked/external.txt')).toBe(false);
+    } finally {
+      await Promise.all([root, outside].map((dir) => rm(dir, { recursive: true, force: true })));
+    }
   });
 });
