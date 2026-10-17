@@ -85,7 +85,7 @@ export interface ImageRef {
   width?: number;
   height?: number;
   byteLength?: number;
-  /** 图片不能发给模型时，用于生成占位文本。 */
+  /** 图片不能发给模型时，用于生成占位文本。协议 schema 限制为 1000 个字符；占位和摘要里最多显示 200 个字符。 */
   alt?: string;
 }
 ```
@@ -189,7 +189,7 @@ export interface ImagePolicy {
   maxImagesPerInput?: number;
   /** 历史图片预算；默认 min(16_000, 输入窗口的 25%)。 */
   historyTokens?: number;
-  /** 单次请求的张数硬上限；默认取 vision.maxImagesPerRequest，未声明时为 50。 */
+  /** 单次请求的张数硬上限；默认取 vision.maxImagesPerRequest，未声明时为 50；配置值不会超过模型的上限。 */
   maxImagesPerRequest?: number;
   /** 模型不收图时新输入怎么处理；默认 'reject'。 */
   whenUnsupported?: 'reject' | 'omit';
@@ -265,7 +265,7 @@ export function combineImageStores(primary: ImageStore, ...others: ImageStore[])
 
 1. `data:`：
    - 解码之前先按 base64 长度估算字节数。超过 `min(policy.maxImageBytes, vision.maxImageBytes)` 就拒绝（`too_large`），不分配内存。
-   - 解码之后按文件魔数判定类型：只收 png、jpeg、gif、webp；svg 一律拒绝；声明的 mediaType 和魔数不符也拒绝（`media_type`）。
+   - 解码之后按文件魔数判定类型：只收 png、jpeg、gif、webp；svg 一律拒绝。声明的 mediaType 和魔数不符时以魔数为准，记录并发送真实类型：7.4 会原样转发这类图片，拒绝它们没有安全收益。
    - 从文件头读取宽高（png 的 IHDR、jpeg 的 SOF、gif 的逻辑屏幕描述符、webp 的 VP8、VP8L、VP8X），并记录 byteLength。不依赖图像库。
 2. `http(s):`：`policy.remoteUrls === false` 时拒绝（`remote_url`）。SDK 不去抓取，元数据保持未知。
 3. 其他 scheme：必须有 store 认领（`store.handles(url)`），否则拒绝（`unresolvable`）。这里不检查引用是否真实存在，缺失的引用在出口会变成占位。
@@ -314,7 +314,7 @@ export type ImageRejectionReason =
 
 `SessionInputError` 增加可选字段 `details: { index: number; reason: ImageRejectionReason }`。
 
-`InProcessSessionExecutor.submit` 把所有 `SessionInputError` 映射成协议错误。现在它们都会落进 `INTERNAL_ERROR 500 retryable`。
+`InProcessSessionExecutor.submit` 把所有 `SessionInputError` 映射成协议错误。现在它们都会落进 `INTERNAL_ERROR 500 retryable`。`AgentServer` 在兜底成 `INTERNAL_ERROR` 之前也做同样的映射，所以自定义的 `SessionExecutor` 得到相同的结果。
 
 | SessionInputError | 协议错误 |
 |---|---|
@@ -339,6 +339,7 @@ export type ImageRejectionReason =
 2. 收集图片槽位：消息下标、part 下标、所属 role、tool_call_id、估算成本。只有 user 和 tool 消息里的图片参与计算；system 和 assistant 消息里的图片替换成占位，因为 provider 不接受。
 3. 标记 fresh：最后一条 assistant 消息之后的图片，也就是模型还没看过的输入和工具结果。
 4. `vision.images === false` 时：全部替换成"不收图"占位，结束。
+   逐张复核：已知字节数超过 `maxImageBytes`、已知类型不在 `mediaTypes` 里，或者 `remoteUrls` 为 false 时的 `http(s)` 图片，换成"不接受"占位（`rejected`），不占名额。入口和投影共用同一条判断。恢复的历史、工具注入的图片、换模型之前收下的图片，都没有经过当前模型的入口检查。
 5. 张数上限 `maxImagesPerRequest`：fresh 图片按从新到旧先占名额，放不下的替换成预算占位；剩余名额留给历史图片。
 6. 历史预算：历史图片按从旧到新累加成本，合计为 T，预算 B = `historyTokens`。
    - T ≤ B 时全部保留；
@@ -382,7 +383,7 @@ output: {
   - 返回字节时转成 data URL；
   - 返回 `{ url }` 时直接传 url；
   - 返回 `undefined`、抛错，或者没有 store 认领这个引用时，替换成"不可用"占位，本轮继续。同一 Session 内每个 URL 只记一次 warn，之后再遇到记 debug：transcript 保留引用，之后的每次请求都会再遇到它。
-- 解析结果放进 Session 级的 LRU 缓存，按字节计，默认上限 64 MiB。只解析保留下来的图片，而且并发解析；保留哪些图片在解析之前已经决定，并发不影响结果。presigned `{ url }` 不进缓存。
+- 解析结果放进按 store 对象共享的 LRU 缓存，每个 store 对象一份，按字节计，默认上限 64 MiB。`get(url)` 不带 Session 信息，按租户区分的视图是不同的对象，所以共享不会带来新的访问。只解析保留下来的图片，而且并发解析；保留哪些图片在解析之前已经决定，并发不影响结果。presigned `{ url }` 不进缓存。
 - `data:` 和 `http(s):` 的判断不区分大小写，与入口一致。
 
 ### 6.6 占位文本
@@ -392,6 +393,7 @@ output: {
 ```
 [image omitted to fit the image budget: image/png 1280×720 — <alt>]
 [image omitted: the current model does not accept images — image/png 1280×720 — <alt>]
+[image omitted: the current model or the image policy does not accept this image — image/png 1280×720 — <alt>]
 [image unavailable: it is no longer in the image store]
 ```
 
@@ -411,7 +413,7 @@ output: {
 |---|---|
 | openai | detail 为 low 时固定 85；否则先缩放到 2048×2048 以内，再把短边缩到 768，按 512 切块，`85 + 170 × 块数` |
 | anthropic | 长边缩到 1568 以内、面积缩到约 1.15 MP 以内，`⌈宽 × 高 / 750⌉` |
-| gemini | 两边都不超过 384 时为 258；否则按 768 切块，每块 258 |
+| gemini | 两边都不超过 384 时为 258；否则先等比缩放到 3072×3072 以内，再按 768 切块，每块 258 |
 | 数字 | 每张固定为该值 |
 
 - 宽高优先取 `ImageRef` 里的值。旧的 `data:` 图片没有元数据，只解码前 64 KB 来读文件头。
@@ -434,7 +436,9 @@ output: {
   - 张数超限：`too many images`、vLLM 的 `At most N image(s)`；
   - 单张过大：`exceeds 5 MB`、`image too large`；
   - `invalid image`；
-  - 不支持图片：`does not support image`、`image input is not supported`。
+  - 不支持图片：`does not support image`、`image input is not supported`，以及限定在模型上的 `images are not supported by this model`。不匹配泛化的 `images are not supported`，因为 "animated images are not supported" 这类按单张图片的文案会误把整个 Session 的图片关掉。
+  - 请求体超限（413、`request_too_large`、`Payload Too Large`）也归为单张过大：带图请求的字节超限几乎总是图片造成的。
+  - 每次图片恢复记一条 warn，内容包括种类和 provider 原文；不支持图片类还说明本 Session 内这个模型不再发送图片。
 - 处理：
   - 复用 `AgentLoop` 现有的恢复状态机，与 reactive compact 共用"每轮最多一次"的约束。
   - 命中时重试本轮，投影使用收紧模式：历史图片全部省略；fresh 图片的保留张数减为失败那次请求的一半，向下取整，至少保留 1 张。
@@ -604,5 +608,7 @@ fetchImage(url: string, options?: { signal?: AbortSignal }): Promise<Blob>;
 - 未知 openai-compatible 模型的单次图片上限无法探测，vLLM 默认每次只收 1 张。需要配置 `vision.maxImagesPerRequest`，否则每一轮都要先失败一次，再由收紧重试兜底。
 - `http(s)` 图片原样交给 AI SDK。不收图片 URL 的路线（openai-compatible、多数 Gemini 模型）由 AI SDK 在进程内下载，不受 `maxImageBytes` 限制，和 7.4 相同。调用方不可信时应把 `images.remoteUrls` 设为 `false`；第 3 期给下载加上限。
 - 还在准入中的 send 不会被 `abort()` 取消。
+- TokenCounter 估算的是 transcript，不是投影之后的请求：会被省略的历史图片也计入，占位里的 alt 不计入。第 2 期改为按请求估算。
+- `http(s)` 和 store 引用上由调用方声明的宽高与字节数，入口无法核实，估算会照用。第 3 期在服务端路径上核实或丢弃这些字段。
 - `prune` 按写入时间清理，所以仍在使用的旧图片也会被清掉；被清掉的引用会变成占位。
 - 新版本写入的 store 引用，降级到 7.4 后无法解析。
