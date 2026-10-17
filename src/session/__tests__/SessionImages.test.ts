@@ -65,6 +65,45 @@ function imagePart(message: ModelMessage | undefined): ModelContent | undefined 
 }
 
 describe('Session images', () => {
+  it('preserves send order when an image is followed by text on a warm Session', async () => {
+    const requests: ModelMessage[][] = [];
+    const session = await createSession(sessionOptions(requests));
+
+    try {
+      await session.send('warmup');
+      await drain(session);
+
+      const first = session.send([
+        { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+      ]);
+      const second = session.send('B');
+
+      expect((await first).status).toBe('started');
+      expect((await second).status).toBe('steered');
+      await drain(session);
+
+      const userMessages = session.messages.filter((message) => message.role === 'user');
+      expect(userMessages[0]?.content).toBe('warmup');
+      expect(userMessages.slice(1).map((message) => message.content)).toEqual([
+        [
+          {
+            type: 'image_url',
+            image_url: {
+              url: ONE_PIXEL_PNG_DATA_URL,
+              mediaType: 'image/png',
+              width: 1,
+              height: 1,
+              byteLength: 70,
+            },
+          },
+        ],
+        'B',
+      ]);
+    } finally {
+      await session.close();
+    }
+  });
+
   it('stores inline images and keeps only the reference in the transcript', async () => {
     const requests: ModelMessage[][] = [];
     const store = new InMemoryImageStore();

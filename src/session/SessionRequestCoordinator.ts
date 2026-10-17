@@ -84,10 +84,6 @@ export class SessionRequestCoordinator {
 
   async send(submitted: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
     await this.ensureInitialized();
-    const message = await this.state
-      .getRuntime()
-      .getImageRuntime()
-      .normalizeUserContent(submitted, options?.signal);
 
     return this.state.inputMutex.runExclusive(async () => {
       if (this.state.executionLeaseFailure) {
@@ -100,6 +96,10 @@ export class SessionRequestCoordinator {
         throw new Error('Session is closed');
       }
 
+      const message = await this.state
+        .getRuntime()
+        .getImageRuntime()
+        .normalizeUserContent(submitted, options?.signal);
       const inputId = InputId(nanoid());
       if (this.state.executionState.phase === 'idle') {
         this.durability.assertReadyForNewRequest();
