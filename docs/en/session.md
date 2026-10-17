@@ -626,6 +626,9 @@ Images reach the summary model only as `[image: …]` descriptions, never as ima
 Send images as `image_url` parts. `image_url` is an `ImageRef`: `url` is a
 `data:` URL, an `http(s):` URL, or a reference an image store resolves;
 `detail`, `mediaType`, `width`, `height`, `byteLength` and `alt` are optional.
+In-process `send()` drops invalid optional metadata and unknown keys before recording;
+measured inline facts replace declared values. Public `input.submit` validates its
+input schema before admission.
 Sending these metadata fields through `AgentClient` requires AgentServer 7.5 or
 later, because older servers reject them in `input.submit`; a plain `{ url }`
 works with any server. `input.submit` rejects an `alt` longer than 1,000 characters.

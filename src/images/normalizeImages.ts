@@ -10,7 +10,8 @@ import {
 } from './base64.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
 import { inspectImageBytes } from './imageBytes.js';
-import { imageRefusal } from './imageRefusal.js';
+import { imageRefMetadataShape } from './imageRefSchema.js';
+import { canonicalMediaType, imageRefusal } from './imageRefusal.js';
 import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
 /** An image part `send()` refuses; `index` is its position in the content array. */
@@ -45,12 +46,8 @@ async function admitInlineImage(
   if (bytes.byteLength > policy.maxImageBytes) throw tooLarge();
 
   const facts = inspectImageBytes(bytes);
-  if (!facts || imageRefusal({ ...ref, ...facts }, policy)) {
-    throw new ImageRejection(
-      index,
-      'media_type',
-      'Only png, jpeg, gif and webp images are accepted',
-    );
+  if (!facts || !policy.mediaTypes.includes(canonicalMediaType(facts.mediaType))) {
+    throw new ImageRejection(index, 'media_type', mediaTypeMessage(policy));
   }
 
   const metadata: Partial<ImageRef> = {
@@ -70,21 +67,18 @@ async function admitImage(
   index: number,
   context: NormalizeImagesContext,
 ): Promise<ImageRef> {
+  ref = sanitizeImageRef(ref);
   const inline = parseBase64DataUrl(ref.url);
   if (inline) return admitInlineImage(ref, inline, index, context);
   if (isDataUrl(ref.url)) {
-    throw new ImageRejection(
-      index,
-      'media_type',
-      'Inline images must be base64 png, jpeg, gif or webp data',
-    );
+    throw new ImageRejection(index, 'media_type', mediaTypeMessage(context.policy));
   }
   const refusal = imageRefusal(ref, context.policy);
   if (refusal) {
     const messages = {
       remote_url: 'Remote image URLs are not accepted',
       too_large: `Images must be at most ${context.policy.maxImageBytes} bytes`,
-      media_type: 'Only png, jpeg, gif and webp images are accepted',
+      media_type: mediaTypeMessage(context.policy),
     };
     throw new ImageRejection(index, refusal, messages[refusal]);
   }
@@ -132,4 +126,19 @@ export async function normalizeImageContent(
     );
   }
   return normalized;
+}
+
+function sanitizeImageRef(ref: ImageRef): ImageRef {
+  const metadata: Record<string, unknown> = {};
+  for (const [key, validator] of Object.entries(imageRefMetadataShape)) {
+    const parsed = validator.safeParse(ref[key as keyof typeof imageRefMetadataShape]);
+    if (parsed.success && parsed.data !== undefined) metadata[key] = parsed.data;
+  }
+  return { url: ref.url, ...metadata };
+}
+
+function mediaTypeMessage(policy: ResolvedImagePolicy): string {
+  if (policy.mediaTypes.length === 0) return 'No image media types are accepted';
+  const types = new Intl.ListFormat('en', { type: 'conjunction' }).format(policy.mediaTypes);
+  return `Only ${types} images are accepted`;
 }

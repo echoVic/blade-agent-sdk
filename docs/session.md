@@ -1036,7 +1036,7 @@ const currentContext = session.getDefaultContext();
 - `http(s):` URL；
 - 由图片 store 解析的引用。
 
-`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。通过 `AgentClient` 发送这些元数据字段需要 7.5 或更高版本的 AgentServer，因为旧服务器会在 `input.submit` 中拒绝这些字段；仅含 `{ url }` 的图片适用于任何版本的服务器。`input.submit` 会拒绝超过 1,000 个字符的 `alt`。
+`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。进程内的 `send()` 在记录输入前会丢弃无效的可选元数据和未知字段；内联图片实测的属性会覆盖声明值。公开的 `input.submit` 会在准入前先校验输入 schema。通过 `AgentClient` 发送这些元数据字段需要 7.5 或更高版本的 AgentServer，因为旧服务器会在 `input.submit` 中拒绝这些字段；仅含 `{ url }` 的图片适用于任何版本的服务器。`input.submit` 会拒绝超过 1,000 个字符的 `alt`。
 
 ```ts
 await session.send([

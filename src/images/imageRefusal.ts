@@ -1,7 +1,7 @@
 import type { ImageRef } from '../model/image.js';
 import { base64DecodedLength, base64PrefixToBytes, parseBase64DataUrl } from './base64.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
-import { inspectImageBytes } from './imageBytes.js';
+import { sniffImageMediaType } from './imageBytes.js';
 import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
 export const canonicalMediaType = (type: string): string =>
@@ -18,11 +18,8 @@ export function imageRefusal(
   if (byteLength !== undefined && byteLength > policy.maxImageBytes) return 'too_large';
   let mediaType = ref.mediaType;
   if (isDataUrl(ref.url)) {
-    const facts = inline
-      ? inspectImageBytes(base64PrefixToBytes(inline.base64, 64 * 1024))
-      : undefined;
-    if (!facts) return 'media_type';
-    mediaType = facts.mediaType;
+    mediaType = inline ? sniffImageMediaType(base64PrefixToBytes(inline.base64, 32)) : undefined;
+    if (!mediaType) return 'media_type';
   }
   if (mediaType && !policy.mediaTypes.includes(canonicalMediaType(mediaType))) return 'media_type';
   return undefined;

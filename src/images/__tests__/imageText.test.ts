@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { describeImage, imagePlaceholder, summaryImageText } from '../imageText.js';
 
 describe('image text', () => {
@@ -54,4 +54,27 @@ describe('image text', () => {
     expect(summaryImageText(ref)).toBe(`[image: ${'a'.repeat(200)}…]`);
     expect(describeImage({ url: 'x', alt: 'a'.repeat(200) })).toBe('a'.repeat(200));
   });
+});
+
+it('stops inspecting alt after the 201st code point', () => {
+  const alt = '😀'.repeat(10_000);
+  const original = String.prototype[Symbol.iterator];
+  let visited = 0;
+  const iterator = vi.spyOn(String.prototype, Symbol.iterator).mockImplementation(function* (
+    this: string,
+  ) {
+    for (const point of original.call(this)) {
+      if (String(this) === alt) visited++;
+      yield point;
+    }
+    return undefined;
+  });
+  let description: string;
+  try {
+    description = describeImage({ url: 'x', alt });
+  } finally {
+    iterator.mockRestore();
+  }
+  expect(description).toBe(`${'😀'.repeat(200)}…`);
+  expect(visited).toBe(201);
 });

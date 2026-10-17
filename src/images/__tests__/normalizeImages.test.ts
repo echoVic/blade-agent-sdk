@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { ImageRef } from '../../model/image.js';
 import type { ModelContent, ModelImageContent } from '../../model/message.js';
 import type { VisionCapability } from '../../model/vision.js';
+import { parseDurableUserMessageContent } from '../../session/DurableRequestRecovery.js';
+import { parseSessionStreamEvent } from '../../session/streamSchema.js';
 import { type ResolvedImagePolicy, resolveImagePolicy } from '../ImagePolicy.js';
 import { InMemoryImageStore } from '../InMemoryImageStore.js';
 import { normalizeImageContent } from '../normalizeImages.js';
@@ -144,14 +147,14 @@ describe('normalizeImageContent', () => {
       { mediaTypes: ['image/png'] },
       { mediaType: 'image/svg+xml' },
       'media_type',
-      'Only png, jpeg, gif and webp images are accepted',
+      'Only image/png images are accepted',
     ],
     [
       'https://example.test/a.png',
       { mediaTypes: ['image/png'] },
       { mediaType: 'image/jpeg' },
       'media_type',
-      'Only png, jpeg, gif and webp images are accepted',
+      'Only image/png images are accepted',
     ],
   ] as const)('explains reference refusal for %s: %s', async (url, overrides, metadata, reason, message) => {
     await expect(
@@ -218,5 +221,107 @@ describe('normalizeImageContent', () => {
         vision,
       }),
     ).rejects.toMatchObject({ reason: 'media_type' });
+  });
+});
+
+describe('durable-safe admitted metadata', () => {
+  it.each([
+    'https://example.test/a.png',
+    `blade-image:sha256:${'a'.repeat(64)}`,
+    'data:image/png;base64,iVBORw0KGgo=',
+  ])('drops invalid fields and unknown keys before recording %s', async (url) => {
+    const ref = {
+      url,
+      width: 0,
+      height: 1.5,
+      mediaType: '',
+      detail: 'ultra',
+      byteLength: -1,
+      alt: 'keep me',
+      extra: 1,
+    } as unknown as ImageRef;
+    const normalized = await normalizeImageContent([{ type: 'image_url', image_url: ref }], {
+      policy: policy({
+        store: url.startsWith('blade-image:') ? new InMemoryImageStore() : undefined,
+      }),
+      vision,
+    });
+    const expected = [
+      {
+        type: 'image_url',
+        image_url: {
+          url,
+          alt: 'keep me',
+          ...(url.startsWith('data:') ? { mediaType: 'image/png', byteLength: 8 } : {}),
+        },
+      },
+    ];
+    expect(normalized).toEqual(expected);
+    const recovered = parseDurableUserMessageContent(JSON.parse(JSON.stringify(normalized)));
+    expect(recovered).toEqual(expected);
+    const event = {
+      type: 'tool_new_messages',
+      sessionId: 'session-1',
+      id: 'tool-1',
+      name: 'Inject',
+      messages: [{ role: 'user', content: recovered }],
+    };
+    expect(parseSessionStreamEvent(JSON.parse(JSON.stringify(event)))).toEqual(event);
+  });
+
+  it('retains each valid field independently of an invalid sibling', async () => {
+    const ref = {
+      url: 'https://example.test/a.png',
+      width: 2,
+      height: 0,
+      byteLength: 0,
+      mediaType: 'image/png',
+      detail: 'high',
+      alt: 'a'.repeat(1001),
+    } as ImageRef;
+    await expect(
+      normalizeImageContent([{ type: 'image_url', image_url: ref }], { policy: policy(), vision }),
+    ).resolves.toEqual([
+      {
+        type: 'image_url',
+        image_url: {
+          url: ref.url,
+          width: 2,
+          byteLength: 0,
+          mediaType: 'image/png',
+          detail: 'high',
+          alt: ref.alt,
+        },
+      },
+    ]);
+  });
+});
+
+describe('policy-specific media refusal messages', () => {
+  it.each([
+    ONE_PIXEL_PNG_DATA_URL,
+    'https://example.test/a.png',
+    `blade-image:sha256:${'b'.repeat(64)}`,
+  ])('names only the allowed media types for %s', async (url) => {
+    await expect(
+      normalizeImageContent([{ type: 'image_url', image_url: { url, mediaType: 'image/png' } }], {
+        policy: policy({ mediaTypes: ['image/jpeg', 'image/webp'] }),
+        vision,
+      }),
+    ).rejects.toMatchObject({
+      reason: 'media_type',
+      message: 'Only image/jpeg and image/webp images are accepted',
+    });
+  });
+  it('reports a single allowed media type for non-base64 inline data', async () => {
+    await expect(
+      normalizeImageContent([image('data:image/png,not-base64')], {
+        policy: policy({ mediaTypes: ['image/webp'] }),
+        vision,
+      }),
+    ).rejects.toMatchObject({
+      reason: 'media_type',
+      message: 'Only image/webp images are accepted',
+    });
   });
 });
