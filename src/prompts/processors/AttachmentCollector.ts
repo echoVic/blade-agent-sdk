@@ -235,22 +235,24 @@ export class AttachmentCollector {
     relativePath: string,
   ): Promise<Attachment> {
     // 递归查找所有文件
-    const files = (await glob('**/*', {
-      cwd: absolutePath,
-      dot: false,
-      followSymbolicLinks: false,
-      onlyFiles: true,
-      expandDirectories: false,
-      ignore: [
-        'node_modules/**',
-        '.git/**',
-        'dist/**',
-        'build/**',
-        '.next/**',
-        '.cache/**',
-        'coverage/**',
-      ],
-    })) as string[];
+    const files = (
+      await glob('**/*', {
+        cwd: absolutePath,
+        dot: false,
+        followSymbolicLinks: false,
+        onlyFiles: true,
+        expandDirectories: false,
+        ignore: [
+          'node_modules/**',
+          '.git/**',
+          'dist/**',
+          'build/**',
+          '.next/**',
+          '.cache/**',
+          'coverage/**',
+        ],
+      })
+    ).sort();
 
     if (files.length === 0) {
       return {
@@ -352,22 +354,24 @@ export class AttachmentCollector {
    */
   private async processGlob(pattern: string): Promise<Attachment> {
     // 使用 tinyglobby 展开模式
-    const files = (await glob(pattern, {
-      cwd: this.options.cwd,
-      dot: false,
-      followSymbolicLinks: false,
-      onlyFiles: true,
-      expandDirectories: false,
-      ignore: [
-        'node_modules/**',
-        '.git/**',
-        'dist/**',
-        'build/**',
-        '.next/**',
-        '.cache/**',
-        'coverage/**',
-      ],
-    })) as string[];
+    const files = (
+      await glob(pattern.replace(/\/\*\*$/, '/**/*'), {
+        cwd: this.options.cwd,
+        dot: false,
+        followSymbolicLinks: false,
+        onlyFiles: true,
+        expandDirectories: false,
+        ignore: [
+          'node_modules/**',
+          '.git/**',
+          'dist/**',
+          'build/**',
+          '.next/**',
+          '.cache/**',
+          'coverage/**',
+        ],
+      })
+    ).sort();
 
     if (files.length === 0) {
       return {

@@ -63,6 +63,7 @@ function classifyError(error: unknown): ClassifiedError {
     'invalid configuration',
     'malformed',
     'syntax error',
+    "not followed (redirectpolicy: 'same-origin')",
   ];
 
   if (permanentErrors.some((permanent) => msg.includes(permanent))) {

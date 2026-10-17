@@ -96,7 +96,8 @@ export async function runGlob(
     customScanIgnore: [],
     cacheTTL: 30_000,
   });
-  const entries = await glob(pattern, {
+  const filePattern = options.includeDirectories ? pattern : pattern.replace(/\/\*\*$/, '/**/*');
+  const entries = await glob(filePattern, {
     cwd: root,
     dot: true,
     followSymbolicLinks: false,
@@ -107,13 +108,25 @@ export async function runGlob(
   });
   options.signal.throwIfAborted();
   const matches: SearchMatch[] = [];
-  for (const entry of entries) {
+  for (let offset = 0; offset < entries.length; offset += 64) {
     options.signal.throwIfAborted();
-    const relativePath = entry.replace(/\/$/, '').replaceAll('\\', '/');
-    if (fileFilter.shouldIgnore(relativePath)) continue;
-    const stats = await lstat(join(root, relativePath));
-    if (stats.isDirectory() && fileFilter.shouldIgnoreDirectory(relativePath)) continue;
-    matches.push(toSearchMatch(root, relativePath, stats));
+    const batch = await Promise.all(
+      entries.slice(offset, offset + 64).map(async (entry) => {
+        const relativePath = entry.replace(/\/$/, '');
+        if (fileFilter.shouldIgnore(relativePath)) return undefined;
+        let stats: Stats;
+        try {
+          stats = await lstat(join(root, relativePath));
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
+          throw error;
+        }
+        if (stats.isDirectory() && fileFilter.shouldIgnoreDirectory(relativePath)) return undefined;
+        return toSearchMatch(root, relativePath, stats);
+      }),
+    );
+    matches.push(...batch.filter((match): match is SearchMatch => match !== undefined));
   }
   matches.sort(compareMatches);
   return {

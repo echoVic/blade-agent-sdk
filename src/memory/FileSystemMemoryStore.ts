@@ -233,14 +233,15 @@ export class FileSystemMemoryStore implements MemoryStore {
 function readFrontmatter(
   raw: string,
 ): { data: Record<string, unknown>; content: string } | undefined {
-  const opening = /^---\r?\n/.exec(raw);
+  raw = raw.replace(/^\uFEFF/, '');
+  const opening = /^---[ \t]*\r?\n/.exec(raw);
   if (!opening) return undefined;
   const rest = raw.slice(opening[0].length);
-  const closing = /^---(?:\r?\n|$)/m.exec(rest);
+  const closing = /^---[ \t]*(?:\r?\n|$)/m.exec(rest);
   if (!closing) return undefined;
   let data: unknown;
   try {
-    data = parse(rest.slice(0, closing.index), { schema: 'core' });
+    data = parse(rest.slice(0, closing.index), { schema: 'failsafe', logLevel: 'error' });
   } catch {
     return undefined;
   }
@@ -255,5 +256,5 @@ function stringifyMemory(
   body: string,
   metadata: Pick<MemoryInput, 'name' | 'description' | 'type'>,
 ): string {
-  return `---\n${stringify(metadata)}---\n${body}${body.endsWith('\n') ? '' : '\n'}`;
+  return `---\n${stringify(metadata, { version: '1.1' })}---\n${body}${body.endsWith('\n') ? '' : '\n'}`;
 }

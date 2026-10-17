@@ -1,13 +1,20 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SessionId } from '../../../../types/identifiers.js';
 import { collectToolExecution } from '../../../types/result.js';
 import { globTool } from '../glob.js';
 import { grepTool } from '../grep.js';
 import { runGlob } from '../searchRunner.js';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...original, lstat: vi.fn(original.lstat) };
+});
+const { lstat: realLstat } =
+  await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
 
 describe('search tools', () => {
   let root: string;
@@ -26,6 +33,7 @@ describe('search tools', () => {
   });
 
   afterEach(async () => {
+    vi.mocked(lstat).mockReset().mockImplementation(realLstat);
     await rm(root, { force: true, recursive: true });
   });
 
@@ -92,6 +100,71 @@ describe('search tools', () => {
       paths.some((path) => path.startsWith('node_modules/') || path.startsWith('linked/')),
     ).toBe(false);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'preserves literal backslashes in POSIX filenames',
+    async () => {
+      await writeFile(join(root, 'src', 'back\\slash.ts'), 'literal');
+      expect((await search('**/*.ts')).matches).toContainEqual(
+        expect.objectContaining({
+          relative_path: 'src/back\\slash.ts',
+          path: join(root, 'src', 'back\\slash.ts'),
+          size: 7,
+        }),
+      );
+    },
+  );
+
+  test.each(['ENOENT', 'ENOTDIR'])('skips a match lost before lstat: %s', async (code) => {
+    await writeFile(join(root, 'src', 'vanished.ts'), 'gone');
+    vi.mocked(lstat).mockImplementation(((entry) => {
+      if (String(entry).endsWith('vanished.ts'))
+        return Promise.reject(Object.assign(new Error('gone'), { code }));
+      return realLstat(entry);
+    }) as typeof lstat);
+    expect((await search('src/*.ts')).matches.map((match) => match.relative_path)).toEqual([
+      'src/match.ts',
+    ]);
+  });
+
+  test('propagates lstat permission failures', async () => {
+    const failure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    vi.mocked(lstat).mockRejectedValueOnce(failure);
+    await expect(search('src/*.ts')).rejects.toBe(failure);
+  });
+
+  test('stats matches concurrently with at most 64 in flight', async () => {
+    await Promise.all(
+      Array.from({ length: 130 }, (_, index) => writeFile(join(root, 'src', `${index}.ts`), 'x')),
+    );
+    let active = 0;
+    let peak = 0;
+    vi.mocked(lstat).mockImplementation((async (entry) => {
+      active++;
+      peak = Math.max(peak, active);
+      try {
+        return await realLstat(entry);
+      } finally {
+        active--;
+      }
+    }) as typeof lstat);
+    const result = await search('src/*.ts');
+    expect(result.matches).toHaveLength(100);
+    expect(result.truncated).toBe(true);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(64);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'lists an explicitly named symlink base without traversing nested symlinks',
+    async () => {
+      await symlink(join(root, 'src'), join(root, 'linkdir'), 'dir');
+      await symlink(join(root, 'src'), join(root, 'src', 'nested-link'), 'dir');
+      expect(
+        (await search('linkdir/**')).matches.map((match) => match.relative_path).sort(),
+      ).toEqual(['linkdir/match.ts', 'linkdir/other.js']);
+    },
+  );
 
   test('grep returns matching content with line numbers', async () => {
     const result = await collectToolExecution(

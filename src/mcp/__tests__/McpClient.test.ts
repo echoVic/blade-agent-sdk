@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { describe, expect, it, vi } from 'vitest';
 import type { McpServerConfig } from '../config.js';
 import { ErrorType, McpClient } from '../McpClient.js';
 
@@ -91,4 +92,29 @@ describe('McpClient', () => {
       expect(client.availableTools).toEqual([]);
     });
   });
+});
+
+it('treats same-origin redirect refusal as configuration failure and never retries', async () => {
+  const failure = new Error(
+    "Redirect to https://other.test/mcp not followed (redirectPolicy: 'same-origin')",
+  );
+  const connect = vi.spyOn(Client.prototype, 'connect').mockRejectedValue(failure);
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const client = new McpClient(
+    { type: 'http', url: 'https://server.test/mcp' },
+    'redirected-server',
+  );
+  client.on('error', () => {});
+  try {
+    await expect(client.connectWithRetry(3, 0)).rejects.toBe(failure);
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      '[McpClient] 检测到永久性错误，放弃重试:',
+      ErrorType.CONFIG_ERROR,
+    );
+  } finally {
+    await client.disconnect();
+    connect.mockRestore();
+    log.mockRestore();
+  }
 });
