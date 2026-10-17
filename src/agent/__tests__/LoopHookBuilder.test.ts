@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CompactionService } from '../../context/CompactionService.js';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
+import type { VisionCapability } from '../../model/vision.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
 import { buildLoopConfig } from '../LoopHookBuilder.js';
@@ -73,6 +74,11 @@ describe('LoopHookBuilder request signal', () => {
     const observedSignals: Array<AbortSignal | undefined> = [];
     const observedRegistries: Array<ProviderRegistry | undefined> = [];
     const providerRegistry = new ProviderRegistry();
+    const vision: VisionCapability = {
+      images: true,
+      toolResultImages: true,
+      imageTokens: 'openai',
+    };
     const checkAndCompactInLoop = vi.fn(async function* (
       _conversationState,
       runtimeContext: { signal?: AbortSignal },
@@ -137,7 +143,7 @@ describe('LoopHookBuilder request signal', () => {
       modelManager: {
         getContextManager: () => undefined,
         getProviderRegistry: () => providerRegistry,
-        getVision: () => undefined,
+        getVision: () => vision,
       } as never,
       runtimePatchManager: {} as never,
     });
@@ -162,6 +168,7 @@ describe('LoopHookBuilder request signal', () => {
       requestController.signal,
     ]);
     expect(observedRegistries).toEqual([providerRegistry]);
+    expect(compact).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ vision }));
 
     const registryError = new ProviderRegistryError(
       'PROVIDER_ADAPTER_NOT_FOUND',

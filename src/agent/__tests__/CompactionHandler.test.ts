@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompactionOptions, CompactionResult } from '../../context/CompactionService.js';
+import { TokenCounter } from '../../context/TokenCounter.js';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { dataUrl, pngBytes } from '../../images/__tests__/fixtures.js';
 import type { ModelMessage } from '../../model/message.js';
+import type { VisionCapability } from '../../model/vision.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/identifiers.js';
@@ -38,6 +40,10 @@ vi.mock('../../context/CompactionService.js', async () => {
 const { CompactionHandler } = await import('../CompactionHandler.js');
 
 describe('CompactionHandler', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     mockCompact.mockClear();
   });
@@ -188,7 +194,12 @@ describe('CompactionHandler', () => {
     expect(convState.getContextMessages()).toEqual(originalMessages);
   });
 
-  it('propagates the active provider registry to automatic and reactive compaction', async () => {
+  it('propagates the active provider registry and vision to automatic and reactive compaction', async () => {
+    const vision: VisionCapability = {
+      images: true,
+      toolResultImages: true,
+      imageTokens: 'openai',
+    };
     const providerRegistry = new ProviderRegistry();
     const handler = new CompactionHandler(
       () =>
@@ -205,6 +216,7 @@ describe('CompactionHandler', () => {
       () => undefined,
       undefined,
       () => providerRegistry,
+      () => vision,
     );
     const automaticState = new ConversationState(
       null,
@@ -235,7 +247,7 @@ describe('CompactionHandler', () => {
 
     expect(mockCompact).toHaveBeenCalledTimes(2);
     for (const [, options] of mockCompact.mock.calls) {
-      expect(options).toEqual(expect.objectContaining({ providerRegistry }));
+      expect(options).toEqual(expect.objectContaining({ providerRegistry, vision }));
     }
   });
 
@@ -282,6 +294,12 @@ describe('CompactionHandler', () => {
   });
 
   it('falls back from the original messages when reactive compaction fails after microcompact', async () => {
+    const vision: VisionCapability = {
+      images: true,
+      toolResultImages: true,
+      imageTokens: 'openai',
+    };
+    const countTokens = vi.spyOn(TokenCounter, 'countTokens');
     mockCompact.mockRejectedValueOnce(new Error('compaction failed'));
 
     const handler = new CompactionHandler(
@@ -297,6 +315,9 @@ describe('CompactionHandler', () => {
           }),
         }) as never,
       () => undefined,
+      undefined,
+      undefined,
+      () => vision,
     );
 
     const originalMessages = [
@@ -324,6 +345,13 @@ describe('CompactionHandler', () => {
       }
     }
 
+    expect(countTokens).toHaveBeenCalledExactlyOnceWith(
+      expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('[Microcompact]') }),
+      ]),
+      'gpt-4o-mini',
+      { vision },
+    );
     expect(didCompact).toBe(true);
     // After fallback (error path), convState should have emergency-truncated messages from originals
     const updatedCtx = convState.getContextMessages();
@@ -332,11 +360,17 @@ describe('CompactionHandler', () => {
     expect(updatedCtx[1]?.content).not.toContain('[Microcompact]');
     expect(mockCompact).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: controller.signal, vision }),
     );
   });
 
   it('re-estimates images by size after microcompact instead of truncating the conversation', async () => {
+    const vision: VisionCapability = {
+      images: true,
+      toolResultImages: true,
+      imageTokens: 'openai',
+    };
+    const countTokens = vi.spyOn(TokenCounter, 'countTokens');
     const handler = new CompactionHandler(
       () =>
         ({
@@ -352,7 +386,7 @@ describe('CompactionHandler', () => {
       () => undefined,
       undefined,
       undefined,
-      () => ({ images: true, toolResultImages: true, imageTokens: 'openai' }),
+      () => vision,
     );
     const url = dataUrl('image/png', pngBytes(1920, 1080, 1024 * 1024));
     const filler: ModelMessage[] = Array.from({ length: 44 }, (_, index) => ({
@@ -394,6 +428,9 @@ describe('CompactionHandler', () => {
       events.push(next.value);
     }
 
+    expect(countTokens).toHaveBeenCalledExactlyOnceWith(convState.getContextMessages(), 'gpt-4o', {
+      vision,
+    });
     expect(didCompact).toBe(true);
     expect(events).toEqual([]);
     expect(convState.getContextMessages()).toHaveLength(contextMessages.length);

@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
 import { dataUrl, pngBytes } from '../../images/__tests__/fixtures.js';
 import type { ModelServiceConfig } from '../../model/config.js';
 import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
+import type { CompactionOptions } from '../CompactionService.js';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
@@ -42,6 +43,10 @@ vi.mock('../FileAnalyzer.js', () => ({
 const { compact, retainRecentMessages } = await import('../CompactionService.js');
 
 describe('CompactionService', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     mockCreateModelServiceAsync.mockClear();
     mockChat.mockClear();
@@ -223,5 +228,44 @@ describe('CompactionService', () => {
     expect(prompt).not.toContain(';base64,');
     expect(prompt).toContain('[image: image/png 1920×1080 — login page]');
     expect(prompt).toContain('Why does the login page look broken?');
+  });
+
+  it.each([
+    'succeeds',
+    'fails',
+  ] as const)('uses vision for pre/post token estimates when summary generation %s', async (outcome) => {
+    const messages: ModelMessage[] = [
+      {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'https://example.com/image.png' } }],
+      },
+    ];
+    const options: CompactionOptions = {
+      trigger: 'manual',
+      modelName: 'gpt-5',
+      maxContextTokens: 128000,
+      apiKey: 'test-key',
+      baseURL: 'https://api.openai.com/v1',
+    };
+    const error = new Error('summary unavailable');
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    if (outcome === 'fails') mockSideQuery.mockRejectedValueOnce(error);
+    const defaultEstimate = await compact(messages, options);
+    if (outcome === 'fails') mockSideQuery.mockRejectedValueOnce(error);
+    const customEstimate = await compact(messages, {
+      ...options,
+      vision: { images: true, toolResultImages: true, imageTokens: 50_000 },
+    });
+
+    expect(defaultEstimate.success).toBe(outcome === 'succeeds');
+    expect(customEstimate.success).toBe(outcome === 'succeeds');
+    expect(customEstimate.preTokens - defaultEstimate.preTokens).toBe(48_400);
+    expect(customEstimate.postTokens - defaultEstimate.postTokens).toBe(48_400);
+    if (outcome === 'fails') {
+      expect(errorLog).toHaveBeenCalledTimes(2);
+      expect(errorLog).toHaveBeenCalledWith('[CompactionService] 压缩失败，使用降级策略', error);
+    } else {
+      expect(errorLog).not.toHaveBeenCalled();
+    }
   });
 });
