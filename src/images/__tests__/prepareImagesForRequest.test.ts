@@ -21,12 +21,35 @@ const unavailable = {
   text: '[image unavailable: it is no longer in the image store]',
 };
 
+function createLogger() {
+  return {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child() {
+      return this;
+    },
+  };
+}
+
 describe('prepareImagesForRequest', () => {
   it('returns the same array when no message carries an image', async () => {
     const messages: ModelMessage[] = [{ role: 'user', content: 'hi' }];
     const prepared = await prepareImagesForRequest(messages, { vision, policy: basePolicy });
     expect(prepared.messages).toBe(messages);
     expect(prepared.report.total).toBe(0);
+  });
+
+  it('keeps a data URL with an uppercase scheme unchanged without a store', async () => {
+    const messages: ModelMessage[] = [
+      { role: 'user', content: [image({ url: ONE_PIXEL_PNG_DATA_URL.replace('data:', 'DATA:') })] },
+    ];
+    const prepared = await prepareImagesForRequest(messages, { vision, policy: basePolicy });
+
+    expect(prepared.messages[0]).toBe(messages[0]);
+    expect(prepared.messages).toEqual(messages);
+    expect(prepared.report).toMatchObject({ kept: 1, omitted: { unavailable: 0 } });
   });
 
   it('replaces every image with a placeholder for a model without vision', async () => {
@@ -125,15 +148,21 @@ describe('prepareImagesForRequest', () => {
       policy: { ...basePolicy, store },
       cache,
     });
-    await prepareImagesForRequest(messages, { vision, policy: { ...basePolicy, store }, cache });
+    const second = await prepareImagesForRequest(messages, {
+      vision,
+      policy: { ...basePolicy, store },
+      cache,
+    });
 
     expect(first.messages[0]?.content).toEqual([
       { type: 'image_url', image_url: { ...ref, url: ONE_PIXEL_PNG_DATA_URL } },
     ]);
     expect(get).toHaveBeenCalledTimes(1);
+    expect(second.messages).toEqual(first.messages);
   });
 
   it('passes a presigned URL from the store straight to the request', async () => {
+    const cache = new LRUCache<string, string>({ max: 10 });
     const store: ImageStore = {
       handles: (url) => url.startsWith('s3://'),
       put: async () => {
@@ -150,7 +179,7 @@ describe('prepareImagesForRequest', () => {
           ],
         },
       ],
-      { vision, policy: { ...basePolicy, store } },
+      { vision, policy: { ...basePolicy, store }, cache },
     );
 
     expect(prepared.messages[0]?.content).toEqual([
@@ -159,16 +188,20 @@ describe('prepareImagesForRequest', () => {
         image_url: { url: 'https://bucket.example.test/a.png?sig=1', mediaType: 'image/png' },
       },
     ]);
+    expect(cache.size).toBe(0);
   });
 
   it('turns missing, failing and unknown references into placeholders', async () => {
+    const logger = createLogger();
+    const reportedUnavailable = new Set<string>();
+    const failure = new Error('disk failure');
     const store: ImageStore = {
       handles: (url) => url.startsWith('app-image:'),
       put: async () => {
         throw new Error('unused');
       },
       get: async (url) => {
-        if (url === 'app-image:broken') throw new Error('disk failure');
+        if (url === 'app-image:broken') throw failure;
         return undefined;
       },
     };
@@ -185,9 +218,107 @@ describe('prepareImagesForRequest', () => {
     const prepared = await prepareImagesForRequest(messages, {
       vision,
       policy: { ...basePolicy, store },
+      logger,
+      reportedUnavailable,
     });
 
     expect(prepared.messages[0]?.content).toEqual([unavailable, unavailable, unavailable]);
     expect(prepared.report.omitted.unavailable).toBe(3);
+    expect(logger.warn).toHaveBeenCalledTimes(3);
+    expect(logger.warn).toHaveBeenCalledWith(
+      '[Images] Image unavailable (it is no longer in the image store): app-image:gone',
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      '[Images] Image unavailable (the image store failed): app-image:broken',
+      failure,
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      '[Images] Image unavailable (no image store handles this reference): other:unknown',
+    );
+    expect(reportedUnavailable).toEqual(
+      new Set(['app-image:gone', 'app-image:broken', 'other:unknown']),
+    );
+
+    const second = await prepareImagesForRequest(messages, {
+      vision,
+      policy: { ...basePolicy, store },
+      logger,
+      reportedUnavailable,
+    });
+    expect(second).toEqual(prepared);
+    expect(logger.warn).toHaveBeenCalledTimes(3);
+    expect(logger.debug).toHaveBeenCalledTimes(3);
+    expect(logger.debug.mock.calls).toEqual(logger.warn.mock.calls);
+  });
+
+  it('warns on every miss when no reported-unavailable set is provided', async () => {
+    const logger = createLogger();
+    const messages: ModelMessage[] = [{ role: 'user', content: [image({ url: 'other:unknown' })] }];
+    await prepareImagesForRequest(messages, { vision, policy: basePolicy, logger });
+    await prepareImagesForRequest(messages, { vision, policy: basePolicy, logger });
+
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(logger.debug).not.toHaveBeenCalled();
+  });
+
+  it('resolves kept store references concurrently and preserves image order', async () => {
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const store: ImageStore = {
+      handles: (url) => url.startsWith('app-image:'),
+      put: async () => {
+        throw new Error('unused');
+      },
+      get: async (url) => {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { url: `https://example.test/${url.slice('app-image:'.length)}.png` };
+      },
+    };
+    const prepared = await prepareImagesForRequest(
+      [{ role: 'user', content: [image({ url: 'app-image:1' }), image({ url: 'app-image:2' })] }],
+      { vision, policy: { ...basePolicy, store } },
+    );
+
+    expect(peakInFlight).toBe(2);
+    expect(inFlight).toBe(0);
+    expect(prepared.messages[0]?.content).toEqual([
+      image({ url: 'https://example.test/1.png' }),
+      image({ url: 'https://example.test/2.png' }),
+    ]);
+    expect(prepared.report).toEqual({
+      total: 2,
+      kept: 2,
+      freshKept: 2,
+      omitted: { budget: 0, unsupported: 0, unavailable: 0 },
+      estimatedTokens: 3_200,
+    });
+  });
+
+  it('rejects with the abort reason when a store aborts resolution', async () => {
+    const controller = new AbortController();
+    const logger = createLogger();
+    const store: ImageStore = {
+      handles: (url) => url.startsWith('app-image:'),
+      put: async () => {
+        throw new Error('unused');
+      },
+      get: async (_url, signal) => {
+        controller.abort();
+        throw signal?.reason;
+      },
+    };
+
+    await expect(
+      prepareImagesForRequest([{ role: 'user', content: [image({ url: 'app-image:1' })] }], {
+        vision,
+        policy: { ...basePolicy, store },
+        signal: controller.signal,
+        logger,
+      }),
+    ).rejects.toBe(controller.signal.reason);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

@@ -75,6 +75,7 @@ describe('normalizeImageContent', () => {
   it.each([
     ['svg data', `data:image/svg+xml;base64,${btoa('<svg/>')}`, 'media_type'],
     ['a non-base64 data URL', 'data:image/png,not-base64', 'media_type'],
+    ['an uppercase non-base64 data URL', 'DATA:image/png,not-base64', 'media_type'],
     [
       'a declared type that is not the real one',
       `data:image/jpeg;base64,${ONE_PIXEL_PNG_BASE64}`,

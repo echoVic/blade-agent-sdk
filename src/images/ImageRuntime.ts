@@ -40,6 +40,7 @@ export interface ImageRuntimeOptions {
 export class ImageRuntime {
   private binding?: ImageModelBinding;
   private readonly logger: InternalLogger;
+  private readonly reportedUnavailable = new Set<string>();
   private readonly resolved = new LRUCache<string, string>({
     maxSize: RESOLVED_IMAGE_CACHE_CHARS,
     sizeCalculation: (value) => Math.max(1, value.length),
@@ -99,6 +100,7 @@ export class ImageRuntime {
       vision: this.vision(),
       policy: this.policy(),
       cache: this.resolved,
+      reportedUnavailable: this.reportedUnavailable,
       limits: options.limits,
       signal: options.signal,
       logger: this.logger,

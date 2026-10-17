@@ -10,6 +10,7 @@ import {
 } from './base64.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
 import { inspectImageBytes } from './imageBytes.js';
+import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
 /** An image part `send()` refuses; `index` is its position in the content array. */
 export class ImageRejection extends Error {
@@ -28,8 +29,6 @@ export interface NormalizeImagesContext {
   readonly vision: VisionCapability;
   readonly signal?: AbortSignal;
 }
-
-const REMOTE_URL = /^https?:\/\//i;
 
 const canonicalMediaType = (mediaType: string) =>
   mediaType === 'image/jpg' ? 'image/jpeg' : mediaType;
@@ -82,14 +81,14 @@ async function admitImage(
 ): Promise<ImageRef> {
   const inline = parseBase64DataUrl(ref.url);
   if (inline) return admitInlineImage(ref, inline, index, context);
-  if (ref.url.startsWith('data:')) {
+  if (isDataUrl(ref.url)) {
     throw new ImageRejection(
       index,
       'media_type',
       'Inline images must be base64 png, jpeg, gif or webp data',
     );
   }
-  if (REMOTE_URL.test(ref.url)) {
+  if (isRemoteUrl(ref.url)) {
     if (!context.policy.remoteUrls) {
       throw new ImageRejection(index, 'remote_url', 'Remote image URLs are not accepted');
     }

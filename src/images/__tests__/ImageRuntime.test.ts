@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../errors/ConfigError.js';
 import { SessionInputError } from '../../errors/SessionInputError.js';
 import { ImageRuntime } from '../ImageRuntime.js';
@@ -42,6 +42,39 @@ describe('ImageRuntime', () => {
 
   it('rejects an invalid policy at construction', () => {
     expect(() => new ImageRuntime({ policy: { maxImagesPerRequest: 0 } })).toThrow(ConfigError);
+  });
+
+  it('warns once per unavailable URL in each runtime and debugs repeated misses', async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child() {
+        return this;
+      },
+    };
+    const messages = [
+      {
+        role: 'user' as const,
+        content: [{ type: 'image_url' as const, image_url: { url: 'app-image:gone' } }],
+      },
+    ];
+    const runtime = new ImageRuntime({ logger });
+    const first = await runtime.prepareRequest(messages);
+    const second = await runtime.prepareRequest(messages);
+
+    expect(first.messages[0]?.content).toEqual([
+      { type: 'text', text: '[image unavailable: it is no longer in the image store]' },
+    ]);
+    expect(second).toEqual(first);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.debug).toHaveBeenCalledWith(
+      '[Images] Image unavailable (no image store handles this reference): app-image:gone',
+    );
+
+    await new ImageRuntime({ logger }).prepareRequest(messages);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
   it('admits an image into its store and resolves it again for a request', async () => {

@@ -7,6 +7,7 @@ import { estimateImageTokens } from './estimateImageTokens.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
 import { selectImages } from './imageBudget.js';
 import { type ImageOmissionReason, imagePlaceholder } from './imageText.js';
+import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
 /** Tighter limits for one recovery retry. */
 export interface ImageRequestLimits {
@@ -39,6 +40,8 @@ export interface ImageRequestContext {
   readonly vision: VisionCapability;
   readonly policy: ResolvedImagePolicy;
   readonly cache?: ResolvedImageCache;
+  /** URLs already reported unavailable; each is warned about once, later misses log at debug */
+  readonly reportedUnavailable?: { has(url: string): boolean; add(url: string): unknown };
   readonly limits?: ImageRequestLimits;
   readonly signal?: AbortSignal;
   readonly logger?: InternalLogger;
@@ -55,7 +58,6 @@ interface LocatedImage {
 
 type Decision = ImageOmissionReason | 'keep';
 
-const REMOTE_URL = /^https?:\/\//i;
 const NO_IMAGES: ImageProjectionReport = {
   total: 0,
   kept: 0,
@@ -109,27 +111,44 @@ function decide(images: readonly LocatedImage[], context: ImageRequestContext): 
   return decisions;
 }
 
+function reportUnavailable(
+  ref: ImageRef,
+  context: ImageRequestContext,
+  reason: string,
+  error?: unknown,
+): undefined {
+  const message = `[Images] Image unavailable (${reason}): ${ref.url}`;
+  const args = error === undefined ? [message] : [message, error];
+  if (context.reportedUnavailable?.has(ref.url)) {
+    context.logger?.debug(...args);
+  } else {
+    context.logger?.warn(...args);
+    context.reportedUnavailable?.add(ref.url);
+  }
+  return undefined;
+}
+
 /** The ref as the provider should receive it, or undefined when its bytes are gone. */
 async function resolveImage(
   ref: ImageRef,
   context: ImageRequestContext,
 ): Promise<ImageRef | undefined> {
-  if (ref.url.startsWith('data:') || REMOTE_URL.test(ref.url)) return ref;
+  if (isDataUrl(ref.url) || isRemoteUrl(ref.url)) return ref;
   const store = context.policy.store;
-  if (!store?.handles(ref.url)) return undefined;
+  if (!store?.handles(ref.url))
+    return reportUnavailable(ref, context, 'no image store handles this reference');
   const cached = context.cache?.get(ref.url);
   if (cached !== undefined) return { ...ref, url: cached };
   try {
     const resolved = await store.get(ref.url, context.signal);
-    if (!resolved) return undefined;
+    if (!resolved) return reportUnavailable(ref, context, 'it is no longer in the image store');
     if ('url' in resolved) return { ...ref, url: resolved.url };
     const url = toDataUrl(resolved.mediaType, resolved.bytes);
     context.cache?.set(ref.url, url);
     return { ...ref, url };
   } catch (error) {
     context.signal?.throwIfAborted();
-    context.logger?.warn(`[Images] Could not resolve ${ref.url}:`, error);
-    return undefined;
+    return reportUnavailable(ref, context, 'the image store failed', error);
   }
 }
 
@@ -163,6 +182,11 @@ export async function prepareImagesForRequest(
   if (images.length === 0) return { messages, report: NO_IMAGES };
 
   const decisions = decide(images, context);
+  const resolvedImages = await Promise.all(
+    images.map((image, index) =>
+      decisions[index] === 'keep' ? resolveImage(image.ref, context) : undefined,
+    ),
+  );
   const replacements = new Map<string, ModelContent>();
   const omitted: Record<ImageOmissionReason, number> = {
     budget: 0,
@@ -176,7 +200,7 @@ export async function prepareImagesForRequest(
     const key = `${image.messageIndex}:${image.partIndex}`;
     let decision = decisions[index] ?? 'unsupported';
     if (decision === 'keep') {
-      const resolved = await resolveImage(image.ref, context);
+      const resolved = resolvedImages[index];
       if (resolved) {
         kept += 1;
         if (image.fresh) freshKept += 1;
