@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { ONE_PIXEL_PNG_DATA_URL } from '../../images/__tests__/fixtures.js';
 import type { ModelContent } from '../../model/message.js';
 import { HookEvent } from '../../types/constants.js';
 import { InputId, RequestId, SessionId } from '../../types/identifiers.js';
@@ -154,7 +155,7 @@ describe('Session runtime context', () => {
 
     await session.send([
       { type: 'text', text: 'original prompt' },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
+      { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
     ] satisfies ModelContent[]);
 
     for await (const _event of session.stream()) {
@@ -164,7 +165,16 @@ describe('Session runtime context', () => {
     expect(capturedMessages).toHaveLength(1);
     expect(capturedMessages[0]).toEqual([
       { type: 'text', text: 'updated prompt' },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
+      {
+        type: 'image_url',
+        image_url: {
+          url: ONE_PIXEL_PNG_DATA_URL,
+          mediaType: 'image/png',
+          width: 1,
+          height: 1,
+          byteLength: 70,
+        },
+      },
     ]);
 
     await session.close();

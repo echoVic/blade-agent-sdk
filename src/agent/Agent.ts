@@ -2,6 +2,7 @@ import type { ContextManager } from '../context/ContextManager.js';
 import { AbortError } from '../errors/AbortError.js';
 import { ConfigError } from '../errors/ConfigError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import { ImageRuntime } from '../images/ImageRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { McpServerConfig } from '../mcp/config.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
@@ -48,6 +49,7 @@ export interface AgentRuntimeDeps {
   subagentRegistry?: SubagentRegistry;
   backgroundAgentManager?: IBackgroundAgentManager;
   hookRuntime?: HookRuntime;
+  imageRuntime?: ImageRuntime;
   providerRegistry?: ProviderRegistry;
   modelMiddleware?: readonly ModelMiddleware[];
   toolMiddleware?: readonly ToolMiddleware[];
@@ -88,6 +90,7 @@ export class Agent {
   private destroyPromise?: Promise<void>;
 
   private modelManager: ModelManager;
+  private readonly imageRuntime: ImageRuntime;
   private loopRunner?: LoopRunner;
 
   constructor(
@@ -141,6 +144,12 @@ export class Agent {
       deps.providerRegistry,
       runtimeOptions.vision,
     );
+    this.imageRuntime = deps.imageRuntime ?? new ImageRuntime({ logger: this.rootLogger });
+    this.imageRuntime.bindModel({
+      getVision: () => this.modelManager.getVision(),
+      getInputWindowTokens: () => this.modelManager.getInputWindowTokens(),
+      markImagesUnsupported: () => this.modelManager.markImagesUnsupported(),
+    });
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
 

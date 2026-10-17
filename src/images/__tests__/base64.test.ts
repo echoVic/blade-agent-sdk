@@ -17,6 +17,12 @@ describe('base64 helpers', () => {
     );
   });
 
+  it('returns bytes that own their whole ArrayBuffer', () => {
+    const bytes = base64ToBytes('AAAA');
+    expect(bytes.byteOffset).toBe(0);
+    expect(bytes.buffer.byteLength).toBe(bytes.byteLength);
+  });
+
   it('works without Buffer', () => {
     vi.stubGlobal('Buffer', undefined);
     try {

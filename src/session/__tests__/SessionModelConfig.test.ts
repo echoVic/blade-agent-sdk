@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ImageRuntime } from '../../images/ImageRuntime.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 
 const createAgent = vi.fn(async (_config: unknown, _options?: unknown, _deps?: unknown) => ({
@@ -127,6 +128,18 @@ describe('Session model config', () => {
 
     const [, agentOptions] = createAgent.mock.calls.at(-1) ?? [];
     expect(agentOptions).toEqual(expect.objectContaining({ vision }));
+
+    await session.close();
+  });
+
+  it('hands the Session image runtime to the Agent', async () => {
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'qwen-vl-max',
+    });
+
+    const [, , deps] = createAgent.mock.calls.at(-1) ?? [];
+    expect(deps).toMatchObject({ imageRuntime: expect.any(ImageRuntime) });
 
     await session.close();
   });

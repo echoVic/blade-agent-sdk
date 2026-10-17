@@ -37,11 +37,13 @@ export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget
 export type { UserMessageContent } from './agent/UserMessageContent.js';
 export type {
   HookTimeoutErrorCode,
+  ImageRejectionReason,
   ModelTimeoutErrorCode,
   ProviderRegistryErrorCode,
   SdkErrorOptions,
   SessionHandoffErrorCode,
   SessionInputErrorCode,
+  SessionInputErrorDetails,
 } from './errors/index.js';
 // --- Error hierarchy ---
 export {

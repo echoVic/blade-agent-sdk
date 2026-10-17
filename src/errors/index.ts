@@ -13,6 +13,10 @@ export type { SdkErrorOptions } from './SdkError.js';
 export { SdkError } from './SdkError.js';
 export type { SessionHandoffErrorCode } from './SessionHandoffError.js';
 export { SessionHandoffError } from './SessionHandoffError.js';
-export type { SessionInputErrorCode } from './SessionInputError.js';
+export type {
+  ImageRejectionReason,
+  SessionInputErrorCode,
+  SessionInputErrorDetails,
+} from './SessionInputError.js';
 export { SessionInputError } from './SessionInputError.js';
 export { ToolExecutionError } from './ToolExecutionError.js';

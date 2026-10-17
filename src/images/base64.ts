@@ -28,7 +28,10 @@ export function base64DecodedLength(base64: string): number {
 export function base64ToBytes(base64: string): Uint8Array {
   if (typeof Buffer !== 'undefined') {
     const buffer = Buffer.from(base64, 'base64');
-    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    if (buffer.byteOffset === 0 && buffer.byteLength === buffer.buffer.byteLength) {
+      return new Uint8Array(buffer.buffer);
+    }
+    return new Uint8Array(buffer);
   }
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

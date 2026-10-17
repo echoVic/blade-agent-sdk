@@ -6,6 +6,8 @@ import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManage
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
+import { ImageRuntime } from '../images/ImageRuntime.js';
+import { resolveVisionCapability } from '../images/visionDefaults.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
 import { type McpServerCapability, projectMcpCapabilities } from '../mcp/McpCapabilityProjector.js';
@@ -87,6 +89,7 @@ export class SessionRuntime {
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
   private readonly usesBuiltinTools: boolean;
+  private readonly imageRuntime: ImageRuntime;
   private initialized = false;
 
   constructor(
@@ -102,6 +105,16 @@ export class SessionRuntime {
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
+    this.imageRuntime = new ImageRuntime({
+      policy: options.images,
+      fallbackVision: () =>
+        resolveVisionCapability({
+          provider: options.provider.type,
+          model: options.model,
+          sessionOverride: options.vision,
+        }),
+      logger,
+    });
     this.usesBuiltinTools = options.builtinTools ?? hostProfile === NODE_SESSION_HOST;
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
@@ -162,6 +175,7 @@ export class SessionRuntime {
       skillRegistry: this.skillRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
+      imageRuntime: this.imageRuntime,
       providerRegistry: this.options.providerRegistry,
       modelMiddleware: this.pluginHost.getModelMiddleware(),
       toolMiddleware: this.pluginHost.getToolMiddleware(),
@@ -180,6 +194,10 @@ export class SessionRuntime {
 
   getHookRuntime(): HookRuntime {
     return this.hookRuntime;
+  }
+
+  getImageRuntime(): ImageRuntime {
+    return this.imageRuntime;
   }
 
   getToolRegistry(): ToolRegistry {

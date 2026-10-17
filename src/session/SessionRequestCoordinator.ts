@@ -82,8 +82,12 @@ export class SessionRequestCoordinator {
     this.state.logger.debug(`[Session] Loaded ${this.state.messages.length} messages from history`);
   }
 
-  async send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
+  async send(submitted: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
     await this.ensureInitialized();
+    const message = await this.state
+      .getRuntime()
+      .getImageRuntime()
+      .normalizeUserContent(submitted, options?.signal);
 
     return this.state.inputMutex.runExclusive(async () => {
       if (this.state.executionLeaseFailure) {
