@@ -33,17 +33,22 @@ function tokenCut(costs: readonly number[], allowance: number): number {
   return cut;
 }
 
-function countCut(count: number, places: number): number {
+/**
+ * Omit history in steps of half of maxImages, at least one image.
+ * A constant step keeps the target nondecreasing across consecutive growing
+ * requests, so the cut never moves backwards.
+ */
+function countCut(count: number, places: number, maxImages: number): number {
   if (count <= places) return 0;
   if (places <= 0) return count;
-  const step = Math.max(1, Math.floor(places / 2));
+  const step = Math.max(1, Math.floor(maxImages / 2));
   return Math.min(count, Math.ceil((count - places) / step) * step);
 }
 
 /**
  * Decide which images a request keeps. Fresh images take places first, newest
  * first. History images keep the newest suffix that fits both the token
- * allowance and the remaining places.
+ * allowance and the remaining places, with count steps of half of maxImages.
  */
 export function selectImages(slots: readonly ImageSlot[], limits: ImageSelectionLimits): boolean[] {
   const keep = slots.map(() => false);
@@ -63,7 +68,7 @@ export function selectImages(slots: readonly ImageSlot[], limits: ImageSelection
       historyIndexes.map((index) => slots[index].cost),
       limits.historyTokens,
     ),
-    countCut(historyIndexes.length, historyPlaces),
+    countCut(historyIndexes.length, historyPlaces, limits.maxImages),
   );
   for (const index of historyIndexes.slice(cut)) keep[index] = true;
   return keep;

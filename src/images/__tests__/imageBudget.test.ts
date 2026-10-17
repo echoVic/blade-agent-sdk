@@ -50,9 +50,43 @@ describe('selectImages', () => {
     }
   });
 
-  it('moves the count cut in steps of half the remaining places', () => {
+  it('moves the count cut in steps of half the places', () => {
     const cut = (count: number) =>
       selectImages(history(count, 1), { maxImages: 4, historyTokens: 16_000 }).indexOf(true);
     expect([4, 5, 6, 7, 8].map(cut)).toEqual([0, 2, 2, 4, 4]);
+  });
+
+  it('never moves the history cut backwards as consecutive requests add fresh images', () => {
+    let historySlots = history(60, 1);
+    let previousCut = 0;
+
+    for (let request = 0; request < 40; request += 1) {
+      const freshSlots = fresh(request % 2, 1);
+      const keep = selectImages([...historySlots, ...freshSlots], {
+        maxImages: 50,
+        historyTokens: 16_000,
+      });
+      const cut = keep.slice(0, historySlots.length).indexOf(true);
+
+      expect(cut).toBeGreaterThanOrEqual(0);
+      expect(cut).toBeGreaterThanOrEqual(previousCut);
+      expect(keep.filter(Boolean).length).toBeLessThanOrEqual(50);
+
+      previousCut = cut;
+      historySlots = [...historySlots, ...freshSlots.map((slot) => ({ ...slot, fresh: false }))];
+    }
+  });
+
+  it('uses the fixed count step when fresh images fill most of the places', () => {
+    expect(
+      selectImages([...history(3, 1), ...fresh(2, 1)], {
+        maxImages: 4,
+        historyTokens: 16_000,
+      }),
+    ).toEqual([false, false, true, true, true]);
+  });
+
+  it('returns an empty selection when there are no images', () => {
+    expect(selectImages([], { maxImages: 50, historyTokens: 16_000 })).toEqual([]);
   });
 });
