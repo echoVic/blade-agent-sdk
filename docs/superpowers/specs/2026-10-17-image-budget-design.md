@@ -183,7 +183,7 @@ export type VisionResolver = (model: {
 export interface ImagePolicy {
   /** 不配置时图片保持内联，与今天一致。 */
   store?: ImageStore;
-  /** 单张字节上限；默认 10 MiB，并受 vision.maxImageBytes 约束。 */
+  /** 单张内联图片的字节上限；默认 10 MiB，并受 vision.maxImageBytes 约束。http(s) 和 store 引用在入口不测量。 */
   maxImageBytes?: number;
   /** 每次输入的图片张数上限；默认 20。 */
   maxImagesPerInput?: number;
@@ -193,7 +193,7 @@ export interface ImagePolicy {
   maxImagesPerRequest?: number;
   /** 模型不收图时新输入怎么处理；默认 'reject'。 */
   whenUnsupported?: 'reject' | 'omit';
-  /** 是否接受调用方给出的 http(s) 图片；默认 true。SDK 自己从不抓取这类 URL。 */
+  /** 是否接受调用方给出的 http(s) 图片；默认 true。入口不抓取、不测量，URL 原样交给 AI SDK（§4.2）。 */
   remoteUrls?: boolean;
 }
 ```
