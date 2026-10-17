@@ -1,6 +1,8 @@
 // Browser-safe runtime exports. Types mirror the root API without importing its Node runtime.
 
 export { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
+export { combineImageStores } from '../images/ImageStore.js';
+export { InMemoryImageStore } from '../images/InMemoryImageStore.js';
 export type * from '../index.js';
 export { definePlugin } from '../middleware/AgentPlugin.js';
 export { composeMiddleware } from '../middleware/composeMiddleware.js';

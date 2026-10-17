@@ -247,6 +247,8 @@ describe('root exports', () => {
     expect(DurableSessionRecoveryRequiredError).toBeDefined();
     expect(SessionDurableRecorderError).toBeDefined();
     expect(projectDurableSession([]).status).toBe('empty');
+    expect(root.InMemoryImageStore).toBeTypeOf('function');
+    expect(root.combineImageStores).toBeTypeOf('function');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {

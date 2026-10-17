@@ -109,6 +109,8 @@ describe('package entrypoints', () => {
     expect(browser.ExecutionCheckpointId('checkpoint-1')).toBe('checkpoint-1');
     expect('CredentialLeaseId' in browser).toBe(false);
     expect(browser.AgentClient).toBeTypeOf('function');
+    expect(browser.InMemoryImageStore).toBeTypeOf('function');
+    expect(browser.combineImageStores).toBeTypeOf('function');
     expect(browser.AgentResponse).toBeTypeOf('function');
     expect(browser.AGENT_PROTOCOL_VERSION).toBe(1);
     expect(() => browser.createAgent({} as never)).toThrow(/server-only.*createAgent/);

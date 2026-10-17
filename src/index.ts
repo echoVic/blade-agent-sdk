@@ -63,6 +63,11 @@ export type {
   ResolvedImage,
   TenantImageStore,
 } from './images/ImageStore.js';
+export { combineImageStores } from './images/ImageStore.js';
+export {
+  InMemoryImageStore,
+  type InMemoryImageStoreOptions,
+} from './images/InMemoryImageStore.js';
 export type {
   CleanupFn,
   CleanupHandle,
