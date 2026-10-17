@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompactionOptions, CompactionResult } from '../../context/CompactionService.js';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
+import { dataUrl, pngBytes } from '../../images/__tests__/fixtures.js';
 import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
@@ -333,5 +334,69 @@ describe('CompactionHandler', () => {
       expect.anything(),
       expect.objectContaining({ signal: controller.signal }),
     );
+  });
+
+  it('re-estimates images by size after microcompact instead of truncating the conversation', async () => {
+    const handler = new CompactionHandler(
+      () =>
+        ({
+          getConfig: () => ({
+            model: 'gpt-4o',
+            provider: 'openai' as const,
+            maxContextTokens: 128000,
+            maxOutputTokens: 8000,
+            apiKey: 'test-key',
+            baseUrl: 'https://api.openai.com/v1',
+          }),
+        }) as never,
+      () => undefined,
+      undefined,
+      undefined,
+      () => ({ images: true, toolResultImages: true, imageTokens: 'openai' }),
+    );
+    const url = dataUrl('image/png', pngBytes(1920, 1080, 1024 * 1024));
+    const filler: ModelMessage[] = Array.from({ length: 44 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `step ${index}`,
+    }));
+    const contextMessages: ModelMessage[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Compare with this screenshot' },
+          { type: 'image_url', image_url: { url } },
+        ],
+      },
+      ...filler,
+      { role: 'tool', tool_call_id: 'call-1', content: 'x'.repeat(4000) },
+      { role: 'tool', tool_call_id: 'call-2', content: 'y'.repeat(4000) },
+    ];
+    const convState = new ConversationState(
+      null,
+      contextMessages.slice(0, -1),
+      contextMessages[contextMessages.length - 1] as ModelMessage,
+    );
+
+    const events: unknown[] = [];
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      { sessionId: SessionId('session-1') },
+      3,
+      80_000,
+    );
+    let didCompact: boolean | undefined;
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        didCompact = next.value;
+        break;
+      }
+      events.push(next.value);
+    }
+
+    expect(didCompact).toBe(true);
+    expect(events).toEqual([]);
+    expect(convState.getContextMessages()).toHaveLength(contextMessages.length);
+    expect(mockCompact).not.toHaveBeenCalled();
   });
 });

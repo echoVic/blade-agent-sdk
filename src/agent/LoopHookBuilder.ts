@@ -232,6 +232,7 @@ class LoopConfigBuilder {
           filesystemRoots: deps.context.snapshot?.filesystemRoots,
           signal: deps.options?.signal ?? deps.context.signal,
           assertExecutionLease: deps.context.assertExecutionLease,
+          vision: deps.modelManager.getVision(),
         },
       );
       await this.saveCompaction(result);

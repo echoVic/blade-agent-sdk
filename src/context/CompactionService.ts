@@ -5,10 +5,12 @@
 
 import { nanoid } from 'nanoid';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
+import { summaryImageText } from '../images/imageText.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import type { ProviderType } from '../model/config.js';
 import type { ConversationMessage } from '../model/conversation.js';
-import type { ModelMessage } from '../model/message.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
+import type { VisionCapability } from '../model/vision.js';
 import { createModelService } from '../services/createModelService.js';
 import { wrapModelServiceWithTimeouts } from '../services/ModelServiceTimeout.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
@@ -51,6 +53,8 @@ export interface CompactionOptions {
   filesystemRoots?: readonly string[];
   /** Cancels the compaction provider request with its owning execution. */
   signal?: AbortSignal;
+  /** Image capability of the model, used for token estimates. */
+  vision?: VisionCapability;
   /** @internal Validates execution ownership around compaction side effects. */
   assertExecutionLease?: () => Promise<void>;
 }
@@ -133,7 +137,8 @@ export async function compact(
   options.signal?.throwIfAborted();
   await options.assertExecutionLease?.();
   const preTokens =
-    options.actualPreTokens ?? TokenCounter.countTokens(messages, options.modelName);
+    options.actualPreTokens ??
+    TokenCounter.countTokens(messages, options.modelName, { vision: options.vision });
   const tokenSource = options.actualPreTokens ? 'actual (from LLM usage)' : 'estimated';
   console.log(`[CompactionService] preTokens source: ${tokenSource}`);
 
@@ -177,7 +182,9 @@ export async function compact(
     const summaryMessage = createSummaryMessage(summaryMessageId, summary);
 
     const compactedMessages = [summaryMessage, ...retainedMessages];
-    const postTokens = TokenCounter.countTokens(compactedMessages, options.modelName);
+    const postTokens = TokenCounter.countTokens(compactedMessages, options.modelName, {
+      vision: options.vision,
+    });
 
     console.log('[CompactionService] 压缩完成！');
     console.log(
@@ -341,11 +348,17 @@ function inferProvider(baseURL?: string): ProviderType {
 function buildCompactionSections(messages: ModelMessage[], fileContents: FileContent[]): string[] {
   const messageSections = messages.map((message, index) => {
     const content =
-      typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+      typeof message.content === 'string' ? message.content : renderSummaryContent(message.content);
     return `[Message ${index + 1}] ${message.role}: ${content}`;
   });
   const fileSections = fileContents.map((file) => `[File ${file.path}]\n${file.content}`);
   return [...messageSections, ...fileSections];
+}
+
+function renderSummaryContent(content: readonly ModelContent[]): string {
+  return content
+    .map((part) => (part.type === 'text' ? part.text : summaryImageText(part.image_url)))
+    .join('\n');
 }
 
 function buildCompactionPrompt(previousSummary: string, newEvidence: string): string {
@@ -491,7 +504,9 @@ function fallbackCompact(
   );
 
   const compactedMessages = [summaryMessage, ...retainedMessages];
-  const postTokens = TokenCounter.countTokens(compactedMessages, options.modelName);
+  const postTokens = TokenCounter.countTokens(compactedMessages, options.modelName, {
+    vision: options.vision,
+  });
 
   return {
     success: false,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderRegistryError } from '../../errors/ProviderRegistryError.js';
+import { dataUrl, pngBytes } from '../../images/__tests__/fixtures.js';
 import type { ModelServiceConfig } from '../../model/config.js';
 import type { ModelMessage } from '../../model/message.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
@@ -185,5 +186,42 @@ describe('CompactionService', () => {
 
     expect(retained).toHaveLength(2);
     expect(retained[1].content).toBe('result-1');
+  });
+
+  it('describes images in the summary prompt instead of sending base64', async () => {
+    const url = dataUrl('image/png', pngBytes(1920, 1080, 1024 * 1024));
+    const messages: ModelMessage[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Why does the login page look broken?' },
+          {
+            type: 'image_url',
+            image_url: {
+              url,
+              mediaType: 'image/png',
+              width: 1920,
+              height: 1080,
+              alt: 'login page',
+            },
+          },
+        ],
+      },
+      { role: 'assistant', content: 'The submit button overlaps the footer.' },
+    ];
+
+    await compact(messages, {
+      trigger: 'manual',
+      modelName: 'gpt-5',
+      maxContextTokens: 128000,
+      apiKey: 'test-key',
+      baseURL: 'https://api.openai.com/v1',
+    });
+
+    expect(mockSideQuery).toHaveBeenCalledTimes(1);
+    const prompt = String((mockSideQuery.mock.calls[0]?.[0] as ModelMessage[])[0]?.content);
+    expect(prompt).not.toContain(';base64,');
+    expect(prompt).toContain('[image: image/png 1920×1080 — login page]');
+    expect(prompt).toContain('Why does the login page look broken?');
   });
 });

@@ -137,6 +137,7 @@ describe('LoopHookBuilder request signal', () => {
       modelManager: {
         getContextManager: () => undefined,
         getProviderRegistry: () => providerRegistry,
+        getVision: () => undefined,
       } as never,
       runtimePatchManager: {} as never,
     });

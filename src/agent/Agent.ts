@@ -203,6 +203,7 @@ export class Agent {
         () => this.modelManager.getContextManager(),
         this.rootLogger,
         () => this.modelManager.getProviderRegistry(),
+        () => this.modelManager.getVision(),
       );
 
       this.loopRunner = new LoopRunner(

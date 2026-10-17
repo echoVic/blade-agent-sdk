@@ -5,6 +5,7 @@ import { TokenCounter } from '../context/TokenCounter.js';
 import { ProviderRegistryError } from '../errors/ProviderRegistryError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ModelService } from '../model/service.js';
+import type { VisionCapability } from '../model/vision.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import type { ProviderRegistry } from '../services/ProviderRegistry.js';
 import {
@@ -32,6 +33,7 @@ export class CompactionHandler {
     private getContextManager: () => ContextManager | undefined,
     logger?: InternalLogger,
     private getProviderRegistry: () => ProviderRegistry | undefined = () => undefined,
+    private getVision: () => VisionCapability | undefined = () => undefined,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
@@ -86,7 +88,9 @@ export class CompactionHandler {
     }
     if (microcompactResult.replacedCount > 0) {
       convState.replaceContent(microcompactResult.messages);
-      effectivePromptTokens = TokenCounter.countTokens(convState.getContextMessages(), modelName);
+      effectivePromptTokens = TokenCounter.countTokens(convState.getContextMessages(), modelName, {
+        vision: this.getVision(),
+      });
       this.logger.debug(
         `[Agent] [轮次 ${currentTurn}] microcompact 完成: 替换 ${microcompactResult.replacedCount} 条工具结果, 节省 ${microcompactResult.savedChars} 字符, 估算 tokens ${actualPromptTokens} → ${effectivePromptTokens}`,
       );
@@ -155,6 +159,7 @@ export class CompactionHandler {
         filesystemRoots: runtimeCtx.filesystemRoots,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
+        vision: this.getVision(),
       });
       runtimeCtx.signal?.throwIfAborted();
       await runtimeCtx.assertExecutionLease?.();
@@ -206,6 +211,7 @@ export class CompactionHandler {
         const postMicrocompactTokens = TokenCounter.countTokens(
           workingMessages,
           this.getModelService().getConfig().model,
+          { vision: this.getVision() },
         );
         this.logger.debug(
           `[Agent] reactive microcompact: 替换 ${microcompactResult.replacedCount} 条, 估算 tokens → ${postMicrocompactTokens}`,
@@ -247,6 +253,7 @@ export class CompactionHandler {
         filesystemRoots: runtimeCtx.filesystemRoots,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
+        vision: this.getVision(),
       });
       runtimeCtx.signal?.throwIfAborted();
       await runtimeCtx.assertExecutionLease?.();

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Context compaction describes images as `[image: …]` text instead of sending their base64 data to the summary model, which used to split one screenshot into many summary requests.",
+  "zh-CN": "上下文压缩把图片写成 `[image: …]` 描述，不再把 base64 数据发给摘要模型；之前一张截图会被切成很多次摘要请求。"
+}
