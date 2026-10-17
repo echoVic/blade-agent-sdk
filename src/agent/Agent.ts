@@ -227,6 +227,7 @@ export class Agent {
         this.tokenBudget,
         this.hookRuntime,
         this.skillRegistry,
+        this.imageRuntime,
       );
 
       this.isInitialized = true;

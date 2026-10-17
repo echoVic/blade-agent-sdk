@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
+import { TraceRecorder } from '../../observability/TraceRecorder.js';
 import { SessionId, ToolUseId } from '../../types/identifiers.js';
 import { StreamBroadcaster } from '../StreamBroadcaster.js';
 
@@ -83,5 +84,24 @@ describe('StreamBroadcaster', () => {
       ],
       usage: usageEvent.usage,
     });
+  });
+
+  it('records image projections in the turn span without streaming them', () => {
+    const recorder = new TraceRecorder(sessionId, { enabled: true, capturePayloads: true });
+    const broadcaster = new StreamBroadcaster({ sessionId, traceRecorder: recorder });
+    broadcaster.project({ type: 'turn_start', turn: 1, maxTurns: 5 });
+    const report = {
+      total: 2,
+      kept: 1,
+      freshKept: 1,
+      omitted: { budget: 1, unsupported: 0, unavailable: 0 },
+      estimatedTokens: 1600,
+    };
+
+    expect(broadcaster.project({ type: 'image_projection', turn: 1, report })).toBeNull();
+
+    const trace = recorder.getTrace();
+    const event = trace.events.find((entry) => entry.type === 'image_projection');
+    expect(event?.spanId).toBe(trace.spans.find((span) => span.kind === 'turn')?.id);
   });
 });

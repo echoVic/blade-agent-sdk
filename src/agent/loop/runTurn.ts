@@ -1,4 +1,8 @@
 import type { JSONSchema7 } from 'json-schema';
+import type {
+  ImageProjectionReport,
+  ImageRequestLimits,
+} from '../../images/prepareImagesForRequest.js';
 import type { InternalLogger } from '../../logging/Logger.js';
 import { type ModelIdentity, resolveModelIdentity } from '../../model/identity.js';
 import type { ModelMessage } from '../../model/message.js';
@@ -17,6 +21,10 @@ export interface RunTurnInput {
   signal?: AbortSignal;
   modelExecutionLifecycle?: ModelExecutionLifecycle;
   logger?: InternalLogger;
+  /** Tighter image limits for a recovery retry. */
+  imageLimits?: ImageRequestLimits;
+  /** Receives the image projection of the request about to be sent. */
+  onImageProjection?: (report: ImageProjectionReport) => void;
 }
 
 export interface TurnOutcome {
@@ -47,6 +55,20 @@ async function settleFailure(
       'Model request and durable settlement both failed',
     );
   }
+}
+
+async function* projectImages(input: RunTurnInput): AsyncGenerator<AgentEvent, RunTurnInput> {
+  const images = input.turnState.images;
+  if (!images) return input;
+  const prepared = await images.prepareRequest(input.messages, {
+    limits: input.imageLimits,
+    signal: input.signal,
+  });
+  if (prepared.report.total > 0) {
+    input.onImageProjection?.(prepared.report);
+    yield { type: 'image_projection', turn: input.turnState.turn, report: prepared.report };
+  }
+  return prepared.messages === input.messages ? input : { ...input, messages: prepared.messages };
 }
 
 async function* requestModel(
@@ -109,6 +131,7 @@ export async function* runTurn(input: RunTurnInput): AsyncGenerator<AgentEvent, 
     description: string;
     parameters: JSONSchema7;
   }>;
+  const request = yield* projectImages(input);
   const modelIdentity = resolveModelIdentity(input.turnState.modelService.getConfig());
   const lifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
     turn: input.turnState.turn,
@@ -120,7 +143,7 @@ export async function* runTurn(input: RunTurnInput): AsyncGenerator<AgentEvent, 
 
   let settled = false;
   try {
-    const chatResponse = yield* requestModel(input, tools);
+    const chatResponse = yield* requestModel(request, tools);
     if (input.signal?.aborted) {
       settled = true;
       await lifecycle?.onAborted(abortReason(input.signal));

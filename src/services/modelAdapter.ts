@@ -1,4 +1,5 @@
 import { jsonSchema, Output } from 'ai';
+import { parseBase64DataUrl } from '../images/base64.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ModelServiceConfig, OutputFormat } from '../model/config.js';
 import { resolveModelIdentity } from '../model/identity.js';
@@ -24,7 +25,12 @@ type AIMessage =
         | string
         | Array<
             | { type: 'text'; text: string; providerOptions?: AIProviderOptions }
-            | { type: 'image'; image: string; mediaType?: string }
+            | {
+                type: 'image';
+                image: string;
+                mediaType?: string;
+                providerOptions?: AIProviderOptions;
+              }
           >;
     }
   | {
@@ -244,11 +250,15 @@ function convertMessages(
                       : {}),
                   };
                 }
-                const data = parseDataUrl(part.image_url.url);
+                const inline = parseBase64DataUrl(part.image_url.url);
+                const mediaType = part.image_url.mediaType || inline?.mediaType || undefined;
                 return {
                   type: 'image',
-                  image: data?.data ?? part.image_url.url,
-                  ...(data?.mediaType ? { mediaType: data.mediaType } : {}),
+                  image: inline?.base64 ?? part.image_url.url,
+                  ...(mediaType ? { mediaType } : {}),
+                  ...(part.image_url.detail
+                    ? { providerOptions: { openai: { imageDetail: part.image_url.detail } } }
+                    : {}),
                 };
               })
             : message.content,
@@ -409,11 +419,6 @@ function textContent(content: string | ModelContent[]): string {
         .filter((part) => part.type === 'text')
         .map((part) => part.text)
         .join('\n');
-}
-
-function parseDataUrl(url: string): { data: string; mediaType?: string } | undefined {
-  const match = /^data:([^;,]+)?;base64,(.+)$/.exec(url);
-  return match ? { data: match[2], mediaType: match[1] || undefined } : undefined;
 }
 
 function parseJson(value: string, logger: InternalLogger): JsonValue {

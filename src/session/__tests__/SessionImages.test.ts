@@ -270,4 +270,57 @@ describe('Session images', () => {
 
     await session.close();
   });
+
+  it('sends the stored image to the model as data while the transcript keeps the reference', async () => {
+    const requests: ModelMessage[][] = [];
+    const session = await createSession(
+      sessionOptions(requests, { images: { store: new InMemoryImageStore() } }),
+    );
+
+    await session.send([
+      { type: 'text', text: 'what is this?' },
+      { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+    ]);
+    await drain(session);
+
+    const sent = imagePart(requests.at(-1)?.findLast((message) => message.role === 'user'));
+    expect(sent).toEqual({
+      type: 'image_url',
+      image_url: {
+        url: ONE_PIXEL_PNG_DATA_URL,
+        mediaType: 'image/png',
+        width: 1,
+        height: 1,
+        byteLength: 70,
+      },
+    });
+
+    await session.close();
+  });
+
+  it('sends a placeholder when the model cannot see images and the policy keeps them', async () => {
+    const requests: ModelMessage[][] = [];
+    const session = await createSession(
+      sessionOptions(requests, { vision: { images: false }, images: { whenUnsupported: 'omit' } }),
+    );
+
+    await session.send([
+      { type: 'text', text: 'here' },
+      { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL, alt: 'dot' } },
+    ]);
+    await drain(session);
+
+    expect(requests.at(-1)?.findLast((message) => message.role === 'user')?.content).toEqual([
+      { type: 'text', text: 'here' },
+      {
+        type: 'text',
+        text: '[image omitted: the current model does not accept images — image/png 1×1 — dot]',
+      },
+    ]);
+    expect(imagePart(session.messages.find((message) => message.role === 'user'))).toMatchObject({
+      type: 'image_url',
+    });
+
+    await session.close();
+  });
 });

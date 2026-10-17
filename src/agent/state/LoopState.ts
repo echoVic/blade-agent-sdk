@@ -1,3 +1,4 @@
+import type { ImageRuntime } from '../../images/ImageRuntime.js';
 import type { ModelService, ModelToolDefinition } from '../../model/service.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { PermissionMode } from '../../types/constants.js';
@@ -13,6 +14,7 @@ interface LoopStateOptions {
   resolveModelService: () => ModelService;
   resolveMaxContextTokens: () => number;
   initialActiveSkill?: LoopSkillState;
+  images?: ImageRuntime;
 }
 
 export class LoopState {
@@ -25,6 +27,7 @@ export class LoopState {
   private readonly resolveModelServiceFn: () => ModelService;
   private readonly resolveMaxContextTokensFn: () => number;
   private activeSkill?: LoopSkillState;
+  private readonly images?: ImageRuntime;
 
   constructor(options: LoopStateOptions) {
     this.conversationState = options.conversationState;
@@ -35,6 +38,7 @@ export class LoopState {
     this.resolveModelServiceFn = options.resolveModelService;
     this.resolveMaxContextTokensFn = options.resolveMaxContextTokens;
     this.activeSkill = options.initialActiveSkill;
+    this.images = options.images;
   }
 
   buildTurnState(turn: number): TurnState {
@@ -47,6 +51,7 @@ export class LoopState {
       permissionMode: this.permissionMode,
       executionContext: this.executionContext,
       activeSkill: this.activeSkill,
+      images: this.images,
     };
   }
 

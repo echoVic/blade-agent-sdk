@@ -1,4 +1,6 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
+import { ONE_PIXEL_PNG_DATA_URL } from '../../images/__tests__/fixtures.js';
+import { ImageRuntime } from '../../images/ImageRuntime.js';
 import type { ModelMessage } from '../../model/message.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
@@ -1868,6 +1870,46 @@ describe('agentLoop', () => {
         'steer-failing',
         'steer-remaining',
       ]);
+    });
+  });
+
+  describe('image projection', () => {
+    it('sends the projected request and reports the projection', async () => {
+      const images = new ImageRuntime();
+      images.bindModel({
+        getVision: () => ({ images: false, toolResultImages: false }),
+        getInputWindowTokens: () => 120_000,
+        markImagesUnsupported: () => {},
+      });
+      const modelService = createMockModelService([{ content: 'done' }]);
+
+      const { events } = await collectEvents(
+        agentLoop(
+          baseConfig({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'look' },
+                  { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+                ],
+              },
+            ],
+            turnState: { modelService, images },
+          }),
+        ),
+      );
+
+      const sent = (modelService.chat as Mock).mock.calls[0]?.[0] as ModelMessage[];
+      expect(sent.at(-1)?.content).toEqual([
+        { type: 'text', text: 'look' },
+        { type: 'text', text: '[image omitted: the current model does not accept images]' },
+      ]);
+      expect(events).toContainEqual({
+        type: 'image_projection',
+        turn: 1,
+        report: expect.objectContaining({ total: 1, kept: 0 }),
+      });
     });
   });
 });

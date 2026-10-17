@@ -1,4 +1,5 @@
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import type { ImageRuntime } from '../images/ImageRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import { buildSystemPrompt } from '../prompts/index.js';
@@ -63,6 +64,7 @@ export class LoopRunner {
     private tokenBudget?: TokenBudget,
     private hookRuntime?: HookRuntime,
     private skillRegistry?: SkillRegistry,
+    private imageRuntime?: ImageRuntime,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
     this.runtimePatchManager = new RuntimePatchManager(hookRuntime, this.logger);
@@ -367,6 +369,7 @@ export class LoopRunner {
       },
       baseContextSnapshot: context.snapshot,
       initialActiveSkill: rpm.skillContext,
+      images: this.imageRuntime,
       resolveTools: () => {
         const skillActivationContext = resolveSkillActivationContext();
         loopState.executionContext.skillActivationPaths = skillActivationContext.referencedPaths;

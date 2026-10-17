@@ -92,6 +92,13 @@ export class StreamBroadcaster {
         return this.projectToolUpdate(event, sessionId, traceRecorder);
       case 'tool_result':
         return this.projectToolResult(event, sessionId, traceRecorder);
+      case 'image_projection':
+        traceRecorder?.addEvent(
+          'image_projection',
+          { ...event.report },
+          this.turnSpans.get(event.turn),
+        );
+        return null;
       case 'token_usage':
         this.usage = {
           inputTokens: event.usage.inputTokens,

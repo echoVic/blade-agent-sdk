@@ -1,3 +1,4 @@
+import type { ImageRuntime } from '../../images/ImageRuntime.js';
 import type { ModelMessage } from '../../model/message.js';
 import type { ModelService, ModelToolDefinition } from '../../model/service.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
@@ -44,4 +45,6 @@ export interface TurnState {
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;
   activeSkill?: LoopSkillState;
+  /** Projects images into this turn's model request; absent in bare loops and tests. */
+  images?: ImageRuntime;
 }

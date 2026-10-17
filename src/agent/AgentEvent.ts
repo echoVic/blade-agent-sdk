@@ -1,3 +1,4 @@
+import type { ImageProjectionReport } from '../images/prepareImagesForRequest.js';
 import type { ConversationMessage } from '../model/conversation.js';
 import type { ModelToolCall } from '../model/message.js';
 import type { TokenUsage } from '../model/usage.js';
@@ -52,6 +53,7 @@ export type AgentEvent =
       delayMs: number;
       error: { status?: number; message: string };
     }
+  | { type: 'image_projection'; turn: number; report: ImageProjectionReport }
   | { type: 'model_fallback'; originalModel: string; fallbackModel: string }
   | { type: 'error'; message: string }
   | {
