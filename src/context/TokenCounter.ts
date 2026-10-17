@@ -1,5 +1,7 @@
 import { encodingForModel } from 'js-tiktoken';
-import type { ModelMessage, ModelToolCall } from '../model/message.js';
+import { estimateImageTokens } from '../images/estimateImageTokens.js';
+import type { ModelContent, ModelMessage, ModelToolCall } from '../model/message.js';
+import type { VisionCapability } from '../model/vision.js';
 
 interface Encoding {
   encode: (text: string) => number[];
@@ -52,7 +54,31 @@ function countToolCallTokens(toolCalls: ModelToolCall[], encoding: Encoding): nu
   return tokens;
 }
 
-export function countTokens(messages: ModelMessage[], modelName: string): number {
+export interface TokenCountOptions {
+  /** Image capability of the model; images are estimated from their size, never from base64. */
+  readonly vision?: Pick<VisionCapability, 'imageTokens'>;
+}
+
+function countContentTokens(
+  content: readonly ModelContent[],
+  encoding: Encoding,
+  options: TokenCountOptions,
+): number {
+  let tokens = 0;
+  for (const part of content) {
+    tokens +=
+      part.type === 'text'
+        ? encoding.encode(part.text).length
+        : estimateImageTokens(part.image_url, options.vision);
+  }
+  return tokens;
+}
+
+export function countTokens(
+  messages: ModelMessage[],
+  modelName: string,
+  options: TokenCountOptions = {},
+): number {
   const encoding = getEncoding(modelName);
   let totalTokens = 0;
 
@@ -64,11 +90,10 @@ export function countTokens(messages: ModelMessage[], modelName: string): number
     }
 
     if (msg.content) {
-      if (typeof msg.content === 'string') {
-        totalTokens += encoding.encode(msg.content).length;
-      } else {
-        totalTokens += encoding.encode(JSON.stringify(msg.content)).length;
-      }
+      totalTokens +=
+        typeof msg.content === 'string'
+          ? encoding.encode(msg.content).length
+          : countContentTokens(msg.content, encoding, options);
     }
 
     if (msg.tool_calls && Array.isArray(msg.tool_calls)) {

@@ -40,7 +40,8 @@ export function base64ToBytes(base64: string): Uint8Array {
 
 /** Decode at most `maxBytes` from the start of a base64 payload. */
 export function base64PrefixToBytes(base64: string, maxBytes: number): Uint8Array {
-  return base64ToBytes(base64.slice(0, Math.ceil(maxBytes / 3) * 4));
+  const limit = Math.max(0, maxBytes);
+  return base64ToBytes(base64.slice(0, Math.ceil(limit / 3) * 4)).subarray(0, limit);
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

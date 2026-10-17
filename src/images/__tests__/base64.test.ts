@@ -50,6 +50,7 @@ describe('base64 helpers', () => {
 
   it('decodes only a prefix', () => {
     const bytes = new Uint8Array(1000).map((_, index) => index % 256);
-    expect(base64PrefixToBytes(bytesToBase64(bytes), 10)).toEqual(bytes.subarray(0, 12));
+    expect(base64PrefixToBytes(bytesToBase64(bytes), 10)).toEqual(bytes.subarray(0, 10));
+    expect(base64PrefixToBytes(bytesToBase64(bytes), -10)).toEqual(new Uint8Array());
   });
 });

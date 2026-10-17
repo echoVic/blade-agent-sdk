@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Token estimates now count an image from its pixel size with the provider's formula instead of tokenizing its base64 data, so one screenshot no longer looks like hundreds of thousands of tokens or triggers emergency context truncation.",
+  "zh-CN": "token 估算现在按图片尺寸和 provider 公式计算图片，不再对 base64 数据分词；一张截图不会再被估成几十万 tokens，也不会再触发上下文紧急截断。"
+}

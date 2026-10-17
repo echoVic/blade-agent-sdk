@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { dataUrl, pngBytes } from '../../images/__tests__/fixtures.js';
 import type { ModelContent, ModelMessage } from '../../model/message.js';
 import { TokenCounter } from '../TokenCounter.js';
 
@@ -8,6 +9,29 @@ describe('TokenCounter', () => {
   });
 
   describe('countTokens', () => {
+    it('estimates images from their size instead of tokenizing base64', () => {
+      TokenCounter.countTokens([{ role: 'user', content: 'warm up' }], 'gpt-4o');
+      const url = dataUrl('image/png', pngBytes(1920, 1080, 1024 * 1024));
+      const messages: ModelMessage[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'what is in this screenshot?' },
+            { type: 'image_url', image_url: { url } },
+          ],
+        },
+      ];
+
+      const started = performance.now();
+      const tokens = TokenCounter.countTokens(messages, 'gpt-4o', {
+        vision: { imageTokens: 'openai' },
+      });
+
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(tokens).toBeGreaterThan(1_000);
+      expect(tokens).toBeLessThan(5_000);
+    });
+
     it('should count tokens for simple messages', () => {
       const messages: ModelMessage[] = [{ role: 'user', content: 'Hello, world!' }];
 
