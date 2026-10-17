@@ -1047,24 +1047,24 @@ await session.send([
 
 `send()` 在记录输入之前逐张校验图片：
 
-- 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝；声明的媒体类型与实际类型不符时也会被拒绝。
+- 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝；声明的媒体类型与字节不符时，会替换为实际类型。
 - 单张内联图片不超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
 - 每次输入最多 `images.maxImagesPerInput` 张，默认 20 张。
-- `http(s)` URL 原样交给 AI SDK；图片入口校验不会抓取它们来检查内容或测量大小。OpenAI、Anthropic 和 DeepSeek 路径把 URL 传给 provider。对于不能接收图片 URL 的路径（OpenAI 兼容端点和大多数 Gemini 模型），AI SDK 会在你的进程里下载图片，这次下载不受 `images.maxImageBytes` 限制。调用方不可信时（例如通过 AgentServer 收到的输入），建议将 `images.remoteUrls` 设为 `false`。
+- `http(s)` URL 原样交给 AI SDK；图片入口校验不会抓取它们来检查内容或测量大小。OpenAI、Anthropic 和 DeepSeek 路径把 URL 传给 provider。对于 OpenAI 兼容端点，AI SDK 会在进程内下载图片；对于 Gemini，URL 无法直接传递时也会下载，包括 `http:` URL、GIF、`gemini-2.0` 模型或没有声明 `mediaType` 的情况。通过 `@ai-sdk/google`，其他 `gemini-*` 模型可以接收声明了 `mediaType` 的 `https:` png/jpeg/webp URL。下载使用你的进程所在网络，因此可能访问到调用方无法访问的地址，且不受 `images.maxImageBytes` 限制。调用方不可信时（例如通过 AgentServer 收到的输入），建议将 `images.remoteUrls` 设为 `false`。
 - 其他 scheme 必须由 `images.store` 认领。
 
 图片不合格时，`send()` 抛出 `SessionInputError`，错误码为 `SESSION_INPUT_IMAGE_REJECTED`，`details` 为 `{ index, reason }`。通过 AgentServer 提交时，同样的拒绝表现为不可重试的 `INVALID_COMMAND`（HTTP 400）。`details.index` 是被拒绝 part 在输入 content 数组中的位置；`details.reason` 的取值为：
 
 - `unsupported_model`：当前模型不接收图片。
-- `too_large`：内联图片超过字节上限。
+- `too_large`：内联图片或已知字节数的引用超过字节上限。
 - `too_many`：输入中的图片数量超过上限。
-- `media_type`：base64 图片数据无效、格式不支持或声明类型不符。
+- `media_type`：base64 图片数据无效或格式不支持。
 - `remote_url`：已禁用远程图片 URL。
 - `unresolvable`：没有配置的 store 认领该引用。
 
 ### 图片 store
 
-不配置 `images.store` 时，图片和以前一样内联在 transcript 里。配置之后，内联图片的字节会写入 store，transcript、durable journal 和事件里只保留引用：
+不配置 `images.store` 时，图片和以前一样内联在 transcript 里。配置之后，经过准入的内联图片字节会写入 store，transcript、durable journal 和事件里保留这些图片的引用。工具通过 `newMessages` 注入的图片仍然保持内联。可按以下方式为输入配置 store：
 
 ```ts
 import { createSession, InMemoryImageStore } from '@blade-ai/agent-sdk';
@@ -1082,9 +1082,10 @@ const session = await createSession({
 
 每次模型请求都基于会话的一份投影视图构建，transcript 本身不会被改写：
 
-- 模型还没看过的图片（最后一条 assistant 消息之后的）优先保留，最多 `images.maxImagesPerRequest` 张，默认取模型上限，没有模型上限时为 50 张。新图片与历史图片合计超过该上限时，也会裁掉最旧的历史图片，每次按上限的一半（向下取整，至少 1 张）为步长；没有剩余名额时会裁掉全部历史图片。
+- 模型还没看过的图片（最后一条 assistant 消息之后的）优先保留，最多 `images.maxImagesPerRequest` 张，默认取模型上限，没有模型上限时为 50 张，配置值也不会超过模型上限。新图片与历史图片合计超过该上限时，也会裁掉最旧的历史图片，每次按上限的一半（向下取整，至少 1 张）为步长；没有剩余名额时会裁掉全部历史图片。
 - 更早的图片共用 `images.historyTokens` 的预算，默认取 16,000 和输入窗口四分之一中较小的那个。超出预算时，最旧的图片会被换成 `[image omitted to fit the image budget: …]`。token 裁剪点每次移动半个预算，所以大多数轮次里 prompt 前缀不变，provider 的前缀缓存也能持续命中。
 - 模型不收图时，所有图片都换成 `[image omitted: the current model does not accept images — …]`。新输入里的图片会被拒绝，除非把 `images.whenUnsupported` 设为 `'omit'`。
+- 当前模型或策略无法接受的图片（已知大小超过字节上限、类型不在 `mediaTypes` 中、或 `remoteUrls` 为 false 时的远程 URL）会换成 `[image omitted: the current model or the image policy does not accept this image — …]`，不占预算名额。这也适用于恢复的历史和工具消息中的图片。
 - 如果 provider 仍然因为图片拒绝请求，本轮会重试一次：不带历史图片，新图片减半（向下取整，至少保留 1 张）。上下文溢出压缩后的重试也使用这些收紧后的图片限制。
 
 图片的 token 估算按图片尺寸和 provider 公式（`VisionCapability.imageTokens`）计算，不会对 base64 文本分词。

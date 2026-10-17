@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SessionInputError } from '../../errors/SessionInputError.js';
 import { ONE_PIXEL_PNG_DATA_URL } from '../../images/__tests__/fixtures.js';
 import type { ImageStore } from '../../images/ImageStore.js';
@@ -8,11 +8,13 @@ import type { ModelContent, ModelMessage } from '../../model/message.js';
 import type { ModelService } from '../../model/service.js';
 import { ProviderRegistry } from '../../services/ProviderRegistry.js';
 import { createSession } from '../Session.js';
+import { SessionLifecycle } from '../SessionLifecycle.js';
 import type { ISession, SessionOptions } from '../types.js';
 
 function captureRegistry(
   requests: ModelMessage[][],
   onStreamStarted?: () => void,
+  rejectFirstImage = false,
 ): ProviderRegistry {
   return new ProviderRegistry([
     {
@@ -29,6 +31,8 @@ function captureRegistry(
           },
           async *streamChat(messages, _tools, signal) {
             requests.push([...messages]);
+            if (rejectFirstImage && requests.length === 1)
+              throw new Error('The model does not support image input');
             if (onStreamStarted) {
               onStreamStarted();
               await new Promise<void>((resolve) => {
@@ -218,7 +222,7 @@ describe('Session images', () => {
       ]);
       sends.push(second);
       const settled = Promise.allSettled(sends);
-      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
 
       await session.close();
       await expect(session.send('closed')).rejects.toThrow(new Error('Session is closed'));
@@ -316,6 +320,9 @@ describe('Session images', () => {
     ]);
     await drain(session);
 
+    expect(imagePart(session.messages.find((message) => message.role === 'user'))).toMatchObject({
+      image_url: { url: expect.stringMatching(/^blade-image:sha256:/) },
+    });
     const sent = imagePart(requests.at(-1)?.findLast((message) => message.role === 'user'));
     expect(sent).toEqual({
       type: 'image_url',
@@ -355,5 +362,60 @@ describe('Session images', () => {
     });
 
     await session.close();
+  });
+
+  it('downgrades the Session after provider rejection and refuses later image admission', async () => {
+    const requests: ModelMessage[][] = [];
+    const session = await createSession(
+      sessionOptions(requests, { providerRegistry: captureRegistry(requests, undefined, true) }),
+    );
+    try {
+      await session.send([{ type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } }]);
+      await drain(session);
+      expect(requests).toHaveLength(2);
+      expect(imagePart(requests[0]?.findLast((message) => message.role === 'user'))).toBeDefined();
+      expect(requests[1]?.findLast((message) => message.role === 'user')?.content).toEqual([
+        {
+          type: 'text',
+          text: '[image omitted: the current model does not accept images — image/png 1×1]',
+        },
+      ]);
+      await expect(
+        session.send([{ type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } }]),
+      ).rejects.toMatchObject({
+        code: 'SESSION_INPUT_IMAGE_REJECTED',
+        details: { index: 0, reason: 'unsupported_model' },
+      });
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('reports the closed Session error if close wins while ensureInitialized awaits', async () => {
+    const session = await createSession(sessionOptions([]));
+    const entered = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    const original = SessionLifecycle.prototype.ensureInitialized;
+    const ensure = vi
+      .spyOn(SessionLifecycle.prototype, 'ensureInitialized')
+      .mockImplementationOnce(async function (this: SessionLifecycle) {
+        await original.call(this);
+        entered.resolve();
+        await gate.promise;
+      });
+    let pending: Promise<unknown> | undefined;
+    try {
+      pending = session.send([{ type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } }]);
+      const assertion = expect(pending).rejects.toThrow(new Error('Session is closed'));
+      await entered.promise;
+      await session.close();
+      gate.resolve();
+      await assertion;
+    } finally {
+      gate.resolve();
+      ensure.mockRestore();
+      await Promise.allSettled(pending ? [pending] : []);
+      await session.close();
+    }
   });
 });

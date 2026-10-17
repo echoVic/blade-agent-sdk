@@ -499,6 +499,7 @@ Types:
 - `InMemoryImageStoreOptions`
 - `ImageRejectionReason`
 - `SessionInputErrorDetails`
+- `SessionInputErrorOptions`
 
 See [Session · Images](./session#images) and [Providers · Vision capability](./providers#vision-capability).
 

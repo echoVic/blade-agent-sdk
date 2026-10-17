@@ -640,15 +640,18 @@ await session.send([
 `send()` admits every image before the input is recorded:
 
 - Inline images must be base64 png, jpeg, gif or webp. SVG is always rejected.
-  A declared media type that differs from the actual type is rejected too.
+  A declared media type that differs from the bytes is replaced by the real type.
   Each inline image must fit `images.maxImageBytes` (10 MiB by default, and never more
   than the model allows).
 - One input may carry at most `images.maxImagesPerInput` images (20 by default).
 - `http(s)` URLs are handed to the AI SDK unchanged. Image admission does not
   fetch them to check or measure them. OpenAI, Anthropic and DeepSeek routes
-  pass the URL to the provider. For routes that cannot take image URLs
-  (OpenAI-compatible endpoints and most Gemini models), the AI SDK downloads
-  the image in your process, outside the `images.maxImageBytes` limit.
+  pass the URL to the provider. The AI SDK downloads images in-process for
+  OpenAI-compatible endpoints, and for Gemini when the URL cannot be passed on:
+  an `http:` URL, a GIF, a `gemini-2.0` model, or no declared `mediaType`.
+  Other `gemini-*` models accept `https:` png/jpeg/webp URLs with a declared `mediaType`
+  through `@ai-sdk/google`. Downloads run from your process's network, so they
+  can reach addresses the caller could not, and are outside the `images.maxImageBytes` limit.
   Set `images.remoteUrls` to `false` when callers are untrusted, for example
   input arriving through AgentServer.
 - Any other scheme must be handled by `images.store`.
@@ -660,17 +663,18 @@ AgentServer the same refusal is a non-retryable `INVALID_COMMAND` (HTTP 400).
 `details.reason` is one of:
 
 - `unsupported_model`: the current model does not accept images.
-- `too_large`: an inline image exceeds the byte limit.
+- `too_large`: an inline image or a reference with a known byte length exceeds the byte limit.
 - `too_many`: the input exceeds the image count limit.
-- `media_type`: invalid base64 image data, an unsupported format or a declared type mismatch.
+- `media_type`: invalid base64 image data or an unsupported format.
 - `remote_url`: remote image URLs are disabled.
 - `unresolvable`: no configured store handles the reference.
 
 ### Image store
 
 Without `images.store`, images stay inline in the transcript, as before. With
-a store, inline bytes are written to it, and the transcript, the durable journal
-and the events keep only the reference:
+a store, admitted inline images are written to it, and the transcript, the durable
+journal and the events keep their references. Images injected by tools through
+`newMessages` stay inline. For admitted input, configure a store as follows:
 
 ```ts
 import { createSession, InMemoryImageStore } from '@blade-ai/agent-sdk';
@@ -698,7 +702,8 @@ transcript itself is never rewritten.
 
 - Images the model has not seen yet (those after the last assistant message)
   are kept first, up to `images.maxImagesPerRequest`, which defaults to the
-  model's limit, otherwise 50. When fresh plus history images exceed this cap,
+  model's limit, otherwise 50, and never exceeds the model's limit. When fresh
+  plus history images exceed this cap,
   the oldest history images are dropped in steps of half the cap (rounded down,
   at least one image), or all remaining history when no places remain.
 - Older images share `images.historyTokens`, which defaults to the smaller of
@@ -709,6 +714,10 @@ transcript itself is never rewritten.
 - When the model does not accept images, every image becomes
   `[image omitted: the current model does not accept images — …]`. Images in new
   input are rejected unless `images.whenUnsupported` is `'omit'`.
+- Images that the current model or policy cannot take (a known size above the
+  byte cap, a type outside `mediaTypes`, or a remote URL when `remoteUrls` is false)
+  become `[image omitted: the current model or the image policy does not accept this image — …]`
+  and use no budget place. This also covers images from resumed history and tool messages.
 - If a provider still refuses a request because of its images, the turn is
   retried once, without history images and with half of the new ones (rounded
   down, at least one). The retry after context-overflow compaction uses these

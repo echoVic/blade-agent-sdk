@@ -10,5 +10,5 @@ export const imageRefMetadataShape = {
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   byteLength: z.number().int().nonnegative().optional(),
-  alt: z.string().optional(),
+  alt: z.string().max(1000).optional(),
 };

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { SessionInputError } from '../../errors/SessionInputError.js';
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentCommand,
@@ -193,5 +194,37 @@ describe('SessionExecutor boundary', () => {
 
   it('requires either an executor or a Session options resolver', () => {
     expect(() => new AgentServer({} as never)).toThrow(/sessionExecutor or resolveSessionOptions/);
+  });
+
+  it('maps refused input from a custom executor to a non-retryable HTTP 400', async () => {
+    const { executor } = createExecutor();
+    executor.submit = async () => {
+      throw new SessionInputError('SESSION_INPUT_IMAGE_REJECTED', 'bad image', {
+        details: { index: 0, reason: 'media_type' },
+      });
+    };
+    const server = new AgentServer({ sessionExecutor: executor, authenticate: () => principal });
+    try {
+      const response = await server.handle(
+        new Request('https://example.test/v1/agent/commands', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(
+            command(AgentCommandType.INPUT_SUBMIT, 'refused-image', { sessionId, input: 'bad' }),
+          ),
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        ok: false,
+        error: {
+          code: 'INVALID_COMMAND',
+          retryable: false,
+          details: { index: 0, reason: 'media_type' },
+        },
+      });
+    } finally {
+      await server.close();
+    }
   });
 });

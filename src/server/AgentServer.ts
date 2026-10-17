@@ -44,6 +44,7 @@ import {
   InProcessSessionExecutor,
   type SessionExecutor,
   type SessionExecutorCommandContext,
+  toProtocolInputError,
 } from './SessionExecutor.js';
 import {
   TenantAdmissionController,
@@ -790,6 +791,7 @@ export class AgentServer {
   }
 
   private failure(commandId: CommandIdType, error: unknown): AgentCommandFailure {
+    error = toProtocolInputError(error);
     const protocolError =
       error instanceof AgentProtocolError
         ? error

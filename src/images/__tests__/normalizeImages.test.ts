@@ -4,7 +4,13 @@ import type { VisionCapability } from '../../model/vision.js';
 import { type ResolvedImagePolicy, resolveImagePolicy } from '../ImagePolicy.js';
 import { InMemoryImageStore } from '../InMemoryImageStore.js';
 import { normalizeImageContent } from '../normalizeImages.js';
-import { dataUrl, ONE_PIXEL_PNG_BASE64, ONE_PIXEL_PNG_DATA_URL, pngBytes } from './fixtures.js';
+import {
+  dataUrl,
+  ONE_PIXEL_JPEG_BASE64,
+  ONE_PIXEL_PNG_BASE64,
+  ONE_PIXEL_PNG_DATA_URL,
+  pngBytes,
+} from './fixtures.js';
 
 const vision: VisionCapability = { images: true, toolResultImages: false, imageTokens: 1600 };
 const blind: VisionCapability = { images: false, toolResultImages: false };
@@ -76,11 +82,6 @@ describe('normalizeImageContent', () => {
     ['svg data', `data:image/svg+xml;base64,${btoa('<svg/>')}`, 'media_type'],
     ['a non-base64 data URL', 'data:image/png,not-base64', 'media_type'],
     ['an uppercase non-base64 data URL', 'DATA:image/png,not-base64', 'media_type'],
-    [
-      'a declared type that is not the real one',
-      `data:image/jpeg;base64,${ONE_PIXEL_PNG_BASE64}`,
-      'media_type',
-    ],
     ['an unknown scheme', 'lark-image:img_v3_abc', 'unresolvable'],
     ['a store reference without a store', `blade-image:sha256:${'e'.repeat(64)}`, 'unresolvable'],
   ])('rejects %s', async (_name, url, reason) => {
@@ -127,5 +128,26 @@ describe('normalizeImageContent', () => {
         vision: blind,
       }),
     ).toMatchObject([{ image_url: { mediaType: 'image/png' } }]);
+  });
+
+  it.each([
+    [{ url: `data:image/jpeg;base64,${ONE_PIXEL_PNG_BASE64}` }, 'image/png'],
+    [{ url: ONE_PIXEL_PNG_DATA_URL, mediaType: 'image/jpeg' }, 'image/png'],
+    [
+      { url: `data:image/jpg;base64,${ONE_PIXEL_JPEG_BASE64}`, mediaType: 'image/jpg' },
+      'image/jpeg',
+    ],
+  ])('uses the real type for a declared mismatch or alias: %j', async (ref, mediaType) => {
+    await expect(
+      normalizeImageContent([{ type: 'image_url', image_url: ref }], { policy: policy(), vision }),
+    ).resolves.toMatchObject([{ image_url: { mediaType, width: 1, height: 1 } }]);
+  });
+  it('still refuses sniffed types outside the model mediaTypes', async () => {
+    await expect(
+      normalizeImageContent([image(ONE_PIXEL_PNG_DATA_URL)], {
+        policy: policy({ mediaTypes: ['image/jpeg'] }),
+        vision,
+      }),
+    ).rejects.toMatchObject({ reason: 'media_type' });
   });
 });

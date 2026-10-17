@@ -2030,5 +2030,130 @@ describe('agentLoop', () => {
       ).rejects.toThrow('Too many images');
       expect(chat).toHaveBeenCalledTimes(2);
     });
+    it.each([
+      ['4 fresh plus history', 4, true, 'Too many images in request'],
+      ['5 fresh', 5, false, 'Too many images in request'],
+      ['reactive compact', 4, true, 'maximum context length exceeded'],
+      ['payload before compact', 4, true, '413 Request Entity Too Large'],
+    ] as const)('tightens the retry for %s and emits ordered recovery events', async (_name, freshCount, history, message) => {
+      const fresh: ModelMessage = {
+        role: 'user',
+        content: Array.from({ length: freshCount }, () => ({
+          type: 'image_url',
+          image_url: { url: ONE_PIXEL_PNG_DATA_URL, alt: 'fresh' },
+        })),
+      };
+      const messages: ModelMessage[] = history
+        ? [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL, alt: 'history' } },
+              ],
+            },
+            { role: 'assistant', content: 'seen' },
+            fresh,
+          ]
+        : [fresh];
+      const onReactiveCompact = vi.fn(async function* () {
+        yield* [] as never[];
+        return true;
+      });
+      const { chat, modelService } = serviceRejecting(new Error(message));
+      const config = baseConfig({
+        onReactiveCompact,
+        turnState: { modelService, images: boundImages() },
+      });
+      config.conversationState.replaceContent(messages);
+      const { events, result } = await collectEvents(agentLoop(config));
+      expect(result.success).toBe(true);
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(sentImages(chat.mock.calls[0])).toHaveLength(freshCount);
+      expect(sentImages(chat.mock.calls[1])).toHaveLength(2);
+      const retry = chat.mock.calls[1]?.[0] as ModelMessage[];
+      if (history)
+        expect(retry[0]?.content).toEqual([
+          { type: 'text', text: '[image omitted to fit the image budget: history]' },
+        ]);
+      const isCompact = message === 'maximum context length exceeded';
+      expect(onReactiveCompact).toHaveBeenCalledTimes(isCompact ? 1 : 0);
+      expect(events.filter((event) => event.type === 'recovery')).toEqual(
+        isCompact
+          ? [
+              { type: 'recovery', phase: 'started', reason: 'context_overflow' },
+              { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' },
+            ]
+          : [
+              { type: 'recovery', phase: 'started', reason: 'image_limit' },
+              { type: 'recovery', phase: 'retrying', reason: 'image_limit' },
+            ],
+      );
+    });
+
+    it.each([
+      'Too many images in request',
+      'The model does not support image input',
+    ])('warns once with recovery kind and provider wording: %s', async (message) => {
+      const images = boundImages();
+      const logger = { warn: vi.fn() } as unknown as NonNullable<AgentLoopConfig['logger']>;
+      const { modelService } = serviceRejecting(new Error(message));
+      await collectEvents(
+        agentLoop(
+          baseConfig({
+            messages: [twoImages],
+            turnState: { modelService, images },
+            logger,
+            onImagesUnsupported: () => images.markImagesUnsupported(),
+          }),
+        ),
+      );
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(message));
+      const warning = (logger.warn as Mock).mock.calls[0]?.[0] as string;
+      expect(warning).toContain(message.startsWith('Too many') ? 'too_many' : 'unsupported');
+      if (message.startsWith('The model'))
+        expect(warning).toContain('images are now disabled for the current model in this Session');
+    });
+  });
+
+  it('finishes image projection before starting the model request lifecycle', async () => {
+    const controller = new AbortController();
+    const abort = new Error('projection aborted');
+    const get = vi.fn(async (_url: string, signal?: AbortSignal) => {
+      controller.abort(abort);
+      signal?.throwIfAborted();
+      throw new Error('Expected the signal to abort');
+    });
+    const images = new ImageRuntime({
+      policy: {
+        store: {
+          handles: () => true,
+          get,
+          put: async () => {
+            throw new Error('unused');
+          },
+        },
+      },
+    });
+    const onModelRequestStarting = vi.fn();
+    await expect(
+      collectEvents(
+        agentLoop(
+          baseConfig({
+            messages: [
+              {
+                role: 'user',
+                content: [{ type: 'image_url', image_url: { url: 'app-image:abort' } }],
+              },
+            ],
+            turnState: { images },
+            signal: controller.signal,
+            modelExecutionLifecycle: { onModelRequestStarting },
+          }),
+        ),
+      ),
+    ).rejects.toBe(abort);
+    expect(get).toHaveBeenCalledOnce();
+    expect(onModelRequestStarting).not.toHaveBeenCalled();
   });
 });

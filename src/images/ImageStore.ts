@@ -18,7 +18,7 @@ export type ResolvedImage = ImageBytes | { readonly url: string };
 export interface ImageStore {
   /** Whether this store resolves `url`. */
   handles(url: string): boolean;
-  /** Persist one image and return its reference with complete metadata. */
+  /** Persist one image; return url, mediaType and byteLength, plus width/height when the header gives them. */
   put(image: ImageBytes, signal?: AbortSignal): Promise<ImageRef>;
   /** Resolve a reference this store handles; undefined when the image is gone. */
   get(url: string, signal?: AbortSignal): Promise<ResolvedImage | undefined>;

@@ -50,7 +50,7 @@ describe('selectImages', () => {
     }
   });
 
-  it('moves the count cut in steps of half the places', () => {
+  it('moves the count cut in steps of half of maxImages', () => {
     const cut = (count: number) =>
       selectImages(history(count, 1), { maxImages: 4, historyTokens: 16_000 }).indexOf(true);
     expect([4, 5, 6, 7, 8].map(cut)).toEqual([0, 2, 2, 4, 4]);

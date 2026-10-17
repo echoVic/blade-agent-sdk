@@ -37,7 +37,8 @@ class InMemoryImageBucket implements ImageStore {
 
   async put(image: ImageBytes, signal?: AbortSignal): Promise<ImageRef> {
     signal?.throwIfAborted();
-    const facts = inspectImageBytes(image.bytes);
+    const bytes = new Uint8Array(image.bytes);
+    const facts = inspectImageBytes(bytes);
     if (!facts) {
       throw new TypeError('InMemoryImageStore accepts only png, jpeg, gif and webp images');
     }
@@ -46,10 +47,10 @@ class InMemoryImageBucket implements ImageStore {
         `An image of ${facts.byteLength} bytes exceeds the store limit of ${this.maxBytes} bytes`,
       );
     }
-    const digest = await sha256Hex(image.bytes);
+    const digest = await sha256Hex(bytes);
     const key = this.key(digest);
     if (this.images.get(key) === undefined) {
-      this.images.set(key, { bytes: new Uint8Array(image.bytes), mediaType: facts.mediaType });
+      this.images.set(key, { bytes, mediaType: facts.mediaType });
     }
     return {
       url: bladeImageUrl(digest),
@@ -64,7 +65,7 @@ class InMemoryImageBucket implements ImageStore {
   async get(url: string): Promise<ResolvedImage | undefined> {
     const digest = parseBladeImageUrl(url);
     const image = digest ? this.images.get(this.key(digest)) : undefined;
-    return image ? { bytes: image.bytes, mediaType: image.mediaType } : undefined;
+    return image ? { bytes: new Uint8Array(image.bytes), mediaType: image.mediaType } : undefined;
   }
 
   async delete(url: string): Promise<void> {

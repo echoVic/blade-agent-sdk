@@ -151,4 +151,35 @@ describe('ModelManager.setModel', () => {
     expect(manager.getVision()).toBeUndefined();
     expect(manager.getInputWindowTokens()).toBeUndefined();
   });
+
+  it.each([
+    'known',
+    'unregistered',
+  ])('preserves the complete active state after a failed %s switch', async (target) => {
+    const first = createModelConfig();
+    const second = createModelConfig({ id: 'known', model: 'known', maxContextTokens: 10000 });
+    const config: BladeConfig = { models: [first, second], currentModelId: first.id };
+    const manager = new ModelManager(
+      config,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [],
+      undefined,
+      ({ model }) => (model === 'gpt-4o-mini' ? undefined : { maxImagesPerRequest: 0 }),
+    );
+    await manager.applyModelConfig(first, 'init');
+    const service = manager.getModelService();
+    const vision = manager.getVision();
+    const window = manager.getInputWindowTokens();
+    await expect(manager.setModel(target)).rejects.toThrow(
+      'SessionOptions.vision.maxImagesPerRequest',
+    );
+    expect(manager.getInputWindowTokens()).toBe(window);
+    expect(manager.getVision()).toBe(vision);
+    expect(manager.getModelService()).toBe(service);
+    expect(manager.resolveModelConfig()).toEqual(first);
+    expect(manager.resolveModelConfig().model).toBe('gpt-4o-mini');
+  });
 });

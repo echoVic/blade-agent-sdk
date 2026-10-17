@@ -98,4 +98,27 @@ describe('ImageRuntime', () => {
       },
     ]);
   });
+
+  it('shares resolved bytes between runtimes using the same store, but isolates different stores', async () => {
+    const firstStore = new InMemoryImageStore();
+    const first = new ImageRuntime({ policy: { store: firstStore } });
+    const content = await first.normalizeUserContent([
+      { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+    ]);
+    const messages = [{ role: 'user' as const, content }];
+    const firstGet = vi.spyOn(firstStore, 'get');
+    const expected = await first.prepareRequest(messages);
+    expect(
+      await new ImageRuntime({ policy: { store: firstStore } }).prepareRequest(messages),
+    ).toEqual(expected);
+    expect(firstGet).toHaveBeenCalledTimes(1);
+
+    const secondStore = new InMemoryImageStore();
+    const secondGet = vi.spyOn(secondStore, 'get');
+    expect(
+      (await new ImageRuntime({ policy: { store: secondStore } }).prepareRequest(messages)).report
+        .omitted.unavailable,
+    ).toBe(1);
+    expect(secondGet).toHaveBeenCalledTimes(1);
+  });
 });

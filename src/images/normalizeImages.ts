@@ -10,6 +10,7 @@ import {
 } from './base64.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
 import { inspectImageBytes } from './imageBytes.js';
+import { imageRefusal } from './imageRefusal.js';
 import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
 /** An image part `send()` refuses; `index` is its position in the content array. */
@@ -30,9 +31,6 @@ export interface NormalizeImagesContext {
   readonly signal?: AbortSignal;
 }
 
-const canonicalMediaType = (mediaType: string) =>
-  mediaType === 'image/jpg' ? 'image/jpeg' : mediaType;
-
 async function admitInlineImage(
   ref: ImageRef,
   inline: Base64DataUrl,
@@ -47,14 +45,7 @@ async function admitInlineImage(
   if (bytes.byteLength > policy.maxImageBytes) throw tooLarge();
 
   const facts = inspectImageBytes(bytes);
-  const declared = [inline.mediaType, ref.mediaType?.toLowerCase() ?? '']
-    .filter((type) => type !== '')
-    .map(canonicalMediaType);
-  if (
-    !facts ||
-    !policy.mediaTypes.includes(facts.mediaType) ||
-    declared.some((type) => type !== facts.mediaType)
-  ) {
+  if (!facts || imageRefusal({ ...ref, ...facts }, policy)) {
     throw new ImageRejection(
       index,
       'media_type',
@@ -88,12 +79,9 @@ async function admitImage(
       'Inline images must be base64 png, jpeg, gif or webp data',
     );
   }
-  if (isRemoteUrl(ref.url)) {
-    if (!context.policy.remoteUrls) {
-      throw new ImageRejection(index, 'remote_url', 'Remote image URLs are not accepted');
-    }
-    return ref;
-  }
+  const refusal = imageRefusal(ref, context.policy);
+  if (refusal) throw new ImageRejection(index, refusal, `Image refused: ${refusal}`);
+  if (isRemoteUrl(ref.url)) return ref;
   if (context.policy.store?.handles(ref.url)) return ref;
   throw new ImageRejection(index, 'unresolvable', 'No image store resolves this image reference');
 }

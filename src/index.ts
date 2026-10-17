@@ -44,6 +44,7 @@ export type {
   SessionHandoffErrorCode,
   SessionInputErrorCode,
   SessionInputErrorDetails,
+  SessionInputErrorOptions,
 } from './errors/index.js';
 // --- Error hierarchy ---
 export {

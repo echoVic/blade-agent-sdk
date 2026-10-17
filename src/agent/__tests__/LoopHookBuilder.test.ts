@@ -277,4 +277,24 @@ describe('LoopHookBuilder history persistence', () => {
       { requestId: RequestId('request-history-gap') },
     );
   });
+
+  it('wires the unsupported recovery hook to the active model manager', async () => {
+    const markImagesUnsupported = vi.fn();
+    const config = buildLoopConfig({
+      context: { messages: [], userId: 'test-user', sessionId: SessionId('image-downgrade') },
+      options: {},
+      loopState: { conversationState: {} } as never,
+      maxTurns: 1,
+      isYoloMode: false,
+      getLastUuid: () => null,
+      setLastUuid: () => {},
+      executionPipeline: {} as never,
+      logger: { warn: vi.fn() } as never,
+      hookRuntime: {} as never,
+      modelManager: { markImagesUnsupported } as never,
+      runtimePatchManager: {} as never,
+    });
+    await config.hooks?.recovery?.onImagesUnsupported?.();
+    expect(markImagesUnsupported).toHaveBeenCalledOnce();
+  });
 });

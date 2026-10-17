@@ -379,6 +379,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `InMemoryImageStore` / `InMemoryImageStoreOptions` | 进程内、按字节 LRU、按租户隔离的 store |
 | `combineImageStores` | 组合多个 store：写入第一个，读取时交给认领该引用的 store |
 | `ImageRejectionReason` / `SessionInputErrorDetails` | 图片被拒绝时 `SessionInputError.details` 的内容 |
+| `SessionInputErrorOptions` | 构造输入错误时的选项，包括图片拒绝详情 |
 
 用法见 [Session · 图片](./session#图片) 和 [Provider · 视觉能力](./providers#视觉能力)。
 

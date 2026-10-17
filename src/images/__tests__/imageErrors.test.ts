@@ -36,4 +36,23 @@ describe('classifyImageLimitError', () => {
     expect(classifyImageLimitError(new Error('maximum context length exceeded'))).toBeUndefined();
     expect(classifyImageLimitError('rate limited')).toBeUndefined();
   });
+
+  it.each([
+    ['image dimensions exceed max allowed size for many-image requests', 'too_large'],
+    ['You uploaded an unsupported image. Please make sure your image is valid.', 'invalid'],
+    ['413 Request Entity Too Large', 'too_large'],
+    ['Payload Too Large', 'too_large'],
+    ['request_too_large', 'too_large'],
+    ['Request exceeds the maximum allowed number of bytes', 'too_large'],
+    ['images are not supported by this model', 'unsupported'],
+    ['image is not supported for the current model', 'unsupported'],
+    ['images are not supported with the model', 'unsupported'],
+  ] as const)('classifies additional wording: %s', (message, kind) => {
+    expect(classifyImageLimitError(new Error(message))).toBe(kind);
+  });
+  it('does not disable vision for per-image animation refusals', () => {
+    expect(classifyImageLimitError(new Error('animated images are not supported'))).not.toBe(
+      'unsupported',
+    );
+  });
 });

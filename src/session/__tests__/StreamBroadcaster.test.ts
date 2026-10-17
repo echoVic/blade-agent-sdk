@@ -94,7 +94,7 @@ describe('StreamBroadcaster', () => {
       total: 2,
       kept: 1,
       freshKept: 1,
-      omitted: { budget: 1, unsupported: 0, unavailable: 0 },
+      omitted: { budget: 1, unsupported: 0, unavailable: 0, rejected: 0 },
       estimatedTokens: 1600,
     };
 
@@ -102,6 +102,10 @@ describe('StreamBroadcaster', () => {
 
     const trace = recorder.getTrace();
     const event = trace.events.find((entry) => entry.type === 'image_projection');
+    expect(event?.data).toMatchObject({
+      kept: { value: 1 },
+      omitted: { value: { budget: 1, unsupported: 0, unavailable: 0, rejected: 0 } },
+    });
     expect(event?.spanId).toBe(trace.spans.find((span) => span.kind === 'turn')?.id);
   });
 });

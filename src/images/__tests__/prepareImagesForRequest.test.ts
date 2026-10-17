@@ -292,7 +292,7 @@ describe('prepareImagesForRequest', () => {
       total: 2,
       kept: 2,
       freshKept: 2,
-      omitted: { budget: 0, unsupported: 0, unavailable: 0 },
+      omitted: { budget: 0, unsupported: 0, unavailable: 0, rejected: 0 },
       estimatedTokens: 3_200,
     });
   });
@@ -320,5 +320,59 @@ describe('prepareImagesForRequest', () => {
       }),
     ).rejects.toBe(controller.signal.reason);
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'oversized history',
+      {
+        url: 'https://example.test/large.png',
+        mediaType: 'image/png',
+        byteLength: 8 * 1024 * 1024,
+      },
+      { maxImageBytes: 5 * 1024 * 1024 },
+      'image/png',
+    ],
+    [
+      'disallowed GIF',
+      { url: 'https://example.test/a.gif', mediaType: 'image/gif' },
+      { mediaTypes: ['image/png'] },
+      'image/gif',
+    ],
+    ['remote URL', { url: 'https://example.test/secret.png' }, { remoteUrls: false }, ''],
+    ['legacy oversized inline', { url: ONE_PIXEL_PNG_DATA_URL }, { maxImageBytes: 69 }, ''],
+    ['legacy non-raster inline', { url: `data:image/png;base64,${btoa('<svg/>')}` }, {}, ''],
+  ] as const)('rejects %s under the current policy before budgeting', async (_name, ref, overrides, description) => {
+    const prepared = await prepareImagesForRequest(
+      [
+        { role: 'user', content: [{ type: 'image_url', image_url: ref }] },
+        { role: 'assistant', content: 'seen' },
+      ],
+      { vision, policy: { ...basePolicy, ...overrides } },
+    );
+    expect(prepared.messages[0]?.content).toEqual([
+      {
+        type: 'text',
+        text: `[image omitted: the current model or the image policy does not accept this image${description ? ` — ${description}` : ''}]`,
+      },
+    ]);
+    expect(prepared.report).toMatchObject({ kept: 0, omitted: { rejected: 1 } });
+    expect(JSON.stringify(prepared.messages)).not.toContain(ref.url);
+  });
+
+  it('does not spend a fresh place on a refused image', async () => {
+    const accepted = image({ alt: 'accepted' });
+    const prepared = await prepareImagesForRequest(
+      [{ role: 'user', content: [accepted, image({ byteLength: basePolicy.maxImageBytes + 1 })] }],
+      { vision, policy: { ...basePolicy, maxImagesPerRequest: 1 } },
+    );
+    expect(prepared.messages[0]?.content).toEqual([
+      accepted,
+      {
+        type: 'text',
+        text: '[image omitted: the current model or the image policy does not accept this image — image/png 1×1]',
+      },
+    ]);
+    expect(prepared.report).toMatchObject({ freshKept: 1, omitted: { rejected: 1, budget: 0 } });
   });
 });

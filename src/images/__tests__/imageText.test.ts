@@ -37,4 +37,14 @@ describe('image text', () => {
       '[image unavailable: it is no longer in the image store]',
     );
   });
+
+  it('bounds in-process alt text in placeholders and compaction summaries', () => {
+    const ref = { url: 'x', alt: 'a'.repeat(10_000) };
+    expect(describeImage(ref)).toBe(`${'a'.repeat(200)}…`);
+    expect(imagePlaceholder('budget', ref)).toBe(
+      `[image omitted to fit the image budget: ${'a'.repeat(200)}…]`,
+    );
+    expect(summaryImageText(ref)).toBe(`[image: ${'a'.repeat(200)}…]`);
+    expect(describeImage({ url: 'x', alt: 'a'.repeat(200) })).toBe('a'.repeat(200));
+  });
 });

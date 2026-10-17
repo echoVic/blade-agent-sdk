@@ -106,7 +106,6 @@ export class ModelManager {
     }
 
     const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
-    this.currentModelMaxContextTokens = maxContextTokens;
     const visionKey = `${modelConfig.provider}\u0000${modelConfig.model}`;
     const vision = resolveVisionCapability({
       provider: modelConfig.provider,
@@ -125,7 +124,7 @@ export class ModelManager {
         baseUrl: modelConfig.baseUrl || '',
         customHeaders: modelConfig.headers,
         temperature: modelConfig.temperature ?? this.config.temperature,
-        maxContextTokens: this.currentModelMaxContextTokens,
+        maxContextTokens,
         maxOutputTokens: modelConfig.maxOutputTokens,
         requestTimeoutMs: modelConfig.requestTimeoutMs,
         streamIdleTimeoutMs: modelConfig.streamIdleTimeoutMs,
@@ -141,6 +140,7 @@ export class ModelManager {
       wrapModelService(modelService, this.modelMiddleware),
     );
 
+    this.currentModelMaxContextTokens = maxContextTokens;
     this.currentModelId = modelConfig.id;
     this.config.currentModelId = modelConfig.id;
     this.currentMaxOutputTokens = modelConfig.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
@@ -177,8 +177,11 @@ export class ModelManager {
     }
 
     const activeModel = this.resolveModelConfig(this.currentModelId);
+    await this.applyModelConfig(
+      { ...activeModel, model: normalized, name: normalized },
+      '🔁 更新模型',
+    );
     activeModel.model = normalized;
     activeModel.name = normalized;
-    await this.applyModelConfig(activeModel, '🔁 更新模型');
   }
 }

@@ -5,42 +5,44 @@ import type {
   VisionResolver,
 } from '../model/vision.js';
 import { normalizeDeepSeekModel } from '../services/deepseek.js';
+import { IMAGE_MEDIA_TYPES } from './imageBytes.js';
+import { canonicalMediaType } from './imageRefusal.js';
 
 const MIB = 1024 * 1024;
 
-const ANTHROPIC_VISION: VisionCapability = {
+const ANTHROPIC_VISION: VisionCapability = Object.freeze({
   images: true,
   toolResultImages: true,
   imageTokens: 'anthropic',
   maxImageBytes: 5 * MIB,
   maxImagesPerRequest: 100,
-};
-const OPENAI_VISION: VisionCapability = {
+});
+const OPENAI_VISION: VisionCapability = Object.freeze({
   images: true,
   toolResultImages: true,
   imageTokens: 'openai',
   maxImageBytes: 20 * MIB,
-};
+});
 // Azure routes through the OpenAI-compatible adapter, which turns tool result
 // content into text, so images move out of tool results.
-const AZURE_VISION: VisionCapability = {
+const AZURE_VISION: VisionCapability = Object.freeze({
   images: true,
   toolResultImages: false,
   imageTokens: 'openai',
-};
-const GEMINI_VISION: VisionCapability = {
+});
+const GEMINI_VISION: VisionCapability = Object.freeze({
   images: true,
   toolResultImages: true,
   imageTokens: 'gemini',
-};
-const NO_VISION: VisionCapability = { images: false, toolResultImages: false };
+});
+const NO_VISION: VisionCapability = Object.freeze({ images: false, toolResultImages: false });
 
 /** Capability assumed for models the table does not know: pass images through, as before. */
-export const DEFAULT_VISION_CAPABILITY: VisionCapability = {
+export const DEFAULT_VISION_CAPABILITY: VisionCapability = Object.freeze({
   images: true,
   toolResultImages: false,
   imageTokens: 1600,
-};
+});
 
 const OPENAI_TEXT_ONLY_MODELS = [
   /^gpt-3\.5/,
@@ -91,10 +93,35 @@ function assertOverride(override: VisionCapabilityOverride, source: string): voi
       throw new ConfigError(`${source}.${key} must be a positive safe integer`);
     }
   }
+  for (const key of ['images', 'toolResultImages'] as const) {
+    if (override[key] !== undefined && typeof override[key] !== 'boolean') {
+      throw new ConfigError(`${source}.${key} must be a boolean`);
+    }
+  }
   const tokens = override.imageTokens;
-  if (typeof tokens === 'number' && (!Number.isSafeInteger(tokens) || tokens < 1)) {
+  if (
+    tokens !== undefined &&
+    !(typeof tokens === 'number'
+      ? Number.isSafeInteger(tokens) && tokens > 0
+      : ['openai', 'anthropic', 'gemini'].includes(tokens))
+  ) {
     throw new ConfigError(
       `${source}.imageTokens must be a positive safe integer or a formula name`,
+    );
+  }
+  const types = override.mediaTypes;
+  if (
+    types !== undefined &&
+    (!Array.isArray(types) ||
+      types.length === 0 ||
+      !types.every(
+        (type) =>
+          typeof type === 'string' &&
+          IMAGE_MEDIA_TYPES.some((known) => known === canonicalMediaType(type)),
+      ))
+  ) {
+    throw new ConfigError(
+      `${source}.mediaTypes must be a non-empty array of png, jpeg, gif or webp media types`,
     );
   }
 }
@@ -104,7 +131,7 @@ function applyOverride(
   override: VisionCapabilityOverride | undefined,
 ): VisionCapability {
   if (!override) return base;
-  const mediaTypes = override.mediaTypes ?? base.mediaTypes;
+  const mediaTypes = override.mediaTypes?.map(canonicalMediaType) ?? base.mediaTypes;
   const maxImageBytes = override.maxImageBytes ?? base.maxImageBytes;
   const maxImagesPerRequest = override.maxImagesPerRequest ?? base.maxImagesPerRequest;
   const imageTokens = override.imageTokens ?? base.imageTokens;

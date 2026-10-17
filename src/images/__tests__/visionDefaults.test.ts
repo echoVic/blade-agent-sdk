@@ -101,4 +101,63 @@ describe('resolveVisionCapability', () => {
       }),
     ).toThrow(ConfigError);
   });
+
+  it.each([
+    ['imageTokens', 'claude'],
+    ['imageTokens', null],
+    ['imageTokens', {}],
+    ['imageTokens', 0],
+    ['imageTokens', 1.5],
+    ['imageTokens', Number.MAX_SAFE_INTEGER + 1],
+    ['images', 'true'],
+    ['images', 1],
+    ['images', null],
+    ['toolResultImages', 'false'],
+    ['toolResultImages', 0],
+    ['mediaTypes', 'image/png'],
+    ['mediaTypes', []],
+    ['mediaTypes', ['image/svg+xml']],
+    ['mediaTypes', [1]],
+    ['mediaTypes', null],
+  ])('rejects invalid %s override %j with its field path', (key, value) => {
+    expect(() =>
+      resolveVisionCapability({
+        provider: 'openai',
+        model: 'gpt-5',
+        sessionOverride: { [key]: value } as never,
+      }),
+    ).toThrow(`SessionOptions.vision.${key}`);
+  });
+
+  it('validates overrides returned by a resolver', () => {
+    expect(() =>
+      resolveVisionCapability({
+        provider: 'openai',
+        model: 'gpt-5',
+        sessionOverride: () => ({ images: 'yes' }) as never,
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it('canonicalizes the jpg alias in mediaTypes', () => {
+    expect(
+      resolveVisionCapability({
+        provider: 'custom',
+        model: 'vl',
+        modelOverride: { mediaTypes: ['image/jpg', 'image/png'] },
+      }).mediaTypes,
+    ).toEqual(['image/jpeg', 'image/png']);
+  });
+
+  it.each([
+    'anthropic',
+    'openai',
+    'azure-openai',
+    'gemini',
+    'deepseek',
+    'custom',
+  ])('freezes the built-in %s row', (provider) => {
+    const row = resolveVisionCapability({ provider, model: 'vision-model' });
+    expect(Object.isFrozen(row)).toBe(true);
+  });
 });

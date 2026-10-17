@@ -12,12 +12,20 @@ interface Size {
   readonly height: number;
 }
 
+function validSize(width: number, height: number): Size | undefined {
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? { width, height }
+    : undefined;
+}
+
 function imageSize(ref: ImageRef): Size | undefined {
-  if (ref.width && ref.height) return { width: ref.width, height: ref.height };
+  if (ref.width !== undefined && ref.height !== undefined) {
+    return validSize(ref.width, ref.height);
+  }
   const inline = parseBase64DataUrl(ref.url);
   if (!inline) return undefined;
   const facts = inspectImageBytes(base64PrefixToBytes(inline.base64, HEADER_PROBE_BYTES));
-  return facts?.width && facts.height ? { width: facts.width, height: facts.height } : undefined;
+  return facts?.width && facts.height ? validSize(facts.width, facts.height) : undefined;
 }
 
 function openAiTokens({ width, height }: Size): number {
@@ -38,9 +46,9 @@ function anthropicTokens({ width, height }: Size): number {
 }
 
 function geminiTokens({ width, height }: Size): number {
-  return width <= 384 && height <= 384
-    ? 258
-    : 258 * Math.ceil(width / 768) * Math.ceil(height / 768);
+  if (width <= 384 && height <= 384) return 258;
+  const scale = Math.min(1, 3072 / Math.max(width, height));
+  return 258 * Math.ceil((width * scale) / 768) * Math.ceil((height * scale) / 768);
 }
 
 /**
@@ -63,5 +71,7 @@ export function estimateImageTokens(
       return anthropicTokens(size);
     case 'gemini':
       return geminiTokens(size);
+    default:
+      return DEFAULT_IMAGE_TOKENS;
   }
 }

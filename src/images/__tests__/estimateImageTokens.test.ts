@@ -44,4 +44,36 @@ describe('estimateImageTokens', () => {
     ).toBe(DEFAULT_IMAGE_TOKENS);
     expect(estimateImageTokens({ url: 'https://example.test/a.png' })).toBe(DEFAULT_IMAGE_TOKENS);
   });
+
+  it('falls back for an unknown formula from untyped callers', () => {
+    expect(
+      estimateImageTokens({ url: 'x', width: 1, height: 1 }, { imageTokens: 'claude' } as never),
+    ).toBe(DEFAULT_IMAGE_TOKENS);
+  });
+  it('fits huge Gemini images within 3072 square before tiling', () => {
+    expect(
+      estimateImageTokens(
+        { url: dataUrl('image/png', pngBytes(65535, 65535)) },
+        { imageTokens: 'gemini' },
+      ),
+    ).toBe(4128);
+    expect(
+      estimateImageTokens({ url: 'x', width: 6144, height: 1536 }, { imageTokens: 'gemini' }),
+    ).toBe(1032);
+  });
+  it.each([
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('treats invalid dimensions %s as unknown', (dimension) => {
+    for (const imageTokens of ['openai', 'anthropic', 'gemini'] as const) {
+      expect(
+        estimateImageTokens({ url: 'x', width: dimension, height: 512 }, { imageTokens }),
+      ).toBe(DEFAULT_IMAGE_TOKENS);
+      expect(
+        estimateImageTokens({ url: 'x', width: 512, height: dimension }, { imageTokens }),
+      ).toBe(DEFAULT_IMAGE_TOKENS);
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import { classifyImageLimitError } from '../images/imageErrors.js';
+import { findImageLimitError } from '../images/imageErrors.js';
 import type {
   ImageProjectionReport,
   ImageRequestLimits,
@@ -279,13 +279,19 @@ class AgentLoopExecution {
   }
 
   private async *recoverImageLimit(error: unknown): AsyncGenerator<AgentEvent, boolean> {
-    const kind = classifyImageLimitError(error);
-    if (!kind || !this.lastImageReport?.kept) return false;
+    const refusal = findImageLimitError(error);
+    if (!refusal || !this.lastImageReport?.kept) return false;
+    const { kind, message } = refusal;
     if (this.recovery.phase !== 'idle') {
       yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
       return false;
     }
     if (kind === 'unsupported') await this.config.hooks?.recovery?.onImagesUnsupported?.();
+    const disabled =
+      kind === 'unsupported'
+        ? '; images are now disabled for the current model in this Session'
+        : '';
+    this.config.logger?.warn(`[Images] Recovery (${kind}): ${message}${disabled}`);
     this.recovery = {
       phase: 'retry_pending',
       turn: this.turns,

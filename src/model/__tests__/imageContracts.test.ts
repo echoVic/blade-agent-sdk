@@ -9,6 +9,8 @@ import type {
   ModelContent,
   ModelImageContent,
   ModelServiceConfig,
+  SessionInputErrorDetails,
+  SessionInputErrorOptions,
   SessionOptions,
   TenantImageStore,
   VisionCapability,
@@ -17,6 +19,11 @@ import type {
 } from '../../index.js';
 
 describe('image contracts', () => {
+  it('exports the image input error options at the root', () => {
+    expectTypeOf<SessionInputErrorOptions['details']>().toEqualTypeOf<
+      SessionInputErrorDetails | undefined
+    >();
+  });
   it('keeps image_url as the only image part and widens its payload to ImageRef', () => {
     expectTypeOf<ModelImageContent['image_url']>().toEqualTypeOf<ImageRef>();
     expectTypeOf<ModelContent['type']>().toEqualTypeOf<'text' | 'image_url'>();

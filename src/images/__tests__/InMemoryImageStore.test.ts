@@ -88,6 +88,28 @@ describe('InMemoryImageStore', () => {
     expect(store.handles('blade-image:sha256:abc')).toBe(false);
     expect(await store.get('https://example.test/a.png')).toBeUndefined();
   });
+  it('snapshots bytes before awaiting the digest', async () => {
+    const store = new InMemoryImageStore();
+    const original = pngBytes(2, 2, 600);
+    const source = original.slice();
+    const pending = store.put({ bytes: source, mediaType: 'image/png' });
+    source.fill(0);
+    const ref = await pending;
+    const stored = await store.get(ref.url);
+    if (!stored || !('bytes' in stored)) throw new Error('Expected stored bytes');
+    expect(stored.bytes).toEqual(original);
+    expect(ref.url).toBe(`blade-image:sha256:${await sha256Hex(stored.bytes)}`);
+  });
+
+  it('returns independent byte arrays on every read', async () => {
+    const store = new InMemoryImageStore();
+    const bytes = pngBytes(2, 3);
+    const ref = await store.put({ bytes, mediaType: 'image/png' });
+    const first = await store.get(ref.url);
+    if (!first || !('bytes' in first)) throw new Error('Expected stored bytes');
+    first.bytes.fill(0);
+    expect(await store.get(ref.url)).toEqual({ bytes, mediaType: 'image/png' });
+  });
 });
 
 describe('combineImageStores', () => {

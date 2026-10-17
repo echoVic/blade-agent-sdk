@@ -7,13 +7,13 @@ import { IMAGE_MEDIA_TYPES } from './imageBytes.js';
 export interface ImagePolicy {
   /** Where image bytes live. Without one, images stay inline as data: URLs. */
   store?: ImageStore;
-  /** Largest accepted image in bytes. Default 10 MiB, further capped by the model. */
+  /** Largest accepted inline image in bytes. Default 10 MiB, further capped by the model. */
   maxImageBytes?: number;
   /** Most images in one input. Default 20. */
   maxImagesPerInput?: number;
   /** Token allowance for images the model has already seen. Default min(16,000, a quarter of the input window). */
   historyTokens?: number;
-  /** Most images in one request. Default: the model's limit, otherwise 50. */
+  /** Most images in one request, capped by the model's limit. Default: that limit, otherwise 50. */
   maxImagesPerRequest?: number;
   /** What `send()` does with images when the model cannot accept them. Default 'reject'. */
   whenUnsupported?: 'reject' | 'omit';
@@ -70,10 +70,12 @@ export function resolveImagePolicy(
     historyTokens:
       policy?.historyTokens ??
       Math.min(DEFAULT_HISTORY_IMAGE_TOKENS, Math.floor(inputWindow * 0.25)),
-    maxImagesPerRequest:
+    maxImagesPerRequest: Math.min(
       policy?.maxImagesPerRequest ??
-      context.vision.maxImagesPerRequest ??
-      DEFAULT_MAX_IMAGES_PER_REQUEST,
+        context.vision.maxImagesPerRequest ??
+        DEFAULT_MAX_IMAGES_PER_REQUEST,
+      context.vision.maxImagesPerRequest ?? Number.POSITIVE_INFINITY,
+    ),
     whenUnsupported: policy?.whenUnsupported ?? 'reject',
     remoteUrls: policy?.remoteUrls ?? true,
     mediaTypes: context.vision.mediaTypes ?? IMAGE_MEDIA_TYPES,

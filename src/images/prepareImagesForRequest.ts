@@ -6,6 +6,7 @@ import { toDataUrl } from './base64.js';
 import { estimateImageTokens } from './estimateImageTokens.js';
 import type { ResolvedImagePolicy } from './ImagePolicy.js';
 import { selectImages } from './imageBudget.js';
+import { imageRefusal } from './imageRefusal.js';
 import { type ImageOmissionReason, imagePlaceholder } from './imageText.js';
 import { isDataUrl, isRemoteUrl } from './imageUrls.js';
 
@@ -62,7 +63,7 @@ const NO_IMAGES: ImageProjectionReport = {
   total: 0,
   kept: 0,
   freshKept: 0,
-  omitted: { budget: 0, unsupported: 0, unavailable: 0 },
+  omitted: { budget: 0, unsupported: 0, unavailable: 0, rejected: 0 },
   estimatedTokens: 0,
 };
 
@@ -94,8 +95,13 @@ function decide(images: readonly LocatedImage[], context: ImageRequestContext): 
     for (const index of eligible) decisions[index] = 'unsupported';
     return decisions;
   }
+  const accepted = eligible.filter((index) => {
+    if (!imageRefusal(images[index].ref, context.policy)) return true;
+    decisions[index] = 'rejected';
+    return false;
+  });
   const keep = selectImages(
-    eligible.map((index) => ({
+    accepted.map((index) => ({
       cost: estimateImageTokens(images[index].ref, context.vision),
       fresh: images[index].fresh,
     })),
@@ -105,7 +111,7 @@ function decide(images: readonly LocatedImage[], context: ImageRequestContext): 
       maxFreshImages: context.limits?.maxFreshImages,
     },
   );
-  eligible.forEach((imageIndex, slot) => {
+  accepted.forEach((imageIndex, slot) => {
     if (!keep[slot]) decisions[imageIndex] = 'budget';
   });
   return decisions;
@@ -192,6 +198,7 @@ export async function prepareImagesForRequest(
     budget: 0,
     unsupported: 0,
     unavailable: 0,
+    rejected: 0,
   };
   let kept = 0;
   let freshKept = 0;

@@ -9,6 +9,7 @@ import {
   type ResolvedImagePolicy,
   resolveImagePolicy,
 } from './ImagePolicy.js';
+import type { ImageStore } from './ImageStore.js';
 import { ImageRejection, normalizeImageContent } from './normalizeImages.js';
 import {
   type ImageRequestLimits,
@@ -25,6 +26,20 @@ export interface ImageModelBinding {
 }
 
 const RESOLVED_IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
+const resolvedByStore = new WeakMap<ImageStore, LRUCache<string, string>>();
+
+function cacheFor(store: ImageStore | undefined): LRUCache<string, string> | undefined {
+  if (!store) return undefined;
+  let cache = resolvedByStore.get(store);
+  if (!cache) {
+    cache = new LRUCache<string, string>({
+      maxSize: RESOLVED_IMAGE_CACHE_CHARS,
+      sizeCalculation: (value) => Math.max(1, value.length),
+    });
+    resolvedByStore.set(store, cache);
+  }
+  return cache;
+}
 
 export interface ImageRuntimeOptions {
   readonly policy?: ImagePolicy;
@@ -41,10 +56,6 @@ export class ImageRuntime {
   private binding?: ImageModelBinding;
   private readonly logger: InternalLogger;
   private readonly reportedUnavailable = new Set<string>();
-  private readonly resolved = new LRUCache<string, string>({
-    maxSize: RESOLVED_IMAGE_CACHE_CHARS,
-    sizeCalculation: (value) => Math.max(1, value.length),
-  });
 
   constructor(private readonly options: ImageRuntimeOptions = {}) {
     assertImagePolicy(options.policy);
@@ -96,17 +107,18 @@ export class ImageRuntime {
     messages: readonly ModelMessage[],
     options: { readonly limits?: ImageRequestLimits; readonly signal?: AbortSignal } = {},
   ): Promise<PreparedImageRequest> {
+    const policy = this.policy();
     const prepared = await prepareImagesForRequest(messages, {
       vision: this.vision(),
-      policy: this.policy(),
-      cache: this.resolved,
+      policy,
+      cache: cacheFor(policy.store),
       reportedUnavailable: this.reportedUnavailable,
       limits: options.limits,
       signal: options.signal,
       logger: this.logger,
     });
     const { omitted } = prepared.report;
-    if (omitted.budget + omitted.unsupported + omitted.unavailable > 0) {
+    if (omitted.budget + omitted.unsupported + omitted.unavailable + omitted.rejected > 0) {
       this.logger.debug('[Images] Images left out of the model request:', prepared.report);
     }
     return prepared;

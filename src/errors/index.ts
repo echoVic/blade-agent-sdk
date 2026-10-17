@@ -17,6 +17,7 @@ export type {
   ImageRejectionReason,
   SessionInputErrorCode,
   SessionInputErrorDetails,
+  SessionInputErrorOptions,
 } from './SessionInputError.js';
 export { SessionInputError } from './SessionInputError.js';
 export { ToolExecutionError } from './ToolExecutionError.js';

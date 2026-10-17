@@ -72,4 +72,15 @@ describe('resolveImagePolicy', () => {
     expect(() => assertImagePolicy({ historyTokens: 0 })).not.toThrow();
     expect(() => assertImagePolicy(undefined)).not.toThrow();
   });
+
+  it('caps a policy count at the model limit', () => {
+    expect(
+      resolveImagePolicy(
+        { maxImagesPerRequest: 200 },
+        {
+          vision: { images: true, toolResultImages: true, maxImagesPerRequest: 100 },
+        },
+      ).maxImagesPerRequest,
+    ).toBe(100);
+  });
 });
