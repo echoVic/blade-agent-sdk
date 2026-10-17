@@ -1,6 +1,7 @@
+import { LRUCache } from 'lru-cache';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { ModelContent } from '../model/message.js';
+import type { ModelContent, ModelMessage } from '../model/message.js';
 import type { VisionCapability } from '../model/vision.js';
 import {
   assertImagePolicy,
@@ -9,6 +10,11 @@ import {
   resolveImagePolicy,
 } from './ImagePolicy.js';
 import { ImageRejection, normalizeImageContent } from './normalizeImages.js';
+import {
+  type ImageRequestLimits,
+  type PreparedImageRequest,
+  prepareImagesForRequest,
+} from './prepareImagesForRequest.js';
 import { DEFAULT_VISION_CAPABILITY } from './visionDefaults.js';
 
 /** What the Agent tells the image runtime about its active model. */
@@ -17,6 +23,8 @@ export interface ImageModelBinding {
   readonly getInputWindowTokens: () => number | undefined;
   readonly markImagesUnsupported: () => void;
 }
+
+const RESOLVED_IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
 
 export interface ImageRuntimeOptions {
   readonly policy?: ImagePolicy;
@@ -32,6 +40,10 @@ export interface ImageRuntimeOptions {
 export class ImageRuntime {
   private binding?: ImageModelBinding;
   private readonly logger: InternalLogger;
+  private readonly resolved = new LRUCache<string, string>({
+    maxSize: RESOLVED_IMAGE_CACHE_CHARS,
+    sizeCalculation: (value) => Math.max(1, value.length),
+  });
 
   constructor(private readonly options: ImageRuntimeOptions = {}) {
     assertImagePolicy(options.policy);
@@ -76,6 +88,26 @@ export class ImageRuntime {
       }
       throw error;
     }
+  }
+
+  /** The image view of one model request; see `prepareImagesForRequest`. */
+  async prepareRequest(
+    messages: readonly ModelMessage[],
+    options: { readonly limits?: ImageRequestLimits; readonly signal?: AbortSignal } = {},
+  ): Promise<PreparedImageRequest> {
+    const prepared = await prepareImagesForRequest(messages, {
+      vision: this.vision(),
+      policy: this.policy(),
+      cache: this.resolved,
+      limits: options.limits,
+      signal: options.signal,
+      logger: this.logger,
+    });
+    const { omitted } = prepared.report;
+    if (omitted.budget + omitted.unsupported + omitted.unavailable > 0) {
+      this.logger.debug('[Images] Images left out of the model request:', prepared.report);
+    }
+    return prepared;
   }
 
   markImagesUnsupported(): void {

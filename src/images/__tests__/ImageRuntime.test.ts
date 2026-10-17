@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError } from '../../errors/ConfigError.js';
 import { SessionInputError } from '../../errors/SessionInputError.js';
 import { ImageRuntime } from '../ImageRuntime.js';
+import { InMemoryImageStore } from '../InMemoryImageStore.js';
+import { ONE_PIXEL_PNG_DATA_URL } from './fixtures.js';
 
 describe('ImageRuntime', () => {
   it('follows the bound model and uses the fallback before binding', () => {
@@ -40,5 +42,27 @@ describe('ImageRuntime', () => {
 
   it('rejects an invalid policy at construction', () => {
     expect(() => new ImageRuntime({ policy: { maxImagesPerRequest: 0 } })).toThrow(ConfigError);
+  });
+
+  it('admits an image into its store and resolves it again for a request', async () => {
+    const runtime = new ImageRuntime({ policy: { store: new InMemoryImageStore() } });
+    const content = await runtime.normalizeUserContent([
+      { type: 'image_url', image_url: { url: ONE_PIXEL_PNG_DATA_URL } },
+    ]);
+    const prepared = await runtime.prepareRequest([{ role: 'user', content }]);
+
+    expect(JSON.stringify(content)).not.toContain(';base64,');
+    expect(prepared.messages[0]?.content).toEqual([
+      {
+        type: 'image_url',
+        image_url: {
+          url: ONE_PIXEL_PNG_DATA_URL,
+          mediaType: 'image/png',
+          width: 1,
+          height: 1,
+          byteLength: 70,
+        },
+      },
+    ]);
   });
 });
