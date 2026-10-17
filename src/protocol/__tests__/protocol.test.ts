@@ -137,4 +137,46 @@ describe('agent protocol v1', () => {
       }),
     ).toThrow(/does not match/);
   });
+  it('accepts image references with metadata in input.submit', () => {
+    const imageCommand = (imageUrl: Record<string, unknown>) => ({
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      commandId: 'command-image',
+      type: AgentCommandType.INPUT_SUBMIT,
+      data: { sessionId: 'session-1', input: [{ type: 'image_url', image_url: imageUrl }] },
+    });
+
+    expect(
+      parseAgentCommand(
+        imageCommand({
+          url: `blade-image:sha256:${'a'.repeat(64)}`,
+          detail: 'low',
+          mediaType: 'image/png',
+          width: 1280,
+          height: 720,
+          byteLength: 4096,
+          alt: 'login page',
+        }),
+      ),
+    ).toMatchObject({ data: { input: [{ image_url: { detail: 'low', width: 1280 } }] } });
+    expect(() => parseAgentCommand(imageCommand({ url: 'x', detail: 'max' }))).toThrow();
+    expect(() => parseAgentCommand(imageCommand({ url: 'x', unknown: true }))).toThrow();
+  });
+
+  it('drops feature flags it does not know from initialize data', () => {
+    const features = {
+      approvals: true,
+      durableEvents: true,
+      eventReplay: true,
+      idempotentCommands: true,
+    } as const;
+    const data = {
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      commands: Object.values(AgentCommandType),
+      transports: ['http-sse'],
+      serverTime: new Date().toISOString(),
+      features: { ...features, images: true },
+    };
+
+    expect(agentInitializationDataSchema.parse(data)).toEqual({ ...data, features });
+  });
 });

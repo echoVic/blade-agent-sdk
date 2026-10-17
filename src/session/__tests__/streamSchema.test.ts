@@ -77,4 +77,25 @@ describe('parseSessionStreamEvent', () => {
 
     expect(parseSessionStreamEvent(event)).toEqual(event);
   });
+  it('accepts image metadata on message content', () => {
+    expect(
+      parseSessionStreamEvent(
+        toolMessageEvent({
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: `blade-image:sha256:${'b'.repeat(64)}`,
+                mediaType: 'image/png',
+                width: 2,
+                height: 2,
+                byteLength: 70,
+              },
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ messages: [{ content: [{ image_url: { width: 2, byteLength: 70 } }] }] });
+  });
 });

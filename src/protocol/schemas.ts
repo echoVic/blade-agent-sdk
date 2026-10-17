@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { imageRefMetadataShape } from '../images/imageRefSchema.js';
 import { sessionStreamEventSchema } from '../session/streamSchema.js';
 import {
   CommandId,
@@ -48,6 +49,7 @@ const imageInputSchema = z
     image_url: z
       .object({
         url: z.string().min(1),
+        ...imageRefMetadataShape,
       })
       .strict(),
   })
@@ -262,14 +264,14 @@ export const agentInitializationDataSchema: z.ZodType<AgentInitializationData> =
     commands: z.array(z.nativeEnum(AgentCommandType)),
     transports: z.tuple([z.literal('http-sse')]),
     serverTime: z.string().datetime({ offset: true }),
-    features: z
-      .object({
-        approvals: z.literal(true),
-        durableEvents: z.literal(true),
-        eventReplay: z.literal(true),
-        idempotentCommands: z.literal(true),
-      })
-      .strict(),
+    // A newer server may advertise more features; unknown keys are dropped
+    // instead of failing the handshake.
+    features: z.object({
+      approvals: z.literal(true),
+      durableEvents: z.literal(true),
+      eventReplay: z.literal(true),
+      idempotentCommands: z.literal(true),
+    }),
   })
   .strict();
 

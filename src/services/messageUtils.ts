@@ -35,9 +35,7 @@ export function cloneContentPart(part: ModelContent): ModelContent {
 
   return {
     type: 'image_url',
-    image_url: {
-      url: part.image_url.url,
-    },
+    image_url: { ...part.image_url },
   };
 }
 

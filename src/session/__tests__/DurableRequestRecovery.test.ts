@@ -102,4 +102,22 @@ describe('DurableRequestRecovery', () => {
       }),
     ).toThrow(/not JSON serializable/);
   });
+  it('keeps image metadata when recovering request content', () => {
+    const image = {
+      url: `blade-image:sha256:${'c'.repeat(64)}`,
+      detail: 'high',
+      mediaType: 'image/webp',
+      width: 640,
+      height: 480,
+      byteLength: 1234,
+      alt: 'chart',
+    } as const;
+
+    expect(parseDurableUserMessageContent([{ type: 'image_url', image_url: image }])).toEqual([
+      { type: 'image_url', image_url: image },
+    ]);
+    expect(() =>
+      parseDurableUserMessageContent([{ type: 'image_url', image_url: { url: 'x', width: -1 } }]),
+    ).toThrow(SessionDurableRecorderError);
+  });
 });

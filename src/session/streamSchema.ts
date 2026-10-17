@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { imageRefMetadataShape } from '../images/imageRefSchema.js';
 import { InputId, RequestId, SessionId, ToolUseId } from '../types/identifiers.js';
 import { jsonObjectSchema, jsonValueSchema } from '../types/jsonSchema.js';
 import type { SessionStreamEvent } from './types.js';
@@ -33,7 +34,7 @@ const modelContentSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('image_url'),
-      image_url: z.object({ url: z.string() }).strict(),
+      image_url: z.object({ url: z.string(), ...imageRefMetadataShape }).strict(),
     })
     .strict(),
 ]);

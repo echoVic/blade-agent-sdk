@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import type { UserMessageContent } from '../agent/types.js';
+import { imageRefMetadataShape } from '../images/imageRefSchema.js';
 import type { ModelContent } from '../model/message.js';
 import type { RuntimeContext } from '../runtime/index.js';
 import type { JsonObject, JsonValue } from '../types/json.js';
@@ -8,6 +10,8 @@ import { SessionDurableRecorderError } from './events/SessionDurableRecorder.js'
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+const durableImageRefSchema = z.object({ url: z.string(), ...imageRefMetadataShape }).strict();
 
 export function serializeDurableRuntimeContext(context: RuntimeContext): JsonObject {
   const serialized = toJsonValue(context);
@@ -52,17 +56,11 @@ export function parseDurableUserMessageContent(input: JsonValue): UserMessageCon
           : {}),
       };
     }
-    if (
-      value.type === 'image_url' &&
-      isJsonObject(value.image_url) &&
-      typeof value.image_url.url === 'string'
-    ) {
-      return {
-        type: 'image_url',
-        image_url: {
-          url: value.image_url.url,
-        },
-      };
+    if (value.type === 'image_url') {
+      const image = durableImageRefSchema.safeParse(value.image_url);
+      if (image.success) {
+        return { type: 'image_url', image_url: image.data };
+      }
     }
     throw new SessionDurableRecorderError(`Recoverable request content part ${index} is invalid`);
   });
