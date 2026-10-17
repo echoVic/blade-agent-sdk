@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "AgentServer now answers refused input with `INVALID_COMMAND`, `SESSION_CONFLICT` or `OVERLOADED` instead of a retryable `INTERNAL_ERROR`, so clients stop retrying input that cannot succeed. Rejected images carry `details.index` and `details.reason`.",
+  "zh-CN": "AgentServer 现在用 `INVALID_COMMAND`、`SESSION_CONFLICT` 或 `OVERLOADED` 回应被拒绝的输入，不再返回可重试的 `INTERNAL_ERROR`，客户端不会再重试注定失败的输入。被拒绝的图片会带上 `details.index` 和 `details.reason`。"
+}

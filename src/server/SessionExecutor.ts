@@ -1,17 +1,18 @@
+import { SessionInputError } from '../errors/SessionInputError.js';
 import type { ModelMessage } from '../model/message.js';
-import { AgentProtocolError } from '../protocol/AgentProtocolError.js';
-import type {
-  AbortRequestCommand,
-  AgentInputSubmissionData,
-  AgentPrincipal,
-  AgentServerEvent,
-  CloseSessionCommand,
-  CreateSessionCommand,
-  ForkSessionCommand,
-  ReadSessionCommand,
-  ResolvePermissionCommand,
-  ResumeSessionCommand,
-  SubmitInputCommand,
+import {
+  type AbortRequestCommand,
+  type AgentInputSubmissionData,
+  type AgentPrincipal,
+  AgentProtocolError,
+  type AgentServerEvent,
+  type CloseSessionCommand,
+  type CreateSessionCommand,
+  type ForkSessionCommand,
+  type ReadSessionCommand,
+  type ResolvePermissionCommand,
+  type ResumeSessionCommand,
+  type SubmitInputCommand,
 } from '../protocol/index.js';
 import type { SessionHistoryProgress } from '../session/historyProgress.js';
 import { createSession, forkSession, resumeSession } from '../session/Session.js';
@@ -27,6 +28,57 @@ import { getErrorCode, getErrorMessage } from '../utils/errorUtils.js';
 import type { AgentServerSessionRecord, AgentServerStore } from './AgentServerStore.js';
 import { RemoteApprovalBroker } from './RemoteApprovalBroker.js';
 import type { RuntimeTenantStore } from './RuntimeStore.js';
+
+/** Turn input refusals into protocol errors that tell clients whether retrying can help. */
+export function toProtocolInputError(error: unknown): unknown {
+  if (!(error instanceof SessionInputError)) return error;
+  const options = { cause: error };
+  switch (error.code) {
+    case 'SESSION_INPUT_IMAGE_REJECTED':
+      return new AgentProtocolError(
+        'INVALID_COMMAND',
+        error.message,
+        400,
+        false,
+        undefined,
+        error.details ? { index: error.details.index, reason: error.details.reason } : undefined,
+        options,
+      );
+    case 'SESSION_INPUT_OPTIONS_UNSUPPORTED':
+      return new AgentProtocolError(
+        'INVALID_COMMAND',
+        error.message,
+        400,
+        false,
+        undefined,
+        undefined,
+        options,
+      );
+    case 'SESSION_REQUEST_MISMATCH':
+    case 'SESSION_STEERING_UNAVAILABLE':
+      return new AgentProtocolError(
+        'SESSION_CONFLICT',
+        error.message,
+        409,
+        false,
+        undefined,
+        undefined,
+        options,
+      );
+    case 'SESSION_INPUT_QUEUE_FULL':
+      return new AgentProtocolError(
+        'OVERLOADED',
+        error.message,
+        503,
+        true,
+        1_000,
+        undefined,
+        options,
+      );
+    default:
+      return error;
+  }
+}
 
 export interface AgentServerSessionContext {
   readonly principal: AgentPrincipal;
@@ -322,11 +374,15 @@ export class InProcessSessionExecutor implements SessionExecutor {
   ): Promise<AgentInputSubmissionData> {
     return this.runForSession(context.principal, data.sessionId, async () => {
       const managed = this.requireActiveSession(context.principal.tenantId, data.sessionId);
-      const submission = await managed.session.send(data.input, {
-        priority: data.priority,
-        expectedRequestId: data.expectedRequestId,
-        maxTurns: data.maxTurns,
-      });
+      const submission = await managed.session
+        .send(data.input, {
+          priority: data.priority,
+          expectedRequestId: data.expectedRequestId,
+          maxTurns: data.maxTurns,
+        })
+        .catch((error: unknown) => {
+          throw toProtocolInputError(error);
+        });
       if (submission.status === 'started') {
         managed.activeRequestId = submission.requestId;
         this.startPump(managed);

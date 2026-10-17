@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import type { ModelContent } from '../../model/message.js';
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentCommandResult,
@@ -509,6 +510,34 @@ describe('AgentServer', () => {
       ]),
     );
     await session.close();
+    await server.close();
+  });
+
+  it('reports a rejected image as an invalid command that must not be retried', async () => {
+    const { server } = createTestServer();
+    const sessionId = await createSession(server);
+
+    const result = await server.execute(
+      command(AgentCommandType.INPUT_SUBMIT, 'submit-svg', {
+        sessionId,
+        input: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/svg+xml;base64,${btoa('<svg/>')}` },
+          },
+        ] satisfies ModelContent[],
+      }),
+      principal,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_COMMAND',
+        retryable: false,
+        details: { index: 0, reason: 'media_type' },
+      },
+    });
     await server.close();
   });
 });
