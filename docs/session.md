@@ -1036,7 +1036,7 @@ const currentContext = session.getDefaultContext();
 - `http(s):` URL；
 - 由图片 store 解析的引用。
 
-`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。
+`detail`、`mediaType`、`width`、`height`、`byteLength`、`alt` 都是可选字段。通过 `AgentClient` 发送这些元数据字段需要 7.5 或更高版本的 AgentServer，因为旧服务器会在 `input.submit` 中拒绝这些字段；仅含 `{ url }` 的图片适用于任何版本的服务器。
 
 ```ts
 await session.send([
@@ -1047,13 +1047,20 @@ await session.send([
 
 `send()` 在记录输入之前逐张校验图片：
 
-- 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝。
-- 单张不超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
+- 内联图片必须是 base64 编码的 png、jpeg、gif 或 webp，SVG 一律拒绝；声明的媒体类型与实际类型不符时也会被拒绝。
+- 单张内联图片不超过 `images.maxImageBytes`，默认 10 MiB，并且不会超过模型自身的上限。
 - 每次输入最多 `images.maxImagesPerInput` 张，默认 20 张。
-- `http(s)` 图片原样交给 provider；`images.remoteUrls` 设为 `false` 时会被拒绝。SDK 自己从不抓取这类 URL。
+- `http(s)` URL 原样交给 AI SDK；图片入口校验不会抓取它们来检查内容或测量大小。OpenAI、Anthropic 和 DeepSeek 路径把 URL 传给 provider。对于不能接收图片 URL 的路径（OpenAI 兼容端点和大多数 Gemini 模型），AI SDK 会在你的进程里下载图片，这次下载不受 `images.maxImageBytes` 限制。调用方不可信时（例如通过 AgentServer 收到的输入），建议将 `images.remoteUrls` 设为 `false`。
 - 其他 scheme 必须由 `images.store` 认领。
 
-图片不合格时，`send()` 抛出 `SessionInputError`，错误码为 `SESSION_INPUT_IMAGE_REJECTED`，`details` 为 `{ index, reason }`。通过 AgentServer 提交时，同样的拒绝表现为不可重试的 `INVALID_COMMAND`（HTTP 400）。
+图片不合格时，`send()` 抛出 `SessionInputError`，错误码为 `SESSION_INPUT_IMAGE_REJECTED`，`details` 为 `{ index, reason }`。通过 AgentServer 提交时，同样的拒绝表现为不可重试的 `INVALID_COMMAND`（HTTP 400）。`details.index` 是被拒绝 part 在输入 content 数组中的位置；`details.reason` 的取值为：
+
+- `unsupported_model`：当前模型不接收图片。
+- `too_large`：内联图片超过字节上限。
+- `too_many`：输入中的图片数量超过上限。
+- `media_type`：base64 图片数据无效、格式不支持或声明类型不符。
+- `remote_url`：已禁用远程图片 URL。
+- `unresolvable`：没有配置的 store 认领该引用。
 
 ### 图片 store
 
@@ -1069,16 +1076,16 @@ const session = await createSession({
 });
 ```
 
-`InMemoryImageStore` 只在进程存活期间有效。如果要把图片放到别处，或者解析自己的引用（例如 IM 文件 key），就实现 `ImageStore` 接口，再用 `combineImageStores(primary, ...others)` 把多个 store 组合起来。可以被恢复的 Session，需要配置一个所有恢复进程都能读取的 store。
+`InMemoryImageStore` 只在进程存活期间有效，超过 `maxBytes`（默认 256 MiB）时还会淘汰最近最少使用的图片。store 引用对应的字节已丢失时，模型请求中会用 `[image unavailable: it is no longer in the image store]` 替代。如果要把图片放到别处，或者解析自己的引用（例如 IM 文件 key），就实现 `ImageStore` 接口，再用 `combineImageStores(primary, ...others)` 把多个 store 组合起来。可以被恢复的 Session，需要配置一个所有恢复进程都能读取的 store。
 
 ### 图片预算
 
 每次模型请求都基于会话的一份投影视图构建，transcript 本身不会被改写：
 
-- 模型还没看过的图片（最后一条 assistant 消息之后的）优先保留，最多 `images.maxImagesPerRequest` 张。
-- 更早的图片共用 `images.historyTokens` 的预算，默认取 16,000 和输入窗口四分之一中较小的那个。超出预算时，最旧的图片会被换成 `[image omitted to fit the image budget: …]`。裁剪点每次移动半个预算，所以大多数轮次里 prompt 前缀不变，provider 的前缀缓存也能持续命中。
-- 模型不收图时，所有图片都换成 `[image omitted: the current model does not accept images …]`。新输入里的图片会被拒绝，除非把 `images.whenUnsupported` 设为 `'omit'`。
-- 如果 provider 仍然因为图片拒绝请求，本轮会重试一次：不带历史图片，新图片减半。
+- 模型还没看过的图片（最后一条 assistant 消息之后的）优先保留，最多 `images.maxImagesPerRequest` 张，默认取模型上限，没有模型上限时为 50 张。新图片与历史图片合计超过该上限时，也会裁掉最旧的历史图片，每次按上限的一半（向下取整，至少 1 张）为步长；没有剩余名额时会裁掉全部历史图片。
+- 更早的图片共用 `images.historyTokens` 的预算，默认取 16,000 和输入窗口四分之一中较小的那个。超出预算时，最旧的图片会被换成 `[image omitted to fit the image budget: …]`。token 裁剪点每次移动半个预算，所以大多数轮次里 prompt 前缀不变，provider 的前缀缓存也能持续命中。
+- 模型不收图时，所有图片都换成 `[image omitted: the current model does not accept images — …]`。新输入里的图片会被拒绝，除非把 `images.whenUnsupported` 设为 `'omit'`。
+- 如果 provider 仍然因为图片拒绝请求，本轮会重试一次：不带历史图片，新图片减半（向下取整，至少保留 1 张）。上下文溢出压缩后的重试也使用这些收紧后的图片限制。
 
 图片的 token 估算按图片尺寸和 provider 公式（`VisionCapability.imageTokens`）计算，不会对 base64 文本分词。
 

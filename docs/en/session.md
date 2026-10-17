@@ -626,6 +626,9 @@ Images reach the summary model only as `[image: …]` descriptions, never as ima
 Send images as `image_url` parts. `image_url` is an `ImageRef`: `url` is a
 `data:` URL, an `http(s):` URL, or a reference an image store resolves;
 `detail`, `mediaType`, `width`, `height`, `byteLength` and `alt` are optional.
+Sending these metadata fields through `AgentClient` requires AgentServer 7.5 or
+later, because older servers reject them in `input.submit`; a plain `{ url }`
+works with any server.
 
 ```ts
 await session.send([
@@ -637,16 +640,31 @@ await session.send([
 `send()` admits every image before the input is recorded:
 
 - Inline images must be base64 png, jpeg, gif or webp. SVG is always rejected.
-  Each image must fit `images.maxImageBytes` (10 MiB by default, and never more
+  A declared media type that differs from the actual type is rejected too.
+  Each inline image must fit `images.maxImageBytes` (10 MiB by default, and never more
   than the model allows).
 - One input may carry at most `images.maxImagesPerInput` images (20 by default).
-- `http(s)` images go to the provider unchanged. Set `images.remoteUrls` to
-  `false` to reject them. The SDK never fetches them itself.
+- `http(s)` URLs are handed to the AI SDK unchanged. Image admission does not
+  fetch them to check or measure them. OpenAI, Anthropic and DeepSeek routes
+  pass the URL to the provider. For routes that cannot take image URLs
+  (OpenAI-compatible endpoints and most Gemini models), the AI SDK downloads
+  the image in your process, outside the `images.maxImageBytes` limit.
+  Set `images.remoteUrls` to `false` when callers are untrusted, for example
+  input arriving through AgentServer.
 - Any other scheme must be handled by `images.store`.
 
 A refused image makes `send()` throw `SessionInputError` with code
 `SESSION_INPUT_IMAGE_REJECTED` and `details: { index, reason }`. Through
 AgentServer the same refusal is a non-retryable `INVALID_COMMAND` (HTTP 400).
+`details.index` is the position of the rejected part in the input content array.
+`details.reason` is one of:
+
+- `unsupported_model`: the current model does not accept images.
+- `too_large`: an inline image exceeds the byte limit.
+- `too_many`: the input exceeds the image count limit.
+- `media_type`: invalid base64 image data, an unsupported format or a declared type mismatch.
+- `remote_url`: remote image URLs are disabled.
+- `unresolvable`: no configured store handles the reference.
 
 ### Image store
 
@@ -664,7 +682,10 @@ const session = await createSession({
 });
 ```
 
-`InMemoryImageStore` lasts only as long as the process. To keep images
+`InMemoryImageStore` lasts only as long as the process and evicts the least
+recently used images beyond `maxBytes` (256 MiB by default). A store reference
+whose bytes are gone becomes `[image unavailable: it is no longer in the image store]`
+in model requests. To keep images
 elsewhere, or to resolve your own references such as an IM file key,
 implement `ImageStore`, and join several stores with
 `combineImageStores(primary, ...others)`. A Session that can be resumed needs a
@@ -676,17 +697,22 @@ Each model request is built from a projection of the conversation. The
 transcript itself is never rewritten.
 
 - Images the model has not seen yet (those after the last assistant message)
-  are kept first, up to `images.maxImagesPerRequest`.
+  are kept first, up to `images.maxImagesPerRequest`, which defaults to the
+  model's limit, otherwise 50. When fresh plus history images exceed this cap,
+  the oldest history images are dropped in steps of half the cap (rounded down,
+  at least one image), or all remaining history when no places remain.
 - Older images share `images.historyTokens`, which defaults to the smaller of
   16,000 and a quarter of the input window. When they go over it, the oldest
-  are replaced with `[image omitted to fit the image budget: …]`. The cut point
+  are replaced with `[image omitted to fit the image budget: …]`. The token cut
   moves in steps of half the allowance, so in most turns the prompt prefix,
   and with it the provider's prompt cache, stays the same.
 - When the model does not accept images, every image becomes
-  `[image omitted: the current model does not accept images …]`. Images in new
+  `[image omitted: the current model does not accept images — …]`. Images in new
   input are rejected unless `images.whenUnsupported` is `'omit'`.
 - If a provider still refuses a request because of its images, the turn is
-  retried once, without history images and with half of the new ones.
+  retried once, without history images and with half of the new ones (rounded
+  down, at least one). The retry after context-overflow compaction uses these
+  tightened image limits too.
 
 Image token estimates come from the image size and the provider formula
 (`VisionCapability.imageTokens`), never from the base64 text.

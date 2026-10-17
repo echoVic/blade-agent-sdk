@@ -17,7 +17,8 @@ export interface ImagePolicy {
   maxImagesPerRequest?: number;
   /** What `send()` does with images when the model cannot accept them. Default 'reject'. */
   whenUnsupported?: 'reject' | 'omit';
-  /** Accept http(s) images from callers. Default true; the SDK never fetches them itself. */
+  /** Accept http(s) URLs unchanged for the AI SDK. Default true; admission does not fetch or measure them.
+   * Routes without URL support download in-process outside maxImageBytes; set false for untrusted callers. */
   remoteUrls?: boolean;
 }
 

@@ -242,7 +242,7 @@ SDK 会为当前模型解析一份 `VisionCapability`：
 |---|---|
 | `images` | 模型是否接收图片 |
 | `toolResultImages` | 图片能否留在工具结果里；不能时，会把图片移到紧随其后的 user 消息（7.6 起使用） |
-| `mediaTypes` | 接受的媒体类型，默认 png、jpeg、gif、webp |
+| `mediaTypes` | 接受的媒体类型，只能缩小 png、jpeg、gif、webp 的范围（默认接受这四种） |
 | `maxImageBytes` / `maxImagesPerRequest` | provider 的上限 |
 | `imageTokens` | 估算公式：`'openai'`、`'anthropic'`、`'gemini'`，或每张图固定的 token 数 |
 

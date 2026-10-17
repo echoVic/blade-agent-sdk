@@ -220,7 +220,7 @@ The SDK resolves a `VisionCapability` for the active model:
 |---|---|
 | `images` | The model accepts image input |
 | `toolResultImages` | Images may stay inside tool results; otherwise they are moved into a following user message (used from 7.6) |
-| `mediaTypes` | Accepted media types; png, jpeg, gif and webp by default |
+| `mediaTypes` | Accepted media types; can only narrow png, jpeg, gif and webp (all four by default) |
 | `maxImageBytes` / `maxImagesPerRequest` | Provider limits |
 | `imageTokens` | `'openai'`, `'anthropic'` or `'gemini'` formula, or a fixed token count per image |
 

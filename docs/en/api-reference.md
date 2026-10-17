@@ -647,7 +647,7 @@ Classes:
 - `ModelTimeoutError`
 - `PermissionDeniedError`
 - `ProviderRegistryError`
-- `SessionInputError`
+- `SessionInputError`: input queue capacity, request matching, active-request option errors, or image refusal (`SESSION_INPUT_IMAGE_REJECTED` with `details: { index, reason }`).
 - `ToolExecutionError`
 
 Types and helpers:

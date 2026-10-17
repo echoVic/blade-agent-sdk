@@ -88,7 +88,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `RuntimeStoreError` | server/infra | Runtime Store 的稳定错误类型 |
 | `TenantAdmissionController` | server/infra | 每 tenant 并发、队列和固定窗口限流 |
 | `JsonlSessionRepository` | advanced | Node.js transcript repository |
-| `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
+| `SessionInputError` | session | 输入队列容量、请求匹配、活动请求选项错误，或图片被拒绝（`SESSION_INPUT_IMAGE_REJECTED`，`details: { index, reason }`） |
 | `SessionHandoffError` | session | handoff 配置、生命周期或活动后台工作前置条件错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
 
